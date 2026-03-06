@@ -21,6 +21,8 @@ export const ALL_PERMISSIONS: Permission[] = [
     "reports:view", "reports:government",
     "notifications:manage",
     "timesheets:view_all", "timesheets:approve",
+    "page:tasks", "tasks:view", "tasks:create", "tasks:assign", "tasks:verify", "tasks:delete", "tasks:manage_groups",
+    "page:messages", "messages:send_announcement", "messages:manage_channels", "messages:send_whatsapp", "messages:send_email",
 ];
 
 // ─── Permission groups for the UI ────────────────────────────
@@ -121,6 +123,28 @@ export const PERMISSION_GROUPS: { label: string; permissions: { key: Permission;
         ],
     },
     {
+        label: "Task Management",
+        permissions: [
+            { key: "page:tasks", label: "Tasks page" },
+            { key: "tasks:view", label: "View tasks" },
+            { key: "tasks:create", label: "Create tasks" },
+            { key: "tasks:assign", label: "Assign tasks" },
+            { key: "tasks:verify", label: "Verify completions" },
+            { key: "tasks:delete", label: "Delete tasks" },
+            { key: "tasks:manage_groups", label: "Manage task groups" },
+        ],
+    },
+    {
+        label: "Messaging",
+        permissions: [
+            { key: "page:messages", label: "Messages page" },
+            { key: "messages:send_announcement", label: "Send announcements" },
+            { key: "messages:manage_channels", label: "Manage channels" },
+            { key: "messages:send_whatsapp", label: "Send via WhatsApp" },
+            { key: "messages:send_email", label: "Send via Email" },
+        ],
+    },
+    {
         label: "Settings",
         permissions: [
             { key: "settings:roles", label: "Manage roles" },
@@ -146,6 +170,8 @@ const HR_PERMS: Permission[] = [
     "timesheets:view_all", "timesheets:approve",
     "settings:organization", "settings:shifts",
     "projects:manage",
+    "page:tasks", "tasks:view", "tasks:create", "tasks:assign", "tasks:verify", "tasks:manage_groups",
+    "page:messages", "messages:send_announcement", "messages:manage_channels", "messages:send_email",
 ];
 
 const FINANCE_PERMS: Permission[] = [
@@ -171,11 +197,15 @@ const SUPERVISOR_PERMS: Permission[] = [
     "attendance:view_all", "attendance:approve_overtime",
     "leave:view_all", "leave:approve",
     "timesheets:view_all", "timesheets:approve",
+    "page:tasks", "tasks:view", "tasks:create", "tasks:assign", "tasks:verify", "tasks:manage_groups",
+    "page:messages", "messages:send_announcement",
 ];
 
 const EMPLOYEE_PERMS: Permission[] = [
     "page:dashboard", "page:attendance", "page:leave", "page:payroll",
     "payroll:view_own",
+    "page:tasks", "tasks:view",
+    "page:messages",
 ];
 
 const AUDITOR_PERMS: Permission[] = [

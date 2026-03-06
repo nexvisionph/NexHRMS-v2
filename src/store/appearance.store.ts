@@ -164,6 +164,8 @@ export interface ModuleFlags {
   notifications: boolean;
   audit: boolean;
   directory: boolean;
+  tasks: boolean;
+  messages: boolean;
 }
 
 export const DEFAULT_MODULE_FLAGS: ModuleFlags = {
@@ -178,6 +180,8 @@ export const DEFAULT_MODULE_FLAGS: ModuleFlags = {
   notifications: true,
   audit: true,
   directory: true,
+  tasks: true,
+  messages: true,
 };
 
 export const MODULE_INFO: Record<keyof ModuleFlags, { label: string; description: string; icon: string }> = {
@@ -192,6 +196,8 @@ export const MODULE_INFO: Record<keyof ModuleFlags, { label: string; description
   notifications: { label: "Notifications", description: "SMS & email notification management", icon: "Bell" },
   audit: { label: "Audit Log", description: "System-wide audit trail & history", icon: "FileSearch" },
   directory: { label: "Employee Directory", description: "Employee directory and org chart", icon: "Contact" },
+  tasks: { label: "Task Management", description: "Task groups, assignments, photo & GPS proof", icon: "ListTodo" },
+  messages: { label: "Messaging Hub", description: "Channels, announcements, multi-channel messaging", icon: "MessageSquare" },
 };
 
 // ─── Navigation Overrides ─────────────────────────────────────────────────────
@@ -354,7 +360,24 @@ export const useAppearanceStore = create<AppearanceState>()(
     }),
     {
       name: "nexhrms-appearance",
-      version: 1,
+      version: 2,
+      migrate: (persisted, version) => {
+        const state = persisted as Record<string, unknown>;
+        if (version < 2) {
+          const oldModules = (state.modules ?? {}) as Record<string, boolean>;
+          state.modules = { ...DEFAULT_MODULE_FLAGS, ...oldModules };
+        }
+        return state as unknown as AppearanceState;
+      },
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AppearanceState>;
+        // Deep-merge modules so new defaults are always present
+        return {
+          ...current,
+          ...p,
+          modules: { ...DEFAULT_MODULE_FLAGS, ...(p.modules ?? {}) },
+        };
+      },
     }
   )
 );

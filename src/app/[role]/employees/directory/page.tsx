@@ -21,6 +21,7 @@ import { DEPARTMENTS } from "@/lib/constants";
 import Link from "next/link";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
 import { toast } from "sonner";
+import { useAuditStore } from "@/store/audit.store";
 
 export default function DirectoryPage() {
     const employees = useEmployeesStore((s) => s.employees);
@@ -83,6 +84,7 @@ export default function DirectoryPage() {
         } else {
             // Admin/Finance can directly set
             updateEmployee(salaryDialogEmpId, { salary: val });
+            useAuditStore.getState().log({ entityType: "employee", entityId: salaryDialogEmpId, action: "salary_approved", performedBy: currentUser.id, afterSnapshot: { salary: val } });
             toast.success(`Salary updated for ${salaryDialogEmp?.name ?? "employee"}`);
         }
         setSalaryDialogEmpId(null);
@@ -215,10 +217,10 @@ export default function DirectoryPage() {
                                         {req.reason && <p className="text-xs text-muted-foreground italic">{req.reason}</p>}
                                     </div>
                                     <div className="flex items-center gap-1">
-                                        <Button size="sm" variant="outline" className="h-7 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50" onClick={() => { approveSalaryChange(req.id, currentUser.id); toast.success(`Salary change approved for ${emp?.name}`); }}>
+                                        <Button size="sm" variant="outline" className="h-7 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50" onClick={() => { approveSalaryChange(req.id, currentUser.id); useAuditStore.getState().log({ entityType: "employee", entityId: req.employeeId, action: "salary_approved", performedBy: currentUser.id }); toast.success(`Salary change approved for ${emp?.name}`); }}>
                                             Approve
                                         </Button>
-                                        <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => { rejectSalaryChange(req.id, currentUser.id); toast.info(`Salary proposal rejected`); }}>
+                                        <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => { rejectSalaryChange(req.id, currentUser.id); useAuditStore.getState().log({ entityType: "employee", entityId: req.employeeId, action: "salary_rejected", performedBy: currentUser.id }); toast.info(`Salary proposal rejected`); }}>
                                             Reject
                                         </Button>
                                     </div>

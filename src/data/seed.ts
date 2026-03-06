@@ -7,6 +7,13 @@ import type {
     DemoUser,
     Project,
     Loan,
+    TaskGroup,
+    Task,
+    TaskCompletionReport,
+    TaskComment,
+    Announcement,
+    TextChannel,
+    ChannelMessage,
 } from "@/types";
 
 // ─── Demo Users ──────────────────────────────────────────────
@@ -109,6 +116,16 @@ function generateAttendanceLogs(): AttendanceLog[] {
             const checkInMin = Math.floor(Math.random() * 60);
             const hoursWorked = 7 + Math.floor(Math.random() * 3);
 
+            // Compute late minutes: shift starts at 08:00 with 10-min grace → late after 08:10
+            let lateMinutes = 0;
+            if (status === "present") {
+                const checkInTotalMin = checkInHour * 60 + checkInMin;
+                const graceEndMin = 8 * 60 + 10; // 08:10
+                if (checkInTotalMin > graceEndMin) {
+                    lateMinutes = checkInTotalMin - graceEndMin;
+                }
+            }
+
             logs.push({
                 id: `ATT-${dateStr}-${emp.id}`,
                 employeeId: emp.id,
@@ -116,6 +133,7 @@ function generateAttendanceLogs(): AttendanceLog[] {
                 checkIn: status === "present" ? `${String(checkInHour).padStart(2, "0")}:${String(checkInMin).padStart(2, "0")}` : undefined,
                 checkOut: status === "present" ? `${String(checkInHour + hoursWorked).padStart(2, "0")}:${String(checkInMin).padStart(2, "0")}` : undefined,
                 hours: status === "present" ? hoursWorked : 0,
+                lateMinutes: status === "present" ? lateMinutes : 0,
                 status,
             });
         });
@@ -135,6 +153,9 @@ export const SEED_LEAVES: LeaveRequest[] = [
     { id: "LV006", employeeId: "EMP015", type: "VL", startDate: "2026-02-25", endDate: "2026-02-28", reason: "Personal time off.", status: "pending" },
     { id: "LV007", employeeId: "EMP002", type: "SL", startDate: "2026-01-20", endDate: "2026-01-21", reason: "Flu symptoms.", status: "approved", reviewedBy: "EMP006", reviewedAt: "2026-01-19" },
     { id: "LV008", employeeId: "EMP018", type: "OTHER", startDate: "2026-02-14", endDate: "2026-02-14", reason: "Conference attendance.", status: "approved", reviewedBy: "EMP006", reviewedAt: "2026-02-12" },
+    { id: "LV009", employeeId: "EMP008", type: "ML", startDate: "2026-03-10", endDate: "2026-05-31", reason: "Maternity leave (105 days).", status: "approved", reviewedBy: "EMP006", reviewedAt: "2026-03-05" },
+    { id: "LV010", employeeId: "EMP011", type: "PL", startDate: "2026-03-10", endDate: "2026-03-16", reason: "Paternity leave — newborn.", status: "approved", reviewedBy: "EMP006", reviewedAt: "2026-03-08" },
+    { id: "LV011", employeeId: "EMP014", type: "SPL", startDate: "2026-04-01", endDate: "2026-04-07", reason: "Solo parent leave.", status: "pending" },
 ];
 
 // ─── Payslips (based on MONTHLY salary, semi-monthly 1st cutoff Jan 1–15) ────
@@ -166,4 +187,68 @@ export const SEED_LOANS: Loan[] = [
     { id: "LN001", employeeId: "EMP001", type: "cash_advance", amount: 15000, remainingBalance: 10000, monthlyDeduction: 2500, deductionCapPercent: 30, status: "active", approvedBy: "U001", createdAt: "2026-01-15", remarks: "Emergency cash advance" },
     { id: "LN002", employeeId: "EMP004", type: "salary_loan", amount: 50000, remainingBalance: 50000, monthlyDeduction: 5000, deductionCapPercent: 30, status: "active", approvedBy: "U001", createdAt: "2026-02-01", remarks: "Salary loan for housing" },
     { id: "LN003", employeeId: "EMP009", type: "cash_advance", amount: 8000, remainingBalance: 0, monthlyDeduction: 2000, deductionCapPercent: 30, status: "settled", approvedBy: "U001", createdAt: "2025-11-10" },
+];
+
+// ─── Task Groups ─────────────────────────────────────────────
+export const SEED_TASK_GROUPS: TaskGroup[] = [
+    { id: "TG-001", name: "Field Operations", description: "On-site inspections and field tasks for Metro Tower.", projectId: "PRJ001", createdBy: "EMP006", memberEmployeeIds: ["EMP001", "EMP002", "EMP003", "EMP004", "EMP005", "EMP007", "EMP026", "EMP009"], announcementPermission: "group_leads", createdAt: "2026-01-15T08:00:00Z" },
+    { id: "TG-002", name: "Office Tasks", description: "Internal office admin and reporting tasks.", createdBy: "EMP006", memberEmployeeIds: ["EMP010", "EMP012", "EMP013", "EMP015", "EMP016", "EMP020", "EMP021", "EMP022", "EMP023", "EMP024", "EMP025", "EMP026"], announcementPermission: "admin_only", createdAt: "2026-01-20T08:00:00Z" },
+];
+
+// ─── Tasks ───────────────────────────────────────────────────
+export const SEED_TASKS: Task[] = [
+    { id: "TSK-001", groupId: "TG-001", title: "Site inspection – Makati", description: "Conduct full site inspection at Metro Tower Makati. Check structural progress and safety compliance.", priority: "high", status: "verified", dueDate: "2026-02-20", assignedTo: ["EMP003"], createdBy: "EMP006", createdAt: "2026-02-15T09:00:00Z", updatedAt: "2026-02-20T16:00:00Z", completionRequired: true, tags: ["inspection", "safety"] },
+    { id: "TSK-002", groupId: "TG-001", title: "Delivery to BGC office", description: "Deliver equipment and documents to the BGC satellite office. Get confirmation photo.", priority: "medium", status: "submitted", dueDate: "2026-03-05", assignedTo: ["EMP005"], createdBy: "EMP006", createdAt: "2026-03-01T08:00:00Z", updatedAt: "2026-03-04T14:00:00Z", completionRequired: true, tags: ["delivery"] },
+    { id: "TSK-003", groupId: "TG-001", title: "Equipment check – Pasig", description: "Verify all heavy equipment at the Pasig warehouse is operational and accounted for.", priority: "high", status: "in_progress", dueDate: "2026-03-10", assignedTo: ["EMP003", "EMP007"], createdBy: "EMP006", createdAt: "2026-03-02T09:00:00Z", updatedAt: "2026-03-02T09:00:00Z", completionRequired: true, tags: ["equipment"] },
+    { id: "TSK-004", groupId: "TG-002", title: "Prepare monthly report", description: "Compile and format the February monthly status report for stakeholder presentation.", priority: "medium", status: "open", dueDate: "2026-03-08", assignedTo: ["EMP010"], createdBy: "EMP006", createdAt: "2026-03-01T08:00:00Z", updatedAt: "2026-03-01T08:00:00Z", completionRequired: false, tags: ["report"] },
+    { id: "TSK-005", groupId: "TG-002", title: "Office supply inventory", description: "Count and catalog all office supplies. Update inventory spreadsheet.", priority: "low", status: "open", dueDate: "2026-03-12", assignedTo: ["EMP012", "EMP015"], createdBy: "EMP006", createdAt: "2026-03-03T08:00:00Z", updatedAt: "2026-03-03T08:00:00Z", completionRequired: false, tags: ["inventory"] },
+    { id: "TSK-006", groupId: "TG-001", title: "Safety audit – Taguig", description: "Perform full safety audit at the Taguig construction site. Document all findings.", priority: "urgent", status: "rejected", dueDate: "2026-02-28", assignedTo: ["EMP005"], createdBy: "EMP006", createdAt: "2026-02-22T08:00:00Z", updatedAt: "2026-02-27T16:00:00Z", completionRequired: true, tags: ["safety", "audit"] },
+];
+
+// Placeholder 1x1 PNG (tiny valid base64 image for seed data)
+const PLACEHOLDER_PHOTO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPj/HwADBwIAMCbHYQAAAABJRU5ErkJggg==";
+
+// ─── Task Completion Reports ─────────────────────────────────
+export const SEED_COMPLETION_REPORTS: TaskCompletionReport[] = [
+    { id: "TCR-001", taskId: "TSK-001", employeeId: "EMP003", photoDataUrl: PLACEHOLDER_PHOTO, gpsLat: 14.5547, gpsLng: 121.0244, gpsAccuracyMeters: 12, reverseGeoAddress: "14.5547°N, 121.0244°E (Makati CBD)", notes: "All structural checks passed. Fire exits clear.", submittedAt: "2026-02-20T15:30:00Z", verifiedBy: "EMP006", verifiedAt: "2026-02-20T16:00:00Z" },
+    { id: "TCR-002", taskId: "TSK-002", employeeId: "EMP005", photoDataUrl: PLACEHOLDER_PHOTO, gpsLat: 14.5515, gpsLng: 121.0498, gpsAccuracyMeters: 8, reverseGeoAddress: "14.5515°N, 121.0498°E (BGC, Taguig)", notes: "Delivered to reception. Signed by guard.", submittedAt: "2026-03-04T14:00:00Z" },
+    { id: "TCR-003", taskId: "TSK-006", employeeId: "EMP005", photoDataUrl: PLACEHOLDER_PHOTO, gpsLat: 14.5176, gpsLng: 121.0509, gpsAccuracyMeters: 15, reverseGeoAddress: "14.5176°N, 121.0509°E (Taguig)", notes: "Completed safety walkthrough.", submittedAt: "2026-02-27T15:00:00Z", rejectionReason: "Photos are blurry and incomplete. Please redo with higher quality images." },
+];
+
+// ─── Task Comments ───────────────────────────────────────────
+export const SEED_TASK_COMMENTS: TaskComment[] = [
+    { id: "TC-001", taskId: "TSK-001", employeeId: "EMP003", message: "Starting the inspection now. Will focus on floors 8-12 first.", createdAt: "2026-02-20T09:15:00Z" },
+    { id: "TC-002", taskId: "TSK-001", employeeId: "EMP006", message: "Great. Make sure to document the fire exit compliance on each floor.", createdAt: "2026-02-20T09:30:00Z" },
+    { id: "TC-003", taskId: "TSK-003", employeeId: "EMP007", message: "I'll handle the electrical equipment. Sophia, can you check the heavy machinery?", createdAt: "2026-03-02T10:00:00Z" },
+    { id: "TC-004", taskId: "TSK-006", employeeId: "EMP006", message: "Please retake the photos with better lighting. The current ones are not usable for the audit report.", createdAt: "2026-02-27T16:30:00Z" },
+];
+
+// ─── Text Channels ───────────────────────────────────────────
+export const SEED_TEXT_CHANNELS: TextChannel[] = [
+    { id: "CH-001", name: "#general", memberEmployeeIds: SEED_EMPLOYEES.filter(e => e.status === "active").map(e => e.id), createdBy: "EMP006", createdAt: "2026-01-01T00:00:00Z", isArchived: false },
+    { id: "CH-002", name: "#field-ops", groupId: "TG-001", memberEmployeeIds: ["EMP001", "EMP002", "EMP003", "EMP004", "EMP005", "EMP007", "EMP026", "EMP009"], createdBy: "EMP006", createdAt: "2026-01-15T08:00:00Z", isArchived: false },
+    { id: "CH-003", name: "#admin-hr", memberEmployeeIds: ["EMP006", "EMP013", "EMP025"], createdBy: "EMP006", createdAt: "2026-01-15T08:00:00Z", isArchived: false },
+];
+
+// ─── Announcements ───────────────────────────────────────────
+export const SEED_ANNOUNCEMENTS: Announcement[] = [
+    { id: "ANN-001", subject: "March payslip released", body: "Hi everyone, January semi-monthly payslips have been published. Please log in to NexHRMS to view and sign your payslip. Contact finance if you have any discrepancies.", channel: "email", scope: "all_employees", sentBy: "EMP007", sentAt: "2026-01-22T10:00:00Z", status: "simulated", readBy: ["EMP001", "EMP002", "EMP003"] },
+    { id: "ANN-002", subject: "Weather alert: postpone outdoor tasks", body: "Due to Typhoon Signal #2 warning, all outdoor field tasks are postponed until further notice. Stay safe and work from home if possible.", channel: "whatsapp", scope: "task_group", targetGroupId: "TG-001", sentBy: "EMP006", sentAt: "2026-02-18T07:00:00Z", status: "simulated", readBy: ["EMP003", "EMP005"] },
+    { id: "ANN-003", subject: "Training schedule update", body: "The leadership training originally scheduled for March 5 has been moved to March 12. Please update your calendars. Venue remains the same — Conference Room B.", channel: "email", scope: "selected_employees", targetEmployeeIds: ["EMP005", "EMP010", "EMP020"], sentBy: "EMP006", sentAt: "2026-03-01T09:00:00Z", status: "simulated", readBy: [] },
+    { id: "ANN-004", subject: "Equipment list attached", body: "Please review the attached equipment checklist before proceeding with the Pasig warehouse check. Mark off each item as you verify it.", channel: "in_app", scope: "task_assignees", targetTaskId: "TSK-003", sentBy: "EMP006", sentAt: "2026-03-02T09:30:00Z", status: "simulated", readBy: ["EMP003"] },
+    { id: "ANN-005", subject: "Holiday reminder: March 10", body: "Reminder: March 10 (Monday) is a special non-working holiday. Office will be closed. Enjoy the long weekend!", channel: "whatsapp", scope: "all_employees", sentBy: "EMP006", sentAt: "2026-03-05T09:00:00Z", status: "simulated", readBy: [] },
+];
+
+// ─── Channel Messages ────────────────────────────────────────
+export const SEED_CHANNEL_MESSAGES: ChannelMessage[] = [
+    { id: "MSG-001", channelId: "CH-001", employeeId: "EMP006", message: "Good morning everyone! Reminder: town hall meeting at 2pm today.", createdAt: "2026-02-18T08:00:00Z", readBy: ["EMP001", "EMP002", "EMP003", "EMP010"] },
+    { id: "MSG-002", channelId: "CH-001", employeeId: "EMP010", message: "Thanks for the reminder! Will the slides be shared beforehand?", createdAt: "2026-02-18T08:15:00Z", readBy: ["EMP006", "EMP001"] },
+    { id: "MSG-003", channelId: "CH-001", employeeId: "EMP006", message: "Yes, I'll share them by noon.", createdAt: "2026-02-18T08:20:00Z", readBy: ["EMP010"] },
+    { id: "MSG-004", channelId: "CH-002", employeeId: "EMP003", message: "Heading to Makati site now. ETA 30 minutes.", createdAt: "2026-02-20T08:30:00Z", readBy: ["EMP005", "EMP007"] },
+    { id: "MSG-005", channelId: "CH-002", employeeId: "EMP005", message: "Copy. I'll be at BGC by 10am for the delivery.", createdAt: "2026-02-20T08:35:00Z", readBy: ["EMP003"] },
+    { id: "MSG-006", channelId: "CH-002", employeeId: "EMP007", message: "Can someone bring extra hard hats? We're short 3.", createdAt: "2026-02-20T09:00:00Z", readBy: ["EMP003", "EMP005"] },
+    { id: "MSG-007", channelId: "CH-003", employeeId: "EMP006", message: "We need to finalize the new employee onboarding checklist by Friday.", createdAt: "2026-03-01T09:00:00Z", readBy: ["EMP013", "EMP025"] },
+    { id: "MSG-008", channelId: "CH-003", employeeId: "EMP013", message: "I've drafted the checklist. Will share it after lunch for review.", createdAt: "2026-03-01T09:15:00Z", readBy: ["EMP006"] },
+    { id: "MSG-009", channelId: "CH-001", employeeId: "EMP020", message: "Has anyone reviewed the Q1 targets? Let's discuss in the planning meeting.", createdAt: "2026-03-03T10:00:00Z", readBy: ["EMP006", "EMP010"] },
+    { id: "MSG-010", channelId: "CH-002", employeeId: "EMP026", message: "Just arrived on site. All clear here.", createdAt: "2026-03-04T08:00:00Z", readBy: ["EMP003"] },
 ];

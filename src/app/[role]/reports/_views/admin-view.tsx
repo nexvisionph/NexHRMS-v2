@@ -4,6 +4,8 @@ import { useState, useMemo, useCallback } from "react";
 import { usePayrollStore } from "@/store/payroll.store";
 import { useAttendanceStore } from "@/store/attendance.store";
 import { useEmployeesStore } from "@/store/employees.store";
+import { useLoansStore } from "@/store/loans.store";
+import { useProjectsStore } from "@/store/projects.store";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -18,6 +20,8 @@ export default function AdminReportsView() {
     const payslips = usePayrollStore((s) => s.payslips);
     const logs = useAttendanceStore((s) => s.logs);
     const employees = useEmployeesStore((s) => s.employees);
+    const loans = useLoansStore((s) => s.loans);
+    const projects = useProjectsStore((s) => s.projects);
 
     const getEmpName = useCallback((id: string) => employees.find((e) => e.id === id)?.name || id, [employees]);
 
@@ -42,6 +46,48 @@ export default function AdminReportsView() {
     }, [logs, getEmpName]);
 
     const [tab, setTab] = useState("payroll_register");
+
+    // ─── Loan Balances Report ──────────────────────────────────
+    const loanBalances = useMemo(() => {
+        return loans
+            .filter((l) => l.status === "active")
+            .map((l) => ({ ...l, empName: getEmpName(l.employeeId) }))
+            .sort((a, b) => b.remainingBalance - a.remainingBalance);
+    }, [loans, getEmpName]);
+
+    // ─── 13th Month Accrual Report ────────────────────────────
+    const thirteenthMonthData = useMemo(() => {
+        const currentYear = new Date().getFullYear();
+        const currentMonth = new Date().getMonth(); // 0-indexed
+        return employees
+            .filter((e) => e.status === "active")
+            .map((e) => {
+                const joinDate = new Date(e.joinDate || `${currentYear}-01-01`);
+                const joinYear = joinDate.getFullYear();
+                const joinMonth = joinDate.getMonth();
+                const monthsWorked = joinYear < currentYear
+                    ? 12
+                    : Math.min(12, Math.max(1, currentMonth - joinMonth + 1));
+                const monthlyBasic = e.salary;
+                const accrued = (monthlyBasic * monthsWorked) / 12;
+                return { id: e.id, name: e.name, department: e.department, monthlyBasic, monthsWorked, accrued };
+            })
+            .sort((a, b) => b.accrued - a.accrued);
+    }, [employees]);
+    const totalAccrued13th = useMemo(() => thirteenthMonthData.reduce((s, r) => s + r.accrued, 0), [thirteenthMonthData]);
+
+    // ─── Manpower Report ──────────────────────────────────────
+    const [manpowerDate, setManpowerDate] = useState(format(new Date(), "yyyy-MM-dd"));
+    const manpowerReport = useMemo(() => {
+        const dayLogs = logs.filter((l) => l.date === manpowerDate);
+        return projects.map((p) => {
+            const assigned = p.assignedEmployeeIds.length;
+            const present = p.assignedEmployeeIds.filter((eid) => dayLogs.find((l) => l.employeeId === eid)?.status === "present").length;
+            const onLeave = p.assignedEmployeeIds.filter((eid) => dayLogs.find((l) => l.employeeId === eid)?.status === "on_leave").length;
+            const absent = Math.max(0, assigned - present - onLeave);
+            return { ...p, assigned, present, onLeave, absent };
+        });
+    }, [projects, logs, manpowerDate]);
 
     const last6Months = useMemo(() => Array.from({ length: 6 }, (_, i) => { const d = subMonths(new Date(), i); return format(d, "yyyy-MM"); }), []);
     const [selectedMonth, setSelectedMonth] = useState(format(new Date(), "yyyy-MM"));
@@ -79,6 +125,9 @@ export default function AdminReportsView() {
                     <TabsTrigger value="absence" className="text-xs">Absence</TabsTrigger>
                     <TabsTrigger value="late" className="text-xs">Late</TabsTrigger>
                     <TabsTrigger value="gov_compliance" className="text-xs">Gov&apos;t Compliance</TabsTrigger>
+                    <TabsTrigger value="loan_balances" className="text-xs">Loan Balances</TabsTrigger>
+                    <TabsTrigger value="thirteenth_month" className="text-xs">13th Month</TabsTrigger>
+                    <TabsTrigger value="manpower" className="text-xs">Manpower</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="payroll_register" className="mt-4">
@@ -167,6 +216,94 @@ export default function AdminReportsView() {
                             </TabsContent>
                         </Tabs>
                     )}
+                </TabsContent>
+
+                {/* Loan Balances Tab */}
+                <TabsContent value="loan_balances" className="mt-4">
+                    <div className="flex items-center justify-between mb-4">
+                        <div><p className="text-sm font-semibold">Loan Balances</p><p className="text-xs text-muted-foreground">Active loans and remaining balances</p></div>
+                        {loanBalances.length > 0 && <Button size="sm" variant="outline" className="gap-1.5 h-7" onClick={() => { exportCSV([["Employee", "Type", "Original Amount", "Remaining Balance", "Monthly Deduction", "Status"], ...loanBalances.map((l) => [l.empName, l.type.replace("_", " "), l.amount, l.remainingBalance, l.monthlyDeduction, l.status].map(String)), ["TOTAL", "", "", loanBalances.reduce((s, l) => s + l.remainingBalance, 0), loanBalances.reduce((s, l) => s + l.monthlyDeduction, 0), ""].map(String)], "loan-balances.csv"); toast.success("Loan balances report downloaded"); }}><Download className="h-3 w-3" /> CSV</Button>}
+                    </div>
+                    <Card className="border border-border/50"><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow>
+                        <TableHead className="text-xs">Employee</TableHead><TableHead className="text-xs">Type</TableHead><TableHead className="text-xs">Original Amount</TableHead><TableHead className="text-xs">Remaining Balance</TableHead><TableHead className="text-xs">Monthly Deduction</TableHead><TableHead className="text-xs">Status</TableHead>
+                    </TableRow></TableHeader><TableBody>
+                        {loanBalances.length === 0 ? (
+                            <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">No active loans</TableCell></TableRow>
+                        ) : loanBalances.map((l) => (
+                            <TableRow key={l.id}>
+                                <TableCell className="text-sm font-medium">{l.empName}</TableCell>
+                                <TableCell><Badge variant="outline" className="text-[10px] capitalize">{l.type.replace("_", " ")}</Badge></TableCell>
+                                <TableCell className="text-sm">₱{l.amount.toLocaleString()}</TableCell>
+                                <TableCell className="text-sm font-medium text-amber-600 dark:text-amber-400">₱{l.remainingBalance.toLocaleString()}</TableCell>
+                                <TableCell className="text-sm">₱{l.monthlyDeduction.toLocaleString()}</TableCell>
+                                <TableCell><Badge variant="secondary" className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">{l.status}</Badge></TableCell>
+                            </TableRow>
+                        ))}
+                        {loanBalances.length > 0 && (
+                            <TableRow className="bg-muted/30 font-semibold">
+                                <TableCell colSpan={3}>TOTAL</TableCell>
+                                <TableCell className="text-amber-600 dark:text-amber-400">₱{loanBalances.reduce((s, l) => s + l.remainingBalance, 0).toLocaleString()}</TableCell>
+                                <TableCell>₱{loanBalances.reduce((s, l) => s + l.monthlyDeduction, 0).toLocaleString()}</TableCell>
+                                <TableCell></TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody></Table></div></CardContent></Card>
+                </TabsContent>
+
+                {/* 13th Month Accrual Tab */}
+                <TabsContent value="thirteenth_month" className="mt-4">
+                    <div className="flex items-center justify-between mb-4">
+                        <div><p className="text-sm font-semibold">13th Month Pay Accrual</p><p className="text-xs text-muted-foreground">Based on current year months worked (RA 6686)</p></div>
+                        <Button size="sm" variant="outline" className="gap-1.5 h-7" onClick={() => { exportCSV([["Employee", "Department", "Monthly Basic", "Months Worked", "Accrued 13th Month"], ...thirteenthMonthData.map((r) => [r.name, r.department, r.monthlyBasic, r.monthsWorked, r.accrued.toFixed(2)].map(String)), ["TOTAL", "", "", "", totalAccrued13th.toFixed(2)]], "thirteenth-month.csv"); toast.success("13th Month report downloaded"); }}><Download className="h-3 w-3" /> CSV</Button>
+                    </div>
+                    <Card className="border border-border/50"><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow>
+                        <TableHead className="text-xs">Employee</TableHead><TableHead className="text-xs">Department</TableHead><TableHead className="text-xs">Monthly Basic</TableHead><TableHead className="text-xs">Months Worked</TableHead><TableHead className="text-xs font-semibold">Accrued 13th Month</TableHead>
+                    </TableRow></TableHeader><TableBody>
+                        {thirteenthMonthData.length === 0 ? (
+                            <TableRow><TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">No active employees</TableCell></TableRow>
+                        ) : thirteenthMonthData.map((r) => (
+                            <TableRow key={r.id}>
+                                <TableCell className="text-sm font-medium">{r.name}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">{r.department}</TableCell>
+                                <TableCell className="text-sm">₱{r.monthlyBasic.toLocaleString()}</TableCell>
+                                <TableCell className="text-sm">{r.monthsWorked}</TableCell>
+                                <TableCell className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">₱{r.accrued.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                            </TableRow>
+                        ))}
+                        {thirteenthMonthData.length > 0 && (
+                            <TableRow className="bg-muted/30 font-semibold">
+                                <TableCell colSpan={4}>TOTAL ACCRUED</TableCell>
+                                <TableCell className="text-emerald-600 dark:text-emerald-400">₱{totalAccrued13th.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody></Table></div></CardContent></Card>
+                </TabsContent>
+
+                {/* Manpower Tab */}
+                <TabsContent value="manpower" className="mt-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                        <div><p className="text-sm font-semibold">Project Manpower</p><p className="text-xs text-muted-foreground">Attendance per project for selected date</p></div>
+                        <div className="flex items-center gap-2">
+                            <input type="date" value={manpowerDate} onChange={(e) => setManpowerDate(e.target.value)} className="border rounded-md px-3 py-1.5 text-sm bg-background" />
+                            {manpowerReport.length > 0 && <Button size="sm" variant="outline" className="gap-1.5 h-7" onClick={() => { exportCSV([["Project", "Assigned", "Present", "On Leave", "Absent", "Coverage %"], ...manpowerReport.map((p) => [p.name, p.assigned, p.present, p.onLeave, p.absent, p.assigned > 0 ? Math.round((p.present / p.assigned) * 100) : 0].map(String))], `manpower-${manpowerDate}.csv`); toast.success("Manpower report downloaded"); }}><Download className="h-3 w-3" /> CSV</Button>}
+                        </div>
+                    </div>
+                    <Card className="border border-border/50"><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow>
+                        <TableHead className="text-xs">Project</TableHead><TableHead className="text-xs">Assigned</TableHead><TableHead className="text-xs">Present</TableHead><TableHead className="text-xs">On Leave</TableHead><TableHead className="text-xs">Absent</TableHead><TableHead className="text-xs">Coverage</TableHead>
+                    </TableRow></TableHeader><TableBody>
+                        {manpowerReport.length === 0 ? (
+                            <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">No projects found</TableCell></TableRow>
+                        ) : manpowerReport.map((p) => (
+                            <TableRow key={p.id}>
+                                <TableCell className="text-sm font-medium">{p.name}</TableCell>
+                                <TableCell className="text-sm">{p.assigned}</TableCell>
+                                <TableCell className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{p.present}</TableCell>
+                                <TableCell className="text-sm text-blue-600 dark:text-blue-400">{p.onLeave}</TableCell>
+                                <TableCell className="text-sm text-red-500">{p.absent}</TableCell>
+                                <TableCell>{p.assigned > 0 ? <Badge variant="secondary" className={`text-[10px] ${(p.present / p.assigned) >= 0.8 ? "bg-emerald-500/15 text-emerald-700" : (p.present / p.assigned) >= 0.5 ? "bg-amber-500/15 text-amber-700" : "bg-red-500/15 text-red-700"}`}>{Math.round((p.present / p.assigned) * 100)}%</Badge> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody></Table></div></CardContent></Card>
                 </TabsContent>
             </Tabs>
         </div>

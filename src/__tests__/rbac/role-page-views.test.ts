@@ -139,6 +139,26 @@ const DISPATCHER_MATRIX: PageViewSpec[] = [
         },
         denied: ["finance", "employee", "payroll_admin", "auditor"],
     },
+    {
+        page: "/tasks",
+        views: {
+            admin: "AdminTasksView",
+            hr: "AdminTasksView",
+            supervisor: "AdminTasksView",
+            employee: "EmployeeTasksView",
+        },
+        denied: ["finance", "payroll_admin", "auditor"],
+    },
+    {
+        page: "/messages",
+        views: {
+            admin: "AdminMessagesView",
+            hr: "AdminMessagesView",
+            supervisor: "AdminMessagesView",
+            employee: "EmployeeMessagesView",
+        },
+        denied: ["finance", "payroll_admin", "auditor"],
+    },
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -289,10 +309,13 @@ describe("Permission system resolves correctly", () => {
             "page:dashboard", "page:employees", "page:attendance",
             "page:leave", "page:payroll", "page:loans", "page:reports",
             "page:settings", "page:kiosk", "page:audit",
+            "page:tasks", "page:messages",
             "employees:view", "employees:create", "employees:edit",
             "attendance:view_all", "leave:view_all", "payroll:view_all",
             "loans:view_all", "reports:view", "reports:government",
             "projects:manage", "notifications:manage",
+            "tasks:create", "tasks:assign", "tasks:verify", "tasks:delete", "tasks:manage_groups",
+            "messages:send_announcement", "messages:manage_channels", "messages:send_whatsapp", "messages:send_email",
         ];
         for (const perm of perms) {
             expect(hasPermission("admin", perm)).toBe(true);
@@ -305,6 +328,9 @@ describe("Permission system resolves correctly", () => {
         expect(hasPermission("employee", "page:leave")).toBe(true);
         expect(hasPermission("employee", "page:payroll")).toBe(true);
         expect(hasPermission("employee", "payroll:view_own")).toBe(true);
+        // Tasks & Messages — employee can access pages
+        expect(hasPermission("employee", "page:tasks")).toBe(true);
+        expect(hasPermission("employee", "page:messages")).toBe(true);
 
         // Should NOT have
         expect(hasPermission("employee", "page:employees")).toBe(false);
@@ -313,6 +339,11 @@ describe("Permission system resolves correctly", () => {
         expect(hasPermission("employee", "page:settings")).toBe(false);
         expect(hasPermission("employee", "projects:manage")).toBe(false);
         expect(hasPermission("employee", "employees:edit")).toBe(false);
+        // Cannot manage tasks/messaging
+        expect(hasPermission("employee", "tasks:create")).toBe(false);
+        expect(hasPermission("employee", "tasks:delete")).toBe(false);
+        expect(hasPermission("employee", "messages:send_announcement")).toBe(false);
+        expect(hasPermission("employee", "messages:manage_channels")).toBe(false);
     });
 
     it("hr can manage employees and attendance but not payroll", () => {
@@ -321,9 +352,19 @@ describe("Permission system resolves correctly", () => {
         expect(hasPermission("hr", "attendance:view_all")).toBe(true);
         expect(hasPermission("hr", "leave:approve")).toBe(true);
         expect(hasPermission("hr", "projects:manage")).toBe(true);
+        // HR can access tasks and send announcements/emails
+        expect(hasPermission("hr", "page:tasks")).toBe(true);
+        expect(hasPermission("hr", "page:messages")).toBe(true);
+        expect(hasPermission("hr", "tasks:create")).toBe(true);
+        expect(hasPermission("hr", "tasks:manage_groups")).toBe(true);
+        expect(hasPermission("hr", "messages:send_announcement")).toBe(true);
+        expect(hasPermission("hr", "messages:manage_channels")).toBe(true);
+        expect(hasPermission("hr", "messages:send_email")).toBe(true);
 
         expect(hasPermission("hr", "payroll:generate")).toBe(false);
         expect(hasPermission("hr", "loans:approve")).toBe(false);
+        // HR cannot send WhatsApp (admin only)
+        expect(hasPermission("hr", "messages:send_whatsapp")).toBe(false);
     });
 
     it("finance can manage payroll and loans but not leave", () => {
@@ -341,10 +382,21 @@ describe("Permission system resolves correctly", () => {
         expect(hasPermission("supervisor", "attendance:view_all")).toBe(true);
         expect(hasPermission("supervisor", "leave:approve")).toBe(true);
         expect(hasPermission("supervisor", "timesheets:approve")).toBe(true);
+        // Supervisor can manage tasks
+        expect(hasPermission("supervisor", "page:tasks")).toBe(true);
+        expect(hasPermission("supervisor", "page:messages")).toBe(true);
+        expect(hasPermission("supervisor", "tasks:create")).toBe(true);
+        expect(hasPermission("supervisor", "tasks:assign")).toBe(true);
+        expect(hasPermission("supervisor", "tasks:verify")).toBe(true);
+        expect(hasPermission("supervisor", "tasks:manage_groups")).toBe(true);
+        expect(hasPermission("supervisor", "messages:send_announcement")).toBe(true);
 
         expect(hasPermission("supervisor", "employees:create")).toBe(false);
         expect(hasPermission("supervisor", "employees:edit")).toBe(false);
         expect(hasPermission("supervisor", "payroll:generate")).toBe(false);
+        // Supervisor cannot delete tasks or manage channels
+        expect(hasPermission("supervisor", "tasks:delete")).toBe(false);
+        expect(hasPermission("supervisor", "messages:manage_channels")).toBe(false);
     });
 
     it("auditor can only view audit, reports, and employee list", () => {
@@ -419,6 +471,27 @@ describe("Page-specific security assertions", () => {
         expect(projectsSpec.views.supervisor).not.toBe(projectsSpec.views.admin);
     });
 
+    it("employee gets EmployeeTasksView (personal tasks only)", () => {
+        const tasksSpec = DISPATCHER_MATRIX.find((s) => s.page === "/tasks")!;
+        expect(tasksSpec.views.employee).toBe("EmployeeTasksView");
+        expect(tasksSpec.views.employee).not.toBe(tasksSpec.views.admin);
+    });
+
+    it("finance/payroll_admin/auditor cannot access tasks or messages", () => {
+        const tasksSpec = DISPATCHER_MATRIX.find((s) => s.page === "/tasks")!;
+        const messagesSpec = DISPATCHER_MATRIX.find((s) => s.page === "/messages")!;
+        for (const role of ["finance", "payroll_admin", "auditor"] as Role[]) {
+            expect(tasksSpec.denied).toContain(role);
+            expect(messagesSpec.denied).toContain(role);
+        }
+    });
+
+    it("employee gets EmployeeMessagesView (read-only, no announcement composer)", () => {
+        const messagesSpec = DISPATCHER_MATRIX.find((s) => s.page === "/messages")!;
+        expect(messagesSpec.views.employee).toBe("EmployeeMessagesView");
+        expect(messagesSpec.views.employee).not.toBe(messagesSpec.views.admin);
+    });
+
     it("employee gets EmployeeView for attendance (personal dashboard, not management)", () => {
         const attendanceSpec = DISPATCHER_MATRIX.find((s) => s.page === "/attendance")!;
         expect(attendanceSpec.views.employee).toBe("EmployeeView");
@@ -458,6 +531,8 @@ describe("Unique view count per page", () => {
         "/loans": 2,            // AdminView + ReadonlyView
         "/reports": 2,          // AdminReportsView + BasicReportsView
         "/projects": 2,         // AdminProjectsView + ReadonlyProjectsView
+        "/tasks": 2,            // AdminTasksView + EmployeeTasksView
+        "/messages": 2,         // AdminMessagesView + EmployeeMessagesView
     };
 
     for (const spec of DISPATCHER_MATRIX) {
@@ -502,5 +577,23 @@ describe("NAV_ITEMS permission coverage", () => {
         expect(navHrefs).toContain("/loans");
         expect(navHrefs).toContain("/reports");
         expect(navHrefs).toContain("/projects");
+        expect(navHrefs).toContain("/tasks");
+        expect(navHrefs).toContain("/messages");
+    });
+
+    it("Tasks NAV_ITEM has correct permission and module flag", () => {
+        const tasksItem = NAV_ITEMS.find((i) => i.href === "/tasks")!;
+        expect(tasksItem).toBeDefined();
+        expect(tasksItem.permission).toBe("page:tasks");
+        expect(tasksItem.moduleFlag).toBe("tasks");
+        expect(tasksItem.icon).toBe("ListTodo");
+    });
+
+    it("Messages NAV_ITEM has correct permission and module flag", () => {
+        const msgItem = NAV_ITEMS.find((i) => i.href === "/messages")!;
+        expect(msgItem).toBeDefined();
+        expect(msgItem.permission).toBe("page:messages");
+        expect(msgItem.moduleFlag).toBe("messages");
+        expect(msgItem.icon).toBe("MessageSquare");
     });
 });

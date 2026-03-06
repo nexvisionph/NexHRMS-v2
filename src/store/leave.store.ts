@@ -31,6 +31,24 @@ const DEFAULT_LEAVE_POLICIES: LeavePolicy[] = [
         carryForwardAllowed: false, maxCarryForward: 0, maxBalance: 2,
         expiryMonths: 12, negativeLeaveAllowed: false, attachmentRequired: false,
     },
+    {
+        id: "LP-ML", leaveType: "ML", name: "Maternity Leave (RA 11210)",
+        accrualFrequency: "annual", annualEntitlement: 105,
+        carryForwardAllowed: false, maxCarryForward: 0, maxBalance: 105,
+        expiryMonths: 12, negativeLeaveAllowed: false, attachmentRequired: true,
+    },
+    {
+        id: "LP-PL", leaveType: "PL", name: "Paternity Leave (RA 8187)",
+        accrualFrequency: "annual", annualEntitlement: 7,
+        carryForwardAllowed: false, maxCarryForward: 0, maxBalance: 7,
+        expiryMonths: 12, negativeLeaveAllowed: false, attachmentRequired: false,
+    },
+    {
+        id: "LP-SPL", leaveType: "SPL", name: "Solo Parent Leave (RA 8972)",
+        accrualFrequency: "annual", annualEntitlement: 7,
+        carryForwardAllowed: false, maxCarryForward: 0, maxBalance: 7,
+        expiryMonths: 12, negativeLeaveAllowed: false, attachmentRequired: true,
+    },
 ];
 
 interface LeaveState {
@@ -219,7 +237,7 @@ export const useLeaveStore = create<LeaveState>()(
         }),
         {
             name: "nexhrms-leave",
-            version: 2,
+            version: 3,
             migrate: () => ({ requests: SEED_LEAVES, balances: [] }),
         }
     )

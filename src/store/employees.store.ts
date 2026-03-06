@@ -5,10 +5,17 @@ import { nanoid } from "nanoid";
 import type { Employee, EmployeeStatus, WorkType, SalaryChangeRequest, SalaryHistoryEntry } from "@/types";
 import { SEED_EMPLOYEES } from "@/data/seed";
 
+interface EmployeeDocument {
+    id: string;
+    name: string;
+    uploadedAt: string;
+}
+
 interface EmployeesState {
     employees: Employee[];
     salaryRequests: SalaryChangeRequest[];
     salaryHistory: SalaryHistoryEntry[];
+    documents: Record<string, EmployeeDocument[]>;
     searchQuery: string;
     statusFilter: EmployeeStatus | "all";
     workTypeFilter: WorkType | "all";
@@ -29,6 +36,9 @@ interface EmployeesState {
     approveSalaryChange: (requestId: string, reviewerId: string) => void;
     rejectSalaryChange: (requestId: string, reviewerId: string) => void;
     getSalaryHistory: (employeeId: string) => SalaryHistoryEntry[];
+    addDocument: (employeeId: string, name: string) => void;
+    removeDocument: (employeeId: string, docId: string) => void;
+    getDocuments: (employeeId: string) => EmployeeDocument[];
     resetToSeed: () => void;
 }
 
@@ -38,6 +48,7 @@ export const useEmployeesStore = create<EmployeesState>()(
             employees: SEED_EMPLOYEES,
             salaryRequests: [],
             salaryHistory: [],
+            documents: {},
             searchQuery: "",
             statusFilter: "all",
             workTypeFilter: "all",
@@ -158,11 +169,21 @@ export const useEmployeesStore = create<EmployeesState>()(
                 })),
             getSalaryHistory: (employeeId) =>
                 get().salaryHistory.filter((h) => h.employeeId === employeeId),
+            addDocument: (employeeId, name) => set((s) => {
+                const existing = s.documents[employeeId] || [];
+                return { documents: { ...s.documents, [employeeId]: [...existing, { id: `DOC-${nanoid(6)}`, name, uploadedAt: new Date().toISOString() }] } };
+            }),
+            removeDocument: (employeeId, docId) => set((s) => {
+                const existing = s.documents[employeeId] || [];
+                return { documents: { ...s.documents, [employeeId]: existing.filter((d) => d.id !== docId) } };
+            }),
+            getDocuments: (employeeId) => get().documents[employeeId] || [],
             resetToSeed: () =>
                 set({
                     employees: SEED_EMPLOYEES,
                     salaryRequests: [],
                     salaryHistory: [],
+                    documents: {},
                     searchQuery: "",
                     statusFilter: "all",
                     workTypeFilter: "all",
@@ -171,11 +192,12 @@ export const useEmployeesStore = create<EmployeesState>()(
         }),
         {
             name: "nexhrms-employees",
-            version: 4,
+            version: 5,
             migrate: () => ({
                 employees: SEED_EMPLOYEES,
                 salaryRequests: [],
                 salaryHistory: [],
+                documents: {},
                 searchQuery: "",
                 statusFilter: "all" as const,
                 workTypeFilter: "all" as const,

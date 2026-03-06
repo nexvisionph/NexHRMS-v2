@@ -37,6 +37,7 @@ import { DEPARTMENTS, ROLES, LOCATIONS } from "@/lib/constants";
 import Link from "next/link";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
 import { toast } from "sonner";
+import { useAuditStore } from "@/store/audit.store";
 import { Switch } from "@/components/ui/switch";
 import type { Employee, WorkType, PayFrequency, Role } from "@/types";
 
@@ -149,9 +150,11 @@ export default function AdminEmployeesView() {
         if (!val || val <= 0) { toast.error("Please enter a valid monthly salary."); return; }
         if (isHR) {
             proposeSalaryChange({ employeeId: salaryDialogEmpId, proposedBy: currentUser.id, proposedSalary: val, effectiveDate: new Date().toISOString().slice(0, 10), reason: salaryReason || "Salary adjustment" });
+            useAuditStore.getState().log({ entityType: "employee", entityId: salaryDialogEmpId, action: "salary_proposed", performedBy: currentUser.id, afterSnapshot: { salary: val } });
             toast.success(`Salary change proposed for ${salaryDialogEmp?.name ?? "employee"} — pending approval`);
         } else {
             updateEmployee(salaryDialogEmpId, { salary: val });
+            useAuditStore.getState().log({ entityType: "employee", entityId: salaryDialogEmpId, action: "salary_approved", performedBy: currentUser.id, afterSnapshot: { salary: val } });
             toast.success(`Salary updated for ${salaryDialogEmp?.name ?? "employee"}`);
         }
         setSalaryDialogEmpId(null); setSalaryInput(""); setSalaryReason("");
@@ -227,6 +230,7 @@ export default function AdminEmployeesView() {
         if (editProjectId && editProjectId !== "none" && (!currentProject || currentProject.id !== editProjectId)) assignToProject(editProjectId, editingEmp.id);
         else if (editProjectId === "none" && currentProject) removeFromProject(currentProject.id, editingEmp.id);
         toast.success(`${editName} updated successfully!`);
+        useAuditStore.getState().log({ entityType: "employee", entityId: editingEmp.id, action: "adjustment_applied", performedBy: currentUser.id, reason: "Profile updated" });
         setEditOpen(false); setEditingEmp(null);
     };
 
@@ -520,7 +524,7 @@ export default function AdminEmployeesView() {
                                                         <div className="flex items-center gap-1">
                                                             <Link href={rh(`/employees/${emp.id}`)}><Button variant="ghost" size="icon" className="h-7 w-7"><Eye className="h-3.5 w-3.5" /></Button></Link>
                                                             <Button variant="ghost" size="icon" className="h-7 w-7" disabled={!canManage} onClick={() => handleOpenEdit(emp)} title="Edit"><Pencil className="h-3.5 w-3.5" /></Button>
-                                                            <Button variant="ghost" size="sm" className="h-7 text-[10px]" disabled={!canManage} onClick={() => { if (!canManage) return; toggleStatus(emp.id); toast.success(`${emp.name} ${emp.status === "active" ? "deactivated" : "activated"}`); }}>
+                                                            <Button variant="ghost" size="sm" className="h-7 text-[10px]" disabled={!canManage} onClick={() => { if (!canManage) return; toggleStatus(emp.id); useAuditStore.getState().log({ entityType: "employee", entityId: emp.id, action: emp.status === "active" ? "employee_resigned" : "adjustment_applied", performedBy: currentUser.id, reason: emp.status === "active" ? "Deactivated" : "Activated" }); toast.success(`${emp.name} ${emp.status === "active" ? "deactivated" : "activated"}`); }}>
                                                                 {emp.status === "active" ? "Deactivate" : emp.status === "inactive" ? "Activate" : emp.status}
                                                             </Button>
                                                             {canManage && emp.status === "active" && (
@@ -536,6 +540,7 @@ export default function AdminEmployeesView() {
                                                                                 const balances = getEmployeeBalances(emp.id, new Date().getFullYear());
                                                                                 const leaveDays = balances.reduce((sum, b) => sum + b.remaining, 0);
                                                                                 computeFinalPay({ employeeId: emp.id, resignedAt: new Date().toISOString(), salary: emp.salary, unpaidOTHours: 0, leaveDays, loanBalance });
+                                                                                useAuditStore.getState().log({ entityType: "employee", entityId: emp.id, action: "employee_resigned", performedBy: currentUser.id, afterSnapshot: { finalPay: true } });
                                                                                 toast.success(`${emp.name} resigned — final pay computed`);
                                                                             }}>Resign & Compute Final Pay</AlertDialogAction>
                                                                         </AlertDialogFooter>
@@ -645,8 +650,8 @@ export default function AdminEmployeesView() {
                                                 {req.reason && <p className="text-xs text-muted-foreground italic">{req.reason}</p>}
                                             </div>
                                             <div className="flex items-center gap-1">
-                                                <Button size="sm" variant="outline" className="h-7 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50" onClick={() => { approveSalaryChange(req.id, currentUser.id); toast.success(`Salary approved for ${emp?.name}`); }}>Approve</Button>
-                                                <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => { rejectSalaryChange(req.id, currentUser.id); toast.info("Proposal rejected"); }}>Reject</Button>
+                                                <Button size="sm" variant="outline" className="h-7 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50" onClick={() => { approveSalaryChange(req.id, currentUser.id); useAuditStore.getState().log({ entityType: "employee", entityId: req.employeeId, action: "salary_approved", performedBy: currentUser.id }); toast.success(`Salary approved for ${emp?.name}`); }}>Approve</Button>
+                                                <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => { rejectSalaryChange(req.id, currentUser.id); useAuditStore.getState().log({ entityType: "employee", entityId: req.employeeId, action: "salary_rejected", performedBy: currentUser.id }); toast.info("Proposal rejected"); }}>Reject</Button>
                                             </div>
                                         </div>
                                     );

@@ -18,7 +18,7 @@ import {
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Palmtree, Stethoscope, AlertTriangle, FileQuestion } from "lucide-react";
+import { Plus, Palmtree, Stethoscope, AlertTriangle, FileQuestion, Baby, Heart, Users } from "lucide-react";
 import { toast } from "sonner";
 import type { LeaveType } from "@/types";
 
@@ -27,13 +27,16 @@ import type { LeaveType } from "@/types";
    Personal balances, submit requests, view own request history
    ═══════════════════════════════════════════════════════════════ */
 
-const LEAVE_ALLOC_FALLBACK: Record<LeaveType, number> = { VL: 15, SL: 10, EL: 5, OTHER: 5 };
-const LEAVE_LABELS: Record<LeaveType, string> = { VL: "Vacation", SL: "Sick", EL: "Emergency", OTHER: "Other" };
+const LEAVE_ALLOC_FALLBACK: Record<LeaveType, number> = { VL: 15, SL: 10, EL: 5, OTHER: 5, ML: 105, PL: 7, SPL: 7 };
+const LEAVE_LABELS: Record<LeaveType, string> = { VL: "Vacation", SL: "Sick", EL: "Emergency", OTHER: "Other", ML: "Maternity", PL: "Paternity", SPL: "Solo Parent" };
 const LEAVE_ICONS: Record<LeaveType, React.ReactNode> = {
     VL: <Palmtree className="h-4 w-4" />,
     SL: <Stethoscope className="h-4 w-4" />,
     EL: <AlertTriangle className="h-4 w-4" />,
     OTHER: <FileQuestion className="h-4 w-4" />,
+    ML: <Baby className="h-4 w-4" />,
+    PL: <Heart className="h-4 w-4" />,
+    SPL: <Users className="h-4 w-4" />,
 };
 
 function daysBetween(a: string, b: string) {
@@ -65,7 +68,7 @@ export default function EmployeeLeaveView() {
     // Personal leave balances
     const balances = useMemo(() => {
         const result: Record<LeaveType, { alloc: number; used: number; remaining: number }> = {} as never;
-        for (const type of ["VL", "SL", "EL", "OTHER"] as LeaveType[]) {
+        for (const type of ["VL", "SL", "EL", "OTHER", "ML", "PL", "SPL"] as LeaveType[]) {
             const policyEntitlement = policies.find((p) => p.leaveType === type)?.annualEntitlement ?? LEAVE_ALLOC_FALLBACK[type];
             const approved = requests.filter(
                 (r) => r.status === "approved" && r.type === type && r.employeeId === myEmpId
@@ -117,6 +120,9 @@ export default function EmployeeLeaveView() {
                                     <SelectItem value="SL">Sick Leave</SelectItem>
                                     <SelectItem value="EL">Emergency Leave</SelectItem>
                                     <SelectItem value="OTHER">Other</SelectItem>
+                                    <SelectItem value="ML">Maternity Leave (RA 11210)</SelectItem>
+                                    <SelectItem value="PL">Paternity Leave (RA 8187)</SelectItem>
+                                    <SelectItem value="SPL">Solo Parent Leave (RA 8972)</SelectItem>
                                 </SelectContent>
                             </Select>
                             <div className="grid grid-cols-2 gap-3">
@@ -141,7 +147,7 @@ export default function EmployeeLeaveView() {
 
             {/* Personal Leave Balance Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {(["VL", "SL", "EL", "OTHER"] as LeaveType[]).map((type) => {
+                {(["VL", "SL", "EL", "OTHER", "ML", "PL", "SPL"] as LeaveType[]).map((type) => {
                     const b = balances[type];
                     const pct = b.alloc > 0 ? Math.round((b.used / b.alloc) * 100) : 0;
                     return (

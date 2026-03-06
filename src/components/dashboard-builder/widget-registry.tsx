@@ -485,8 +485,8 @@ function MyLeaveBalance() {
 
     const empRecord = useMemo(() => employees.find((e) => e.email === currentUser.email || e.name === currentUser.name), [employees, currentUser]);
 
-    const leaveTypes: LeaveType[] = ["VL", "SL", "EL", "OTHER"];
-    const leaveLabels: Record<LeaveType, string> = { VL: "Vacation Leave", SL: "Sick Leave", EL: "Emergency Leave", OTHER: "Other Leave" };
+    const leaveTypes: LeaveType[] = ["VL", "SL", "EL", "OTHER", "ML", "PL", "SPL"];
+    const leaveLabels: Record<LeaveType, string> = { VL: "Vacation Leave", SL: "Sick Leave", EL: "Emergency Leave", OTHER: "Other Leave", ML: "Maternity Leave", PL: "Paternity Leave", SPL: "Solo Parent Leave" };
     const currentYear = new Date().getFullYear();
 
     const myLeaves = useMemo(() => {

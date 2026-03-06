@@ -9,6 +9,7 @@ import { useUIStore } from "@/store/ui.store";
 import { useRolesStore } from "@/store/roles.store";
 import { usePageBuilderStore } from "@/store/page-builder.store";
 import { useAppearanceStore } from "@/store/appearance.store";
+import { useMessagingStore } from "@/store/messaging.store";
 import { NAV_ITEMS } from "@/lib/constants";
 import {
     LayoutDashboard,
@@ -33,6 +34,8 @@ import {
     X,
     FileText,
     Puzzle,
+    ListTodo,
+    MessageSquare,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEffect, useMemo } from "react";
@@ -57,6 +60,8 @@ const iconMap: Record<string, React.ElementType> = {
     AlarmClock,
     FileText,
     Puzzle,
+    ListTodo,
+    MessageSquare,
 };
 
 export function Sidebar() {
@@ -74,6 +79,11 @@ export function Sidebar() {
     const logoUrl = useAppearanceStore((s) => s.logoUrl);
     const companyName = useAppearanceStore((s) => s.companyName);
     const logoTextVisible = useAppearanceStore((s) => s.logoTextVisible);
+
+    // Unread messages badge
+    const currentUserId = useAuthStore((s) => s.currentUser.id);
+    const getTotalUnreadForEmployee = useMessagingStore((s) => s.getTotalUnreadForEmployee);
+    const totalUnreadMsgs = getTotalUnreadForEmployee(currentUserId);
 
     // Permission-based filtering + module flags + nav overrides
     const filtered = useMemo(() => {
@@ -195,6 +205,11 @@ export function Sidebar() {
                                 >
                                     {Icon && <Icon className="h-5 w-5 shrink-0" />}
                                     {showLabel && <span className="truncate">{item.label}</span>}
+                                    {showLabel && item.href === "/messages" && totalUnreadMsgs > 0 && (
+                                        <span className="ml-auto text-[10px] font-semibold bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none">
+                                            {totalUnreadMsgs}
+                                        </span>
+                                    )}
                                 </Link>
                             </TooltipTrigger>
                             {!showLabel && (

@@ -34,6 +34,7 @@ import { computeAllPHDeductions } from "@/lib/ph-deductions";
 import { PayslipTable } from "@/components/payroll/payslip-table";
 import { format, endOfMonth, subMonths, getYear, getMonth } from "date-fns";
 import { dispatchNotification } from "@/lib/notifications";
+import { useAuditStore } from "@/store/audit.store";
 
 /* ═══════════════════════════════════════════════════════════════
    ADMIN / FINANCE / PAYROLL_ADMIN VIEW — Full Payroll Management
@@ -378,11 +379,12 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                     <div className="flex items-center gap-1">
                                                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewSlip(ps.id)}><Eye className="h-3.5 w-3.5" /></Button>
                                                         {canIssue && ps.status === "issued" && !isRunLocked(ps.issuedAt) && (
-                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => { confirmPayslip(ps.id); toast.success("Payslip confirmed"); }}><CheckCircle className="h-3.5 w-3.5" /></Button>
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => { confirmPayslip(ps.id); useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payroll_locked", performedBy: currentUser.id }); toast.success("Payslip confirmed"); }}><CheckCircle className="h-3.5 w-3.5" /></Button>
                                                         )}
                                                         {canIssue && ps.status === "confirmed" && (
                                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-violet-600" title="Publish" onClick={() => {
                                                                 publishPayslip(ps.id);
+                                                                useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payroll_published", performedBy: currentUser.id });
                                                                 dispatchNotification("payslip_published", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}` }, ps.employeeId);
                                                                 toast.success("Published");
                                                             }}><Send className="h-3.5 w-3.5" /></Button>
@@ -390,6 +392,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                         {canIssue && ps.status === "published" && (
                                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" title="Record Payment" onClick={() => {
                                                                 recordPayment(ps.id, "bank_transfer", `REF-${Date.now()}`);
+                                                                useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payment_recorded", performedBy: currentUser.id });
                                                                 dispatchNotification("payment_confirmed", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}` }, ps.employeeId);
                                                                 toast.success("Payment recorded");
                                                             }}><CreditCard className="h-3.5 w-3.5" /></Button>
@@ -451,13 +454,13 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                                         <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="Lock"><Lock className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
                                                                         <AlertDialogContent>
                                                                             <AlertDialogHeader><AlertDialogTitle>Lock Payroll Run?</AlertDialogTitle><AlertDialogDescription>This will permanently lock <strong>{run.date}</strong>.</AlertDialogDescription></AlertDialogHeader>
-                                                                            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { lockRun(run.date, currentUser.id); toast.success("Run locked"); }}>Lock</AlertDialogAction></AlertDialogFooter>
+                                                                            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { lockRun(run.date, currentUser.id); useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_locked", performedBy: currentUser.id }); toast.success("Run locked"); }}>Lock</AlertDialogAction></AlertDialogFooter>
                                                                         </AlertDialogContent>
                                                                     </AlertDialog>
                                                                 )}
                                                                 {locked && <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="Policy snapshot" onClick={() => setSnapshotRunDate(run.date)}><Shield className="h-3.5 w-3.5" /></Button>}
-                                                                {locked && runStatus === "locked" && <Button variant="ghost" size="icon" className="h-7 w-7 text-violet-600" title="Publish" onClick={() => { publishRun(run.date); toast.success("Published"); }}><Send className="h-3.5 w-3.5" /></Button>}
-                                                                {runStatus === "published" && <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" title="Mark paid" onClick={() => { markRunPaid(run.date); toast.success("Marked paid"); }}><CreditCard className="h-3.5 w-3.5" /></Button>}
+                                                                {locked && runStatus === "locked" && <Button variant="ghost" size="icon" className="h-7 w-7 text-violet-600" title="Publish" onClick={() => { publishRun(run.date); useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_published", performedBy: currentUser.id }); toast.success("Published"); }}><Send className="h-3.5 w-3.5" /></Button>}
+                                                                {runStatus === "published" && <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" title="Mark paid" onClick={() => { markRunPaid(run.date); useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_paid", performedBy: currentUser.id }); toast.success("Marked paid"); }}><CreditCard className="h-3.5 w-3.5" /></Button>}
                                                             </div>
                                                         </TableCell>
                                                     )}

@@ -5,7 +5,7 @@ export type Role = "admin" | "hr" | "finance" | "employee" | "supervisor" | "pay
 export type EmployeeStatus = "active" | "inactive" | "resigned";
 export type WorkType = "WFH" | "WFO" | "HYBRID" | "ONSITE";
 export type AttendanceStatus = "present" | "absent" | "on_leave";
-export type LeaveType = "SL" | "VL" | "EL" | "OTHER";
+export type LeaveType = "SL" | "VL" | "EL" | "OTHER" | "ML" | "PL" | "SPL";
 export type LeaveStatus = "pending" | "approved" | "rejected";
 export type PayslipStatus = "issued" | "confirmed" | "published" | "paid" | "acknowledged";
 export type PayrollRunStatus = "draft" | "validated" | "locked" | "published" | "paid";
@@ -28,7 +28,9 @@ export type AuditAction =
   | "loan_created" | "loan_frozen" | "loan_unfrozen" | "loan_settled"
   | "payment_recorded" | "employee_resigned" | "final_pay_created"
   | "timesheet_approved" | "timesheet_rejected"
-  | "kiosk_registered" | "attendance_correction";
+  | "kiosk_registered" | "attendance_correction"
+  | "task_created" | "task_assigned" | "task_completed" | "task_verified" | "task_rejected"
+  | "announcement_sent" | "channel_created";
 
 // ─── Pay Schedule Configuration ──────────────────────────────
 
@@ -65,6 +67,8 @@ export interface Employee {
   shiftId?: string;
   payFrequency?: PayFrequency; // per-employee override (falls back to company default)
   workDays?: string[]; // e.g. ["Mon","Tue","Wed","Thu","Fri"]
+  whatsappNumber?: string;
+  preferredChannel?: MessageChannel;
 }
 
 // ─── Salary Change Request ───────────────────────────────────
@@ -501,6 +505,7 @@ export interface Project {
 
 export type NotificationType =
     | "assignment" | "reassignment" | "absence"
+    | "task_assigned" | "task_submitted" | "task_verified" | "task_rejected"
     | "payslip_published" | "payslip_signed" | "payslip_unsigned_reminder" | "payment_confirmed"
     | "leave_submitted" | "leave_approved" | "leave_rejected"
     | "attendance_missing" | "geofence_violation" | "location_disabled"
@@ -582,7 +587,13 @@ export type Permission =
   // Notifications
   | "notifications:manage"
   // Timesheets
-  | "timesheets:view_all" | "timesheets:approve";
+  | "timesheets:view_all" | "timesheets:approve"
+  // Task Management
+  | "page:tasks" | "tasks:view" | "tasks:create" | "tasks:assign" | "tasks:verify"
+  | "tasks:delete" | "tasks:manage_groups"
+  // Messaging
+  | "page:messages" | "messages:send_announcement" | "messages:manage_channels"
+  | "messages:send_whatsapp" | "messages:send_email";
 
 // System role slug union (never changes — always recognized)
 export type SystemRoleSlug = "admin" | "hr" | "finance" | "employee" | "supervisor" | "payroll_admin" | "auditor";
@@ -716,4 +727,105 @@ export interface LocationTrackingConfig {
   alertAdminOnGeofenceViolation: boolean;
   allowedBreaksPerDay: number;
   breakGracePeriod: number;
+}
+
+// ─── Task Management ─────────────────────────────────────────
+
+export type TaskStatus = "open" | "in_progress" | "submitted" | "verified" | "rejected" | "cancelled";
+export type TaskPriority = "low" | "medium" | "high" | "urgent";
+export type AnnouncementPermission = "admin_only" | "group_leads" | "all_members";
+
+export interface TaskGroup {
+  id: string;
+  name: string;
+  description?: string;
+  projectId?: string;
+  createdBy: string;
+  memberEmployeeIds: string[];
+  announcementPermission: AnnouncementPermission;
+  createdAt: string;
+}
+
+export interface Task {
+  id: string;
+  groupId: string;
+  title: string;
+  description: string;
+  priority: TaskPriority;
+  status: TaskStatus;
+  dueDate?: string;
+  assignedTo: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  completionRequired: boolean;
+  tags?: string[];
+}
+
+export interface TaskCompletionReport {
+  id: string;
+  taskId: string;
+  employeeId: string;
+  photoDataUrl?: string;
+  gpsLat?: number;
+  gpsLng?: number;
+  gpsAccuracyMeters?: number;
+  reverseGeoAddress?: string;
+  notes?: string;
+  submittedAt: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
+  rejectionReason?: string;
+}
+
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  employeeId: string;
+  message: string;
+  attachmentUrl?: string;
+  createdAt: string;
+}
+
+// ─── Multi-Channel Messaging ─────────────────────────────────
+
+export type MessageChannel = "email" | "whatsapp" | "sms" | "in_app";
+export type MessageStatus = "sent" | "delivered" | "read" | "failed" | "simulated";
+export type AnnouncementScope = "all_employees" | "selected_employees" | "task_group" | "task_assignees";
+
+export interface Announcement {
+  id: string;
+  subject: string;
+  body: string;
+  channel: MessageChannel;
+  scope: AnnouncementScope;
+  targetEmployeeIds?: string[];
+  targetGroupId?: string;
+  targetTaskId?: string;
+  sentBy: string;
+  sentAt: string;
+  status: MessageStatus;
+  readBy: string[];
+  attachmentUrl?: string;
+}
+
+export interface TextChannel {
+  id: string;
+  name: string;
+  groupId?: string;
+  memberEmployeeIds: string[];
+  createdBy: string;
+  createdAt: string;
+  isArchived: boolean;
+}
+
+export interface ChannelMessage {
+  id: string;
+  channelId: string;
+  employeeId: string;
+  message: string;
+  attachmentUrl?: string;
+  createdAt: string;
+  editedAt?: string;
+  readBy: string[];
 }

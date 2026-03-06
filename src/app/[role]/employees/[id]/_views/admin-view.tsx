@@ -17,10 +17,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { getInitials, formatCurrency, formatDate } from "@/lib/format";
 import { DEPARTMENTS, ROLES, LOCATIONS } from "@/lib/constants";
-import { Mail, MapPin, Phone, Briefcase, Calendar, DollarSign, FileText, Pencil, Banknote } from "lucide-react";
+import { Mail, MapPin, Phone, Briefcase, Calendar, DollarSign, FileText, Pencil, Banknote, UserMinus, X } from "lucide-react";
 import { toast } from "sonner";
+import { useAuditStore } from "@/store/audit.store";
 import type { WorkType, PayFrequency } from "@/types";
 
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
@@ -49,12 +54,19 @@ export default function AdminProfileView() {
     const employees = useEmployeesStore((s) => s.employees);
     const toggleStatus = useEmployeesStore((s) => s.toggleStatus);
     const updateEmployee = useEmployeesStore((s) => s.updateEmployee);
+    const resignEmployee = useEmployeesStore((s) => s.resignEmployee);
+    const addDocument = useEmployeesStore((s) => s.addDocument);
+    const removeDocument = useEmployeesStore((s) => s.removeDocument);
+    const getDocuments = useEmployeesStore((s) => s.getDocuments);
     const currentUser = useAuthStore((s) => s.currentUser);
     const attendanceLogs = useAttendanceStore((s) => s.logs);
     const leaveRequests = useLeaveStore((s) => s.requests);
     const payslips = usePayrollStore((s) => s.payslips);
     const paySchedule = usePayrollStore((s) => s.paySchedule);
+    const computeFinalPay = usePayrollStore((s) => s.computeFinalPay);
     const allLoans = useLoansStore((s) => s.loans);
+    const getActiveByEmployee = useLoansStore((s) => s.getActiveByEmployee);
+    const getEmployeeBalances = useLeaveStore((s) => s.getEmployeeBalances);
 
     const employee = employees.find((e) => e.id === id);
     const empAttendance = useMemo(() => attendanceLogs.filter((l) => l.employeeId === id).slice(0, 20), [attendanceLogs, id]);
@@ -74,7 +86,7 @@ export default function AdminProfileView() {
     const [editPayFreq, setEditPayFreq] = useState<string>("company");
     const [docName, setDocName] = useState("");
     const [docOpen, setDocOpen] = useState(false);
-    const [mockDocs, setMockDocs] = useState<{ name: string; uploadedAt: string }[]>([]);
+    const empDocs = id ? getDocuments(id) : [];
 
     const openEditDialog = () => {
         if (!employee) return;
@@ -101,13 +113,14 @@ export default function AdminProfileView() {
             salary: Number(editSalary) || employee.salary, location: editLocation,
             payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
         });
+        useAuditStore.getState().log({ entityType: "employee", entityId: employee.id, action: "adjustment_applied", performedBy: currentUser.id, reason: "Profile updated" });
         toast.success("Profile updated successfully!");
         setEditOpen(false);
     };
 
     const handleAddDoc = () => {
-        if (!docName) { toast.error("Enter a document name"); return; }
-        setMockDocs((prev) => [...prev, { name: docName, uploadedAt: new Date().toISOString() }]);
+        if (!docName || !id) { toast.error("Enter a document name"); return; }
+        addDocument(id, docName);
         toast.success(`"${docName}" uploaded`);
         setDocName("");
         setDocOpen(false);
@@ -143,9 +156,29 @@ export default function AdminProfileView() {
                         </div>
                         <div className="flex items-center gap-2">
                             <Button variant="outline" size="sm" className="gap-1.5" onClick={openEditDialog}><Pencil className="h-3.5 w-3.5" /> Edit</Button>
-                            <Button variant="outline" size="sm" onClick={() => { toggleStatus(employee.id); toast.success(`Employee ${employee.status === "active" ? "deactivated" : "activated"}`); }}>
+                            <Button variant="outline" size="sm" onClick={() => { toggleStatus(employee.id); useAuditStore.getState().log({ entityType: "employee", entityId: employee.id, action: employee.status === "active" ? "employee_resigned" : "adjustment_applied", performedBy: currentUser.id, reason: employee.status === "active" ? "Deactivated" : "Activated" }); toast.success(`Employee ${employee.status === "active" ? "deactivated" : "activated"}`); }}>
                                 {employee.status === "active" ? "Deactivate" : "Activate"}
                             </Button>
+                            {employee.status === "active" && (
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild><Button variant="outline" size="sm" className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50"><UserMinus className="h-3.5 w-3.5" /> Resign</Button></AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader><AlertDialogTitle>Resign Employee</AlertDialogTitle><AlertDialogDescription>This will mark <strong>{employee.name}</strong> as resigned and compute their final pay including pro-rated salary, leave conversion, and loan offset.</AlertDialogDescription></AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction className="bg-orange-600 hover:bg-orange-700" onClick={() => {
+                                                resignEmployee(employee.id);
+                                                const loanBalance = getActiveByEmployee(employee.id).reduce((sum, l) => sum + l.remainingBalance, 0);
+                                                const balances = getEmployeeBalances(employee.id, new Date().getFullYear());
+                                                const leaveDays = balances.reduce((sum, b) => sum + b.remaining, 0);
+                                                computeFinalPay({ employeeId: employee.id, resignedAt: new Date().toISOString(), salary: employee.salary, unpaidOTHours: 0, leaveDays, loanBalance });
+                                                useAuditStore.getState().log({ entityType: "employee", entityId: employee.id, action: "employee_resigned", performedBy: currentUser.id, afterSnapshot: { finalPay: true } });
+                                                toast.success(`${employee.name} resigned — final pay computed`);
+                                            }}>Resign & Compute Final Pay</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                            )}
                         </div>
                     </div>
                 </CardContent>
@@ -329,17 +362,20 @@ export default function AdminProfileView() {
                 <TabsContent value="documents" className="mt-4">
                     <Card className="border border-border/50">
                         <CardContent className="p-6">
-                            {mockDocs.length === 0 ? (
+                            {empDocs.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-6">
                                     <FileText className="h-12 w-12 text-muted-foreground/40" />
                                     <p className="text-muted-foreground mt-3">No documents uploaded yet</p>
                                 </div>
                             ) : (
                                 <div className="space-y-2 mb-4">
-                                    {mockDocs.map((doc, i) => (
-                                        <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-border/50">
+                                    {empDocs.map((doc) => (
+                                        <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50">
                                             <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted-foreground" /><span className="text-sm font-medium">{doc.name}</span></div>
-                                            <span className="text-xs text-muted-foreground">{new Date(doc.uploadedAt).toLocaleDateString()}</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs text-muted-foreground">{new Date(doc.uploadedAt).toLocaleDateString()}</span>
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 hover:text-red-700" onClick={() => { if (id) removeDocument(id, doc.id); }}><X className="h-3 w-3" /></Button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

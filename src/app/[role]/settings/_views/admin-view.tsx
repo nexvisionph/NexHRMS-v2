@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Sun, Moon, Monitor, Building2, Shield, Bell, Palette, ClipboardList, Pencil, Plus, Clock3, ExternalLink, Wallet, CalendarDays, Lock, UserPlus, Trash2, Eye, EyeOff, KeyRound, RotateCcw, TriangleAlert, LayoutDashboard, FileText, Puzzle, Tablet, MapPin } from "lucide-react";
+import { Sun, Moon, Monitor, Building2, Shield, Bell, Palette, ClipboardList, Pencil, Plus, Clock3, ExternalLink, Wallet, CalendarDays, Lock, UserPlus, Trash2, Eye, EyeOff, KeyRound, RotateCcw, TriangleAlert, LayoutDashboard, FileText, Puzzle, Tablet, MapPin, MessageSquare, ListTodo } from "lucide-react";
 import type { Role } from "@/types";
 import { toast } from "sonner";
 import {
@@ -33,6 +33,8 @@ import { useAttendanceStore } from "@/store/attendance.store";
 import { useAuditStore } from "@/store/audit.store";
 import { useAppearanceStore } from "@/store/appearance.store";
 import { useLocationStore } from "@/store/location.store";
+import { useTasksStore } from "@/store/tasks.store";
+import { useMessagingStore } from "@/store/messaging.store";
 import type { AttendanceRuleSet, PayFrequency } from "@/types";
 import Link from "next/link";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
@@ -70,6 +72,8 @@ export default function AdminSettingsView() {
     const { ruleSets, updateRuleSet, addRuleSet } = useTimesheetStore();
     const { paySchedule, updatePaySchedule } = usePayrollStore();
     const { hasPermission } = useRolesStore();
+    const { config: msgConfig, updateConfig: updateMsgConfig } = useMessagingStore();
+    const { groups: taskGroups, tasks: allTasksArr } = useTasksStore();
     const rh = useRoleHref();
     const canManageRoles = hasPermission(currentUser.role, "settings:roles");
     const canManagePageBuilder = hasPermission(currentUser.role, "settings:page_builder");
@@ -90,6 +94,8 @@ export default function AdminSettingsView() {
         useAuditStore.getState().resetToSeed();
         useAppearanceStore.getState().resetAppearance();
         useLocationStore.getState().resetToSeed();
+        useTasksStore.getState().resetToSeed();
+        useMessagingStore.getState().resetToSeed();
         setResetAllOpen(false);
         toast.success("All demo data has been reset to seed state.");
     };
@@ -370,6 +376,56 @@ export default function AdminSettingsView() {
                     {([{ key: "emailAbsenceAlerts" as const, label: "Absence alerts", desc: "Email when an employee is absent" }, { key: "emailLeaveUpdates" as const, label: "Leave updates", desc: "Email when leave is approved/rejected" }, { key: "emailPayrollAlerts" as const, label: "Payroll alerts", desc: "Email when payslips are issued" }]).map((n) => (
                         <div key={n.key} className="flex items-center justify-between"><div><p className="text-sm font-medium">{n.label}</p><p className="text-xs text-muted-foreground">{n.desc}</p></div><Switch checked={settings[n.key]} onCheckedChange={(checked) => { update({ [n.key]: checked }); toast.success(`${n.label} ${checked ? "enabled" : "disabled"}`); }} /></div>
                     ))}
+                </CardContent>
+            </Card>
+
+            {/* Messaging Channels */}
+            <Card className="border border-border/50">
+                <CardHeader className="pb-3"><div className="flex items-center gap-2"><MessageSquare className="h-5 w-5 text-muted-foreground" /><CardTitle className="text-base font-semibold">Messaging Channels</CardTitle></div></CardHeader>
+                <CardContent className="space-y-4">
+                    <div>
+                        <label className="text-sm font-medium">Default Delivery Channel</label>
+                        <Select value={msgConfig.defaultChannel} onValueChange={(v) => { updateMsgConfig({ defaultChannel: v as "email" | "whatsapp" | "sms" | "in_app" }); toast.success(`Default channel set to ${v}`); }}>
+                            <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="email">✉️ Email (Resend)</SelectItem>
+                                <SelectItem value="whatsapp">💬 WhatsApp</SelectItem>
+                                <SelectItem value="in_app">🔔 In-App</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <div><p className="text-sm font-medium">WhatsApp</p><p className="text-xs text-muted-foreground">Meta Cloud API (simulated in MVP)</p></div>
+                        <Switch checked={msgConfig.whatsappEnabled} onCheckedChange={(v) => { updateMsgConfig({ whatsappEnabled: v }); toast.success(`WhatsApp ${v ? "enabled" : "disabled"}`); }} />
+                    </div>
+                    <div className="flex items-center justify-between opacity-60">
+                        <div><p className="text-sm font-medium flex items-center gap-2">SMS <Badge variant="outline" className="text-[10px]">Coming Soon</Badge></p><p className="text-xs text-muted-foreground">Semaphore — not available yet</p></div>
+                        <Switch checked={false} disabled />
+                    </div>
+                    <div className="space-y-2">
+                        <p className="text-sm font-medium">Email Sender</p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div><label className="text-xs text-muted-foreground">From Name</label><Input value={msgConfig.emailFromName} onChange={(e) => updateMsgConfig({ emailFromName: e.target.value })} className="mt-1" /></div>
+                            <div><label className="text-xs text-muted-foreground">From Address</label><Input value={msgConfig.emailFromAddress} onChange={(e) => updateMsgConfig({ emailFromAddress: e.target.value })} className="mt-1" /></div>
+                        </div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                        <p className="text-xs font-medium text-blue-700 dark:text-blue-400">MVP Note</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">All channels are simulated — messages are logged to the messaging store. Production requires Resend API key (email), Meta Cloud credentials (WhatsApp), and Semaphore API key (SMS).</p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Task Management */}
+            <Card className="border border-border/50">
+                <CardHeader className="pb-3"><div className="flex items-center gap-2"><ListTodo className="h-5 w-5 text-muted-foreground" /><CardTitle className="text-base font-semibold">Task Management</CardTitle></div></CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                        <div className="p-3 rounded-lg bg-muted/50 border border-border/50"><p className="text-xl font-bold">{taskGroups.length}</p><p className="text-xs text-muted-foreground">Task Groups</p></div>
+                        <div className="p-3 rounded-lg bg-muted/50 border border-border/50"><p className="text-xl font-bold">{allTasksArr.length}</p><p className="text-xs text-muted-foreground">Total Tasks</p></div>
+                        <div className="p-3 rounded-lg bg-muted/50 border border-border/50"><p className="text-xl font-bold">{allTasksArr.filter((t) => t.status === "open" || t.status === "in_progress").length}</p><p className="text-xs text-muted-foreground">Active</p></div>
+                    </div>
+                    <p className="text-sm text-muted-foreground">Manage task groups, assignments, and completion requirements from the <Link href={rh("/tasks")} className="text-primary underline-offset-4 hover:underline">Tasks page</Link>.</p>
                 </CardContent>
             </Card>
 

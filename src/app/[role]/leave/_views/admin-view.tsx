@@ -24,8 +24,10 @@ import {
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Check, X, Palmtree, Stethoscope, AlertTriangle, FileQuestion, FileText, Pencil, Trash2 } from "lucide-react";
+import { Plus, Check, X, Palmtree, Stethoscope, AlertTriangle, FileQuestion, FileText, Pencil, Trash2, Baby, Heart, Users } from "lucide-react";
 import { toast } from "sonner";
+import { dispatchNotification } from "@/lib/notifications";
+import { useAuditStore } from "@/store/audit.store";
 import type { LeaveType } from "@/types";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -33,13 +35,16 @@ import type { LeaveType } from "@/types";
    Org-wide stats, all requests, approve/reject, policy management
    ═══════════════════════════════════════════════════════════════ */
 
-const LEAVE_ALLOC_FALLBACK: Record<LeaveType, number> = { VL: 15, SL: 10, EL: 5, OTHER: 5 };
-const LEAVE_LABELS: Record<LeaveType, string> = { VL: "Vacation", SL: "Sick", EL: "Emergency", OTHER: "Other" };
+const LEAVE_ALLOC_FALLBACK: Record<LeaveType, number> = { VL: 15, SL: 10, EL: 5, OTHER: 5, ML: 105, PL: 7, SPL: 7 };
+const LEAVE_LABELS: Record<LeaveType, string> = { VL: "Vacation", SL: "Sick", EL: "Emergency", OTHER: "Other", ML: "Maternity", PL: "Paternity", SPL: "Solo Parent" };
 const LEAVE_ICONS: Record<LeaveType, React.ReactNode> = {
     VL: <Palmtree className="h-4 w-4" />,
     SL: <Stethoscope className="h-4 w-4" />,
     EL: <AlertTriangle className="h-4 w-4" />,
     OTHER: <FileQuestion className="h-4 w-4" />,
+    ML: <Baby className="h-4 w-4" />,
+    PL: <Heart className="h-4 w-4" />,
+    SPL: <Users className="h-4 w-4" />,
 };
 
 function daysBetween(a: string, b: string) {
@@ -117,7 +122,7 @@ export default function AdminLeaveView() {
     // Org-wide leave balances
     const balances = useMemo(() => {
         const result: Record<LeaveType, { alloc: number; used: number; remaining: number }> = {} as never;
-        for (const type of ["VL", "SL", "EL", "OTHER"] as LeaveType[]) {
+        for (const type of ["VL", "SL", "EL", "OTHER", "ML", "PL", "SPL"] as LeaveType[]) {
             const policyEntitlement = policies.find((p) => p.leaveType === type)?.annualEntitlement ?? LEAVE_ALLOC_FALLBACK[type];
             const approved = requests.filter((r) => r.status === "approved" && r.type === type);
             const usedDays = approved.reduce((sum, r) => sum + daysBetween(r.startDate, r.endDate), 0);
@@ -165,6 +170,8 @@ export default function AdminLeaveView() {
                 }));
             }
         }
+        dispatchNotification("leave_approved", { name: getEmpName(employeeId), startDate, endDate }, employeeId);
+        useAuditStore.getState().log({ entityType: "leave", entityId: id, action: "leave_approved", performedBy: currentUser.id });
         toast.success("Leave approved & attendance updated");
     };
 
@@ -197,6 +204,9 @@ export default function AdminLeaveView() {
                                     <SelectItem value="SL">Sick Leave</SelectItem>
                                     <SelectItem value="EL">Emergency Leave</SelectItem>
                                     <SelectItem value="OTHER">Other</SelectItem>
+                                    <SelectItem value="ML">Maternity Leave (RA 11210)</SelectItem>
+                                    <SelectItem value="PL">Paternity Leave (RA 8187)</SelectItem>
+                                    <SelectItem value="SPL">Solo Parent Leave (RA 8972)</SelectItem>
                                 </SelectContent>
                             </Select>
                             <div className="grid grid-cols-2 gap-3">
@@ -221,7 +231,7 @@ export default function AdminLeaveView() {
 
             {/* Org-wide Balance Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {(["VL", "SL", "EL", "OTHER"] as LeaveType[]).map((type) => {
+                {(["VL", "SL", "EL", "OTHER", "ML", "PL", "SPL"] as LeaveType[]).map((type) => {
                     const b = balances[type];
                     const pct = b.alloc > 0 ? Math.round((b.used / b.alloc) * 100) : 0;
                     return (
@@ -307,7 +317,7 @@ export default function AdminLeaveView() {
                                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10" onClick={() => handleApprove(req.id, req.employeeId, req.startDate, req.endDate)}>
                                                                 <Check className="h-4 w-4" />
                                                             </Button>
-                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10" onClick={() => { updateStatus(req.id, "rejected", currentUser.id); toast.success("Leave rejected"); }}>
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10" onClick={() => { updateStatus(req.id, "rejected", currentUser.id); dispatchNotification("leave_rejected", { name: getEmpName(req.employeeId) }, req.employeeId); useAuditStore.getState().log({ entityType: "leave", entityId: req.id, action: "leave_rejected", performedBy: currentUser.id }); toast.success("Leave rejected"); }}>
                                                                 <X className="h-4 w-4" />
                                                             </Button>
                                                         </div>
