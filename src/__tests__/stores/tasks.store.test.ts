@@ -382,6 +382,146 @@ describe("Tasks Store — getStats", () => {
 
 // ─── resetToSeed ─────────────────────────────────────────────
 
+describe("Tasks Store — getGroupById", () => {
+    it("returns the group for a known id", () => {
+        const id = useTasksStore.getState().addGroup(BASE_GROUP);
+        const group = useTasksStore.getState().getGroupById(id);
+        expect(group).toBeDefined();
+        expect(group?.id).toBe(id);
+        expect(group?.name).toBe(BASE_GROUP.name);
+    });
+
+    it("returns undefined for an unknown id", () => {
+        expect(useTasksStore.getState().getGroupById("TG-NONEXISTENT")).toBeUndefined();
+    });
+});
+
+describe("Tasks Store — getTaskById", () => {
+    it("returns the task for a known id", () => {
+        const id = useTasksStore.getState().addTask(BASE_TASK);
+        const task = useTasksStore.getState().getTaskById(id);
+        expect(task).toBeDefined();
+        expect(task?.id).toBe(id);
+        expect(task?.title).toBe(BASE_TASK.title);
+    });
+
+    it("returns undefined for an unknown id", () => {
+        expect(useTasksStore.getState().getTaskById("TASK-NONEXISTENT")).toBeUndefined();
+    });
+});
+
+describe("Tasks Store — updateTask (multi-field)", () => {
+    it("patches priority, dueDate, and assignedTo independently", () => {
+        const id = useTasksStore.getState().addTask(BASE_TASK);
+        useTasksStore.getState().updateTask(id, {
+            priority: "low",
+            dueDate: "2050-06-15",
+            assignedTo: ["EMP-002", "EMP-003"],
+        });
+        const task = useTasksStore.getState().getTaskById(id)!;
+        expect(task.priority).toBe("low");
+        expect(task.dueDate).toBe("2050-06-15");
+        expect(task.assignedTo).toEqual(["EMP-002", "EMP-003"]);
+    });
+
+    it("patches completionRequired and status", () => {
+        const id = useTasksStore.getState().addTask(BASE_TASK);
+        useTasksStore.getState().updateTask(id, { completionRequired: true, status: "in_progress" });
+        const task = useTasksStore.getState().getTaskById(id)!;
+        expect(task.completionRequired).toBe(true);
+        expect(task.status).toBe("in_progress");
+    });
+
+    it("leaves unpatched fields unchanged", () => {
+        const id = useTasksStore.getState().addTask(BASE_TASK);
+        useTasksStore.getState().updateTask(id, { title: "New Title" });
+        const task = useTasksStore.getState().getTaskById(id)!;
+        expect(task.description).toBe(BASE_TASK.description);
+        expect(task.priority).toBe(BASE_TASK.priority);
+        expect(task.assignedTo).toEqual(BASE_TASK.assignedTo);
+    });
+});
+
+describe("Tasks Store — getTasksForEmployee (edge cases)", () => {
+    it("returns empty array for an employee not assigned to any task", () => {
+        useTasksStore.getState().addTask({ ...BASE_TASK, assignedTo: ["EMP-001"] });
+        expect(useTasksStore.getState().getTasksForEmployee("EMP-UNASSIGNED")).toHaveLength(0);
+    });
+
+    it("returns all tasks where employee is one of multiple assignees", () => {
+        useTasksStore.getState().addTask({ ...BASE_TASK, assignedTo: ["EMP-001", "EMP-002", "EMP-003"] });
+        useTasksStore.getState().addTask({ ...BASE_TASK, assignedTo: ["EMP-002"] });
+        expect(useTasksStore.getState().getTasksForEmployee("EMP-002")).toHaveLength(2);
+        expect(useTasksStore.getState().getTasksForEmployee("EMP-001")).toHaveLength(1);
+    });
+});
+
+describe("Tasks Store — submitCompletion (with proof data)", () => {
+    it("stores photoDataUrl and GPS coordinates on the report", () => {
+        const taskId = useTasksStore.getState().addTask({ ...BASE_TASK, completionRequired: true });
+        useTasksStore.getState().submitCompletion({
+            taskId,
+            employeeId: "EMP-001",
+            notes: "Done",
+            photoDataUrl: "data:image/png;base64,abc123",
+            latitude: 14.5995,
+            longitude: 120.9842,
+        });
+        const report = useTasksStore.getState().getCompletionReport(taskId)!;
+        expect(report.photoDataUrl).toBe("data:image/png;base64,abc123");
+        expect(report.latitude).toBe(14.5995);
+        expect(report.longitude).toBe(120.9842);
+    });
+});
+
+describe("Tasks Store — full lifecycle: open → in_progress → submitted → verified", () => {
+    it("advances through every status in sequence and records audit trail", () => {
+        // 1. Admin creates task
+        const taskId = useTasksStore.getState().addTask({ ...BASE_TASK, completionRequired: true });
+        expect(useTasksStore.getState().getTaskById(taskId)?.status).toBe("open");
+
+        // 2. Employee starts task
+        useTasksStore.getState().changeStatus(taskId, "in_progress");
+        expect(useTasksStore.getState().getTaskById(taskId)?.status).toBe("in_progress");
+
+        // 3. Employee submits completion
+        useTasksStore.getState().submitCompletion({ taskId, employeeId: "EMP-001", notes: "All done." });
+        const report = useTasksStore.getState().getCompletionReport(taskId)!;
+        expect(report).toBeDefined();
+        expect(report.id).toMatch(/^TCR-/);
+        expect(useTasksStore.getState().getTaskById(taskId)?.status).toBe("submitted");
+
+        // 4. Admin verifies
+        useTasksStore.getState().verifyCompletion(report.id, "ADMIN-001");
+        expect(useTasksStore.getState().getTaskById(taskId)?.status).toBe("verified");
+
+        // 5. Audit trail: addTask, changeStatus, submitCompletion, verifyCompletion
+        const auditLogs = useAuditStore.getState().logs.filter((l) => l.entityId === taskId);
+        expect(auditLogs.length).toBeGreaterThanOrEqual(3);
+
+        // 6. Notification: task_verified dispatched to assignee
+        const notifs = useNotificationsStore.getState().logs.filter((n) => n.type === "task_verified");
+        expect(notifs).toHaveLength(1);
+        expect(notifs[0].employeeId).toBe("EMP-001");
+    });
+
+    it("allows reject → resubmit flow", () => {
+        const taskId = useTasksStore.getState().addTask({ ...BASE_TASK, completionRequired: true });
+        useTasksStore.getState().changeStatus(taskId, "in_progress");
+        useTasksStore.getState().submitCompletion({ taskId, employeeId: "EMP-001", notes: "First attempt." });
+        const report = useTasksStore.getState().getCompletionReport(taskId)!;
+
+        // Admin rejects
+        useTasksStore.getState().rejectCompletion(report.id, "Incomplete work");
+        expect(useTasksStore.getState().getTaskById(taskId)?.status).toBe("rejected");
+
+        // Employee re-opens and resubmits
+        useTasksStore.getState().changeStatus(taskId, "open");
+        useTasksStore.getState().submitCompletion({ taskId, employeeId: "EMP-001", notes: "Second attempt." });
+        expect(useTasksStore.getState().getTaskById(taskId)?.status).toBe("submitted");
+    });
+});
+
 describe("Tasks Store — resetToSeed", () => {
     it("restores seed data and clears custom entries", () => {
         useTasksStore.getState().addTask(BASE_TASK);

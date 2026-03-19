@@ -247,3 +247,53 @@ describe("Shift Management", () => {
         expect(useAttendanceStore.getState().employeeShifts[EMP_ID]).toBe("SHIFT-TEST-MID");
     });
 });
+
+// ─── resetTodayLog ───────────────────────────────────────────
+describe("resetTodayLog", () => {
+    it("removes today's log for the specified employee", () => {
+        jest.setSystemTime(new Date(`${TODAY}T08:00:00Z`));
+        useAttendanceStore.getState().checkIn(EMP_ID);
+        expect(useAttendanceStore.getState().getTodayLog(EMP_ID)).toBeDefined();
+
+        useAttendanceStore.getState().resetTodayLog(EMP_ID);
+        expect(useAttendanceStore.getState().getTodayLog(EMP_ID)).toBeUndefined();
+    });
+
+    it("does not affect other employees' today logs", () => {
+        const OTHER = "TEST-EMP-OTHER";
+        jest.setSystemTime(new Date(`${TODAY}T08:00:00Z`));
+        useAttendanceStore.getState().checkIn(EMP_ID);
+        useAttendanceStore.setState({
+            logs: [
+                ...useAttendanceStore.getState().logs,
+                { id: `ATT-${TODAY}-${OTHER}`, employeeId: OTHER, date: TODAY, status: "present" as const, checkIn: "08:00" },
+            ],
+        });
+
+        useAttendanceStore.getState().resetTodayLog(EMP_ID);
+
+        expect(useAttendanceStore.getState().getTodayLog(EMP_ID)).toBeUndefined();
+        expect(useAttendanceStore.getState().getEmployeeLogs(OTHER)).toHaveLength(1);
+    });
+
+    it("does not remove yesterday's log for the same employee", () => {
+        const YESTERDAY = new Date(Date.now() - 86_400_000).toISOString().split("T")[0];
+        useAttendanceStore.setState({
+            logs: [
+                { id: `ATT-${YESTERDAY}-${EMP_ID}`, employeeId: EMP_ID, date: YESTERDAY, status: "present" as const, checkIn: "08:00" },
+                { id: `ATT-${TODAY}-${EMP_ID}`, employeeId: EMP_ID, date: TODAY, status: "present" as const, checkIn: "09:00" },
+            ],
+        });
+
+        useAttendanceStore.getState().resetTodayLog(EMP_ID);
+
+        const remaining = useAttendanceStore.getState().getEmployeeLogs(EMP_ID);
+        expect(remaining).toHaveLength(1);
+        expect(remaining[0].date).toBe(YESTERDAY);
+    });
+
+    it("is a no-op when no log exists for today", () => {
+        expect(() => useAttendanceStore.getState().resetTodayLog(EMP_ID)).not.toThrow();
+        expect(useAttendanceStore.getState().getTodayLog(EMP_ID)).toBeUndefined();
+    });
+});
