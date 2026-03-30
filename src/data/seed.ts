@@ -25,6 +25,7 @@ export const DEMO_USERS: DemoUser[] = [
     { id: "U006", name: "Pat Reyes", role: "supervisor", email: "supervisor@nexhrms.com" },
     { id: "U007", name: "Dana Cruz", role: "payroll_admin", email: "payroll@nexhrms.com" },
     { id: "U008", name: "Rene Santos", role: "auditor", email: "auditor@nexhrms.com" },
+    { id: "U009", name: "Jamie Reyes", role: "employee", email: "qr@nexhrms.com" },
 ];
 
 // ─── Employees ───────────────────────────────────────────────
@@ -55,7 +56,9 @@ export const SEED_EMPLOYEES: Employee[] = [
     { id: "EMP024", name: "Leo Campbell", email: "leo@company.com", role: "QA Engineer", department: "Engineering", status: "active", workType: "WFH", salary: 87000, joinDate: "2022-12-10", productivity: 86, location: "Manila", phone: "+63-555-0124", birthday: "1994-10-31" },
     { id: "EMP025", name: "Aria Evans", email: "aria@company.com", role: "HR Specialist", department: "Human Resources", status: "active", workType: "HYBRID", salary: 74000, joinDate: "2023-08-01", productivity: 80, location: "Singapore", phone: "+65-555-0125", birthday: "1995-12-20" },
     // Sam Torres (Employee demo user mapped to an EMP record)
-    { id: "EMP026", name: "Sam Torres", email: "employee@nexhrms.com", role: "Frontend Developer", department: "Engineering", status: "active", workType: "WFO", salary: 88000, joinDate: "2024-01-10", productivity: 82, location: "Manila", phone: "+63-555-0126", birthday: "1995-04-20", teamLeader: "EMP010" },
+    { id: "EMP026", name: "Sam Torres", email: "employee@nexhrms.com", role: "Frontend Developer", department: "Engineering", status: "active", workType: "WFO", salary: 88000, joinDate: "2024-01-10", productivity: 82, location: "Manila", phone: "+63-555-0126", birthday: "1995-04-20", teamLeader: "EMP010", profileId: "U004" },
+    // Jamie Reyes (QR demo user)
+    { id: "EMP027", name: "Jamie Reyes", email: "qr@nexhrms.com", role: "Field Technician", department: "Engineering", status: "active", workType: "WFO", salary: 75000, joinDate: "2024-06-01", productivity: 85, location: "Manila", phone: "+63-555-0127", birthday: "1996-08-15", profileId: "U009", pin: "777777" },
 ];
 
 // ─── Seed Projects ───────────────────────────────────────────
@@ -91,6 +94,15 @@ export const SEED_PROJECTS: Project[] = [
         location: { lat: 1.3521, lng: 103.8198, radius: 150 },
         assignedEmployeeIds: ["EMP012", "EMP024"],
         createdAt: "2026-01-20T00:00:00Z",
+    },
+    {
+        id: "PRJ005",
+        name: "QR Patrol Site",
+        description: "Field site using QR code attendance verification at the kiosk.",
+        location: { lat: 14.5547, lng: 121.0244, radius: 5000 },
+        assignedEmployeeIds: ["EMP027"],
+        verificationMethod: "qr_only",
+        createdAt: "2026-02-01T00:00:00Z",
     },
 ];
 
@@ -134,6 +146,8 @@ function generateAttendanceLogs(): AttendanceLog[] {
                 hours: status === "present" ? hoursWorked : 0,
                 lateMinutes: status === "present" ? lateMinutes : 0,
                 status,
+                createdAt: date.toISOString(),
+                updatedAt: date.toISOString(),
             });
         });
     }
@@ -159,16 +173,16 @@ export const SEED_LEAVES: LeaveRequest[] = [
 
 // ─── Payslips (based on MONTHLY salary, semi-monthly 1st cutoff Jan 1–15) ────
 export const SEED_PAYSLIPS: Payslip[] = [
-    { id: "PS001", employeeId: "EMP001", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 47500, allowances: 0, sssDeduction: 1350, philhealthDeduction: 2375, pagibigDeduction: 100, taxDeduction: 10844, otherDeductions: 0, loanDeduction: 0, netPay: 32831, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
-    { id: "PS002", employeeId: "EMP002", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 52500, allowances: 0, sssDeduction: 1350, philhealthDeduction: 2625, pagibigDeduction: 100, taxDeduction: 12606, otherDeductions: 0, loanDeduction: 0, netPay: 35819, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-22", publishedAt: "2026-01-22" },
-    { id: "PS003", employeeId: "EMP003", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 44000, allowances: 0, sssDeduction: 1350, philhealthDeduction: 2200, pagibigDeduction: 100, taxDeduction: 9588, otherDeductions: 0, loanDeduction: 0, netPay: 30762, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
-    { id: "PS004", employeeId: "EMP004", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 55000, allowances: 0, sssDeduction: 1350, philhealthDeduction: 2750, pagibigDeduction: 100, taxDeduction: 13581, otherDeductions: 0, loanDeduction: 0, netPay: 37219, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
-    { id: "PS005", employeeId: "EMP005", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 57500, allowances: 0, sssDeduction: 1350, philhealthDeduction: 2875, pagibigDeduction: 100, taxDeduction: 14294, otherDeductions: 0, loanDeduction: 0, netPay: 38881, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-23", publishedAt: "2026-01-23" },
-    { id: "PS006", employeeId: "EMP010", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 60000, allowances: 0, sssDeduction: 1350, philhealthDeduction: 2500, pagibigDeduction: 100, taxDeduction: 15513, otherDeductions: 0, loanDeduction: 0, netPay: 40537, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
-    { id: "PS007", employeeId: "EMP011", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 47500, allowances: 0, sssDeduction: 1350, philhealthDeduction: 2375, pagibigDeduction: 100, taxDeduction: 10844, otherDeductions: 0, loanDeduction: 0, netPay: 32831, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
-    { id: "PS008", employeeId: "EMP016", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 50000, allowances: 0, sssDeduction: 1350, philhealthDeduction: 2500, pagibigDeduction: 100, taxDeduction: 11763, otherDeductions: 0, loanDeduction: 0, netPay: 34287, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
+    { id: "PS001", employeeId: "EMP001", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 47500, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2375, pagibigDeduction: 100, taxDeduction: 14613, otherDeductions: 0, loanDeduction: 0, netPay: 28837, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
+    { id: "PS002", employeeId: "EMP002", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 52500, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2500, pagibigDeduction: 100, taxDeduction: 17082, otherDeductions: 0, loanDeduction: 0, netPay: 31243, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-22", publishedAt: "2026-01-22" },
+    { id: "PS003", employeeId: "EMP003", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 44000, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2200, pagibigDeduction: 100, taxDeduction: 12907, otherDeductions: 0, loanDeduction: 0, netPay: 27218, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
+    { id: "PS004", employeeId: "EMP004", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 55000, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2500, pagibigDeduction: 100, taxDeduction: 18332, otherDeductions: 0, loanDeduction: 0, netPay: 32493, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
+    { id: "PS005", employeeId: "EMP005", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 57500, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2500, pagibigDeduction: 100, taxDeduction: 19582, otherDeductions: 0, loanDeduction: 0, netPay: 33743, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-23", publishedAt: "2026-01-23" },
+    { id: "PS006", employeeId: "EMP010", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 60000, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2500, pagibigDeduction: 100, taxDeduction: 20832, otherDeductions: 0, loanDeduction: 0, netPay: 34993, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
+    { id: "PS007", employeeId: "EMP011", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 47500, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2375, pagibigDeduction: 100, taxDeduction: 14613, otherDeductions: 0, loanDeduction: 0, netPay: 28837, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
+    { id: "PS008", employeeId: "EMP016", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 50000, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2500, pagibigDeduction: 100, taxDeduction: 15832, otherDeductions: 0, loanDeduction: 0, netPay: 29993, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
     // EMP026 — Sam Torres (salary ₱88,000/mo → semi-monthly gross ₱44,000)
-    { id: "PS009", employeeId: "EMP026", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 44000, allowances: 0, sssDeduction: 1350, philhealthDeduction: 2200, pagibigDeduction: 100, taxDeduction: 9588, otherDeductions: 0, loanDeduction: 0, netPay: 30762, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
+    { id: "PS009", employeeId: "EMP026", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 44000, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2200, pagibigDeduction: 100, taxDeduction: 12907, otherDeductions: 0, loanDeduction: 0, netPay: 27218, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
 ];
 
 // ─── Events ──────────────────────────────────────────────────

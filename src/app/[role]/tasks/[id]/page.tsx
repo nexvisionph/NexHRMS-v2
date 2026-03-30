@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo, useCallback } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useTasksStore } from "@/store/tasks.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -25,7 +25,7 @@ import { toast } from "sonner";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
 import Link from "next/link";
 import {
-    ArrowLeft, Camera, MapPin, CheckCircle2, XCircle, Clock,
+    ArrowLeft, Camera, MapPin, CheckCircle2, XCircle,
     ArrowUpRight, Eye, Send, AlertTriangle, Image as ImageIcon, Megaphone,
 } from "lucide-react";
 import type { TaskStatus, TaskPriority } from "@/types";
@@ -50,7 +50,7 @@ export default function TaskDetailPage() {
     const params = useParams();
     const taskId = params.id as string;
     const {
-        getTaskById, getComments, getCompletionReport, changeStatus,
+        getTaskById, changeStatus,
         submitCompletion, verifyCompletion, rejectCompletion, addComment,
         groups, completionReports, comments: allComments,
     } = useTasksStore();
@@ -60,13 +60,13 @@ export default function TaskDetailPage() {
     const roleHref = useRoleHref();
 
     const task = getTaskById(taskId);
-    const comments = useMemo(() => getComments(taskId), [taskId, allComments]);
-    const report = useMemo(() => getCompletionReport(taskId), [taskId, completionReports]);
+    const comments = useMemo(() => allComments.filter((c) => c.taskId === taskId), [allComments, taskId]);
+    const report = useMemo(() => completionReports.find((r) => r.taskId === taskId), [completionReports, taskId]);
     const group = task ? groups.find((g) => g.id === task.groupId) : undefined;
 
     // Resolve HR employee record by email (DemoUser "U004" ↔ Employee "EMP026")
     const myEmployeeId = useMemo(
-        () => employees.find((e) => e.email === currentUser.email || e.name === currentUser.name)?.id ?? currentUser.id,
+        () => employees.find((e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name)?.id ?? currentUser.id,
         [employees, currentUser.email, currentUser.name, currentUser.id],
     );
 
@@ -91,7 +91,7 @@ export default function TaskDetailPage() {
     const [gpsLoading, setGpsLoading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handlePhotoCapture = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         if (!file.type.startsWith("image/")) {
@@ -101,9 +101,9 @@ export default function TaskDetailPage() {
         const reader = new FileReader();
         reader.onload = () => setPhotoData(reader.result as string);
         reader.readAsDataURL(file);
-    }, []);
+    };
 
-    const captureGPS = useCallback(() => {
+    const captureGPS = () => {
         if (!navigator.geolocation) {
             toast.error("Geolocation is not supported by your browser");
             return;
@@ -125,7 +125,7 @@ export default function TaskDetailPage() {
             },
             { enableHighAccuracy: true, timeout: 10000 }
         );
-    }, []);
+    };
 
     const handleSubmitCompletion = () => {
         if (!task) return;
@@ -283,6 +283,7 @@ export default function TaskDetailPage() {
                                                     <div className="mt-2">
                                                         {photoData ? (
                                                             <div className="relative">
+                                                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                                                 <img src={photoData} alt="Proof" className="rounded-lg border max-h-48 w-full object-cover" />
                                                                 <Button variant="secondary" size="sm" className="absolute top-2 right-2" onClick={() => { setPhotoData(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}>
                                                                     Change
@@ -370,6 +371,7 @@ export default function TaskDetailPage() {
                                 {report.photoDataUrl && (
                                     <div>
                                         <p className="text-xs font-medium mb-1 flex items-center gap-1"><ImageIcon className="h-3 w-3" /> Photo Proof</p>
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
                                         <img src={report.photoDataUrl} alt="Task proof" className="rounded-lg border max-h-64 w-full object-cover" />
                                     </div>
                                 )}

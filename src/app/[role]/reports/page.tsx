@@ -13,8 +13,8 @@ export default function ReportsPage() {
                 admin: AdminReportsView,
                 finance: AdminReportsView,
                 payroll_admin: AdminReportsView,
-                hr: BasicReportsView,
-                auditor: BasicReportsView,
+                hr: AdminReportsView,
+                auditor: AdminReportsView,
             }}
         />
     );

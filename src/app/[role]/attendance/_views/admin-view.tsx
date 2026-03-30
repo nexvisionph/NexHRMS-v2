@@ -29,12 +29,13 @@ import {
 import {
     Tooltip, TooltipContent, TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     Clock, LogIn, LogOut, Download, MapPin, CheckCircle, XCircle, Navigation,
-    BellRing, UserX, ShieldCheck, Users, Timer, ThumbsUp, ThumbsDown, RotateCcw,
+    BellRing, UserX, ShieldCheck, Timer, ThumbsUp, ThumbsDown, RotateCcw,
     AlertTriangle, Zap, CalendarDays, Plus, Pencil, Trash2, UploadCloud,
-    ShieldAlert, Gauge, Camera,
+    ShieldAlert, Gauge, Camera, ListChecks,
 } from "lucide-react";
 import { toast } from "sonner";
 import { isWithinGeofence } from "@/lib/geofence";
@@ -44,7 +45,8 @@ import { LocationTracker } from "@/components/attendance/location-tracker";
 import { BreakTimer } from "@/components/attendance/break-timer";
 import { SiteSurveyGallery } from "@/components/attendance/site-survey-gallery";
 import { LocationTrail } from "@/components/attendance/location-trail";
-import type { Holiday } from "@/store/attendance.store";
+import { AttendanceHeatmap } from "@/components/attendance/attendance-heatmap";
+import type { Holiday } from "@/types";
 
 type CheckInStep = "idle" | "locating" | "location_result" | "done" | "error" | "selfie";
 
@@ -79,7 +81,7 @@ interface AdminViewProps {
 }
 
 export default function AdminView({ mode = "admin" }: AdminViewProps) {
-    const { logs, checkIn, checkOut, getTodayLog, markAbsent, updateLog, bulkUpsertLogs, overtimeRequests, submitOvertimeRequest, approveOvertime, rejectOvertime, events, exceptions, autoGenerateExceptions, resolveException, resetToSeed, holidays, addHoliday, updateHoliday, deleteHoliday, resetHolidaysToDefault, applyPenalty, getActivePenalty, cleanExpiredPenalties } = useAttendanceStore();
+    const { logs, checkIn, checkOut, getTodayLog, markAbsent, updateLog, bulkUpsertLogs, appendEvent, overtimeRequests, submitOvertimeRequest, approveOvertime, rejectOvertime, events, exceptions, autoGenerateExceptions, resolveException, resetToSeed, holidays, addHoliday, updateHoliday, deleteHoliday, resetHolidaysToDefault, applyPenalty, getActivePenalty, cleanExpiredPenalties, shiftTemplates, employeeShifts } = useAttendanceStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
     const getProjectForEmployee = useProjectsStore((s) => s.getProjectForEmployee);
@@ -97,11 +99,10 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const canViewLocationTrail = mode === "admin";
     const canOverride = canEdit;
     const canMarkAbsent = canEdit;
-    const canReconcile = canEdit;
     const canImportCSV = mode === "admin" || mode === "hr";
 
     // ─── Identity ─────────────────────────────────────────────────
-    const myEmployeeId = employees.find((e) => e.email === currentUser.email || e.name === currentUser.name)?.id;
+    const myEmployeeId = employees.find((e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name)?.id;
     const todayLog = myEmployeeId ? getTodayLog(myEmployeeId) : undefined;
     const myProject = myEmployeeId ? getProjectForEmployee(myEmployeeId) : undefined;
 
@@ -124,6 +125,10 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const [dateFilter, setDateFilter] = useState(() => new Date().toISOString().split("T")[0]);
     const [empFilter, setEmpFilter] = useState("all");
 
+    // Event ledger filters
+    const [eventTypeFilter, setEventTypeFilter] = useState("all");
+    const [eventEmpFilter, setEventEmpFilter] = useState("all");
+
     const filteredLogs = useMemo(() => {
         return logs
             .filter((l) => {
@@ -136,8 +141,25 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
             .slice(0, 50);
     }, [logs, dateFilter, empFilter, teamEmployeeIds]);
 
+    const filteredEvents = useMemo(() => {
+        return events
+            .filter((e) => {
+                const matchType = eventTypeFilter === "all" || e.eventType === eventTypeFilter;
+                const matchEmp = eventEmpFilter === "all" || e.employeeId === eventEmpFilter;
+                const matchTeam = !teamEmployeeIds || teamEmployeeIds.has(e.employeeId);
+                return matchType && matchEmp && matchTeam;
+            })
+            .sort((a, b) => (b.timestampUTC ?? "").localeCompare(a.timestampUTC ?? ""))
+            .slice(0, 200);
+    }, [events, eventTypeFilter, eventEmpFilter, teamEmployeeIds]);
+
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
+    const getEmpDept = (id: string) => employees.find((e) => e.id === id)?.department || "—";
     const getProjectName = (id?: string) => id ? projects.find((p) => p.id === id)?.name || id : "—";
+    const getEmpShift = (empId: string) => {
+        const shiftId = employeeShifts[empId];
+        return shiftId ? shiftTemplates.find((s) => s.id === shiftId) : undefined;
+    };
 
     const pendingOT = overtimeRequests.filter((r) => r.status === "pending").length;
     const visibleOTRequests = useMemo(() => {
@@ -167,7 +189,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const [holEditing, setHolEditing] = useState<Holiday | null>(null);
     const [holDate, setHolDate] = useState("");
     const [holName, setHolName] = useState("");
-    const [holType, setHolType] = useState<"regular" | "special">("regular");
+    const [holType, setHolType] = useState<"regular" | "special" | "special_non_working" | "special_working">("regular");
     const [holDeleteId, setHolDeleteId] = useState<string | null>(null);
 
     // CSV import ref
@@ -180,6 +202,14 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const [ovCheckOut, setOvCheckOut] = useState("");
     const [ovStatus, setOvStatus] = useState<"present" | "absent" | "on_leave">("present");
     const [ovLate, setOvLate] = useState("");
+
+    // Bulk selection state
+    const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
+    const [bulkStatus, setBulkStatus] = useState<"present" | "absent" | "on_leave">("present");
+
+    // Live clock
+    const [now, setNow] = useState(new Date());
+    useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
 
     // Penalty + continuous devtools monitor
     const [penaltyRemainMs, setPenaltyRemainMs] = useState(0);
@@ -222,18 +252,41 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     };
     const handleSaveOverride = () => {
         if (!editingLog) return;
+        const prevStatus = editingLog.status;
+        const prevCheckIn = editingLog.checkIn;
+        const prevCheckOut = editingLog.checkOut;
         updateLog(editingLog.id, { checkIn: ovCheckIn || undefined, checkOut: ovCheckOut || undefined, status: ovStatus, lateMinutes: ovLate !== "" ? Number(ovLate) : undefined });
+        appendEvent({ employeeId: editingLog.employeeId, eventType: "OVERRIDE", timestampUTC: new Date().toISOString(), projectId: editingLog.projectId, performedBy: currentUser.id, description: `Override for ${getEmpName(editingLog.employeeId)} on ${editingLog.date}: status ${prevStatus}→${ovStatus}, in ${prevCheckIn || "—"}→${ovCheckIn || "—"}, out ${prevCheckOut || "—"}→${ovCheckOut || "—"}`, metadata: { logId: editingLog.id, prevStatus, newStatus: ovStatus, prevCheckIn, newCheckIn: ovCheckIn, prevCheckOut, newCheckOut: ovCheckOut } });
         toast.success("Attendance record updated"); setOverrideOpen(false);
+    };
+
+    const allLogsSelected = filteredLogs.length > 0 && filteredLogs.every((l) => selectedLogIds.has(l.id));
+    const toggleLogSelect = (id: string) => setSelectedLogIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+    const toggleAllLogs = () => { if (allLogsSelected) setSelectedLogIds(new Set()); else setSelectedLogIds(new Set(filteredLogs.map((l) => l.id))); };
+    const applyBulkStatus = () => {
+        if (selectedLogIds.size === 0) return;
+        const affectedNames: string[] = [];
+        Array.from(selectedLogIds).forEach((id) => {
+            const log = logs.find((l) => l.id === id);
+            updateLog(id, { status: bulkStatus });
+            if (log) {
+                affectedNames.push(getEmpName(log.employeeId));
+                appendEvent({ employeeId: log.employeeId, eventType: "BULK_OVERRIDE", timestampUTC: new Date().toISOString(), projectId: log.projectId, performedBy: currentUser.id, description: `Bulk status change to "${bulkStatus.replace("_", " ")}" for ${getEmpName(log.employeeId)} on ${log.date}`, metadata: { logId: id, newStatus: bulkStatus, bulkCount: selectedLogIds.size } });
+            }
+        });
+        toast.success(`${selectedLogIds.size} record(s) set to "${bulkStatus.replace("_", " ")}"`);
+        setSelectedLogIds(new Set());
     };
 
     const handleExportCSV = () => {
         const rows = [
-            ["Date", "Employee", "Project", "Check In", "Check Out", "Hours", "Late (min)", "Status"],
-            ...filteredLogs.map((l) => [l.date, getEmpName(l.employeeId), getProjectName(l.projectId), l.checkIn || "", l.checkOut || "", l.hours ?? "", l.lateMinutes ?? "", l.status]),
+            ["Date", "Employee", "Department", "Shift", "Project", "Check In", "Check Out", "Hours", "Late (min)", "Status", "Last Updated"],
+            ...filteredLogs.map((l) => { const sh = getEmpShift(l.employeeId); return [l.date, getEmpName(l.employeeId), getEmpDept(l.employeeId), sh ? `${sh.name} (${sh.startTime}–${sh.endTime})` : "", getProjectName(l.projectId), l.checkIn || "", l.checkOut || "", l.hours ?? "", l.lateMinutes ?? "", l.status, l.updatedAt || ""]; }),
         ];
         const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
         const blob = new Blob([csv], { type: "text/csv" });
         const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `attendance-${dateFilter || "all"}.csv`; a.click(); URL.revokeObjectURL(a.href);
+        appendEvent({ employeeId: currentUser.id || "SYSTEM", eventType: "CSV_EXPORTED", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: `Exported ${filteredLogs.length} attendance records for ${dateFilter || "all dates"}`, metadata: { count: filteredLogs.length, dateFilter } });
         toast.success(`Exported ${filteredLogs.length} records`);
     };
 
@@ -261,6 +314,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                     rows.push({ employeeId: emp.id, date: dateVal, checkIn: checkInVal || undefined, checkOut: checkOutVal || undefined, status });
                 }
                 bulkUpsertLogs(rows);
+                appendEvent({ employeeId: currentUser.id || "SYSTEM", eventType: "CSV_IMPORTED", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: `Imported ${rows.length} attendance record(s) from CSV${skipped ? `, skipped ${skipped}` : ""}`, metadata: { imported: rows.length, skipped } });
                 toast.success(`Imported ${rows.length} record(s)${skipped ? `, skipped ${skipped}` : ""}`);
             } catch { toast.error("Failed to parse CSV."); }
         };
@@ -270,6 +324,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const handleSubmitOT = () => {
         if (!myEmployeeId || !otDate || !otHours || !otReason) { toast.error("Please fill all fields"); return; }
         submitOvertimeRequest({ employeeId: myEmployeeId, date: otDate, hoursRequested: Number(otHours), reason: otReason });
+        appendEvent({ employeeId: myEmployeeId, eventType: "OT_SUBMITTED", timestampUTC: new Date().toISOString(), description: `Submitted ${otHours}h OT request for ${otDate}: ${otReason}`, metadata: { date: otDate, hours: Number(otHours), reason: otReason } });
         toast.success("Overtime request submitted"); setOtOpen(false); setOtDate(""); setOtHours("1"); setOtReason("");
     };
 
@@ -353,7 +408,15 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                    {myEmployeeId && (<>
+                    <div className="flex items-center gap-1.5 rounded-md border border-border/50 bg-muted/40 px-3 py-1.5 text-sm font-medium tabular-nums">
+                        <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span>{now.toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "short", day: "numeric" })}</span>
+                        <span className="text-muted-foreground">|</span>
+                        <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span>{now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                    </div>
+                    {/* Check In/Out is employee-only — not shown for admin managing the full system */}
+                    {myEmployeeId && mode !== "admin" && (<>
                         {!todayLog?.checkIn ? (
                             <Button onClick={startCheckIn} disabled={!!activePenalty || devToolsOpen} className="gap-1.5">
                                 <LogIn className="h-4 w-4" /> <span className="hidden sm:inline">{activePenalty ? "Locked" : devToolsOpen ? "DevTools Open" : "Check In"}</span>
@@ -368,21 +431,9 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                             </Badge>
                         )}
                     </>)}
-                    {canReconcile && dateFilter && (
-                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
-                            const activeEmps = visibleEmployees;
-                            const logsForDate = logs.filter((l) => l.date === dateFilter);
-                            const loggedIds = new Set(logsForDate.map((l) => l.employeeId));
-                            const filterDayName = DAY_NAMES[new Date(dateFilter + "T12:00:00").getDay()];
-                            const missing = activeEmps.filter((e) => { if (loggedIds.has(e.id)) return false; if (e.workDays?.length && !e.workDays.includes(filterDayName)) return false; return true; });
-                            if (missing.length === 0) { toast.info("All employees have records for this date"); return; }
-                            missing.forEach((e) => markAbsent(e.id, dateFilter));
-                            toast.success(`Marked ${missing.length} employee(s) as absent`);
-                        }}>
-                            <Users className="h-4 w-4" /> <span className="hidden sm:inline">Reconcile</span>
-                        </Button>
-                    )}
-                    {myEmployeeId && (
+
+                    {/* Request OT is only for HR/Supervisor on behalf of employees — not admin console */}
+                    {myEmployeeId && mode !== "admin" && (
                         <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { setOtDate(new Date().toISOString().split("T")[0]); setOtOpen(true); }}>
                             <Timer className="h-4 w-4" /> <span className="hidden sm:inline">Request OT</span>
                         </Button>
@@ -405,66 +456,70 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                 <AlertDialogDescription>This will restore seed data. You can then do a fresh check-in for today.</AlertDialogDescription></AlertDialogHeader>
                             <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => { resetToSeed(); const y = new Date(); y.setDate(y.getDate() - 1); setDateFilter(y.toISOString().split("T")[0]); toast.success("Attendance data reset"); }}>Reset</AlertDialogAction>
+                                <AlertDialogAction onClick={() => { resetToSeed(); const y = new Date(); y.setDate(y.getDate() - 1); setDateFilter(y.toISOString().split("T")[0]); appendEvent({ employeeId: currentUser.id || "SYSTEM", eventType: "DATA_RESET", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: "Attendance data reset to seed" }); toast.success("Attendance data reset"); }}>Reset</AlertDialogAction>
                             </AlertDialogFooter>
                         </AlertDialogContent>
                     </AlertDialog>
                 </div>
             </div>
 
-            {/* DevTools Open Warning */}
-            {devToolsOpen && (
-                <div className="rounded-lg border-2 border-orange-500/40 bg-orange-500/5 p-4 flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <ShieldAlert className="h-5 w-5 text-orange-500 animate-pulse shrink-0" />
-                    <div>
-                        <p className="text-sm font-semibold text-orange-700 dark:text-orange-400">Developer Tools Detected</p>
-                        <p className="text-xs text-muted-foreground">Close Developer Tools to remove this warning. Cooldown penalty is still active.</p>
-                    </div>
-                </div>
-            )}
-
-            {/* Penalty Cooldown Banner */}
-            {activePenalty && (() => {
-                const rMin = Math.floor(penaltyRemainMs / 60000);
-                const rSec = Math.floor((penaltyRemainMs % 60000) / 1000);
-                return (
-                    <div className="rounded-lg border-2 border-red-500/40 bg-red-500/5 p-4 flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-500">
-                        <ShieldAlert className="h-5 w-5 text-red-500 shrink-0" />
-                        <div className="flex-1">
-                            <p className="text-sm font-semibold text-red-700 dark:text-red-400">Check-In Locked — Cooldown Active</p>
-                            <p className="text-xs text-muted-foreground">{activePenalty.reason}</p>
-                            <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-0.5">
-                                {devToolsOpen ? "Close Developer Tools. Penalty is still running." : <>Unlocks in <span className="font-mono font-bold">{rMin}m {String(rSec).padStart(2, "0")}s</span></>}
-                            </p>
+            {/* DevTools / Penalty / Project / Break — employee self-service only, not shown for admin console */}
+            {mode !== "admin" && (<>
+                {/* DevTools Open Warning */}
+                {devToolsOpen && (
+                    <div className="rounded-lg border-2 border-orange-500/40 bg-orange-500/5 p-4 flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <ShieldAlert className="h-5 w-5 text-orange-500 animate-pulse shrink-0" />
+                        <div>
+                            <p className="text-sm font-semibold text-orange-700 dark:text-orange-400">Developer Tools Detected</p>
+                            <p className="text-xs text-muted-foreground">Close Developer Tools to remove this warning. Cooldown penalty is still active.</p>
                         </div>
                     </div>
-                );
-            })()}
+                )}
 
-            {/* Project Banner */}
-            {myProject && myEmployeeId && (
-                <Card className="border border-blue-500/20 bg-blue-500/5">
-                    <CardContent className="p-4 flex items-center gap-3">
-                        <MapPin className="h-5 w-5 text-blue-500" />
-                        <div className="flex-1">
-                            <p className="text-sm font-medium">Assigned to: <span className="text-blue-600 dark:text-blue-400">{myProject.name}</span></p>
-                            <p className="text-xs text-muted-foreground">{myProject.location.lat.toFixed(4)}, {myProject.location.lng.toFixed(4)} · {myProject.location.radius}m</p>
+                {/* Penalty Cooldown Banner */}
+                {activePenalty && (() => {
+                    const rMin = Math.floor(penaltyRemainMs / 60000);
+                    const rSec = Math.floor((penaltyRemainMs % 60000) / 1000);
+                    return (
+                        <div className="rounded-lg border-2 border-red-500/40 bg-red-500/5 p-4 flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-500">
+                            <ShieldAlert className="h-5 w-5 text-red-500 shrink-0" />
+                            <div className="flex-1">
+                                <p className="text-sm font-semibold text-red-700 dark:text-red-400">Check-In Locked — Cooldown Active</p>
+                                <p className="text-xs text-muted-foreground">{activePenalty.reason}</p>
+                                <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-0.5">
+                                    {devToolsOpen ? "Close Developer Tools. Penalty is still running." : <>Unlocks in <span className="font-mono font-bold">{rMin}m {String(rSec).padStart(2, "0")}s</span></>}
+                                </p>
+                            </div>
                         </div>
-                        {todayLog?.checkIn && !todayLog?.checkOut && locationConfig.enabled && (
-                            <LocationTracker employeeId={myEmployeeId} employeeName={currentUser.name} active={!!todayLog?.checkIn && !todayLog?.checkOut} />
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+                    );
+                })()}
 
-            {/* Break Timer */}
-            {myEmployeeId && todayLog?.checkIn && !todayLog?.checkOut && (
-                <BreakTimer employeeId={myEmployeeId} employeeName={currentUser.name} />
-            )}
+                {/* Project Banner */}
+                {myProject && myEmployeeId && (
+                    <Card className="border border-blue-500/20 bg-blue-500/5">
+                        <CardContent className="p-4 flex items-center gap-3">
+                            <MapPin className="h-5 w-5 text-blue-500" />
+                            <div className="flex-1">
+                                <p className="text-sm font-medium">Assigned to: <span className="text-blue-600 dark:text-blue-400">{myProject.name}</span></p>
+                                <p className="text-xs text-muted-foreground">{myProject.location.lat.toFixed(4)}, {myProject.location.lng.toFixed(4)} · {myProject.location.radius}m</p>
+                            </div>
+                            {todayLog?.checkIn && !todayLog?.checkOut && locationConfig.enabled && (
+                                <LocationTracker employeeId={myEmployeeId} employeeName={currentUser.name} active={!!todayLog?.checkIn && !todayLog?.checkOut} />
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Break Timer */}
+                {myEmployeeId && todayLog?.checkIn && !todayLog?.checkOut && (
+                    <BreakTimer employeeId={myEmployeeId} employeeName={currentUser.name} />
+                )}
+            </>)}
 
             {/* ─── Tabs ───────────────────────────────────────────── */}
-            <Tabs defaultValue="logs">
+            <Tabs defaultValue="heatmap">
                 <TabsList className="w-full overflow-x-auto justify-start">
+                    <TabsTrigger value="heatmap" className="gap-1.5"><CalendarDays className="h-3.5 w-3.5" /> Heatmap</TabsTrigger>
                     <TabsTrigger value="logs">Attendance Logs</TabsTrigger>
                     <TabsTrigger value="events" className="gap-1.5">
                         <Zap className="h-3.5 w-3.5" /> Event Ledger
@@ -483,6 +538,40 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                     {canViewLocationTrail && <TabsTrigger value="location" className="gap-1.5"><Navigation className="h-3.5 w-3.5" /> Location Trail</TabsTrigger>}
                 </TabsList>
 
+                {/* ─── Heatmap Tab ──────────────────────────────────── */}
+                <TabsContent value="heatmap" className="mt-4">
+                    <AttendanceHeatmap
+                        logs={logs}
+                        employees={visibleEmployees}
+                        projects={projects}
+                        holidays={holidays.map((h) => ({ date: h.date, name: h.name }))}
+                        mode={mode}
+                        canEdit={canEdit}
+                        onStatusChange={(empId, date, newStatus, checkIn, checkOut, lateMinutes) => {
+                            const existingLog = logs.find((l) => l.employeeId === empId && l.date === date);
+                            if (existingLog) {
+                                updateLog(existingLog.id, {
+                                    status: newStatus as "present" | "absent" | "on_leave",
+                                    checkIn: checkIn,
+                                    checkOut: checkOut,
+                                    lateMinutes: lateMinutes,
+                                });
+                            } else {
+                                bulkUpsertLogs([{
+                                    employeeId: empId,
+                                    date,
+                                    status: newStatus as "present" | "absent" | "on_leave",
+                                    checkIn,
+                                    checkOut,
+                                    lateMinutes,
+                                }]);
+                            }
+                            appendEvent({ employeeId: empId, eventType: "OVERRIDE", timestampUTC: new Date().toISOString(), projectId: existingLog?.projectId, performedBy: currentUser.id, description: `Heatmap override for ${getEmpName(empId)} on ${date}: set to ${newStatus}${checkIn ? `, in=${checkIn}` : ""}${checkOut ? `, out=${checkOut}` : ""}`, metadata: { source: "heatmap", newStatus, checkIn, checkOut, lateMinutes } });
+                            toast.success(`Attendance updated for ${getEmpName(empId)}`);
+                        }}
+                    />
+                </TabsContent>
+
                 {/* ─── Logs Tab ─────────────────────────────────────── */}
                 <TabsContent value="logs" className="mt-4 space-y-4">
                     <Card className="border border-border/50">
@@ -493,36 +582,59 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                     <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="All Employees" /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">All {mode === "supervisor" ? "Team Members" : "Employees"}</SelectItem>
-                                        {visibleEmployees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                                        {visibleEmployees.filter((e) => e.id).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
                         </CardContent>
                     </Card>
+                    {canOverride && selectedLogIds.size > 0 && (
+                        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border/50 bg-muted/40 px-4 py-2">
+                            <ListChecks className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="text-sm font-medium">{selectedLogIds.size} selected</span>
+                            <Select value={bulkStatus} onValueChange={(v) => setBulkStatus(v as "present" | "absent" | "on_leave")}>
+                                <SelectTrigger className="h-8 w-[140px]"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="present">Present</SelectItem>
+                                    <SelectItem value="absent">Absent</SelectItem>
+                                    <SelectItem value="on_leave">On Leave</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Button size="sm" onClick={applyBulkStatus}>Apply to Selected</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setSelectedLogIds(new Set())}>Clear</Button>
+                        </div>
+                    )}
                     <Card className="border border-border/50">
                         <CardContent className="p-0">
                             <div className="overflow-x-auto">
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
+                                            {canOverride && <TableHead className="w-8 text-xs"><Checkbox checked={allLogsSelected} onCheckedChange={toggleAllLogs} aria-label="Select all" /></TableHead>}
                                             <TableHead className="text-xs">Date</TableHead>
                                             <TableHead className="text-xs">Employee</TableHead>
+                                            <TableHead className="text-xs">Department</TableHead>
+                                            <TableHead className="text-xs">Shift</TableHead>
                                             <TableHead className="text-xs">Project</TableHead>
                                             <TableHead className="text-xs">Check In</TableHead>
                                             <TableHead className="text-xs">Check Out</TableHead>
                                             <TableHead className="text-xs">Hours</TableHead>
                                             <TableHead className="text-xs">Late</TableHead>
                                             <TableHead className="text-xs">Status</TableHead>
+                                            <TableHead className="text-xs">Last Updated</TableHead>
                                             {canOverride && <TableHead className="text-xs w-[120px]">Actions</TableHead>}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {filteredLogs.length === 0 ? (
-                                            <TableRow><TableCell colSpan={canOverride ? 9 : 8} className="text-center text-sm text-muted-foreground py-8">No attendance logs</TableCell></TableRow>
+                                            <TableRow><TableCell colSpan={canOverride ? 14 : 12} className="text-center text-sm text-muted-foreground py-8">No attendance logs</TableCell></TableRow>
                                         ) : filteredLogs.map((log) => (
-                                            <TableRow key={log.id}>
+                                            <TableRow key={log.id} className={selectedLogIds.has(log.id) ? "bg-primary/5" : undefined}>
+                                                {canOverride && <TableCell className="w-8"><Checkbox checked={selectedLogIds.has(log.id)} onCheckedChange={() => toggleLogSelect(log.id)} aria-label="Select row" /></TableCell>}
                                                 <TableCell className="text-sm">{log.date}</TableCell>
                                                 <TableCell className="text-sm font-medium">{getEmpName(log.employeeId)}</TableCell>
+                                                <TableCell className="text-xs text-muted-foreground">{getEmpDept(log.employeeId)}</TableCell>
+                                                <TableCell className="text-xs">{(() => { const sh = getEmpShift(log.employeeId); return sh ? <Badge variant="secondary" className="text-[9px] bg-purple-500/10 text-purple-700 dark:text-purple-400 whitespace-nowrap">{sh.name} ({sh.startTime}–{sh.endTime})</Badge> : <span className="text-muted-foreground">—</span>; })()}</TableCell>
                                                 <TableCell className="text-xs text-muted-foreground">{getProjectName(log.projectId)}</TableCell>
                                                 <TableCell className="text-sm">{log.checkIn || "—"}{log.faceVerified && <ShieldCheck className="inline h-3.5 w-3.5 ml-1 text-emerald-500" />}</TableCell>
                                                 <TableCell className="text-sm">{log.checkOut || "—"}</TableCell>
@@ -531,12 +643,13 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                                     {log.lateMinutes && log.lateMinutes > 0 ? <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400">+{log.lateMinutes}m</Badge> : <span className="text-muted-foreground">—</span>}
                                                 </TableCell>
                                                 <TableCell><Badge variant="secondary" className={`text-[10px] ${statusColors[log.status]}`}>{log.status.replace("_", " ")}</Badge></TableCell>
+                                                <TableCell className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">{log.updatedAt ? new Date(log.updatedAt).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: true }) : "—"}</TableCell>
                                                 {canOverride && (
                                                     <TableCell>
                                                         <div className="flex items-center gap-1">
                                                             <Tooltip><TooltipTrigger asChild><Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openOverride(log)}><Pencil className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent side="left"><p className="text-xs">Override</p></TooltipContent></Tooltip>
                                                             {canMarkAbsent && log.status === "present" && (
-                                                                <Tooltip><TooltipTrigger asChild><Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10" onClick={() => { markAbsent(log.employeeId, log.date); toast.success(`${getEmpName(log.employeeId)} marked absent`); }}><UserX className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent side="left"><p className="text-xs">Mark absent</p></TooltipContent></Tooltip>
+                                                                <Tooltip><TooltipTrigger asChild><Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10" onClick={() => { markAbsent(log.employeeId, log.date); appendEvent({ employeeId: log.employeeId, eventType: "MARK_ABSENT", timestampUTC: new Date().toISOString(), projectId: log.projectId, performedBy: currentUser.id, description: `Marked ${getEmpName(log.employeeId)} as absent for ${log.date}` }); toast.success(`${getEmpName(log.employeeId)} marked absent`); }}><UserX className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent side="left"><p className="text-xs">Mark absent</p></TooltipContent></Tooltip>
                                                             )}
                                                             {log.status === "absent" && (
                                                                 <Tooltip><TooltipTrigger asChild><Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-amber-600" disabled={notifyingId === log.employeeId} onClick={() => handleAbsenceNotify(log.employeeId, log.date)}><BellRing className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent side="left"><p className="text-xs">Notify</p></TooltipContent></Tooltip>
@@ -553,34 +666,129 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                     </Card>
                 </TabsContent>
 
-                {/* ─── Events Tab ───────────────────────────────────── */}
-                <TabsContent value="events" className="mt-4">
+                {/* ─── Events Tab (Full Admin Audit Ledger) ──────── */}
+                <TabsContent value="events" className="mt-4 space-y-4">
+                    {/* Event Ledger Filters */}
+                    <Card className="border border-border/50">
+                        <CardContent className="p-4">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+                                    <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="All Event Types" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Event Types</SelectItem>
+                                        <SelectItem value="IN">Check In</SelectItem>
+                                        <SelectItem value="OUT">Check Out</SelectItem>
+                                        <SelectItem value="BREAK_START">Break Start</SelectItem>
+                                        <SelectItem value="BREAK_END">Break End</SelectItem>
+                                        <SelectItem value="OVERRIDE">Override</SelectItem>
+                                        <SelectItem value="BULK_OVERRIDE">Bulk Override</SelectItem>
+                                        <SelectItem value="MARK_ABSENT">Mark Absent</SelectItem>
+                                        <SelectItem value="OT_APPROVED">OT Approved</SelectItem>
+                                        <SelectItem value="OT_REJECTED">OT Rejected</SelectItem>
+                                        <SelectItem value="OT_SUBMITTED">OT Submitted</SelectItem>
+                                        <SelectItem value="EXCEPTION_RESOLVED">Exception Resolved</SelectItem>
+                                        <SelectItem value="EXCEPTION_SCANNED">Exception Scanned</SelectItem>
+                                        <SelectItem value="HOLIDAY_ADDED">Holiday Added</SelectItem>
+                                        <SelectItem value="HOLIDAY_UPDATED">Holiday Updated</SelectItem>
+                                        <SelectItem value="HOLIDAY_DELETED">Holiday Deleted</SelectItem>
+                                        <SelectItem value="CSV_IMPORTED">CSV Imported</SelectItem>
+                                        <SelectItem value="CSV_EXPORTED">CSV Exported</SelectItem>
+                                        <SelectItem value="PENALTY_APPLIED">Penalty Applied</SelectItem>
+                                        <SelectItem value="SHIFT_ASSIGNED">Shift Assigned</SelectItem>
+                                        <SelectItem value="DATA_RESET">Data Reset</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Select value={eventEmpFilter} onValueChange={setEventEmpFilter}>
+                                    <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="All Employees" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Employees</SelectItem>
+                                        {visibleEmployees.filter((e) => e.id).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                                <span className="text-xs text-muted-foreground ml-auto">{filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}</span>
+                            </div>
+                        </CardContent>
+                    </Card>
                     <Card className="border border-border/50">
                         <CardContent className="p-0">
                             <div className="overflow-x-auto">
                                 <Table>
                                     <TableHeader><TableRow>
-                                        <TableHead className="text-xs">Timestamp</TableHead><TableHead className="text-xs">Employee</TableHead>
-                                        <TableHead className="text-xs">Event Type</TableHead><TableHead className="text-xs">Project</TableHead><TableHead className="text-xs">Device</TableHead>
+                                        <TableHead className="text-xs w-[180px]">Timestamp</TableHead>
+                                        <TableHead className="text-xs">Employee</TableHead>
+                                        <TableHead className="text-xs">Event Type</TableHead>
+                                        <TableHead className="text-xs">Description</TableHead>
+                                        <TableHead className="text-xs">Performed By</TableHead>
+                                        <TableHead className="text-xs">Project</TableHead>
+                                        <TableHead className="text-xs">Device / Source</TableHead>
                                     </TableRow></TableHeader>
                                     <TableBody>
-                                        {events.length === 0 ? (
-                                            <TableRow><TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">No events recorded.</TableCell></TableRow>
-                                        ) : events.slice(0, 100).map((evt) => (
-                                            <TableRow key={evt.id}>
-                                                <TableCell className="text-xs text-muted-foreground font-mono">{new Date(evt.timestampUTC).toLocaleString()}</TableCell>
-                                                <TableCell className="text-sm font-medium">{getEmpName(evt.employeeId)}</TableCell>
-                                                <TableCell><Badge variant="secondary" className={`text-[10px] ${evt.eventType === "IN" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : evt.eventType === "OUT" ? "bg-blue-500/15 text-blue-700 dark:text-blue-400" : "bg-amber-500/15 text-amber-700 dark:text-amber-400"}`}>{evt.eventType}</Badge></TableCell>
-                                                <TableCell className="text-xs text-muted-foreground">{evt.projectId || "—"}</TableCell>
-                                                <TableCell className="text-xs text-muted-foreground">{evt.deviceId || "—"}</TableCell>
-                                            </TableRow>
-                                        ))}
+                                        {filteredEvents.length === 0 ? (
+                                            <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">No events recorded.</TableCell></TableRow>
+                                        ) : filteredEvents.map((evt) => {
+                                            const eventColor = evt.eventType === "IN" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                                                : evt.eventType === "OUT" ? "bg-blue-500/15 text-blue-700 dark:text-blue-400"
+                                                : evt.eventType === "OVERRIDE" || evt.eventType === "BULK_OVERRIDE" ? "bg-violet-500/15 text-violet-700 dark:text-violet-400"
+                                                : evt.eventType === "MARK_ABSENT" ? "bg-red-500/15 text-red-700 dark:text-red-400"
+                                                : evt.eventType.startsWith("OT_") ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                                                : evt.eventType.startsWith("HOLIDAY_") ? "bg-pink-500/15 text-pink-700 dark:text-pink-400"
+                                                : evt.eventType.startsWith("EXCEPTION_") ? "bg-orange-500/15 text-orange-700 dark:text-orange-400"
+                                                : evt.eventType === "CSV_IMPORTED" || evt.eventType === "CSV_EXPORTED" ? "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400"
+                                                : evt.eventType === "PENALTY_APPLIED" || evt.eventType === "PENALTY_CLEARED" ? "bg-red-500/15 text-red-700 dark:text-red-400"
+                                                : evt.eventType === "DATA_RESET" ? "bg-slate-500/15 text-slate-700 dark:text-slate-400"
+                                                : "bg-slate-500/15 text-slate-700 dark:text-slate-400";
+                                            const performedByName = evt.performedBy ? getEmpName(evt.performedBy) : evt.deviceId?.startsWith("admin:") ? evt.deviceId.replace("admin:", "") : "System";
+                                            const isAdminAction = evt.eventType === "OVERRIDE" || evt.eventType === "BULK_OVERRIDE" || evt.eventType === "MARK_ABSENT" || evt.eventType.startsWith("OT_") || evt.eventType.startsWith("HOLIDAY_") || evt.eventType.startsWith("EXCEPTION_") || evt.eventType === "DATA_RESET" || evt.eventType === "CSV_IMPORTED" || evt.eventType === "SHIFT_ASSIGNED";
+                                            return (
+                                                <TableRow key={evt.id} className={isAdminAction ? "bg-violet-500/[0.03]" : undefined}>
+                                                    <TableCell className="text-xs text-muted-foreground font-mono whitespace-nowrap">{new Date(evt.timestampUTC).toLocaleString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })}</TableCell>
+                                                    <TableCell className="text-sm font-medium">{getEmpName(evt.employeeId)}</TableCell>
+                                                    <TableCell><Badge variant="secondary" className={`text-[10px] ${eventColor}`}>{evt.eventType.replace(/_/g, " ")}</Badge></TableCell>
+                                                    <TableCell className="text-xs text-muted-foreground max-w-[240px] truncate">{evt.description || "—"}</TableCell>
+                                                    <TableCell className="text-xs">
+                                                        {isAdminAction ? (
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <ShieldCheck className="h-3 w-3 text-violet-500" />
+                                                                <span className="font-medium text-violet-700 dark:text-violet-400">{performedByName}</span>
+                                                            </span>
+                                                        ) : <span className="text-muted-foreground">{performedByName}</span>}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs text-muted-foreground">{evt.projectId ? getProjectName(evt.projectId) : "—"}</TableCell>
+                                                    <TableCell className="text-xs text-muted-foreground font-mono">{evt.deviceId && !evt.deviceId.startsWith("admin:") ? evt.deviceId : "—"}</TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
                                     </TableBody>
                                 </Table>
                             </div>
                         </CardContent>
                     </Card>
-                    <p className="text-[10px] text-muted-foreground mt-2">Event ledger is append-only.</p>
+                    <div className="flex items-center justify-between">
+                        <p className="text-[10px] text-muted-foreground">Event ledger is append-only. All administrative actions are recorded for audit compliance.</p>
+                        {filteredEvents.length > 0 && (
+                            <Button variant="ghost" size="sm" className="text-xs gap-1.5 h-7" onClick={() => {
+                                const csvRows = [
+                                    ["Timestamp", "Employee ID", "Employee Name", "Event Type", "Description", "Performed By", "Project", "Device"],
+                                    ...filteredEvents.map((evt) => [
+                                        new Date(evt.timestampUTC).toISOString(),
+                                        evt.employeeId,
+                                        getEmpName(evt.employeeId),
+                                        evt.eventType,
+                                        evt.description || "",
+                                        evt.performedBy || (evt.deviceId?.startsWith("admin:") ? evt.deviceId.replace("admin:", "") : "System"),
+                                        evt.projectId ? getProjectName(evt.projectId) : "",
+                                        evt.deviceId && !evt.deviceId.startsWith("admin:") ? evt.deviceId : "",
+                                    ]),
+                                ];
+                                const csv = csvRows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+                                const blob = new Blob([csv], { type: "text/csv" });
+                                const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `event-ledger-${new Date().toISOString().split("T")[0]}.csv`; a.click(); URL.revokeObjectURL(a.href);
+                                toast.success(`Exported ${filteredEvents.length} event(s)`);
+                            }}>
+                                <Download className="h-3 w-3" /> Export Ledger
+                            </Button>
+                        )}
+                    </div>
                 </TabsContent>
 
                 {/* ─── Exceptions Tab ───────────────────────────────── */}
@@ -590,6 +798,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                             <p className="text-sm text-muted-foreground">Auto-detect anomalies</p>
                             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => {
                                 autoGenerateExceptions(dateFilter || new Date().toISOString().slice(0, 10), visibleEmployees.map(e => e.id));
+                                appendEvent({ employeeId: currentUser.id || "SYSTEM", eventType: "EXCEPTION_SCANNED", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: `Scanned for exceptions on ${dateFilter || "today"} for ${visibleEmployees.length} employee(s)`, metadata: { date: dateFilter, employeeCount: visibleEmployees.length } });
                                 toast.success("Exceptions auto-generated");
                             }}><AlertTriangle className="h-3.5 w-3.5" /> Scan</Button>
                         </div>
@@ -619,7 +828,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                                     <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{exc.notes || "—"}</TableCell>
                                                     <TableCell><Badge variant="secondary" className={`text-[10px] ${exc.resolvedAt ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : "bg-red-500/15 text-red-700 dark:text-red-400"}`}>{exc.resolvedAt ? "resolved" : "open"}</Badge></TableCell>
                                                     {canEdit && (
-                                                        <TableCell>{!exc.resolvedAt && <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => { resolveException(exc.id, currentUser.id, "Manually resolved"); toast.success("Resolved"); }}><CheckCircle className="h-3.5 w-3.5" /></Button>}</TableCell>
+                                                        <TableCell>{!exc.resolvedAt && <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => { resolveException(exc.id, currentUser.id, "Manually resolved"); appendEvent({ employeeId: exc.employeeId, eventType: "EXCEPTION_RESOLVED", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: `Resolved "${exc.flag.replace(/_/g, " ")}" exception for ${getEmpName(exc.employeeId)} on ${exc.date}`, metadata: { exceptionId: exc.id, flag: exc.flag, date: exc.date } }); toast.success("Resolved"); }}><CheckCircle className="h-3.5 w-3.5" /></Button>}</TableCell>
                                                     )}
                                                 </TableRow>
                                             );
@@ -658,7 +867,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                                     <TableCell>
                                                         {ot.status === "pending" && (
                                                             <div className="flex items-center gap-1">
-                                                                <Tooltip><TooltipTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-600" onClick={() => { approveOvertime(ot.id, currentUser.id); toast.success("OT approved"); }}><ThumbsUp className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent side="left"><p className="text-xs">Approve</p></TooltipContent></Tooltip>
+                                                                <Tooltip><TooltipTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-600" onClick={() => { approveOvertime(ot.id, currentUser.id); appendEvent({ employeeId: ot.employeeId, eventType: "OT_APPROVED", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: `Approved ${ot.hoursRequested}h OT for ${getEmpName(ot.employeeId)} on ${ot.date}`, metadata: { otId: ot.id, hours: ot.hoursRequested, date: ot.date } }); toast.success("OT approved"); }}><ThumbsUp className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent side="left"><p className="text-xs">Approve</p></TooltipContent></Tooltip>
                                                                 <Tooltip><TooltipTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => { setOtRejectId(ot.id); setOtRejectReason(""); }}><ThumbsDown className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent side="left"><p className="text-xs">Reject</p></TooltipContent></Tooltip>
                                                             </div>
                                                         )}
@@ -705,7 +914,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                         <div className="flex items-center justify-between">
                             <p className="text-sm text-muted-foreground">{holidays.length} holiday{holidays.length !== 1 ? "s" : ""}</p>
                             <div className="flex gap-2">
-                                <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => { resetHolidaysToDefault(); toast.success("Holidays reset"); }}><RotateCcw className="h-3.5 w-3.5" /> Reset</Button>
+                                <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => { resetHolidaysToDefault(); appendEvent({ employeeId: currentUser.id || "SYSTEM", eventType: "DATA_RESET", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: "Holidays reset to PH defaults" }); toast.success("Holidays reset"); }}><RotateCcw className="h-3.5 w-3.5" /> Reset</Button>
                                 <Button size="sm" className="gap-1.5 text-xs" onClick={() => { setHolEditing(null); setHolDate(""); setHolName(""); setHolType("regular"); setHolDialogOpen(true); }}><Plus className="h-3.5 w-3.5" /> Add</Button>
                             </div>
                         </div>
@@ -800,17 +1009,24 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                             <div><label className="text-sm font-medium">Date</label><Input type="date" value={holDate} onChange={(e) => setHolDate(e.target.value)} className="mt-1" /></div>
                             <div><label className="text-sm font-medium">Holiday Name</label><Input value={holName} onChange={(e) => setHolName(e.target.value)} placeholder="e.g. National Election Day" className="mt-1" /></div>
                             <div><label className="text-sm font-medium">Type</label>
-                                <Select value={holType} onValueChange={(v) => setHolType(v as "regular" | "special")}>
+                                <Select value={holType} onValueChange={(v) => setHolType(v as "regular" | "special" | "special_non_working" | "special_working")}>
                                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                                    <SelectContent><SelectItem value="regular">Regular Holiday (200%)</SelectItem><SelectItem value="special">Special Non-Working (130%)</SelectItem></SelectContent>
+                                    <SelectContent><SelectItem value="regular">Regular Holiday (200%)</SelectItem><SelectItem value="special">Special Non-Working (130%)</SelectItem><SelectItem value="special_non_working">Special Non-Working (130%)</SelectItem><SelectItem value="special_working">Special Working (130%)</SelectItem></SelectContent>
                                 </Select>
                             </div>
                             <div className="flex gap-2 pt-1"><Button variant="outline" className="flex-1" onClick={() => setHolDialogOpen(false)}>Cancel</Button>
                                 <Button className="flex-1" onClick={() => {
                                     if (!holDate) { toast.error("Select a date"); return; }
                                     if (!holName.trim()) { toast.error("Enter a name"); return; }
-                                    if (holEditing) { updateHoliday(holEditing.id, { date: holDate, name: holName.trim(), type: holType }); toast.success(`"${holName}" updated`); }
-                                    else { addHoliday({ date: holDate, name: holName.trim(), type: holType }); toast.success(`"${holName}" added`); }
+                                    if (holEditing) {
+                                        updateHoliday(holEditing.id, { date: holDate, name: holName.trim(), type: holType });
+                                        appendEvent({ employeeId: currentUser.id || "SYSTEM", eventType: "HOLIDAY_UPDATED", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: `Updated holiday "${holName.trim()}" (${holDate}, ${holType})`, metadata: { holidayId: holEditing.id, name: holName.trim(), date: holDate, type: holType } });
+                                        toast.success(`"${holName}" updated`);
+                                    } else {
+                                        addHoliday({ date: holDate, name: holName.trim(), type: holType });
+                                        appendEvent({ employeeId: currentUser.id || "SYSTEM", eventType: "HOLIDAY_ADDED", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: `Added holiday "${holName.trim()}" on ${holDate} (${holType})`, metadata: { name: holName.trim(), date: holDate, type: holType } });
+                                        toast.success(`"${holName}" added`);
+                                    }
                                     setHolDialogOpen(false);
                                 }}>{holEditing ? "Save" : "Add"}</Button>
                             </div>
@@ -827,7 +1043,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                             <AlertDialogDescription>{holDeleteId && (() => { const h = holidays.find((x) => x.id === holDeleteId); return h ? `"${h.name}" (${h.date}) will be permanently removed.` : ""; })()}</AlertDialogDescription></AlertDialogHeader>
                         <AlertDialogFooter>
                             <AlertDialogCancel onClick={() => setHolDeleteId(null)}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { if (holDeleteId) { deleteHoliday(holDeleteId); toast.success("Holiday deleted"); setHolDeleteId(null); } }}>Delete</AlertDialogAction>
+                            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { if (holDeleteId) { const h = holidays.find((x) => x.id === holDeleteId); deleteHoliday(holDeleteId); appendEvent({ employeeId: currentUser.id || "SYSTEM", eventType: "HOLIDAY_DELETED", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: `Deleted holiday "${h?.name || holDeleteId}" (${h?.date || "?"})`, metadata: { holidayId: holDeleteId, name: h?.name, date: h?.date } }); toast.success("Holiday deleted"); setHolDeleteId(null); } }}>Delete</AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
@@ -857,7 +1073,10 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                 <Button variant="outline" className="flex-1" onClick={() => { setOtRejectId(null); setOtRejectReason(""); }}>Cancel</Button>
                                 <Button variant="destructive" className="flex-1" onClick={() => {
                                     if (!otRejectId) return; if (!otRejectReason.trim()) { toast.error("Enter a reason"); return; }
-                                    rejectOvertime(otRejectId, currentUser.id, otRejectReason.trim()); toast.success("OT rejected"); setOtRejectId(null); setOtRejectReason("");
+                                    const ot = overtimeRequests.find((r) => r.id === otRejectId);
+                                    rejectOvertime(otRejectId, currentUser.id, otRejectReason.trim());
+                                    if (ot) appendEvent({ employeeId: ot.employeeId, eventType: "OT_REJECTED", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: `Rejected OT for ${getEmpName(ot.employeeId)} on ${ot.date}: ${otRejectReason.trim()}`, metadata: { otId: otRejectId, hours: ot.hoursRequested, reason: otRejectReason.trim() } });
+                                    toast.success("OT rejected"); setOtRejectId(null); setOtRejectReason("");
                                 }}>Reject</Button>
                             </div>
                         </div>
@@ -918,7 +1137,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                             {(!locationConfig.requireSelfie || selfieDataUrl) && (
                                 <div className="pt-1">
                                     <p className="text-xs text-muted-foreground text-center mb-3">{locationConfig.requireSelfie ? "Step 3" : "Step 2"}: Verify identity</p>
-                                    <FaceRecognitionSimulator onVerified={handleFaceVerified} autoStart />
+                                    <FaceRecognitionSimulator onVerified={handleFaceVerified} autoStart employeeName={currentUser.name} />
                                 </div>
                             )}
                         </>)}

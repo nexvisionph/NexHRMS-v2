@@ -1,4 +1,4 @@
-import type { Role, Permission } from "@/types";
+import type { Role, Permission, HolidayType } from "@/types";
 
 export const DEPARTMENTS = [
     "Engineering",
@@ -53,7 +53,7 @@ export const PH_HOLIDAY_MULTIPLIERS = {
 } as const;
 
 // ─── Philippine National & Special Holidays 2026 ─────────────────────────────
-export const DEFAULT_HOLIDAYS: { date: string; name: string; type: "regular" | "special" }[] = [
+export const DEFAULT_HOLIDAYS: { date: string; name: string; type: HolidayType }[] = [
     { date: "2026-01-01", name: "New Year's Day", type: "regular" },
     { date: "2026-01-28", name: "Chinese New Year", type: "special" },
     { date: "2026-02-25", name: "EDSA People Power Revolution", type: "special" },
@@ -208,13 +208,36 @@ export const NAV_ITEMS: {
             moduleFlag: "notifications",
         },
         {
-            label: "Kiosk",
-            href: "/kiosk",
-            icon: "Building2",
+            label: "Kiosk (QR)",
+            href: "/kiosk/qr",
+            icon: "QrCode",
             roles: ["admin", "hr"],
             permission: "page:kiosk",
             moduleFlag: "kiosk",
             absolute: true,
+        },
+        {
+            label: "Kiosk (Face)",
+            href: "/kiosk/face",
+            icon: "ScanFace",
+            roles: ["admin", "hr"],
+            permission: "page:kiosk",
+            moduleFlag: "kiosk",
+            absolute: true,
+        },
+        {
+            label: "Face Enrollment",
+            href: "/face-enrollment",
+            icon: "ScanFace",
+            roles: ["admin", "hr", "employee", "supervisor"],
+            permission: "page:attendance",
+        },
+        {
+            label: "My Profile",
+            href: "/profile",
+            icon: "UserCircle",
+            roles: ["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"],
+            permission: "page:dashboard",
         },
         {
             label: "Settings",
@@ -249,13 +272,14 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
         "/audit",
         "/kiosk",
         "/custom",
+        "/profile",
     ],
-    hr: ["/dashboard", "/employees", "/projects", "/tasks", "/messages", "/attendance", "/leave", "/reports", "/notifications", "/timesheets", "/settings/shifts", "/kiosk"],
-    finance: ["/dashboard", "/payroll", "/loans", "/reports", "/reports/government", "/employees/directory", "/employees/manage"],
-    employee: ["/dashboard", "/attendance", "/leave", "/payroll", "/tasks", "/messages"],
-    supervisor: ["/dashboard", "/attendance", "/leave", "/timesheets", "/employees", "/projects", "/tasks", "/messages"],
-    payroll_admin: ["/dashboard", "/payroll", "/loans", "/reports", "/reports/government", "/timesheets"],
-    auditor: ["/dashboard", "/audit", "/reports", "/employees"],
+    hr: ["/dashboard", "/employees", "/projects", "/tasks", "/messages", "/attendance", "/leave", "/reports", "/notifications", "/timesheets", "/settings/shifts", "/kiosk", "/profile"],
+    finance: ["/dashboard", "/payroll", "/loans", "/reports", "/reports/government", "/employees/directory", "/employees/manage", "/profile"],
+    employee: ["/dashboard", "/attendance", "/leave", "/payroll", "/tasks", "/messages", "/face-enrollment", "/profile"],
+    supervisor: ["/dashboard", "/attendance", "/leave", "/timesheets", "/employees", "/projects", "/tasks", "/messages", "/face-enrollment", "/profile"],
+    payroll_admin: ["/dashboard", "/payroll", "/loans", "/reports", "/reports/government", "/timesheets", "/profile"],
+    auditor: ["/dashboard", "/audit", "/reports", "/employees", "/profile"],
 };
 
 /** Map a URL path to the permission needed to access it */
@@ -287,4 +311,5 @@ export const PATH_TO_PERMISSION: Record<string, Permission> = {
     "/timesheets": "page:timesheets",
     "/audit": "page:audit",
     "/kiosk": "page:kiosk",
+    "/profile": "page:dashboard",
 };

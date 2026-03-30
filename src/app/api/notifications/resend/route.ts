@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { notifyProjectAssignment, notifyAbsence } from "@/lib/notifications";
+import { createServerSupabaseClient } from "@/services/supabase-server";
 
 export async function POST(request: NextRequest) {
     try {
+        // Verify the caller is authenticated
+        const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+        if (!isDemoMode) {
+            const supabase = await createServerSupabaseClient();
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                return NextResponse.json(
+                    { success: false, message: "Unauthorized" },
+                    { status: 401 }
+                );
+            }
+        }
+
         const body = await request.json();
         const { employeeId, employeeName, employeeEmail, type, projectName, date } = body;
 

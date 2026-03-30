@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useRolesStore } from "@/store/roles.store";
@@ -8,6 +8,14 @@ import { usePayrollStore } from "@/store/payroll.store";
 import { useLoansStore } from "@/store/loans.store";
 import { useLeaveStore } from "@/store/leave.store";
 import { useProjectsStore } from "@/store/projects.store";
+import { useAttendanceStore } from "@/store/attendance.store";
+import {
+    createUserAccount,
+    adminResetPassword,
+    adminDeleteAccount,
+    listUserAccounts,
+} from "@/services/auth.service";
+import type { DemoUserLike } from "@/services/auth.service";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +39,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Slider } from "@/components/ui/slider";
 import { nanoid } from "nanoid";
-import { Search, SlidersHorizontal, Eye, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, UserMinus, Pencil, Mail, MapPin, Phone, Cake, DollarSign, RefreshCw, KeyRound, ShieldCheck, Briefcase, User, FolderKanban } from "lucide-react";
+import { Search, SlidersHorizontal, Eye, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, UserMinus, Pencil, Mail, MapPin, Phone, Cake, DollarSign, RefreshCw, KeyRound, ShieldCheck, Briefcase, User, FolderKanban, Clock, Heart, Users } from "lucide-react";
 import { getInitials, formatCurrency, formatDate } from "@/lib/format";
 import { DEPARTMENTS, ROLES, LOCATIONS } from "@/lib/constants";
 import Link from "next/link";
@@ -40,6 +48,8 @@ import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 import { Switch } from "@/components/ui/switch";
 import type { Employee, WorkType, PayFrequency, Role } from "@/types";
+
+const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 /* ═══════════════════════════════════════════════════════════════
    ADMIN / HR VIEW — Full Employee Management
@@ -59,16 +69,79 @@ function SortIndicator({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortK
 export default function AdminEmployeesView() {
     const { employees, searchQuery, setSearchQuery, statusFilter, setStatusFilter, workTypeFilter, setWorkTypeFilter, departmentFilter, setDepartmentFilter, toggleStatus, addEmployee, updateEmployee, removeEmployee, resignEmployee, proposeSalaryChange, salaryRequests, approveSalaryChange, rejectSalaryChange } = useEmployeesStore();
     const { currentUser, createAccount } = useAuthStore();
+    const demoAccounts = useAuthStore((s) => s.accounts);
+    const demoAdminSetPassword = useAuthStore((s) => s.adminSetPassword);
+    const demoDeleteAccount = useAuthStore((s) => s.deleteAccount);
     const { computeFinalPay, paySchedule } = usePayrollStore();
     const { getActiveByEmployee } = useLoansStore();
     const { getEmployeeBalances } = useLeaveStore();
     const { projects, assignEmployee: assignToProject, removeEmployee: removeFromProject, getProjectForEmployee } = useProjectsStore();
+    const shiftTemplates = useAttendanceStore((s) => s.shiftTemplates);
     const { hasPermission } = useRolesStore();
     const rh = useRoleHref();
     const canManage = hasPermission(currentUser.role, "employees:edit");
     const canSetSalary = hasPermission(currentUser.role, "employees:view_salary");
     const canDirectSet = hasPermission(currentUser.role, "employees:approve_salary");
     const isHR = canSetSalary && !canDirectSet;
+    const canManageRoles = hasPermission(currentUser.role, "settings:roles");
+
+    // ─── User Accounts (production: real DB, demo: Zustand store) ───
+    const [realAccounts, setRealAccounts] = useState<DemoUserLike[]>([]);
+    const [accountsLoading, setAccountsLoading] = useState(!USE_DEMO_MODE);
+    const [actionLoading, setActionLoading] = useState(false);
+
+    const refreshAccounts = useCallback(async () => {
+        if (USE_DEMO_MODE) return;
+        const result = await listUserAccounts();
+        if (result.ok) setRealAccounts(result.accounts);
+        setAccountsLoading(false);
+    }, []);
+
+    useEffect(() => { refreshAccounts(); }, [refreshAccounts]);
+
+    const accounts = USE_DEMO_MODE ? demoAccounts : realAccounts;
+
+    // ─── Accounts Tab State ───
+    const [acctSearch, setAcctSearch] = useState("");
+    const [acctRoleFilter, setAcctRoleFilter] = useState("all");
+    const [resetPwUserId, setResetPwUserId] = useState<string | null>(null);
+    const [resetPwValue, setResetPwValue] = useState("");
+
+    const handleResetPassword = async () => {
+        if (!resetPwUserId || resetPwValue.length < 6) { toast.error("Password must be at least 6 characters."); return; }
+        setActionLoading(true);
+        if (USE_DEMO_MODE) {
+            demoAdminSetPassword(resetPwUserId, resetPwValue);
+        } else {
+            const result = await adminResetPassword(resetPwUserId, resetPwValue);
+            if (!result.ok) { setActionLoading(false); toast.error(result.error); return; }
+            await refreshAccounts();
+        }
+        setActionLoading(false);
+        toast.success("Password reset. User will be prompted to change it on next login.");
+        setResetPwUserId(null); setResetPwValue("");
+    };
+
+    const handleDeleteAccount = async (acc: DemoUserLike) => {
+        setActionLoading(true);
+        if (USE_DEMO_MODE) {
+            demoDeleteAccount(acc.id);
+        } else {
+            const result = await adminDeleteAccount(acc.id);
+            if (!result.ok) { setActionLoading(false); toast.error(result.error); return; }
+            await refreshAccounts();
+        }
+        setActionLoading(false);
+        toast.success(`Account for ${acc.name} deleted.`);
+    };
+
+    const filteredAccounts = useMemo(() => {
+        return accounts.filter((acc) => {
+            const matchSearch = !acctSearch || acc.name.toLowerCase().includes(acctSearch.toLowerCase()) || acc.email.toLowerCase().includes(acctSearch.toLowerCase());
+            const matchRole = acctRoleFilter === "all" || acc.role === acctRoleFilter;
+            return matchSearch && matchRole;
+        });
+    }, [accounts, acctSearch, acctRoleFilter]);
 
     const [sortKey, setSortKey] = useState<SortKey>("name");
     const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -95,6 +168,11 @@ export default function AdminEmployeesView() {
     const [newMustChange, setNewMustChange] = useState(true);
     const [newWorkDays, setNewWorkDays] = useState<string[]>(["Mon", "Tue", "Wed", "Thu", "Fri"]);
     const [newProjectId, setNewProjectId] = useState<string>("none");
+    const [newBirthday, setNewBirthday] = useState("");
+    const [newTeamLeader, setNewTeamLeader] = useState<string>("none");
+    const [newShiftId, setNewShiftId] = useState<string>("none");
+    const [newEmergencyContact, setNewEmergencyContact] = useState("");
+    const [newAddress, setNewAddress] = useState("");
 
     const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const toggleWorkDay = (day: string) =>
@@ -121,6 +199,11 @@ export default function AdminEmployeesView() {
     const [editProductivity, setEditProductivity] = useState("80");
     const [editProjectId, setEditProjectId] = useState<string>("");
     const [editPayFreq, setEditPayFreq] = useState<string>("company");
+    const [editBirthday, setEditBirthday] = useState("");
+    const [editTeamLeader, setEditTeamLeader] = useState<string>("none");
+    const [editShiftId, setEditShiftId] = useState<string>("none");
+    const [editEmergencyContact, setEditEmergencyContact] = useState("");
+    const [editAddress, setEditAddress] = useState("");
 
     // Salary governance (Directory tab)
     const [salaryDialogEmpId, setSalaryDialogEmpId] = useState<string | null>(null);
@@ -188,31 +271,56 @@ export default function AdminEmployeesView() {
 
     const si = (col: SortKey) => <SortIndicator col={col} sortKey={sortKey} sortDir={sortDir} />;
 
-    const handleAddEmployee = () => {
+    const [addingEmployee, setAddingEmployee] = useState(false);
+
+    const handleAddEmployee = async () => {
         if (!canManage) { toast.error("You don't have permission to add employees"); return; }
         if (!newName || !newEmail || !newRole || !newDept) { toast.error("Please fill all required fields"); return; }
+        if (employees.some((e) => e.email.toLowerCase() === newEmail.toLowerCase())) { toast.error("An employee with this email already exists"); return; }
+        setAddingEmployee(true);
         const id = `EMP-${nanoid(6).toUpperCase()}`;
         addEmployee({
             id, name: newName, email: newEmail, role: newRole, department: newDept, workType: newWorkType,
             salary: Number(newSalary) || 0, joinDate: new Date().toISOString().split("T")[0], productivity: 80,
             status: "active", location: newLocation || "New York", phone: newPhone || undefined,
             workDays: newWorkDays.length ? newWorkDays : undefined,
+            birthday: newBirthday || undefined,
+            teamLeader: newTeamLeader !== "none" ? newTeamLeader : undefined,
+            shiftId: newShiftId !== "none" ? newShiftId : undefined,
+            emergencyContact: newEmergencyContact || undefined,
+            address: newAddress || undefined,
             ...(newPayFreq !== "company" ? { payFrequency: newPayFreq as PayFrequency } : {}),
         });
         if (newPassword) {
-            const result = createAccount({ name: newName, email: newEmail, role: newSystemRole, password: newPassword, mustChangePassword: newMustChange, profileComplete: true }, currentUser.email);
-            if (!result.ok) toast.warning(`Employee added but account creation failed: ${result.error}`);
-            else toast.success(`${newName} added with a login account.`);
+            if (USE_DEMO_MODE) {
+                const result = createAccount({ name: newName, email: newEmail, role: newSystemRole, password: newPassword, mustChangePassword: newMustChange, profileComplete: true }, currentUser.email);
+                if (!result.ok) toast.warning(`Employee added but account creation failed: ${result.error}`);
+                else {
+                    if (result.userId) updateEmployee(id, { profileId: result.userId });
+                    toast.success(`${newName} added with a login account.`);
+                }
+            } else {
+                const result = await createUserAccount({ name: newName, email: newEmail, role: newSystemRole, password: newPassword, department: newDept, mustChangePassword: newMustChange });
+                if (!result.ok) toast.warning(`Employee added but account creation failed: ${result.error}`);
+                else {
+                    if (result.userId) updateEmployee(id, { profileId: result.userId });
+                    toast.success(`${newName} added with a login account.`);
+                    refreshAccounts();
+                }
+            }
         } else toast.success(`${newName} added successfully!`);
         if (newProjectId && newProjectId !== "none") assignToProject(newProjectId, id);
-        setNewName(""); setNewEmail(""); setNewRole(""); setNewDept(""); setNewWorkType("WFO"); setNewSalary(""); setNewPhone(""); setNewLocation(""); setNewPayFreq("company"); setNewSystemRole("employee"); setNewPassword(""); setNewMustChange(true); setNewWorkDays(["Mon", "Tue", "Wed", "Thu", "Fri"]); setNewProjectId("none");
+        setNewName(""); setNewEmail(""); setNewRole(""); setNewDept(""); setNewWorkType("WFO"); setNewSalary(""); setNewPhone(""); setNewLocation(""); setNewPayFreq("company"); setNewSystemRole("employee"); setNewPassword(""); setNewMustChange(true); setNewWorkDays(["Mon", "Tue", "Wed", "Thu", "Fri"]); setNewProjectId("none"); setNewBirthday(""); setNewTeamLeader("none"); setNewShiftId("none"); setNewEmergencyContact(""); setNewAddress("");
         setAddOpen(false);
+        setAddingEmployee(false);
     };
 
     const handleOpenEdit = (emp: Employee) => {
         setEditingEmp(emp); setEditName(emp.name); setEditEmail(emp.email); setEditRole(emp.role); setEditDept(emp.department);
         setEditWorkType(emp.workType); setEditSalary(String(emp.salary)); setEditPhone(emp.phone || ""); setEditLocation(emp.location);
         setEditProductivity(String(emp.productivity)); setEditPayFreq(emp.payFrequency || "company");
+        setEditBirthday(emp.birthday || ""); setEditTeamLeader(emp.teamLeader || "none"); setEditShiftId(emp.shiftId || "none");
+        setEditEmergencyContact(emp.emergencyContact || ""); setEditAddress(emp.address || "");
         const currentProject = getProjectForEmployee(emp.id);
         setEditProjectId(currentProject?.id || ""); setEditOpen(true);
     };
@@ -220,10 +328,16 @@ export default function AdminEmployeesView() {
     const handleSaveEdit = () => {
         if (!canManage || !editingEmp) { toast.error("You don't have permission to edit employees"); return; }
         if (!editName || !editEmail || !editRole || !editDept) { toast.error("Please fill all required fields"); return; }
+        if (employees.some((e) => e.id !== editingEmp.id && e.email.toLowerCase() === editEmail.toLowerCase())) { toast.error("An employee with this email already exists"); return; }
         updateEmployee(editingEmp.id, {
             name: editName, email: editEmail, role: editRole, department: editDept, workType: editWorkType,
             salary: Number(editSalary) || 0, phone: editPhone || undefined, location: editLocation,
             productivity: Number(editProductivity) || 80, payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
+            birthday: editBirthday || undefined,
+            teamLeader: editTeamLeader !== "none" ? editTeamLeader : undefined,
+            shiftId: editShiftId !== "none" ? editShiftId : undefined,
+            emergencyContact: editEmergencyContact || undefined,
+            address: editAddress || undefined,
         });
         const currentProject = getProjectForEmployee(editingEmp.id);
         if (currentProject && currentProject.id !== editProjectId) removeFromProject(currentProject.id, editingEmp.id);
@@ -245,6 +359,7 @@ export default function AdminEmployeesView() {
                 <TabsList>
                     <TabsTrigger value="management">Employee Management</TabsTrigger>
                     <TabsTrigger value="directory">Directory &amp; Salary</TabsTrigger>
+                    {canManageRoles && <TabsTrigger value="accounts">User Accounts</TabsTrigger>}
                 </TabsList>
 
                 {/* ─── Management Tab ─── */}
@@ -278,6 +393,14 @@ export default function AdminEmployeesView() {
                                                     <Select value={newLocation} onValueChange={setNewLocation}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select office" /></SelectTrigger><SelectContent>{LOCATIONS.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select>
                                                 </div>
                                             </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div><label className="text-xs font-medium text-muted-foreground">Birthday</label><Input type="date" value={newBirthday} onChange={(e) => setNewBirthday(e.target.value)} className="mt-1 h-8 text-sm" /></div>
+                                                <div><label className="text-xs font-medium text-muted-foreground">Emergency Contact</label><Input value={newEmergencyContact} onChange={(e) => setNewEmergencyContact(e.target.value)} placeholder="Name / Phone" className="mt-1 h-8 text-sm" /></div>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-medium text-muted-foreground">Address</label>
+                                                <Input value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="Home address" className="mt-1 h-8 text-sm" />
+                                            </div>
                                         </div>
                                     </div>
 
@@ -305,6 +428,14 @@ export default function AdminEmployeesView() {
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div><label className="text-xs font-medium text-muted-foreground">Pay Frequency</label>
                                                     <Select value={newPayFreq} onValueChange={setNewPayFreq}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="company">Company Default</SelectItem><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="semi_monthly">Semi-Monthly</SelectItem><SelectItem value="bi_weekly">Bi-Weekly</SelectItem><SelectItem value="weekly">Weekly</SelectItem></SelectContent></Select>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div><label className="text-xs font-medium text-muted-foreground">Team Leader</label>
+                                                    <Select value={newTeamLeader} onValueChange={setNewTeamLeader}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select leader" /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{employees.filter((e) => e.status === "active" && e.id).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select>
+                                                </div>
+                                                <div><label className="text-xs font-medium text-muted-foreground">Shift Schedule</label>
+                                                    <Select value={newShiftId} onValueChange={setNewShiftId}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select shift" /></SelectTrigger><SelectContent><SelectItem value="none">Default</SelectItem>{shiftTemplates.filter((s) => s.id).map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.startTime}–{s.endTime})</SelectItem>)}</SelectContent></Select>
                                                 </div>
                                             </div>
                                             {/* Work Days */}
@@ -375,7 +506,7 @@ export default function AdminEmployeesView() {
                                                 <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="No project — assign later" /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="none">No project</SelectItem>
-                                                    {projects.filter((p) => p.status !== "completed").map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                                    {projects.filter((p) => p.status !== "completed" && p.id).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
                                             {newProjectId && newProjectId !== "none" && (() => {
@@ -424,11 +555,26 @@ export default function AdminEmployeesView() {
                                         <Select value={editLocation} onValueChange={setEditLocation}><SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger><SelectContent>{LOCATIONS.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select>
                                     </div>
                                     <div><label className="text-sm font-medium">Phone</label><Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} className="mt-1" /></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-sm font-medium">Birthday</label><Input type="date" value={editBirthday} onChange={(e) => setEditBirthday(e.target.value)} className="mt-1" /></div>
                                     <div><label className="text-sm font-medium">Productivity (%)</label><Input type="number" min="0" max="100" value={editProductivity} onChange={(e) => setEditProductivity(e.target.value)} className="mt-1" /></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-sm font-medium">Team Leader</label>
+                                        <Select value={editTeamLeader} onValueChange={setEditTeamLeader}><SelectTrigger className="mt-1"><SelectValue placeholder="Select leader" /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{employees.filter((e) => e.status === "active" && e.id !== editingEmp?.id && e.id).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select>
+                                    </div>
+                                    <div><label className="text-sm font-medium">Shift Schedule</label>
+                                        <Select value={editShiftId} onValueChange={setEditShiftId}><SelectTrigger className="mt-1"><SelectValue placeholder="Select shift" /></SelectTrigger><SelectContent><SelectItem value="none">Default</SelectItem>{shiftTemplates.filter((s) => s.id).map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.startTime}–{s.endTime})</SelectItem>)}</SelectContent></Select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-sm font-medium">Emergency Contact</label><Input value={editEmergencyContact} onChange={(e) => setEditEmergencyContact(e.target.value)} placeholder="Name / Phone" className="mt-1" /></div>
+                                    <div><label className="text-sm font-medium">Address</label><Input value={editAddress} onChange={(e) => setEditAddress(e.target.value)} placeholder="Home address" className="mt-1" /></div>
                                 </div>
                                 <div>
                                     <label className="text-sm font-medium">Assigned Project</label>
-                                    <Select value={editProjectId || "none"} onValueChange={setEditProjectId}><SelectTrigger className="mt-1"><SelectValue placeholder="Select project" /></SelectTrigger><SelectContent><SelectItem value="none">No Project</SelectItem>{projects.filter(p => p.status !== "completed").map((p) => <SelectItem key={p.id} value={p.id}>{p.name} {p.assignedEmployeeIds.includes(editingEmp?.id || "") ? "✓" : ""}</SelectItem>)}</SelectContent></Select>
+                                    <Select value={editProjectId || "none"} onValueChange={setEditProjectId}><SelectTrigger className="mt-1"><SelectValue placeholder="Select project" /></SelectTrigger><SelectContent><SelectItem value="none">No Project</SelectItem>{projects.filter(p => p.status !== "completed" && p.id).map((p) => <SelectItem key={p.id} value={p.id}>{p.name} {p.assignedEmployeeIds.includes(editingEmp?.id || "") ? "✓" : ""}</SelectItem>)}</SelectContent></Select>
                                     <p className="text-xs text-muted-foreground mt-1">Assigned project defines geofence for attendance check-in</p>
                                 </div>
                                 <Button onClick={handleSaveEdit} className="w-full">Save Changes</Button>
@@ -660,6 +806,184 @@ export default function AdminEmployeesView() {
                         </Card>
                     )}
                 </TabsContent>
+
+                {/* ─── User Accounts Tab ─── */}
+                {canManageRoles && (
+                <TabsContent value="accounts" className="mt-4 space-y-4">
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <p className="text-sm text-muted-foreground">{accounts.length} registered account{accounts.length !== 1 ? "s" : ""}</p>
+                        </div>
+                    </div>
+
+                    {/* Filters */}
+                    <Card className="border border-border/50">
+                        <CardContent className="p-4">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <div className="relative flex-1 min-w-[200px]">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Input placeholder="Search by name or email..." className="pl-9" value={acctSearch} onChange={(e) => setAcctSearch(e.target.value)} />
+                                </div>
+                                <Select value={acctRoleFilter} onValueChange={setAcctRoleFilter}>
+                                    <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="All Roles" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Roles</SelectItem>
+                                        {(["admin","hr","finance","employee","supervisor","payroll_admin","auditor"] as Role[]).map((r) => (
+                                            <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {!USE_DEMO_MODE && (
+                                    <Button variant="outline" size="sm" className="gap-1.5" onClick={refreshAccounts} disabled={accountsLoading}>
+                                        <RefreshCw className={`h-3.5 w-3.5 ${accountsLoading ? "animate-spin" : ""}`} /> Refresh
+                                    </Button>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Accounts Table */}
+                    <Card className="border border-border/50">
+                        <CardContent className="p-0">
+                            {accountsLoading ? (
+                                <div className="flex items-center justify-center py-16 text-muted-foreground">
+                                    <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Loading accounts...
+                                </div>
+                            ) : filteredAccounts.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                                    <Users className="h-10 w-10 mb-3 opacity-30" />
+                                    <p className="text-sm font-medium">No accounts found</p>
+                                    <p className="text-xs mt-1">Add an employee with a password to create their login account.</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="text-xs">User</TableHead>
+                                                <TableHead className="text-xs">Role</TableHead>
+                                                <TableHead className="text-xs">Status</TableHead>
+                                                {!USE_DEMO_MODE && <TableHead className="text-xs">Created</TableHead>}
+                                                <TableHead className="text-xs w-32 text-right">Actions</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {filteredAccounts.map((acc) => {
+                                                const roleColors: Record<string, string> = {
+                                                    admin: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
+                                                    hr: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800",
+                                                    finance: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800",
+                                                    supervisor: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border-cyan-200 dark:border-cyan-800",
+                                                    payroll_admin: "bg-violet-500/15 text-violet-700 dark:text-violet-400 border-violet-200 dark:border-violet-800",
+                                                    auditor: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800",
+                                                    employee: "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800",
+                                                };
+                                                return (
+                                                    <TableRow key={acc.id} className="group">
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-3">
+                                                                <Avatar className="h-9 w-9">
+                                                                    <AvatarFallback className="text-xs font-bold bg-primary/10 text-primary">{getInitials(acc.name)}</AvatarFallback>
+                                                                </Avatar>
+                                                                <div className="min-w-0">
+                                                                    <p className="text-sm font-medium truncate">{acc.name}</p>
+                                                                    <p className="text-xs text-muted-foreground truncate">{acc.email}</p>
+                                                                </div>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Badge variant="outline" className={`text-[10px] capitalize ${roleColors[acc.role] || ""}`}>
+                                                                {acc.role.replace("_", " ")}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                {acc.mustChangePassword && (
+                                                                    <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
+                                                                        <KeyRound className="h-2.5 w-2.5 mr-0.5" /> pw reset
+                                                                    </Badge>
+                                                                )}
+                                                                {!acc.profileComplete && (
+                                                                    <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300 dark:text-blue-400 dark:border-blue-700">
+                                                                        <User className="h-2.5 w-2.5 mr-0.5" /> onboarding
+                                                                    </Badge>
+                                                                )}
+                                                                {!acc.mustChangePassword && acc.profileComplete && (
+                                                                    <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700">
+                                                                        <ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> active
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                        {!USE_DEMO_MODE && (
+                                                            <TableCell className="text-xs text-muted-foreground">
+                                                                {acc.createdAt ? formatDate(acc.createdAt.split("T")[0]) : "—"}
+                                                            </TableCell>
+                                                        )}
+                                                        <TableCell>
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Reset password"
+                                                                    onClick={() => { setResetPwUserId(acc.id); setResetPwValue(""); }}>
+                                                                    <KeyRound className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                                {acc.id !== currentUser.id && (
+                                                                    <AlertDialog>
+                                                                        <AlertDialogTrigger asChild>
+                                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" title="Delete account">
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                            </Button>
+                                                                        </AlertDialogTrigger>
+                                                                        <AlertDialogContent>
+                                                                            <AlertDialogHeader>
+                                                                                <AlertDialogTitle>Delete Account</AlertDialogTitle>
+                                                                                <AlertDialogDescription>
+                                                                                    Are you sure you want to permanently delete the account for <strong>{acc.name}</strong> ({acc.email})?
+                                                                                    This will remove their login access and linked employee record.
+                                                                                </AlertDialogDescription>
+                                                                            </AlertDialogHeader>
+                                                                            <AlertDialogFooter>
+                                                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                                <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                                                                    onClick={() => handleDeleteAccount(acc)} disabled={actionLoading}>
+                                                                                    <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete
+                                                                                </AlertDialogAction>
+                                                                            </AlertDialogFooter>
+                                                                        </AlertDialogContent>
+                                                                    </AlertDialog>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Info Card */}
+                    <Card className="border border-blue-500/20 bg-blue-500/5">
+                        <CardContent className="p-4">
+                            <div className="flex items-start gap-3">
+                                <div className="h-8 w-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                                    <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-blue-700 dark:text-blue-400">How account creation works</p>
+                                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                        To create a login account for an employee, use the <strong>&quot;Add Employee&quot;</strong> button in the Employee Management tab.
+                                        Fill in the <strong>Login Account</strong> section with a system role and password.
+                                        The employee will then appear here with their account details.
+                                    </p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+                )}
             </Tabs>
 
             {/* Salary Dialog */}
@@ -685,6 +1009,26 @@ export default function AdminEmployeesView() {
                         <Button variant="outline" onClick={() => { setSalaryDialogEmpId(null); setSalaryInput(""); setSalaryReason(""); }}>Cancel</Button>
                         <Button onClick={handleSalarySave}>{isHR ? "Submit Proposal" : "Save Salary"}</Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Reset Password Dialog */}
+            <Dialog open={!!resetPwUserId} onOpenChange={(o) => { if (!o) { setResetPwUserId(null); setResetPwValue(""); } }}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader><DialogTitle>Reset Password</DialogTitle></DialogHeader>
+                    <div className="space-y-3 pt-1">
+                        <p className="text-sm text-muted-foreground">Set a new temporary password for <strong>{accounts.find((a) => a.id === resetPwUserId)?.name}</strong>. They will be prompted to change it on next login.</p>
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">New Password *</label>
+                            <Input type="password" value={resetPwValue} onChange={(e) => setResetPwValue(e.target.value)} placeholder="Minimum 6 characters" />
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                            <Button variant="outline" className="flex-1" onClick={() => { setResetPwUserId(null); setResetPwValue(""); }}>Cancel</Button>
+                            <Button className="flex-1" onClick={handleResetPassword} disabled={actionLoading}>
+                                <KeyRound className="w-4 h-4 mr-1.5" /> Reset
+                            </Button>
+                        </div>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>

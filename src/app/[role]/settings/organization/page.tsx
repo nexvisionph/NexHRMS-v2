@@ -324,7 +324,7 @@ export default function OrganizationPage() {
                             <Select value={posDeptId} onValueChange={setPosDeptId}>
                                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select department" /></SelectTrigger>
                                 <SelectContent>
-                                    {departments.map((d) => (
+                                    {departments.filter((d) => d.id).map((d) => (
                                         <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                                     ))}
                                 </SelectContent>

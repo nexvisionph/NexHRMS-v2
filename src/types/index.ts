@@ -15,7 +15,16 @@ export type AdjustmentType = "earnings" | "deduction" | "net_correction" | "stat
 export type AdjustmentStatus = "pending" | "approved" | "applied" | "rejected";
 export type SalaryChangeStatus = "pending" | "approved" | "rejected";
 export type AttendanceFlag = "missing_in" | "missing_out" | "out_of_geofence" | "duplicate_scan" | "device_mismatch" | "overtime_without_approval";
-export type AttendanceEventType = "IN" | "OUT" | "BREAK_START" | "BREAK_END";
+export type AttendanceEventType =
+  | "IN" | "OUT" | "BREAK_START" | "BREAK_END"
+  | "OVERRIDE" | "BULK_OVERRIDE"
+  | "MARK_ABSENT" | "MARK_PRESENT"
+  | "OT_APPROVED" | "OT_REJECTED" | "OT_SUBMITTED"
+  | "EXCEPTION_RESOLVED" | "EXCEPTION_SCANNED"
+  | "HOLIDAY_ADDED" | "HOLIDAY_UPDATED" | "HOLIDAY_DELETED"
+  | "CSV_IMPORTED" | "CSV_EXPORTED"
+  | "PENALTY_APPLIED" | "PENALTY_CLEARED"
+  | "SHIFT_ASSIGNED" | "DATA_RESET";
 export type TimesheetStatus = "computed" | "submitted" | "approved" | "rejected";
 export type AccrualFrequency = "monthly" | "annual";
 export type PayFrequency = "monthly" | "semi_monthly" | "bi_weekly" | "weekly";
@@ -32,6 +41,31 @@ export type AuditAction =
   | "task_created" | "task_assigned" | "task_completed" | "task_verified" | "task_rejected"
   | "announcement_sent" | "channel_created";
 
+// ─── Holiday Type ────────────────────────────────────────────
+
+export type HolidayType = "regular" | "special" | "special_non_working" | "special_working";
+
+export interface Holiday {
+  id: string;
+  date: string;           // "YYYY-MM-DD"
+  name: string;
+  type: HolidayType;
+  year?: number;
+  multiplier?: number;    // override DOLE multiplier
+  isCustom?: boolean;     // user-added vs default
+}
+
+// ─── Employee Document ───────────────────────────────────────
+
+export interface EmployeeDocument {
+  id: string;
+  employeeId?: string;
+  name: string;
+  uploadedAt: string;
+  fileUrl?: string;
+  fileType?: string;
+}
+
 // ─── Pay Schedule Configuration ──────────────────────────────
 
 export interface PayScheduleConfig {
@@ -47,6 +81,7 @@ export interface PayScheduleConfig {
 
 export interface Employee {
   id: string;
+  profileId?: string;     // links to auth.profiles(id)
   name: string;
   email: string;
   role: string;
@@ -67,8 +102,12 @@ export interface Employee {
   shiftId?: string;
   payFrequency?: PayFrequency; // per-employee override (falls back to company default)
   workDays?: string[]; // e.g. ["Mon","Tue","Wed","Thu","Fri"]
+  emergencyContact?: string;
+  address?: string;
   whatsappNumber?: string;
   preferredChannel?: MessageChannel;
+  createdAt?: string;     // ISO timestamptz from DB
+  updatedAt?: string;     // ISO timestamptz from DB
 }
 
 // ─── Salary Change Request ───────────────────────────────────
@@ -106,6 +145,9 @@ export interface AttendanceEvent {
   timestampUTC: string; // ISO 8601
   projectId?: string;
   deviceId?: string;
+  performedBy?: string;   // admin/system who triggered the event
+  description?: string;   // human-readable summary
+  metadata?: Record<string, unknown>; // extra context (old/new values, counts, etc.)
   createdAt: string;
 }
 
@@ -164,6 +206,8 @@ export interface AttendanceLog {
   lateMinutes?: number;
   shiftId?: string;
   flags?: AttendanceFlag[];
+  createdAt?: string;  // ISO 8601
+  updatedAt?: string;  // ISO 8601
 }
 
 export interface ShiftTemplate {
@@ -174,6 +218,8 @@ export interface ShiftTemplate {
   gracePeriod: number; // minutes before late kicks in
   breakDuration: number; // minutes
   workDays: number[]; // 1=Mon ... 5=Fri
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface OvertimeRequest {
@@ -495,6 +541,7 @@ export interface Project {
     lat: number;
     lng: number;
     radius: number;
+    address?: string;
   };
   assignedEmployeeIds: string[];
   status?: "active" | "completed" | "on_hold";
@@ -608,6 +655,7 @@ export interface CustomRole {
   permissions: Permission[];
   dashboardLayout?: DashboardLayout;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface DashboardLayout {
@@ -828,4 +876,104 @@ export interface ChannelMessage {
   createdAt: string;
   editedAt?: string;
   readBy: string[];
+}
+
+// ─── Kiosk Face Recognition & Enhanced Attendance ────────────────────────────
+
+export type VerificationMethod = "face_only" | "qr_only" | "face_or_qr" | "manual_only";
+
+export interface FaceEnrollment {
+  id: string;
+  employeeId: string;
+  faceTemplateHash: string;
+  /** 128-dimensional face embedding from face-api.js */
+  embedding?: number[];
+  enrollmentDate: string;
+  lastVerified?: string;
+  verificationCount: number;
+  isActive: boolean;
+  enrolledBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectVerificationMethod {
+  id: string;
+  projectId: string;
+  verificationMethod: VerificationMethod;
+  requireGeofence: boolean;
+  geofenceRadiusMeters: number;
+  allowManualOverride: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QRTokenRow {
+  id: string;
+  deviceId: string;
+  employeeId?: string;
+  token: string;
+  expiresAt: string;
+  used: boolean;
+  usedAt?: string;
+  usedByKioskId?: string;
+  createdAt: string;
+}
+
+export interface ManualCheckinReason {
+  id: string;
+  reason: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface ManualCheckin {
+  id: string;
+  employeeId: string;
+  eventType: "IN" | "OUT";
+  reasonId?: string;
+  customReason?: string;
+  performedBy: string;
+  timestampUtc: string;
+  projectId?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface KioskPin {
+  id: string;
+  kioskDeviceId: string;
+  pinHash: string;
+  createdBy: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  isActive: boolean;
+}
+
+export interface FaceVerificationResult {
+  verified: boolean;
+  confidence: "high" | "medium" | "low";
+  livenessScore?: number;
+  faceDetected?: boolean;
+  reason: string;
+  spoofIndicators?: string[];
+}
+
+// Extend Project interface with verification fields
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  location: {
+    lat: number;
+    lng: number;
+    radius: number;
+    address?: string;
+  };
+  assignedEmployeeIds: string[];
+  status?: "active" | "completed" | "on_hold";
+  createdAt: string;
+  verificationMethod?: VerificationMethod;
+  requireGeofence?: boolean;
+  geofenceRadiusMeters?: number;
 }

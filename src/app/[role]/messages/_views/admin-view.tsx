@@ -219,7 +219,7 @@ export default function AdminMessagesView() {
                                         <Select value={annGroupId} onValueChange={setAnnGroupId}>
                                             <SelectTrigger className="mt-1"><SelectValue placeholder="Select group" /></SelectTrigger>
                                             <SelectContent>
-                                                {groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                                                {groups.filter((g) => g.id).map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -230,7 +230,7 @@ export default function AdminMessagesView() {
                                         <Select value={annTaskId} onValueChange={setAnnTaskId}>
                                             <SelectTrigger className="mt-1"><SelectValue placeholder="Select task" /></SelectTrigger>
                                             <SelectContent>
-                                                {tasks.map((t) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}
+                                                {tasks.filter((t) => t.id).map((t) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>

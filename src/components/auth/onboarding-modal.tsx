@@ -7,8 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useAuthStore } from "@/store/auth.store";
+import { createClient } from "@/services/supabase-browser";
 import { toast } from "sonner";
 import { User, Lock, ChevronRight, CheckCircle2 } from "lucide-react";
+
+const IS_DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 interface FormState {
     phone: string;
@@ -21,11 +24,16 @@ interface FormState {
 }
 
 export function OnboardingModal() {
-    const { currentUser, isAuthenticated, completeOnboarding } = useAuthStore();
+    const { currentUser, isAuthenticated, completeOnboarding, updateProfile } = useAuthStore();
+    const [saving, setSaving] = useState(false);
+
+    // Admin, HR, and payroll_admin roles never need onboarding — they manage others
+    const isAdminRole = currentUser?.role === "admin" || currentUser?.role === "hr" || currentUser?.role === "payroll_admin";
 
     const needsOnboarding =
         isAuthenticated &&
         currentUser &&
+        !isAdminRole &&
         (currentUser.mustChangePassword || !currentUser.profileComplete);
 
     // If profile is already complete (set by admin), skip straight to password step.
@@ -61,12 +69,8 @@ export function OnboardingModal() {
         }
     };
 
-    const handleFinish = () => {
-        if (!form.newPassword) {
-            toast.error("Please set a new password.");
-            return;
-        }
-        if (form.newPassword.length < 6) {
+    const handleFinish = async () => {
+        if (form.newPassword && form.newPassword.length < 6) {
             toast.error("Password must be at least 6 characters.");
             return;
         }
@@ -74,18 +78,56 @@ export function OnboardingModal() {
             toast.error("Passwords do not match.");
             return;
         }
-        completeOnboarding(
-            currentUser.id,
-            {
+
+        setSaving(true);
+        try {
+            const profile = {
                 phone: form.phone,
                 department: form.department,
                 birthday: form.birthday,
                 address: form.address,
                 emergencyContact: form.emergencyContact,
-            },
-            form.newPassword
-        );
-        toast.success("Welcome! Your profile and password have been saved.");
+            };
+
+            if (IS_DEMO) {
+                // Demo mode: use Zustand store (localStorage only)
+                completeOnboarding(currentUser.id, profile, form.newPassword || undefined);
+            } else {
+                // Production mode: persist to Supabase
+                const sb = createClient();
+
+                // Update password via Supabase Auth (if provided)
+                if (form.newPassword) {
+                    const { error } = await sb.auth.updateUser({ password: form.newPassword });
+                    if (error) { toast.error("Failed to update password: " + error.message); return; }
+                }
+
+                // Update profile fields + mark complete
+                const { error: profileErr } = await sb.from("profiles").update({
+                    phone: form.phone || null,
+                    department: form.department || null,
+                    birthday: form.birthday || null,
+                    address: form.address || null,
+                    emergency_contact: form.emergencyContact || null,
+                    profile_complete: true,
+                    must_change_password: false,
+                }).eq("id", currentUser.id);
+
+                if (profileErr) { toast.error("Failed to save profile: " + profileErr.message); return; }
+
+                // Update Zustand store to reflect saved state
+                updateProfile(currentUser.id, {
+                    ...profile,
+                    profileComplete: true,
+                    mustChangePassword: false,
+                });
+            }
+
+            toast.success("Welcome! Your profile has been saved.");
+            setOpen(false);
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -213,8 +255,8 @@ export function OnboardingModal() {
                                     Back
                                 </Button>
                             )}
-                            <Button className="flex-1" onClick={handleFinish}>
-                                <CheckCircle2 className="w-4 h-4 mr-1" /> Finish Setup
+                            <Button className="flex-1" onClick={handleFinish} disabled={saving}>
+                                <CheckCircle2 className="w-4 h-4 mr-1" /> {saving ? "Saving..." : "Finish Setup"}
                             </Button>
                         </div>
                     </div>

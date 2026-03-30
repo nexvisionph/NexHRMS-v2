@@ -41,11 +41,16 @@ export const useProjectsStore = create<ProjectsState>()(
                 })),
             assignEmployee: (projectId, employeeId) =>
                 set((s) => ({
-                    projects: s.projects.map((p) =>
-                        p.id === projectId && !p.assignedEmployeeIds.includes(employeeId)
-                            ? { ...p, assignedEmployeeIds: [...p.assignedEmployeeIds, employeeId] }
-                            : p
-                    ),
+                    // Remove the employee from any other project first (1 project per employee)
+                    projects: s.projects.map((p) => {
+                        if (p.id === projectId) {
+                            return p.assignedEmployeeIds.includes(employeeId)
+                                ? p
+                                : { ...p, assignedEmployeeIds: [...p.assignedEmployeeIds, employeeId] };
+                        }
+                        // Strip from every other project
+                        return { ...p, assignedEmployeeIds: p.assignedEmployeeIds.filter((id) => id !== employeeId) };
+                    }),
                 })),
             removeEmployee: (projectId, employeeId) =>
                 set((s) => ({

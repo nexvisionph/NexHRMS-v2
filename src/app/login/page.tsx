@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useAppearanceStore } from "@/store/appearance.store";
+import { signIn } from "@/services/auth.service";
+import { hydrateAllStores, startWriteThrough } from "@/services/sync.service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+
+// Set to true to use local demo login (no Supabase required)
+const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 const DEMO_ACCOUNTS = [
     { role: "Admin", email: "admin@nexhrms.com", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
@@ -20,11 +25,13 @@ const DEMO_ACCOUNTS = [
     { role: "Supervisor", email: "supervisor@nexhrms.com", color: "bg-orange-500/15 text-orange-700 dark:text-orange-400" },
     { role: "Payroll", email: "payroll@nexhrms.com", color: "bg-teal-500/15 text-teal-700 dark:text-teal-400" },
     { role: "Auditor", email: "auditor@nexhrms.com", color: "bg-slate-500/15 text-slate-700 dark:text-slate-400" },
+    { role: "QR Employee", email: "qr@nexhrms.com", color: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400" },
 ];
 
 export default function LoginPage() {
     const router = useRouter();
-    const login = useAuthStore((s) => s.login);
+    const localLogin = useAuthStore((s) => s.login);
+    const setUser = useAuthStore((s) => s.setUser);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
@@ -39,11 +46,46 @@ export default function LoginPage() {
     const companyName = useAppearanceStore((s) => s.companyName);
     const brandTagline = useAppearanceStore((s) => s.brandTagline);
 
-    const handleLogin = (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSupabaseLogin = async (loginEmail: string, loginPassword: string) => {
+        setLoading(true);
+        try {
+            const result = await signIn(loginEmail, loginPassword);
+            if (result.ok) {
+                // Hydrate Zustand store with Supabase user data
+                setUser({
+                    id: result.user.id,
+                    name: result.user.name,
+                    email: result.user.email,
+                    role: result.user.role,
+                    avatarUrl: result.user.avatarUrl,
+                    mustChangePassword: result.user.mustChangePassword,
+                    profileComplete: result.user.profileComplete,
+                    phone: result.user.phone,
+                    department: result.user.department,
+                    birthday: result.user.birthday,
+                    address: result.user.address,
+                    emergencyContact: result.user.emergencyContact,
+                });
+                useAuthStore.setState({ isAuthenticated: true });
+                // Sync: hydrate all stores from Supabase and start write-through
+                await hydrateAllStores();
+                startWriteThrough();
+                toast.success("Welcome back!");
+                router.push(`/${result.user.role}/dashboard`);
+            } else {
+                toast.error(result.error || "Invalid email or password");
+            }
+        } catch {
+            toast.error("Connection error. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDemoLogin = (loginEmail: string, loginPassword: string) => {
         setLoading(true);
         setTimeout(() => {
-            const success = login(email, password);
+            const success = localLogin(loginEmail, loginPassword);
             if (success) {
                 toast.success("Welcome back!");
                 const role = useAuthStore.getState().currentUser.role;
@@ -55,19 +97,21 @@ export default function LoginPage() {
         }, 500);
     };
 
+    const handleLogin = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (USE_DEMO_MODE) {
+            handleDemoLogin(email, password);
+        } else {
+            handleSupabaseLogin(email, password);
+        }
+    };
+
     const handleQuickLogin = (demoEmail: string) => {
-        setLoading(true);
-        setTimeout(() => {
-            const success = login(demoEmail, "demo1234");
-            if (success) {
-                toast.success("Welcome back!");
-                const role = useAuthStore.getState().currentUser.role;
-                router.push(`/${role}/dashboard`);
-            } else {
-                toast.error("Login failed");
-            }
-            setLoading(false);
-        }, 400);
+        if (USE_DEMO_MODE) {
+            handleDemoLogin(demoEmail, "demo1234");
+        } else {
+            handleSupabaseLogin(demoEmail, "demo1234");
+        }
     };
 
     return (
@@ -92,7 +136,7 @@ export default function LoginPage() {
                         {logoUrl ? (
                             <img src={logoUrl} alt={companyName} className="h-16 mx-auto object-contain" />
                         ) : (
-                            <Image src="/logo.svg" alt={companyName} width={80} height={80} className="mx-auto" />
+                            <Image src="/logo.png" alt={companyName} width={80} height={80} className="mx-auto" />
                         )}
                         <h2 className="text-2xl font-bold">{companyName}</h2>
                         {brandTagline && (
@@ -113,7 +157,7 @@ export default function LoginPage() {
                                 {logoUrl ? (
                                     <img src={logoUrl} alt={companyName} className="h-8 w-8 object-contain" />
                                 ) : (
-                                    <Image src="/logo.svg" alt={companyName} width={32} height={32} />
+                                    <Image src="/logo.png" alt={companyName} width={32} height={32} />
                                 )}
                             </div>
                         </div>

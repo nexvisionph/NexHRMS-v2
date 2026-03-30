@@ -4,11 +4,24 @@ import { persist } from "zustand/middleware";
 import type { Role, DemoUser } from "@/types";
 import { DEMO_USERS } from "@/data/seed";
 
-// Simple reversible hash for demo localStorage (no server — not for production)
+// ⚠️ WARNING: Demo-only reversible "hash" for localStorage.
+// These functions must NEVER run in production (NEXT_PUBLIC_DEMO_MODE !== 'true').
+function assertDemoMode() {
+    if (
+        typeof window !== "undefined" &&
+        process.env.NEXT_PUBLIC_DEMO_MODE !== "true" &&
+        process.env.NODE_ENV !== "test"
+    ) {
+        throw new Error("Demo auth functions must not be used in production");
+    }
+}
+
 export function hashPassword(password: string): string {
+    assertDemoMode();
     return btoa(encodeURIComponent(password));
 }
 export function verifyPassword(password: string, hash: string): boolean {
+    assertDemoMode();
     try {
         return atob(hash) === encodeURIComponent(password);
     } catch {
@@ -16,10 +29,15 @@ export function verifyPassword(password: string, hash: string): boolean {
     }
 }
 
-const DEMO_PASSWORD_HASH = hashPassword("demo1234");
+// Only hash in demo/test mode — this runs at module evaluation time so must be guarded
+const DEMO_PASSWORD_HASH =
+    (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || process.env.NODE_ENV === "test")
+        ? hashPassword("demo1234")
+        : "";
 
-// Initialise seed accounts with hashed passwords
+// Initialise seed accounts with hashed passwords (demo/test mode only)
 function buildSeedAccounts(): DemoUser[] {
+    if (process.env.NEXT_PUBLIC_DEMO_MODE !== "true" && process.env.NODE_ENV !== "test") return [];
     return DEMO_USERS.map((u) => ({
         ...u,
         passwordHash: DEMO_PASSWORD_HASH,
@@ -50,7 +68,7 @@ interface AuthState {
     login: (email: string, password: string) => boolean;
     logout: () => void;
     // Account management
-    createAccount: (input: CreateAccountInput, createdByEmail?: string) => { ok: boolean; error?: string };
+    createAccount: (input: CreateAccountInput, createdByEmail?: string) => { ok: boolean; userId?: string; error?: string };
     changePassword: (userId: string, oldPassword: string, newPassword: string) => { ok: boolean; error?: string };
     adminSetPassword: (userId: string, newPassword: string) => void;
     completeOnboarding: (userId: string, profile: Partial<DemoUser>, newPassword?: string) => void;
@@ -96,8 +114,9 @@ export const useAuthStore = create<AuthState>()(
                 if (input.password.length < 6) {
                     return { ok: false, error: "Password must be at least 6 characters." };
                 }
+                const userId = `USR-${Date.now()}`;
                 const newAccount: DemoUser = {
-                    id: `USR-${Date.now()}`,
+                    id: userId,
                     name: input.name,
                     email: input.email,
                     role: input.role,
@@ -108,7 +127,7 @@ export const useAuthStore = create<AuthState>()(
                     createdBy: createdByEmail,
                 };
                 set({ accounts: [...accounts, newAccount] });
-                return { ok: true };
+                return { ok: true, userId };
             },
 
             changePassword: (userId, oldPassword, newPassword) => {
@@ -170,11 +189,19 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: "nexhrms-auth",
-            version: 3,
+            version: 4,
             migrate: (persisted: unknown, version: number) => {
-                // v2 → v3: add accounts array seeded from scratch
+                const state = persisted as Record<string, unknown>;
                 if (version < 3) {
-                    return { ...(persisted as object), accounts: buildSeedAccounts() };
+                    return { ...state, accounts: buildSeedAccounts() };
+                }
+                if (version < 4) {
+                    // v3 → v4: ensure profileComplete is set on currentUser
+                    const cu = state.currentUser as Record<string, unknown> | undefined;
+                    if (cu && cu.profileComplete === undefined) {
+                        cu.profileComplete = true;
+                    }
+                    return state as unknown as AuthState;
                 }
                 return persisted as AuthState;
             },

@@ -7,6 +7,19 @@ import { OnboardingModal } from "@/components/auth/onboarding-modal";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useEffect, useState } from "react";
+import { createClient } from "@/services/supabase-browser";
+import { hydrateAllStores, startWriteThrough, startRealtime, stopRealtime, stopWriteThrough } from "@/services/sync.service";
+
+function AppLoadingScreen() {
+    return (
+        <div className="fixed inset-0 flex flex-col items-center justify-center bg-background">
+            <div className="flex flex-col items-center gap-4">
+                <div className="h-10 w-10 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+                <p className="text-sm text-muted-foreground">Loading…</p>
+            </div>
+        </div>
+    );
+}
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -21,20 +34,49 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         if (!mounted) return;
         if (!isAuthenticated && pathname !== "/login") {
-            router.replace("/login");
+            // Hard navigation so the middleware re-evaluates cookies cleanly
+            window.location.href = "/login";
         }
-    }, [mounted, isAuthenticated, pathname, router]);
+    }, [mounted, isAuthenticated, pathname]);
+
+    // Sync stores with Supabase when authenticated (handles page refresh).
+    // Also listens for Supabase SIGNED_OUT events (e.g. invalid/expired refresh
+    // token) so the app redirects to login instead of logging auth errors.
+    useEffect(() => {
+        if (!mounted || !isAuthenticated) return;
+
+        const supabase = createClient();
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+            if (event === "SIGNED_OUT") {
+                stopRealtime();
+                stopWriteThrough();
+                // logout() sets isAuthenticated = false, which triggers the
+                // redirect useEffect above to send the user to /login.
+                useAuthStore.getState().logout();
+            }
+        });
+
+        hydrateAllStores().then(() => {
+            startWriteThrough();
+            startRealtime();
+        });
+
+        return () => {
+            subscription.unsubscribe();
+            stopRealtime();
+        };
+    }, [mounted, isAuthenticated]);
 
     const isLoginPage = pathname === "/login";
     const isRoot      = pathname === "/";
     const isKiosk     = pathname === "/kiosk";
     const skipShell   = isLoginPage || isRoot || isKiosk;
 
-    // Show nothing until mounted (prevents hydration flash)
-    if (!mounted) return null;
+    // Show spinner until React has mounted on the client (prevents hydration mismatch)
+    if (!mounted) return <AppLoadingScreen />;
 
-    // If not authenticated and not on login page, show nothing (redirect happening)
-    if (!isAuthenticated && !isLoginPage) return null;
+    // Show spinner while the unauthenticated redirect is in-flight
+    if (!isAuthenticated && !isLoginPage) return <AppLoadingScreen />;
 
     return (
         <TooltipProvider>

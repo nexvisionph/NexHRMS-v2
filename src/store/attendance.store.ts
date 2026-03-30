@@ -5,16 +5,10 @@ import { nanoid } from "nanoid";
 import type {
     AttendanceLog, AttendanceFlag, AttendanceEvent, AttendanceEvidence,
     AttendanceException, OvertimeRequest, ShiftTemplate, PenaltyRecord,
+    Holiday,
 } from "@/types";
 import { SEED_ATTENDANCE } from "@/data/seed";
 import { DEFAULT_HOLIDAYS } from "@/lib/constants";
-
-export interface Holiday {
-    id: string;
-    date: string;   // "YYYY-MM-DD"
-    name: string;
-    type: "regular" | "special";
-}
 
 interface AttendanceState {
     // ─── Append-only event ledger (§2A) ───────────────
@@ -59,6 +53,7 @@ interface AttendanceState {
     // ─── Shifts ───────────────────────────────────────
     createShift: (shift: Omit<ShiftTemplate, "id">) => void;    updateShift: (id: string, data: Partial<Omit<ShiftTemplate, "id">>) => void;
     deleteShift: (id: string) => void;    assignShift: (employeeId: string, shiftId: string) => void;
+    unassignShift: (employeeId: string) => void;
 
     // ─── Holidays CRUD ────────────────────────────────
     holidays: Holiday[];
@@ -245,7 +240,7 @@ export const useAttendanceStore = create<AttendanceState>()(
                 if (existing) {
                     set((s) => ({
                         logs: s.logs.map((l) =>
-                            l.id === existing.id ? { ...l, checkIn: timeStr, status: "present" as const, lateMinutes, projectId } : l
+                            l.id === existing.id ? { ...l, checkIn: timeStr, status: "present" as const, lateMinutes, projectId, updatedAt: now.toISOString() } : l
                         ),
                     }));
                 } else {
@@ -260,6 +255,8 @@ export const useAttendanceStore = create<AttendanceState>()(
                                 checkIn: timeStr,
                                 status: "present" as const,
                                 lateMinutes,
+                                createdAt: now.toISOString(),
+                                updatedAt: now.toISOString(),
                             },
                         ],
                     }));
@@ -289,7 +286,7 @@ export const useAttendanceStore = create<AttendanceState>()(
                             const diffMin = outTotalMin >= inTotalMin
                                 ? outTotalMin - inTotalMin
                                 : 24 * 60 - inTotalMin + outTotalMin;
-                            return { ...l, checkOut: timeStr, hours: Math.round((diffMin / 60) * 10) / 10 };
+                            return { ...l, checkOut: timeStr, hours: Math.round((diffMin / 60) * 10) / 10, updatedAt: now.toISOString() };
                         }
                         return l;
                     }),
@@ -300,17 +297,18 @@ export const useAttendanceStore = create<AttendanceState>()(
                 const existing = get().logs.find(
                     (l) => l.employeeId === employeeId && l.date === date
                 );
+                const nowISO = new Date().toISOString();
                 if (existing) {
                     set((s) => ({
                         logs: s.logs.map((l) =>
-                            l.id === existing.id ? { ...l, status: "absent" as const, checkIn: undefined, checkOut: undefined, hours: undefined } : l
+                            l.id === existing.id ? { ...l, status: "absent" as const, checkIn: undefined, checkOut: undefined, hours: undefined, updatedAt: nowISO } : l
                         ),
                     }));
                 } else {
                     set((s) => ({
                         logs: [
                             ...s.logs,
-                            { id: `ATT-${date}-${employeeId}`, employeeId, date, status: "absent" as const },
+                            { id: `ATT-${date}-${employeeId}`, employeeId, date, status: "absent" as const, createdAt: nowISO, updatedAt: nowISO },
                         ],
                     }));
                 }
@@ -347,7 +345,7 @@ export const useAttendanceStore = create<AttendanceState>()(
                 set((s) => ({
                     logs: s.logs.map((l) => {
                         if (l.id !== id) return l;
-                        const updated = { ...l, ...patch };
+                        const updated = { ...l, ...patch, updatedAt: new Date().toISOString() };
                         // Recalculate hours if both times are present; handle overnight shifts
                         if (updated.checkIn && updated.checkOut) {
                             const [inH, inM] = updated.checkIn.split(":").map(Number);
@@ -366,13 +364,14 @@ export const useAttendanceStore = create<AttendanceState>()(
             bulkUpsertLogs: (rows) =>
                 set((s) => {
                     const logs = [...s.logs];
+                    const nowISO = new Date().toISOString();
                     for (const row of rows) {
                         const idx = logs.findIndex(
                             (l) => l.employeeId === row.employeeId && l.date === row.date
                         );
                         const entry: AttendanceLog = idx >= 0
-                            ? { ...logs[idx], ...row }
-                            : { id: `ATT-${row.date}-${row.employeeId}`, ...row };
+                            ? { ...logs[idx], ...row, updatedAt: nowISO }
+                            : { id: `ATT-${row.date}-${row.employeeId}`, ...row, createdAt: nowISO, updatedAt: nowISO };
                         // recalc hours
                         if (entry.checkIn && entry.checkOut) {
                             const [inH, inM] = entry.checkIn.split(":").map(Number);
@@ -415,16 +414,18 @@ export const useAttendanceStore = create<AttendanceState>()(
                 })),
 
             // ─── Shifts ───────────────────────────────────────────────
-            createShift: (shift) =>
+            createShift: (shift) => {
+                const now = new Date().toISOString();
                 set((s) => ({
                     shiftTemplates: [
                         ...s.shiftTemplates,
-                        { ...shift, id: `SHIFT-${nanoid(8)}` },
+                        { ...shift, id: `SHIFT-${nanoid(8)}`, createdAt: now, updatedAt: now },
                     ],
-                })),
+                }));
+            },
             updateShift: (id, data) =>
                 set((s) => ({
-                    shiftTemplates: s.shiftTemplates.map((t) => (t.id === id ? { ...t, ...data } : t)),
+                    shiftTemplates: s.shiftTemplates.map((t) => (t.id === id ? { ...t, ...data, updatedAt: new Date().toISOString() } : t)),
                 })),
             deleteShift: (id) =>
                 set((s) => ({
@@ -436,6 +437,12 @@ export const useAttendanceStore = create<AttendanceState>()(
             assignShift: (employeeId, shiftId) =>
                 set((s) => ({
                     employeeShifts: { ...s.employeeShifts, [employeeId]: shiftId },
+                })),
+            unassignShift: (employeeId) =>
+                set((s) => ({
+                    employeeShifts: Object.fromEntries(
+                        Object.entries(s.employeeShifts).filter(([id]) => id !== employeeId)
+                    ),
                 })),
 
             // ─── Holidays CRUD ────────────────────────────────────────

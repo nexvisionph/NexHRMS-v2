@@ -17,5 +17,6 @@ export default function Home() {
         }
     }, [isAuthenticated, role, router]);
 
+    // The client-layout spinner covers this page during redirect, so no extra UI needed.
     return null;
 }

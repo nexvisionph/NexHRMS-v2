@@ -8,7 +8,6 @@ import type {
     TaskCompletionReport,
     TaskComment,
     TaskStatus,
-    TaskPriority,
 } from "@/types";
 import {
     SEED_TASK_GROUPS,

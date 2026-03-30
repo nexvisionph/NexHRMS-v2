@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MapContainer, TileLayer, Circle, Marker, useMapEvents, useMap } from "react-leaflet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,14 +10,19 @@ import { toast } from "sonner";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Fix Leaflet default marker icon issue in Next.js
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
+// Custom SVG pin icon — no external image dependency
+const mapPinIcon = typeof window !== "undefined"
+  ? L.divIcon({
+      className: "",
+      html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 32" width="28" height="36">
+        <path d="M12 0C7.16 0 3.25 3.91 3.25 8.75c0 7.44 8.75 18.25 8.75 18.25S20.75 16.19 20.75 8.75C20.75 3.91 16.84 0 12 0zm0 12a3.25 3.25 0 1 1 0-6.5A3.25 3.25 0 0 1 12 12z" fill="#10b981"/>
+        <path d="M12 0C7.16 0 3.25 3.91 3.25 8.75c0 7.44 8.75 18.25 8.75 18.25S20.75 16.19 20.75 8.75C20.75 3.91 16.84 0 12 0zm0 12a3.25 3.25 0 1 1 0-6.5A3.25 3.25 0 0 1 12 12z" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="0.5"/>
+      </svg>`,
+      iconSize: [28, 36],
+      iconAnchor: [14, 36],
+      popupAnchor: [0, -38],
+    })
+  : null;
 
 interface MapSelectorProps {
   lat: string;
@@ -26,6 +31,7 @@ interface MapSelectorProps {
   onLatChange: (lat: string) => void;
   onLngChange: (lng: string) => void;
   onRadiusChange: (radius: string) => void;
+  onAddressChange?: (address: string) => void;
 }
 
 interface SearchResult {
@@ -50,10 +56,21 @@ function MapClickHandler({
 }
 
 // Component to recenter map when location changes
+// Skips setView on initial mount (MapContainer center prop handles that);
+// only pans on subsequent user-triggered changes so Leaflet panes are ready.
 function MapRecenter({ center }: { center: [number, number] }) {
   const map = useMap();
+  const isFirstRender = useRef(true);
   useEffect(() => {
-    map.setView(center, 16, { animate: true });
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    try {
+      map.setView(center, 16, { animate: true });
+    } catch {
+      // Map panes not ready yet — MapContainer center prop already set the position
+    }
   }, [center, map]);
   return null;
 }
@@ -65,10 +82,12 @@ export function MapSelector({
   onLatChange,
   onLngChange,
   onRadiusChange,
+  onAddressChange,
 }: MapSelectorProps) {
   const [mapReady, setMapReady] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [locationAddress, setLocationAddress] = useState("");
+  const [geocoding, setGeocoding] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -83,14 +102,9 @@ export function MapSelector({
     setMapReady(true);
   }, []);
 
-  // Reverse geocode to get address when location changes
-  useEffect(() => {
-    if (lat && lng) {
-      fetchAddress(parseFloat(lat), parseFloat(lng));
-    }
-  }, [lat, lng]);
-
-  const fetchAddress = async (latitude: number, longitude: number) => {
+  const fetchAddress = useCallback(async (latitude: number, longitude: number) => {
+    setGeocoding(true);
+    setLocationAddress("");
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`
@@ -98,11 +112,21 @@ export function MapSelector({
       const data = await response.json();
       if (data.display_name) {
         setLocationAddress(data.display_name);
+        onAddressChange?.(data.display_name);
       }
     } catch (error) {
       console.error("Error fetching address:", error);
+    } finally {
+      setGeocoding(false);
     }
-  };
+  }, [onAddressChange]);
+
+  // Reverse geocode to get address when location changes
+  useEffect(() => {
+    if (lat && lng) {
+      fetchAddress(parseFloat(lat), parseFloat(lng));
+    }
+  }, [lat, lng, fetchAddress]);
 
   const handleLocationSelect = (newLat: number, newLng: number) => {
     onLatChange(newLat.toFixed(6));
@@ -291,9 +315,9 @@ export function MapSelector({
             <MapRecenter center={[mapLat, mapLng]} />
             
             {/* Marker for selected location */}
-            {lat && lng && (
+            {lat && lng && mapPinIcon && (
               <>
-                <Marker position={[mapLat, mapLng]} />
+                <Marker position={[mapLat, mapLng]} icon={mapPinIcon} />
                 <Circle
                   center={[mapLat, mapLng]}
                   radius={mapRadius}
@@ -339,22 +363,28 @@ export function MapSelector({
       {lat && lng && (
         <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <div className="bg-emerald-100 dark:bg-emerald-900/50 p-2 rounded-full">
+            <div className="bg-emerald-100 dark:bg-emerald-900/50 p-2 rounded-full flex-shrink-0">
               <MapPin className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100 mb-1">
-                Selected Location
-              </p>
-              {locationAddress ? (
-                <p className="text-sm text-emerald-700 dark:text-emerald-300 leading-relaxed">
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+                  Pinned Location
+                </p>
+                {geocoding && (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-500" />
+                )}
+              </div>
+              {geocoding ? (
+                <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70 italic">Fetching address…</p>
+              ) : locationAddress ? (
+                <p className="text-sm text-emerald-700 dark:text-emerald-300 leading-relaxed break-words">
                   {locationAddress}
                 </p>
-              ) : (
-                <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70 font-mono">
-                  {parseFloat(lat).toFixed(6)}, {parseFloat(lng).toFixed(6)}
-                </p>
-              )}
+              ) : null}
+              <p className="text-xs text-emerald-600/60 dark:text-emerald-400/60 font-mono mt-1">
+                {parseFloat(lat).toFixed(6)}, {parseFloat(lng).toFixed(6)}
+              </p>
               <div className="mt-2 pt-2 border-t border-emerald-200 dark:border-emerald-800">
                 <p className="text-xs text-emerald-700 dark:text-emerald-400">
                   Employees must check in within{" "}

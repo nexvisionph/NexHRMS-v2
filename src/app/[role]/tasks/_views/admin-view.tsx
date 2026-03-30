@@ -208,7 +208,7 @@ export default function AdminTasksView() {
                                         <SelectTrigger className="mt-1"><SelectValue placeholder="None" /></SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="none">None</SelectItem>
-                                            {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                            {projects.filter((p) => p.id).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -265,7 +265,7 @@ export default function AdminTasksView() {
                                         <Select value={tGroupId} onValueChange={setTGroupId}>
                                             <SelectTrigger className="mt-1"><SelectValue placeholder="Select group" /></SelectTrigger>
                                             <SelectContent>
-                                                {groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                                                {groups.filter((g) => g.id).map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -336,7 +336,7 @@ export default function AdminTasksView() {
                                 <Select value={etGroupId} onValueChange={setEtGroupId}>
                                     <SelectTrigger className="mt-1"><SelectValue placeholder="Select group" /></SelectTrigger>
                                     <SelectContent>
-                                        {groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                                        {groups.filter((g) => g.id).map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -449,7 +449,7 @@ export default function AdminTasksView() {
                             <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Groups" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">All Groups</SelectItem>
-                                {groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                                {groups.filter((g) => g.id).map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
                         <Select value={priorityFilter} onValueChange={(v) => setPriorityFilter(v as TaskPriority | "all")}>

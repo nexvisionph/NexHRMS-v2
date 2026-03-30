@@ -258,7 +258,7 @@ export default function TimesheetsPage() {
                                 <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="All Employees" /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Employees</SelectItem>
-                                    {employees.filter((e) => e.status === "active").map((e) => (
+                                    {employees.filter((e) => e.status === "active" && e.id).map((e) => (
                                         <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                                     ))}
                                 </SelectContent>
@@ -433,7 +433,7 @@ export default function TimesheetsPage() {
                             <Select value={computeEmpId} onValueChange={handleComputeEmpChange}>
                                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select employee" /></SelectTrigger>
                                 <SelectContent>
-                                    {employees.filter((e) => e.status === "active").map((e) => {
+                                    {employees.filter((e) => e.status === "active" && e.id).map((e) => {
                                         const shift = getEmployeeShift(e.id);
                                         return (
                                             <SelectItem key={e.id} value={e.id}>
@@ -463,7 +463,7 @@ export default function TimesheetsPage() {
                             <Select value={computeRuleSetId} onValueChange={setComputeRuleSetId}>
                                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                    {ruleSets.map((rs) => (
+                                    {ruleSets.filter((rs) => rs.id).map((rs) => (
                                         <SelectItem key={rs.id} value={rs.id}>{rs.name}</SelectItem>
                                     ))}
                                 </SelectContent>

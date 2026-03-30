@@ -2,14 +2,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
-import type { Employee, EmployeeStatus, WorkType, SalaryChangeRequest, SalaryHistoryEntry } from "@/types";
+import type { Employee, EmployeeStatus, WorkType, SalaryChangeRequest, SalaryHistoryEntry, EmployeeDocument } from "@/types";
 import { SEED_EMPLOYEES } from "@/data/seed";
-
-interface EmployeeDocument {
-    id: string;
-    name: string;
-    uploadedAt: string;
-}
 
 interface EmployeesState {
     employees: Employee[];

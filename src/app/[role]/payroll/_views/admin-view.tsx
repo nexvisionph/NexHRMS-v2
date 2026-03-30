@@ -6,6 +6,7 @@ import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useRolesStore } from "@/store/roles.store";
 import { useLoansStore } from "@/store/loans.store";
+import { useLeaveStore } from "@/store/leave.store";
 import { useAttendanceStore } from "@/store/attendance.store";
 import { PH_HOLIDAY_MULTIPLIERS } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,11 +28,16 @@ import {
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, CheckCircle, Eye, Lock, Gift, Download, CalendarDays, RotateCcw, Send, CreditCard, FileText, Sparkles, Shield, PenTool } from "lucide-react";
+import { Plus, CheckCircle, Eye, Lock, Gift, Download, CalendarDays, RotateCcw, Send, CreditCard, FileText, Sparkles, Shield, PenTool, Search, Settings, Building2, Printer, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/format";
 import { computeAllPHDeductions } from "@/lib/ph-deductions";
 import { PayslipTable } from "@/components/payroll/payslip-table";
+import { CreateAdjustmentDialog } from "@/components/payroll/create-adjustment-dialog";
+import { ComputeFinalPayDialog } from "@/components/payroll/compute-final-pay-dialog";
+import { PayScheduleSettings } from "@/components/payroll/pay-schedule-settings";
+import { GovernmentReports } from "@/components/payroll/government-reports";
+import { PrintablePayslip } from "@/components/payroll/printable-payslip";
 import { format, endOfMonth, subMonths, getYear, getMonth } from "date-fns";
 import { dispatchNotification } from "@/lib/notifications";
 import { useAuditStore } from "@/store/audit.store";
@@ -48,15 +54,18 @@ interface AdminPayrollViewProps {
 }
 
 export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewProps) {
-    const { payslips, runs, adjustments, finalPayComputations, issuePayslip, confirmPayslip, publishPayslip, recordPayment, confirmPaidByFinance, lockRun, publishRun, markRunPaid, approveAdjustment, applyAdjustment, generate13thMonth, exportBankFile, createDraftRun, validateRun, resetToSeed, paySchedule } = usePayrollStore();
+    const { payslips, runs, adjustments, finalPayComputations, issuePayslip, confirmPayslip, publishPayslip, recordPayment, confirmPaidByFinance, lockRun, publishRun, markRunPaid, approveAdjustment, applyAdjustment, createAdjustment, computeFinalPay, generate13thMonth, exportBankFile, createDraftRun, validateRun, resetToSeed, paySchedule, updatePaySchedule } = usePayrollStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
     const { getActiveByEmployee, recordDeduction } = useLoansStore();
+    const { getEmployeeBalances } = useLeaveStore();
     const holidays = useAttendanceStore((s) => s.holidays);
     const attendanceLogs = useAttendanceStore((s) => s.logs);
     const { hasPermission } = useRolesStore();
 
     const canIssue = hasPermission(currentUser.role, "payroll:generate");
+    const canLock = hasPermission(currentUser.role, "payroll:lock");
+    const canReset = mode === "admin";
 
     const [open, setOpen] = useState(false);
     const [snapshotRunDate, setSnapshotRunDate] = useState<string | null>(null);
@@ -64,12 +73,26 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
     const [formAllowances, setFormAllowances] = useState("0");
     const [formOtherDeductions, setFormOtherDeductions] = useState("0");
+    const [formOTHours, setFormOTHours] = useState("0");
+    const [formNightDiffHours, setFormNightDiffHours] = useState("0");
     const [formNotes, setFormNotes] = useState("");
     const [formIssuedAt, setFormIssuedAt] = useState(format(new Date(), "yyyy-MM-dd"));
     const [selectedMonth, setSelectedMonth] = useState(format(new Date(), "yyyy-MM"));
     const [cutoff, setCutoff] = useState<"first" | "second">(() =>
         new Date().getDate() > paySchedule.semiMonthlyFirstCutoff ? "second" : "first"
     );
+
+    // ─── Search, filter, pagination ──────────────────────────────
+    const [searchTerm, setSearchTerm] = useState("");
+    const [statusFilter, setStatusFilter] = useState<string>("all");
+    const [page, setPage] = useState(1);
+    const pageSize = 15;
+
+    // ─── Dialog states ───────────────────────────────────────────
+    const [adjDialogOpen, setAdjDialogOpen] = useState(false);
+    const [fpDialogOpen, setFpDialogOpen] = useState(false);
+    const [printPayslipId, setPrintPayslipId] = useState<string | null>(null);
+    const [govPeriod, setGovPeriod] = useState(format(new Date(), "yyyy-MM"));
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
 
@@ -94,8 +117,40 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     }, [selectedMonth, cutoff, paySchedule]);
 
     const last6Months = useMemo(() => Array.from({ length: 6 }, (_, i) => format(subMonths(new Date(), i), "yyyy-MM")), []);
+    const last12Months = useMemo(() => Array.from({ length: 12 }, (_, i) => format(subMonths(new Date(), i), "yyyy-MM")), []);
     const activeEmployees = useMemo(() => employees.filter((e) => e.status === "active"), [employees]);
     const allSelected = selectedEmployeeIds.length === activeEmployees.length && activeEmployees.length > 0;
+
+    // ─── Filtered & paginated payslips ───────────────────────────
+    const filteredPayslips = useMemo(() => {
+        let filtered = payslips;
+        if (searchTerm) {
+            const q = searchTerm.toLowerCase();
+            filtered = filtered.filter((ps) =>
+                getEmpName(ps.employeeId).toLowerCase().includes(q) ||
+                ps.periodStart.includes(q) || ps.periodEnd.includes(q) || ps.id.toLowerCase().includes(q)
+            );
+        }
+        if (statusFilter !== "all") {
+            filtered = filtered.filter((ps) => ps.status === statusFilter);
+        }
+        return filtered.sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
+    }, [payslips, searchTerm, statusFilter]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredPayslips.length / pageSize));
+    const paginatedPayslips = useMemo(() => filteredPayslips.slice((page - 1) * pageSize, page * pageSize), [filteredPayslips, page]);
+
+    // ─── Leave & loan helpers for final pay ──────────────────────
+    const getLeaveBalance = (empId: string): number => {
+        const year = new Date().getFullYear();
+        const bals = getEmployeeBalances(empId, year);
+        return bals.reduce((sum, b) => sum + b.remaining, 0);
+    };
+
+    const getLoanBalance = (empId: string): number => {
+        const loans = getActiveByEmployee(empId);
+        return loans.reduce((sum, l) => sum + l.remainingBalance, 0);
+    };
     const toggleSelectAll = () => { if (allSelected) setSelectedEmployeeIds([]); else setSelectedEmployeeIds(activeEmployees.map((e) => e.id)); };
     const toggleEmployee = (empId: string) => { setSelectedEmployeeIds((prev) => prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]); };
 
@@ -132,6 +187,8 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
 
             const allowances = Number(formAllowances) || 0;
             const otherDed = Number(formOtherDeductions) || 0;
+            const otHours = Number(formOTHours) || 0;
+            const nightDiffHours = Number(formNightDiffHours) || 0;
             const sss = Math.round(phDeductions.sss * govMultiplier);
             const ph = Math.round(phDeductions.philHealth * govMultiplier);
             const pi = Math.round(phDeductions.pagIBIG * govMultiplier);
@@ -139,6 +196,9 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
             const totalGovDed = sss + ph + pi + tax;
 
             const dailyRate = Math.round(emp.salary / 22);
+            const hourlyRate = Math.round(dailyRate / 8);
+            const otPay = Math.round(otHours * hourlyRate * 1.25); // PH Labor Code: OT at 125%
+            const nightDiffPay = Math.round(nightDiffHours * hourlyRate * 0.10); // PH: +10% for 10PM-6AM
             const periodHolidays = holidays.filter((h) => h.date >= cutoffDates.start && h.date <= cutoffDates.end);
             let holidayPaySupp = 0;
             periodHolidays.forEach((hol) => {
@@ -148,15 +208,16 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                 else { if (worked) holidayPaySupp += Math.round(dailyRate * (PH_HOLIDAY_MULTIPLIERS.special_holiday.worked - 1)); else holidayPaySupp -= dailyRate; }
             });
 
-            const netPay = grossPay + allowances + holidayPaySupp - totalGovDed - otherDed - empLoanDeduction;
+            const netPay = grossPay + allowances + holidayPaySupp + otPay + nightDiffPay - totalGovDed - otherDed - empLoanDeduction;
             if (netPay <= 0) { toast.error(`Skipped ${emp.name}: Net pay would be ≤ 0`); return; }
 
             issuePayslip({
-                employeeId: empId, periodStart: cutoffDates.start, periodEnd: cutoffDates.end, payFrequency: freq, grossPay, allowances,
+                employeeId: empId, periodStart: cutoffDates.start, periodEnd: cutoffDates.end, payFrequency: freq, grossPay,
+                allowances: allowances + otPay + nightDiffPay,
                 sssDeduction: sss, philhealthDeduction: ph, pagibigDeduction: pi, taxDeduction: tax,
                 otherDeductions: otherDed, loanDeduction: empLoanDeduction,
                 holidayPay: holidayPaySupp !== 0 ? holidayPaySupp : undefined, netPay,
-                notes: formNotes || undefined, issuedAt: formIssuedAt,
+                notes: formNotes || [otHours > 0 ? `OT: ${otHours}hrs (\u20B1${otPay})` : "", nightDiffHours > 0 ? `ND: ${nightDiffHours}hrs (\u20B1${nightDiffPay})` : ""].filter(Boolean).join(", ") || undefined, issuedAt: formIssuedAt,
             });
 
             const actualPayslipId = usePayrollStore.getState().payslips.filter((p) => p.employeeId === empId).sort((a, b) => b.id.localeCompare(a.id))[0]?.id ?? `PS-fallback-${Date.now()}`;
@@ -166,7 +227,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
 
         const loanMsg = totalLoanDeductions > 0 ? ` (incl. ${formatCurrency(totalLoanDeductions)} total loan deductions)` : "";
         toast.success(`Issued ${successCount} payslip${successCount > 1 ? "s" : ""}${loanMsg}`);
-        setOpen(false); setSelectedEmployeeIds([]); setFormAllowances("0"); setFormOtherDeductions("0"); setFormNotes(""); setFormIssuedAt(format(new Date(), "yyyy-MM-dd"));
+        setOpen(false); setSelectedEmployeeIds([]); setFormAllowances("0"); setFormOtherDeductions("0"); setFormOTHours("0"); setFormNightDiffHours("0"); setFormNotes(""); setFormIssuedAt(format(new Date(), "yyyy-MM-dd"));
     };
 
     const handle13thMonth = () => {
@@ -201,6 +262,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                     <p className="text-sm text-muted-foreground mt-0.5">{payslips.length} payslips</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                    {canReset && (
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
                             <Button variant="outline" size="sm" className="gap-1.5 text-muted-foreground"><RotateCcw className="h-4 w-4" /> <span className="hidden sm:inline">Reset</span></Button>
@@ -214,6 +276,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                             </AlertDialogFooter>
                         </AlertDialogContent>
                     </AlertDialog>
+                    )}
                     {canIssue && (<>
                         <Button variant="outline" size="sm" className="gap-1.5" onClick={handle13thMonth}>
                             <Gift className="h-4 w-4" /> <span className="hidden sm:inline">13th Month</span>
@@ -294,6 +357,14 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                             <div><label className="text-xs text-muted-foreground">Other Deductions (−)</label><Input type="number" min={0} value={formOtherDeductions} onChange={(e) => setFormOtherDeductions(e.target.value)} className="mt-1 h-9" placeholder="0" /></div>
                                         </div>
                                     </div>
+                                    {/* OT & Night Diff */}
+                                    <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                                        <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Overtime & Night Differential</p>
+                                        <div className="space-y-2">
+                                            <div><label className="text-xs text-muted-foreground">Overtime Hours (125% rate per PH Labor Code)</label><Input type="number" min={0} step="0.5" value={formOTHours} onChange={(e) => setFormOTHours(e.target.value)} className="mt-1 h-9" placeholder="0" /></div>
+                                            <div><label className="text-xs text-muted-foreground">Night Diff Hours (+10%, 10PM–6AM per Art. 86)</label><Input type="number" min={0} step="0.5" value={formNightDiffHours} onChange={(e) => setFormNightDiffHours(e.target.value)} className="mt-1 h-9" placeholder="0" /></div>
+                                        </div>
+                                    </div>
                                     {/* Notes */}
                                     <div><label className="text-xs text-muted-foreground">Notes (optional)</label><Input value={formNotes} onChange={(e) => setFormNotes(e.target.value)} placeholder="e.g. bonus included" className="mt-1" /></div>
                                     {selectedEmployeeIds.length > 0 && (
@@ -304,7 +375,8 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                     • Monthly gross from directory salary<br />
                                                     • PH Gov&apos;t deductions (SSS, PhilHealth, Pag-IBIG, Tax)<br />
                                                     • Active loan deductions<br />
-                                                    • Holiday pay premiums (DOLE: 200% reg / 130% special)
+                                                    • Holiday pay premiums (DOLE: 200% reg / 130% special)<br />
+                                                    • Overtime at 125% &amp; Night Diff at +10% (Art. 86-87)
                                                     {holidays.filter(h => h.date >= cutoffDates.start && h.date <= cutoffDates.end).length > 0 && (
                                                         <span className="block mt-1 font-semibold text-amber-700 dark:text-amber-400">
                                                             {holidays.filter(h => h.date >= cutoffDates.start && h.date <= cutoffDates.end).length} holiday(s) in this period
@@ -332,10 +404,31 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                     {canIssue && <TabsTrigger value="management" className="gap-1.5"><PenTool className="h-3.5 w-3.5" /> Management</TabsTrigger>}
                     {canIssue && <TabsTrigger value="adjustments">Adjustments</TabsTrigger>}
                     {canIssue && <TabsTrigger value="final-pay">Final Pay</TabsTrigger>}
+                    {canIssue && <TabsTrigger value="settings" className="gap-1.5"><Settings className="h-3.5 w-3.5" /> Pay Schedule</TabsTrigger>}
+                    {canIssue && <TabsTrigger value="gov-reports" className="gap-1.5"><Building2 className="h-3.5 w-3.5" /> Gov Reports</TabsTrigger>}
                 </TabsList>
 
                 {/* Payslips Tab */}
-                <TabsContent value="payslips" className="mt-4">
+                <TabsContent value="payslips" className="mt-4 space-y-3">
+                    {/* Search & Filter Bar */}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input placeholder="Search employee, period, or ID..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }} className="pl-9 h-9" />
+                        </div>
+                        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+                            <SelectTrigger className="w-[150px] h-9 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Statuses</SelectItem>
+                                <SelectItem value="issued">Issued</SelectItem>
+                                <SelectItem value="confirmed">Confirmed</SelectItem>
+                                <SelectItem value="published">Published</SelectItem>
+                                <SelectItem value="paid">Paid</SelectItem>
+                                <SelectItem value="acknowledged">Acknowledged</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground self-center whitespace-nowrap">{filteredPayslips.length} result{filteredPayslips.length !== 1 ? "s" : ""}</p>
+                    </div>
                     <Card className="border border-border/50">
                         <CardContent className="p-0">
                             <div className="overflow-x-auto">
@@ -343,12 +436,12 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                     <TableHeader><TableRow>
                                         <TableHead className="text-xs">Employee</TableHead><TableHead className="text-xs">Period</TableHead>
                                         <TableHead className="text-xs">Gross</TableHead><TableHead className="text-xs">Deductions</TableHead>
-                                        <TableHead className="text-xs">Net Pay</TableHead><TableHead className="text-xs">Status</TableHead><TableHead className="text-xs">Signed</TableHead><TableHead className="text-xs w-24"></TableHead>
+                                        <TableHead className="text-xs">Net Pay</TableHead><TableHead className="text-xs">Status</TableHead><TableHead className="text-xs">Signed</TableHead><TableHead className="text-xs w-28"></TableHead>
                                     </TableRow></TableHeader>
                                     <TableBody>
-                                        {payslips.length === 0 ? (
-                                            <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">No payslips</TableCell></TableRow>
-                                        ) : payslips.map((ps) => (
+                                        {paginatedPayslips.length === 0 ? (
+                                            <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">{searchTerm || statusFilter !== "all" ? "No matching payslips" : "No payslips"}</TableCell></TableRow>
+                                        ) : paginatedPayslips.map((ps) => (
                                             <TableRow key={ps.id}>
                                                 <TableCell className="text-sm font-medium">{getEmpName(ps.employeeId)}</TableCell>
                                                 <TableCell className="text-xs text-muted-foreground">{ps.periodStart} – {ps.periodEnd}</TableCell>
@@ -378,6 +471,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                 <TableCell>
                                                     <div className="flex items-center gap-1">
                                                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewSlip(ps.id)}><Eye className="h-3.5 w-3.5" /></Button>
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="Print" onClick={() => setPrintPayslipId(ps.id)}><Printer className="h-3.5 w-3.5" /></Button>
                                                         {canIssue && ps.status === "issued" && !isRunLocked(ps.issuedAt) && (
                                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => { confirmPayslip(ps.id); useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payroll_locked", performedBy: currentUser.id }); toast.success("Payslip confirmed"); }}><CheckCircle className="h-3.5 w-3.5" /></Button>
                                                         )}
@@ -406,6 +500,16 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                             </div>
                         </CardContent>
                     </Card>
+                    {/* Pagination */}
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-between">
+                            <p className="text-xs text-muted-foreground">Page {page} of {totalPages}</p>
+                            <div className="flex gap-1">
+                                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="h-8 text-xs">Previous</Button>
+                                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="h-8 text-xs">Next</Button>
+                            </div>
+                        </div>
+                    )}
                 </TabsContent>
 
                 {/* Runs Tab */}
@@ -449,7 +553,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="Export bank file" onClick={() => exportBankFile(run.date, employees.map((e) => ({ id: e.id, name: e.name, salary: e.salary })))}><Download className="h-3.5 w-3.5" /></Button>
                                                                 {!runObj && <Button variant="ghost" size="sm" className="h-7 text-[10px] text-amber-600" onClick={() => { createDraftRun(run.date, payslips.filter((p) => p.issuedAt === run.date).map((p) => p.id)); toast.success("Draft created"); }}>Draft</Button>}
                                                                 {runObj && runStatus === "draft" && <Button variant="ghost" size="sm" className="h-7 text-[10px] text-cyan-600" onClick={() => { validateRun(run.date); toast.success("Validated"); }}>Validate</Button>}
-                                                                {!locked && (
+                                                                {runObj && !locked && (
                                                                     <AlertDialog>
                                                                         <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="Lock"><Lock className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
                                                                         <AlertDialogContent>
@@ -498,7 +602,10 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                             <CardContent className="p-4 space-y-4">
                                 <div className="flex items-center justify-between">
                                     <p className="text-sm font-medium">Prior-Period Adjustments</p>
-                                    <Badge variant="secondary" className="text-[10px]">{adjustments.length} total</Badge>
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="secondary" className="text-[10px]">{adjustments.length} total</Badge>
+                                        <Button size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setAdjDialogOpen(true)}><Plus className="h-3.5 w-3.5" /> Create Adjustment</Button>
+                                    </div>
                                 </div>
                                 {adjustments.length === 0 ? (
                                     <p className="text-sm text-muted-foreground text-center py-6">No adjustments yet.</p>
@@ -550,7 +657,10 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                             <CardContent className="p-4 space-y-4">
                                 <div className="flex items-center justify-between">
                                     <p className="text-sm font-medium">Final Pay Computations</p>
-                                    <Badge variant="secondary" className="text-[10px]">{finalPayComputations?.length || 0} total</Badge>
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="secondary" className="text-[10px]">{finalPayComputations?.length || 0} total</Badge>
+                                        <Button size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setFpDialogOpen(true)}><Plus className="h-3.5 w-3.5" /> Compute Final Pay</Button>
+                                    </div>
                                 </div>
                                 {(!finalPayComputations || finalPayComputations.length === 0) ? (
                                     <p className="text-sm text-muted-foreground text-center py-6">No final pay computations yet.</p>
@@ -592,7 +702,73 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                         </Card>
                     </TabsContent>
                 )}
+
+                {/* Pay Schedule Settings Tab */}
+                {canIssue && (
+                    <TabsContent value="settings" className="mt-4">
+                        <PayScheduleSettings schedule={paySchedule} onUpdate={updatePaySchedule} />
+                    </TabsContent>
+                )}
+
+                {/* Government Reports Tab */}
+                {canIssue && (
+                    <TabsContent value="gov-reports" className="mt-4">
+                        <GovernmentReports
+                            payslips={payslips}
+                            getEmpName={getEmpName}
+                            selectedPeriod={govPeriod}
+                            onPeriodChange={setGovPeriod}
+                            availablePeriods={last12Months}
+                        />
+                    </TabsContent>
+                )}
             </Tabs>
+
+            {/* Create Adjustment Dialog */}
+            <CreateAdjustmentDialog
+                open={adjDialogOpen}
+                onOpenChange={setAdjDialogOpen}
+                employees={employees.map((e) => ({ id: e.id, name: e.name }))}
+                payslips={payslips}
+                currentUserId={currentUser.id}
+                onSubmit={(data) => {
+                    createAdjustment(data);
+                    useAuditStore.getState().log({ entityType: "payroll_adjustment", entityId: `ADJ-${Date.now()}`, action: "adjustment_created", performedBy: currentUser.id });
+                    toast.success("Adjustment created");
+                    setAdjDialogOpen(false);
+                }}
+            />
+
+            {/* Compute Final Pay Dialog */}
+            <ComputeFinalPayDialog
+                open={fpDialogOpen}
+                onOpenChange={setFpDialogOpen}
+                employees={employees}
+                getLeaveBalance={getLeaveBalance}
+                getLoanBalance={getLoanBalance}
+                existingIds={(finalPayComputations || []).map((fp) => fp.employeeId)}
+                onSubmit={(data) => {
+                    computeFinalPay(data);
+                    useAuditStore.getState().log({ entityType: "final_pay", entityId: data.employeeId, action: "final_pay_created", performedBy: currentUser.id });
+                    toast.success("Final pay computed");
+                    setFpDialogOpen(false);
+                }}
+            />
+
+            {/* Printable Payslip Dialog */}
+            {(() => {
+                const printPS = printPayslipId ? payslips.find((p) => p.id === printPayslipId) : null;
+                const printEmp = printPS ? employees.find((e) => e.id === printPS.employeeId) : null;
+                return printPS ? (
+                    <PrintablePayslip
+                        payslip={printPS}
+                        employeeName={printEmp?.name || printPS.employeeId}
+                        department={printEmp?.department || ""}
+                        open={!!printPayslipId}
+                        onClose={() => setPrintPayslipId(null)}
+                    />
+                ) : null;
+            })()}
 
             {/* Policy Snapshot Dialog */}
             {(() => {

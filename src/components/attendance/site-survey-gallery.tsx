@@ -43,7 +43,7 @@ export function SiteSurveyGallery() {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Employees</SelectItem>
-                            {employees.map((e) => (
+                            {employees.filter((e) => e.id).map((e) => (
                                 <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                             ))}
                         </SelectContent>

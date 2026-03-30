@@ -30,7 +30,7 @@ import {
 const DAY_LABELS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default function ShiftsPage() {
-    const { shiftTemplates, employeeShifts, createShift, assignShift, updateShift, deleteShift } = useAttendanceStore();
+    const { shiftTemplates, employeeShifts, createShift, assignShift, unassignShift, updateShift, deleteShift } = useAttendanceStore();
     const employees = useEmployeesStore((s) => s.employees);
     const updateEmployee = useEmployeesStore((s) => s.updateEmployee);
     const currentUser = useAuthStore((s) => s.currentUser);
@@ -129,10 +129,7 @@ export default function ShiftsPage() {
             updateEmployee(empId, { shiftId });
             toast.success(`Shift assigned to ${getEmpName(empId)}`);
         } else {
-            // Unassign shift
-            const current = { ...employeeShifts };
-            delete current[empId];
-            useAttendanceStore.setState({ employeeShifts: current });
+            unassignShift(empId);
             updateEmployee(empId, { shiftId: undefined });
             toast.success("Shift unassigned");
         }
@@ -305,7 +302,7 @@ export default function ShiftsPage() {
                                                             <SelectItem value="unassigned">
                                                                 <span className="text-muted-foreground italic">Unassigned</span>
                                                             </SelectItem>
-                                                            {shiftTemplates.map((s) => (
+                                                            {shiftTemplates.filter((s) => s.id).map((s) => (
                                                                 <SelectItem key={s.id} value={s.id}>
                                                                     <div className="flex items-center gap-2">
                                                                         <Badge variant="secondary" className="text-[9px] bg-purple-500/15 text-purple-700 dark:text-purple-400">
@@ -468,7 +465,7 @@ export default function ShiftsPage() {
                             <Select value={assignEmpId} onValueChange={setAssignEmpId}>
                                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select employee" /></SelectTrigger>
                                 <SelectContent>
-                                    {employees.filter((e) => e.status === "active").map((e) => (
+                                    {employees.filter((e) => e.status === "active" && e.id).map((e) => (
                                         <SelectItem key={e.id} value={e.id}>
                                             {e.name}
                                             {employeeShifts[e.id] && (
@@ -484,7 +481,7 @@ export default function ShiftsPage() {
                             <Select value={assignShiftId} onValueChange={setAssignShiftId}>
                                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select shift" /></SelectTrigger>
                                 <SelectContent>
-                                    {shiftTemplates.map((s) => (
+                                    {shiftTemplates.filter((s) => s.id).map((s) => (
                                         <SelectItem key={s.id} value={s.id}>
                                             {s.name} ({s.startTime} – {s.endTime})
                                         </SelectItem>

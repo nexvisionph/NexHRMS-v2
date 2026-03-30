@@ -127,7 +127,7 @@ export default function DashboardBuilderPage() {
                             <SelectValue placeholder="Select role" />
                         </SelectTrigger>
                         <SelectContent>
-                            {roles.map((r) => (
+                            {roles.filter((r) => r.id).map((r) => (
                                 <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                             ))}
                         </SelectContent>

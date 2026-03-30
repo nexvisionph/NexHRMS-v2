@@ -2,6 +2,8 @@
 
 import { useAuthStore } from "@/store/auth.store";
 import { useUIStore } from "@/store/ui.store";
+import { signOut } from "@/services/auth.service";
+import { stopWriteThrough } from "@/services/sync.service";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { DEMO_USERS } from "@/data/seed";
@@ -149,7 +151,8 @@ export function Topbar() {
                         )}
                     </Button>
 
-                    {/* Role Switcher — compact on mobile */}
+                    {/* Role Switcher — only in demo mode */}
+                    {process.env.NEXT_PUBLIC_DEMO_MODE === "true" && (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button variant="outline" size="sm" className="gap-1.5 text-xs">
@@ -182,6 +185,7 @@ export function Topbar() {
                             ))}
                         </DropdownMenuContent>
                     </DropdownMenu>
+                    )}
 
                     {/* User Avatar */}
                     <DropdownMenu>
@@ -205,7 +209,12 @@ export function Topbar() {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                                onClick={() => { logout(); router.push("/login"); }}
+                                onClick={async () => {
+                                    logout();
+                                    stopWriteThrough();
+                                    await signOut().catch(() => {});
+                                    window.location.href = "/login";
+                                }}
                                 className="text-red-600 focus:text-red-600 focus:bg-red-500/10 gap-2"
                             >
                                 <LogOut className="h-4 w-4" /> Log out

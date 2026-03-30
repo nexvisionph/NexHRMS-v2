@@ -18,16 +18,17 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
     Clock, LogIn, LogOut, Download, MapPin, CheckCircle, XCircle,
-    Navigation, ShieldCheck, Timer, Plus, ShieldAlert, Gauge, CalendarDays, RotateCcw,
+    Navigation, ShieldCheck, Timer, Plus, ShieldAlert, Gauge, CalendarDays, RotateCcw, QrCode,
 } from "lucide-react";
 import { toast } from "sonner";
 import { isWithinGeofence } from "@/lib/geofence";
-import { FaceRecognitionSimulator } from "@/components/attendance/face-recognition";
+import { RealFaceVerification } from "@/components/attendance/real-face-verification";
 import { SelfieCapture } from "@/components/attendance/selfie-capture";
 import { LocationTracker } from "@/components/attendance/location-tracker";
 import { BreakTimer } from "@/components/attendance/break-timer";
+import { EmployeeQRDisplay } from "@/components/attendance/employee-qr-display";
 
-type CheckInStep = "idle" | "locating" | "location_result" | "done" | "error" | "selfie";
+type CheckInStep = "idle" | "locating" | "location_result" | "done" | "error" | "selfie" | "qr_scan";
 
 /* ─── Live elapsed‑time display ────────────────────────────── */
 function ElapsedTimeDisplay({ checkInTime }: { checkInTime: string }) {
@@ -62,19 +63,81 @@ const isDesktopDevToolsOpen = (): boolean => {
     );
 };
 
+/**
+ * Enhanced anti-spoofing: detects mock locations on Android (Developer Options),
+ * iOS location spoofing, automation sessions, and GPS anomalies.
+ */
 const detectLocationSpoofing = (coords: GeolocationCoordinates): string | null => {
     const ua = navigator.userAgent;
     const isAndroid = /Android/i.test(ua);
     const isIOS = /iPhone|iPad|iPod/i.test(ua);
     const nav = navigator as unknown as { webdriver?: boolean };
+
+    // 1. WebDriver / automation detection (Chrome DevTools Protocol, Selenium, Appium)
     if (nav.webdriver === true) return "Automation or USB debugging session detected.";
+
+    // 2. Suspiciously precise GPS (mock providers typically return <1m accuracy)
     if (coords.accuracy > 0 && coords.accuracy < 1) return "Suspiciously precise GPS accuracy detected (possible mock provider).";
+
+    // 3. GPS too inaccurate to be useful
     if (coords.accuracy > 500) return "GPS accuracy is too poor to verify your location reliably.";
+
+    // 4. Negative speed = impossible, indicates tampered data
     if (coords.speed !== null && coords.speed < 0) return "Invalid speed value in location data.";
+
+    // 5. iOS-specific: real GPS always provides altitude; mock tools often don't
     if (isIOS && coords.altitude === null) return "Mock location suspected — iOS altitude data is missing.";
+
+    // 6. Android-specific: real GPS reports altitude accuracy with altitude; mock without
     if (isAndroid && coords.altitude !== null && coords.altitudeAccuracy === null) return "Mock location suspected — Android altitude accuracy data is missing.";
+
+    // 7. Android: rounded coordinates suggest mock provider (whole degrees/minutes)
+    if (isAndroid) {
+        const latStr = coords.latitude.toString();
+        const lngStr = coords.longitude.toString();
+        const latDecimals = latStr.includes(".") ? latStr.split(".")[1].length : 0;
+        const lngDecimals = lngStr.includes(".") ? lngStr.split(".")[1].length : 0;
+        if (latDecimals <= 2 && lngDecimals <= 2) return "Mock location suspected — coordinates have unusually low precision.";
+    }
+
+    // 8. Timestamp sanity: if the GPS timestamp is wildly off from device time, it's suspicious
+    if (coords.speed === null && coords.heading !== null && coords.heading !== 0) {
+        return "Inconsistent location data — heading without speed detected.";
+    }
+
     return null;
 };
+
+/**
+ * Velocity check: detect teleportation between consecutive location readings.
+ * If position changed >300 km/h since last known position, it's spoofed.
+ */
+const LAST_LOCATION_KEY = "nexhrms-last-checkin-loc";
+
+function checkLocationVelocity(lat: number, lng: number): string | null {
+    try {
+        const stored = sessionStorage.getItem(LAST_LOCATION_KEY);
+        if (!stored) return null;
+        const prev = JSON.parse(stored) as { lat: number; lng: number; ts: number };
+        const elapsed = (Date.now() - prev.ts) / 1000; // seconds
+        if (elapsed < 5) return null; // too fast to compare
+
+        // Haversine distance
+        const R = 6371000;
+        const dLat = (lat - prev.lat) * Math.PI / 180;
+        const dLng = (lng - prev.lng) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(prev.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+        const dist = 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const speedKmh = (dist / elapsed) * 3.6;
+
+        if (speedKmh > 300) return `Location teleportation detected — ${Math.round(speedKmh)} km/h is impossible.`;
+    } catch { /* ignore parse errors */ }
+    return null;
+}
+
+function saveLocationForVelocity(lat: number, lng: number) {
+    sessionStorage.setItem(LAST_LOCATION_KEY, JSON.stringify({ lat, lng, ts: Date.now() }));
+}
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -103,11 +166,40 @@ export default function EmployeeView() {
     const penaltySettings = useKioskStore((s) => s.settings);
 
     const myEmployeeId = employees.find(
-        (e) => e.email === currentUser.email || e.name === currentUser.name
+        (e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name
     )?.id;
     const todayLog = myEmployeeId ? getTodayLog(myEmployeeId) : undefined;
     const myProject = myEmployeeId ? getProjectForEmployee(myEmployeeId) : undefined;
     const myOTRequests = overtimeRequests.filter((r) => r.employeeId === myEmployeeId);
+
+    // ─── Project address (reverse geocode lat/lng for display) ────
+    const [projectAddress, setProjectAddress] = useState<string | null>(null);
+    useEffect(() => {
+        if (!myProject) return;
+        // Use stored address first
+        if (myProject.location.address) { setProjectAddress(myProject.location.address); return; }
+        // Otherwise reverse-geocode via Nominatim (free, no key needed)
+        const { lat, lng } = myProject.location;
+        const ctrl = new AbortController();
+        fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`,
+            { signal: ctrl.signal, headers: { "Accept-Language": "en" } }
+        )
+            .then((r) => r.json())
+            .then((d) => {
+                if (ctrl.signal.aborted) return;
+                const a = d.address ?? {};
+                // Build a human-readable short address
+                const parts = [
+                    a.road || a.pedestrian || a.footway,
+                    a.suburb || a.neighbourhood || a.quarter,
+                    a.city || a.town || a.municipality || a.county,
+                ].filter(Boolean);
+                setProjectAddress(parts.length ? parts.join(", ") : d.display_name?.split(",").slice(0, 3).join(",").trim() ?? null);
+            })
+            .catch(() => { /* network error — keep showing radius */ });
+        return () => ctrl.abort();
+    }, [myProject]);
 
     // ─── Check-in state ───────────────────────────────────────────
     const [checkInOpen, setCheckInOpen] = useState(false);
@@ -221,6 +313,17 @@ export default function EmployeeView() {
                     }
                     setSpoofReason(spoof); setStep("error"); return;
                 }
+                // Velocity check — detect teleportation between consecutive readings
+                const velocitySpoof = checkLocationVelocity(pos.coords.latitude, pos.coords.longitude);
+                if (velocitySpoof) {
+                    if (penaltySettings.devOptionsPenaltyEnabled && myEmployeeId &&
+                        (penaltySettings.devOptionsPenaltyApplyTo === "spoofing" || penaltySettings.devOptionsPenaltyApplyTo === "both")) {
+                        const until = new Date(Date.now() + penaltySettings.devOptionsPenaltyMinutes * 60000).toISOString();
+                        applyPenalty({ employeeId: myEmployeeId, reason: velocitySpoof, triggeredAt: new Date().toISOString(), penaltyUntil: until });
+                    }
+                    setSpoofReason(velocitySpoof); setStep("error"); return;
+                }
+                saveLocationForVelocity(pos.coords.latitude, pos.coords.longitude);
                 const gpsAccuracy = Math.round(pos.coords.accuracy);
                 const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                 setUserLocation(loc);
@@ -265,6 +368,14 @@ export default function EmployeeView() {
         }
         setStep("done"); toast.success("Check-in successful!");
     }, [myEmployeeId, myProject, userLocation, selfieDataUrl, geoResult, checkIn, addPhoto]);
+
+    // QR scan completion — the employee shows their QR to the kiosk camera,
+    // then confirms here to record the attendance log.
+    const handleQrCheckedIn = useCallback(() => {
+        if (!myEmployeeId) return;
+        checkIn(myEmployeeId, myProject?.id);
+        setStep("done"); toast.success("QR check-in confirmed!");
+    }, [myEmployeeId, myProject, checkIn]);
 
     // ─── Computed ─────────────────────────────────────────────────
     const greeting = useMemo(() => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; }, []);
@@ -415,7 +526,9 @@ export default function EmployeeView() {
                                     Assigned to <span className="text-blue-600 dark:text-blue-400">{myProject.name}</span>
                                 </p>
                                 <p className="text-xs text-muted-foreground truncate">
-                                    {myProject.location.lat.toFixed(4)}, {myProject.location.lng.toFixed(4)} · {myProject.location.radius}m
+                                    {projectAddress
+                                        ? `${projectAddress} · ${myProject.location.radius}m geofence`
+                                        : `${myProject.location.lat.toFixed(4)}, ${myProject.location.lng.toFixed(4)} · ${myProject.location.radius}m`}
                                 </p>
                             </div>
                             {todayLog?.checkIn && !todayLog?.checkOut && locationConfig.enabled && (
@@ -665,13 +778,28 @@ export default function EmployeeView() {
                                     </CardContent>
                                 </Card>
                             )}
-                            {(!locationConfig.requireSelfie || selfieDataUrl) && (
+                            {(!locationConfig.requireSelfie || selfieDataUrl) && myProject?.verificationMethod === "qr_only" && (
+                                <div className="pt-1">
+                                    <p className="text-xs text-muted-foreground text-center mb-3">{locationConfig.requireSelfie ? "Step 3" : "Step 2"}: Scan QR at Kiosk</p>
+                                    <Button onClick={() => setStep("qr_scan")} className="w-full gap-1.5">
+                                        <QrCode className="h-4 w-4" /> Show My QR Code
+                                    </Button>
+                                </div>
+                            )}
+                            {(!locationConfig.requireSelfie || selfieDataUrl) && myProject?.verificationMethod !== "qr_only" && (
                                 <div className="pt-1">
                                     <p className="text-xs text-muted-foreground text-center mb-3">{locationConfig.requireSelfie ? "Step 3" : "Step 2"}: Verify your identity</p>
-                                    <FaceRecognitionSimulator onVerified={handleFaceVerified} autoStart />
+                                    <RealFaceVerification onVerified={handleFaceVerified} autoStart employeeId={myEmployeeId} employeeName={currentUser.name} required={myProject?.verificationMethod === "face_only" || myProject?.verificationMethod === "face_or_qr"} />
                                 </div>
                             )}
                         </>)}
+                        {step === "qr_scan" && myEmployeeId && (
+                            <EmployeeQRDisplay
+                                employeeId={myEmployeeId}
+                                employeeName={currentUser.name}
+                                onCheckedIn={handleQrCheckedIn}
+                            />
+                        )}
                         {step === "error" && spoofReason && (
                             <Card className="border border-orange-500/30 bg-orange-500/5">
                                 <CardContent className="p-6 flex flex-col items-center gap-3">

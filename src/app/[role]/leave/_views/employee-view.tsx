@@ -63,7 +63,7 @@ export default function EmployeeLeaveView() {
     const [formEnd, setFormEnd] = useState("");
     const [formReason, setFormReason] = useState("");
 
-    const myEmpId = employees.find((e) => e.email === currentUser.email || e.name === currentUser.name)?.id;
+    const myEmpId = employees.find((e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name)?.id;
 
     // Personal leave balances
     const balances = useMemo(() => {

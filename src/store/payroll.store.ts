@@ -146,11 +146,12 @@ export const usePayrollStore = create<PayrollState>()(
                 set((s) => {
                     const existing = s.runs.find((r) => r.periodLabel === runDate);
                     if (existing) return {}; // already exists
+                    const runId = `RUN-${runDate}`;
                     return {
                         runs: [
                             ...s.runs,
                             {
-                                id: `RUN-${runDate}`,
+                                id: runId,
                                 periodLabel: runDate,
                                 createdAt: new Date().toISOString(),
                                 status: "draft" as const,
@@ -159,6 +160,11 @@ export const usePayrollStore = create<PayrollState>()(
                                 runType,
                             },
                         ],
+                        payslips: s.payslips.map((p) =>
+                            payslipIds.includes(p.id)
+                                ? { ...p, payrollBatchId: runId }
+                                : p
+                        ),
                     };
                 }),
 
@@ -177,10 +183,13 @@ export const usePayrollStore = create<PayrollState>()(
 
             lockRun: (runDate, lockedBy = "system") =>
                 set((s) => {
-                    const runPayslips = s.payslips.filter((p) => p.issuedAt === runDate);
                     const existingRun = s.runs.find((r) => r.periodLabel === runDate);
                     // If already locked, do nothing (immutable)
                     if (existingRun?.locked) return {};
+                    // Collect payslipIds from existing run or from payslips matching the date
+                    const runPayslipIds = existingRun?.payslipIds?.length
+                        ? existingRun.payslipIds
+                        : s.payslips.filter((p) => p.issuedAt === runDate).map((p) => p.id);
                     const snapshot = {
                         taxTableVersion: POLICY_VERSIONS.taxTable,
                         sssVersion: POLICY_VERSIONS.sss,
@@ -212,7 +221,7 @@ export const usePayrollStore = create<PayrollState>()(
                                 status: "locked" as const,
                                 locked: true,
                                 lockedAt: new Date().toISOString(),
-                                payslipIds: runPayslips.map((p) => p.id),
+                                payslipIds: runPayslipIds,
                                 policySnapshot: snapshot,
                                 runType: "regular",
                             },
@@ -224,6 +233,7 @@ export const usePayrollStore = create<PayrollState>()(
                 set((s) => {
                     const run = s.runs.find((r) => r.periodLabel === runDate);
                     if (!run || !run.locked || run.status === "published" || run.status === "paid") return {};
+                    const runPayslipIds = run.payslipIds ?? [];
                     return {
                         runs: s.runs.map((r) =>
                             r.periodLabel === runDate
@@ -232,7 +242,7 @@ export const usePayrollStore = create<PayrollState>()(
                         ),
                         // Auto-publish all confirmed payslips in this run
                         payslips: s.payslips.map((p) =>
-                            p.issuedAt === runDate && p.status === "confirmed"
+                            runPayslipIds.includes(p.id) && p.status === "confirmed"
                                 ? { ...p, status: "published" as const, publishedAt: new Date().toISOString() }
                                 : p
                         ),
@@ -407,7 +417,9 @@ export const usePayrollStore = create<PayrollState>()(
 
             exportBankFile: (runDate, employees) => {
                 const state = get();
-                const runPayslips = state.payslips.filter((p) => p.issuedAt === runDate);
+                const run = state.runs.find((r) => r.periodLabel === runDate);
+                const runPayslipIds = run?.payslipIds ?? [];
+                const runPayslips = state.payslips.filter((p) => runPayslipIds.includes(p.id));
                 if (runPayslips.length === 0) return;
                 const header = "Account Number,Employee Name,Net Pay,Payment Date,Reference ID";
                 const rows = runPayslips.map((ps) => {

@@ -5,6 +5,8 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth.store";
+import { signOut } from "@/services/auth.service";
+import { stopWriteThrough } from "@/services/sync.service";
 import { useUIStore } from "@/store/ui.store";
 import { useRolesStore } from "@/store/roles.store";
 import { usePageBuilderStore } from "@/store/page-builder.store";
@@ -36,6 +38,9 @@ import {
     Puzzle,
     ListTodo,
     MessageSquare,
+    QrCode,
+    ScanFace,
+    UserCircle,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEffect, useMemo } from "react";
@@ -62,6 +67,9 @@ const iconMap: Record<string, React.ElementType> = {
     Puzzle,
     ListTodo,
     MessageSquare,
+    QrCode,
+    ScanFace,
+    UserCircle,
 };
 
 export function Sidebar() {
@@ -157,7 +165,7 @@ export function Sidebar() {
                         />
                     ) : (
                         <Image
-                            src="/logo.svg"
+                            src="/logo.png"
                             alt={companyName}
                             width={showLabel ? 140 : 36}
                             height={36}
@@ -262,8 +270,10 @@ export function Sidebar() {
                 <Tooltip delayDuration={0}>
                     <TooltipTrigger asChild>
                         <button
-                            onClick={() => {
+                            onClick={async () => {
                                 useAuthStore.getState().logout();
+                                stopWriteThrough();
+                                await signOut().catch(() => {});
                                 window.location.href = "/login";
                             }}
                             className={cn(

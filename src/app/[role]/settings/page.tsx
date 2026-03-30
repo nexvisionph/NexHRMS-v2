@@ -8,10 +8,10 @@ import EmployeeSettingsView from "./_views/employee-view";
 const views = {
     admin: AdminSettingsView,
     hr: HrSettingsView,
-    finance: EmployeeSettingsView,
+    finance: HrSettingsView,
     employee: EmployeeSettingsView,
     supervisor: EmployeeSettingsView,
-    payroll_admin: EmployeeSettingsView,
+    payroll_admin: HrSettingsView,
     auditor: EmployeeSettingsView,
 };
 

@@ -11,6 +11,7 @@ interface TimesheetState {
     // ─── Rule Sets ────────────────────────────────────
     addRuleSet: (data: Omit<AttendanceRuleSet, "id">) => void;
     updateRuleSet: (id: string, data: Partial<AttendanceRuleSet>) => void;
+    deleteRuleSet: (id: string) => void;
     getRuleSet: (id: string) => AttendanceRuleSet | undefined;
 
     // ─── Timesheet computation ────────────────────────
@@ -94,6 +95,11 @@ export const useTimesheetStore = create<TimesheetState>()(
             updateRuleSet: (id, data) =>
                 set((s) => ({
                     ruleSets: s.ruleSets.map((r) => (r.id === id ? { ...r, ...data } : r)),
+                })),
+
+            deleteRuleSet: (id) =>
+                set((s) => ({
+                    ruleSets: s.ruleSets.filter((r) => r.id !== id),
                 })),
 
             getRuleSet: (id) => get().ruleSets.find((r) => r.id === id),

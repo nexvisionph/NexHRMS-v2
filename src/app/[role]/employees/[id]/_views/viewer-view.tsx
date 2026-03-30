@@ -129,6 +129,8 @@ export default function ViewerProfileView() {
                                 <InfoRow icon={<MapPin className="h-4 w-4" />} label="Location" value={employee.location} />
                                 <InfoRow icon={<Calendar className="h-4 w-4" />} label="Birthday" value={employee.birthday ? formatDate(employee.birthday) : "—"} />
                                 <InfoRow icon={<Phone className="h-4 w-4" />} label="Phone" value={employee.phone || "—"} />
+                                <InfoRow icon={<Phone className="h-4 w-4" />} label="Emergency Contact" value={employee.emergencyContact || "—"} />
+                                <InfoRow icon={<MapPin className="h-4 w-4" />} label="Address" value={employee.address || "—"} />
                             </CardContent>
                         </Card>
                         <Card className="border border-border/50">

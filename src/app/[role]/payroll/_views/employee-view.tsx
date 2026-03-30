@@ -13,9 +13,10 @@ import {
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { CheckCircle, Eye, PenTool, Sparkles } from "lucide-react";
+import { CheckCircle, Eye, PenTool, Sparkles, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { SignaturePad } from "@/components/ui/signature-pad";
+import { PrintablePayslip } from "@/components/payroll/printable-payslip";
 import { dispatchNotification } from "@/lib/notifications";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -29,9 +30,10 @@ export default function EmployeePayrollView() {
     const currentUser = useAuthStore((s) => s.currentUser);
 
     const [viewSlip, setViewSlip] = useState<string | null>(null);
+    const [printPayslipId, setPrintPayslipId] = useState<string | null>(null);
 
     const myEmployee = useMemo(
-        () => employees.find((e) => e.email === currentUser.email || e.name === currentUser.name),
+        () => employees.find((e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name),
         [employees, currentUser.email, currentUser.name],
     );
 
@@ -148,9 +150,14 @@ export default function EmployeePayrollView() {
                                             )}
                                         </TableCell>
                                         <TableCell>
-                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewSlip(ps.id)}>
-                                                <Eye className="h-3.5 w-3.5" />
-                                            </Button>
+                                            <div className="flex items-center gap-1">
+                                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewSlip(ps.id)}>
+                                                    <Eye className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="Print payslip" onClick={() => setPrintPayslipId(ps.id)}>
+                                                    <Printer className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -163,7 +170,16 @@ export default function EmployeePayrollView() {
             {/* Payslip Detail Dialog */}
             <Dialog open={!!viewSlip} onOpenChange={() => setViewSlip(null)}>
                 <DialogContent className="max-w-md">
-                    <DialogHeader><DialogTitle>Payslip Detail</DialogTitle></DialogHeader>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center justify-between">
+                            <span>Payslip Detail</span>
+                            {viewedPayslip && (
+                                <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => { setPrintPayslipId(viewedPayslip.id); setViewSlip(null); }}>
+                                    <Printer className="h-3.5 w-3.5" /> Print / Download
+                                </Button>
+                            )}
+                        </DialogTitle>
+                    </DialogHeader>
                     {viewedPayslip && (
                         <div className="space-y-4 pt-2">
                             <Card className="border border-border/50">
@@ -334,6 +350,20 @@ export default function EmployeePayrollView() {
                     )}
                 </DialogContent>
             </Dialog>
+
+            {/* Printable Payslip Dialog */}
+            {(() => {
+                const printPS = printPayslipId ? payslips.find((p) => p.id === printPayslipId) : null;
+                return printPS ? (
+                    <PrintablePayslip
+                        payslip={printPS}
+                        employeeName={myEmployee?.name || printPS.employeeId}
+                        department={myEmployee?.department || ""}
+                        open={!!printPayslipId}
+                        onClose={() => setPrintPayslipId(null)}
+                    />
+                ) : null;
+            })()}
         </div>
     );
 }

@@ -66,7 +66,7 @@ export default function AuditPage() {
     }, [logs, actionFilter, entityFilter, performerFilter]);
 
     const uniqueActions = useMemo(() => {
-        const set = new Set(logs.map((l) => l.action));
+        const set = new Set(logs.map((l) => l.action).filter(Boolean));
         return Array.from(set).sort();
     }, [logs]);
 

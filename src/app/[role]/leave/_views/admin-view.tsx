@@ -184,15 +184,15 @@ export default function AdminLeaveView() {
                 </div>
                 <Dialog open={open} onOpenChange={setOpen}>
                     <DialogTrigger asChild>
-                        <Button className="gap-1.5"><Plus className="h-4 w-4" /> New Request</Button>
+                        <Button className="gap-1.5"><Plus className="h-4 w-4" /> Submit on Behalf</Button>
                     </DialogTrigger>
                     <DialogContent>
-                        <DialogHeader><DialogTitle>Submit Leave Request</DialogTitle></DialogHeader>
+                        <DialogHeader><DialogTitle>Submit Leave on Behalf of Employee</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
                             <Select value={formEmpId} onValueChange={setFormEmpId}>
                                 <SelectTrigger><SelectValue placeholder="Select Employee" /></SelectTrigger>
                                 <SelectContent>
-                                    {employees.filter((e) => e.status === "active").map((e) => (
+                                    {employees.filter((e) => e.status === "active" && e.id).map((e) => (
                                         <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                                     ))}
                                 </SelectContent>

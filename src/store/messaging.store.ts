@@ -8,7 +8,6 @@ import type {
     ChannelMessage,
     MessageChannel,
     MessageStatus,
-    AnnouncementScope,
 } from "@/types";
 import {
     SEED_ANNOUNCEMENTS,

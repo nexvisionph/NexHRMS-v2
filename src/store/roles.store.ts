@@ -165,7 +165,7 @@ const HR_PERMS: Permission[] = [
     "employees:view_salary",  // HR can view salaries and propose changes, but NOT directly approve
     "attendance:view_all", "attendance:edit", "attendance:approve_overtime",
     "leave:view_all", "leave:approve", "leave:manage_policies",
-    "reports:view",
+    "reports:view", "reports:government",
     "notifications:manage",
     "timesheets:view_all", "timesheets:approve",
     "settings:organization", "settings:shifts",
@@ -175,20 +175,22 @@ const HR_PERMS: Permission[] = [
 ];
 
 const FINANCE_PERMS: Permission[] = [
-    "page:dashboard", "page:payroll", "page:loans", "page:reports", "page:employees",
+    "page:dashboard", "page:payroll", "page:loans", "page:reports", "page:employees", "page:settings",
     "employees:view", "employees:view_salary", "employees:approve_salary",
     "payroll:view_all", "payroll:generate", "payroll:lock", "payroll:issue",
     "loans:view_all", "loans:approve",
     "reports:view", "reports:government",
+    "settings:organization",
 ];
 
 const PAYROLL_ADMIN_PERMS: Permission[] = [
-    "page:dashboard", "page:payroll", "page:loans", "page:reports", "page:timesheets",
+    "page:dashboard", "page:payroll", "page:loans", "page:reports", "page:timesheets", "page:settings",
     "employees:view", "employees:view_salary",
     "payroll:view_all", "payroll:generate", "payroll:lock", "payroll:issue",
     "loans:view_all",
     "reports:view", "reports:government",
     "timesheets:view_all",
+    "settings:organization",
 ];
 
 const SUPERVISOR_PERMS: Permission[] = [
@@ -202,17 +204,19 @@ const SUPERVISOR_PERMS: Permission[] = [
 ];
 
 const EMPLOYEE_PERMS: Permission[] = [
-    "page:dashboard", "page:attendance", "page:leave", "page:payroll",
+    "page:dashboard", "page:attendance", "page:leave", "page:payroll", "page:loans",
     "payroll:view_own",
+    "loans:view_own",
     "page:tasks", "tasks:view",
     "page:messages",
 ];
 
 const AUDITOR_PERMS: Permission[] = [
-    "page:dashboard", "page:audit", "page:reports", "page:employees",
+    "page:dashboard", "page:audit", "page:reports", "page:employees", "page:loans",
     "audit:view",
     "employees:view",
-    "reports:view",
+    "reports:view", "reports:government",
+    "loans:view_all",
 ];
 
 // ─── Default dashboard layouts per system role ───────────────
