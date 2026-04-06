@@ -26,6 +26,7 @@ export const DEMO_USERS: DemoUser[] = [
     { id: "U007", name: "Dana Cruz", role: "payroll_admin", email: "payroll@sdsi.com" },
     { id: "U008", name: "Rene Santos", role: "auditor", email: "auditor@sdsi.com" },
     { id: "U009", name: "Jamie Reyes", role: "employee", email: "qr@sdsi.com" },
+    { id: "U010", name: "Riley Santos", role: "employee", email: "qr2@sdsi.com" },
 ];
 
 // ─── Employees ───────────────────────────────────────────────
@@ -57,8 +58,10 @@ export const SEED_EMPLOYEES: Employee[] = [
     { id: "EMP025", name: "Aria Evans", email: "aria@company.com", role: "HR Specialist", department: "Human Resources", status: "active", workType: "HYBRID", salary: 74000, joinDate: "2023-08-01", productivity: 80, location: "Singapore", phone: "+65-555-0125", birthday: "1995-12-20" },
     // Sam Torres (Employee demo user mapped to an EMP record)
     { id: "EMP026", name: "Sam Torres", email: "employee@sdsi.com", role: "Frontend Developer", department: "Engineering", status: "active", workType: "WFO", salary: 88000, joinDate: "2024-01-10", productivity: 82, location: "Manila", phone: "+63-555-0126", birthday: "1995-04-20", teamLeader: "EMP010", profileId: "U004" },
-    // Jamie Reyes (QR demo user)
-    { id: "EMP027", name: "Jamie Reyes", email: "qr@sdsi.com", role: "Field Technician", department: "Engineering", status: "active", workType: "WFO", salary: 75000, joinDate: "2024-06-01", productivity: 85, location: "Manila", phone: "+63-555-0127", birthday: "1996-08-15", profileId: "U009", pin: "777777" },
+    // Jamie Reyes (QR demo user 1)
+    { id: "EMP027", name: "Jamie Reyes", email: "qr@sdsi.com", role: "Field Technician", department: "Operations", status: "active", workType: "ONSITE", salary: 45000, joinDate: "2025-03-15", productivity: 88, location: "Marikina, Metro Manila", phone: "+63-917-1234567", birthday: "1998-05-22", profileId: "U009", pin: "777777", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", whatsappNumber: "+63-917-1234567", preferredChannel: "in_app", address: "123 Shoe Ave, Marikina City, Metro Manila", emergencyContact: "Maria Reyes - +63-918-7654321" },
+    // Riley Santos (QR demo user 2)
+    { id: "EMP028", name: "Riley Santos", email: "qr2@sdsi.com", role: "Field Technician", department: "Operations", status: "active", workType: "ONSITE", salary: 42000, joinDate: "2025-06-01", productivity: 82, location: "Quezon City, Metro Manila", phone: "+63-918-9876543", birthday: "1999-11-08", profileId: "U010", pin: "888888", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", whatsappNumber: "+63-918-9876543", preferredChannel: "in_app", address: "456 Commonwealth Ave, Quezon City, Metro Manila", emergencyContact: "Carlos Santos - +63-919-1112222" },
 ];
 
 // ─── Seed Projects ───────────────────────────────────────────
@@ -97,10 +100,10 @@ export const SEED_PROJECTS: Project[] = [
     },
     {
         id: "PRJ005",
-        name: "QR Patrol Site",
-        description: "Field site using QR code attendance verification at the kiosk.",
-        location: { lat: 14.5547, lng: 121.0244, radius: 5000 },
-        assignedEmployeeIds: ["EMP027"],
+        name: "Office HQ – QR Check-in",
+        description: "Main office location using QR code attendance verification at the kiosk. Address: Kamagong Street, Industrial Valley, District I, Marikina, Metro Manila",
+        location: { lat: 14.6253, lng: 121.0615, radius: 500 },
+        assignedEmployeeIds: ["EMP027", "EMP028"],
         verificationMethod: "qr_only",
         createdAt: "2026-02-01T00:00:00Z",
     },

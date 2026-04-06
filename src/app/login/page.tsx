@@ -24,7 +24,8 @@ const DEMO_ACCOUNTS = [
     { role: "Supervisor", email: "supervisor@sdsi.com", color: "bg-orange-500/15 text-orange-700 dark:text-orange-400" },
     { role: "Payroll", email: "payroll@sdsi.com", color: "bg-teal-500/15 text-teal-700 dark:text-teal-400" },
     { role: "Auditor", email: "auditor@sdsi.com", color: "bg-slate-500/15 text-slate-700 dark:text-slate-400" },
-    { role: "QR Employee", email: "qr@sdsi.com", color: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400" },
+    { role: "QR Employee 1", email: "qr@sdsi.com", color: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400" },
+    { role: "QR Employee 2", email: "qr2@sdsi.com", color: "bg-pink-500/15 text-pink-700 dark:text-pink-400" },
 ];
 
 export default function LoginPage() {
