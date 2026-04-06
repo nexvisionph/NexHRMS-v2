@@ -17,9 +17,8 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Soren Data Solutions Inc. — Human Resource Management System",
   description: "Modern, high-performance SaaS HRMS application built with Next.js",
-  icons: {
-    icon: "/favicon.ico",
-    apple: "/apple-touch-icon.png",
+  appleWebApp: {
+    title: "SDSI HRMS",
   },
 };
 
