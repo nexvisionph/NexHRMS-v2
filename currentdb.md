@@ -176,6 +176,32 @@ CREATE TABLE public.dashboard_layouts (
   CONSTRAINT dashboard_layouts_pkey PRIMARY KEY (role_id),
   CONSTRAINT dashboard_layouts_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles_custom(id)
 );
+CREATE TABLE public.deduction_global_defaults (
+  id text NOT NULL DEFAULT ('DGD-'::text || (gen_random_uuid())::text),
+  deduction_type text NOT NULL UNIQUE CHECK (deduction_type = ANY (ARRAY['sss'::text, 'philhealth'::text, 'pagibig'::text, 'bir'::text])),
+  enabled boolean NOT NULL DEFAULT true,
+  mode text NOT NULL DEFAULT 'auto'::text CHECK (mode = ANY (ARRAY['auto'::text, 'exempt'::text, 'percentage'::text, 'fixed'::text])),
+  percentage numeric CHECK (percentage >= 0::numeric AND percentage <= 100::numeric),
+  fixed_amount numeric CHECK (fixed_amount >= 0::numeric),
+  notes text,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_by text,
+  CONSTRAINT deduction_global_defaults_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.deduction_overrides (
+  id text NOT NULL DEFAULT ('DO-'::text || (gen_random_uuid())::text),
+  employee_id text NOT NULL,
+  deduction_type text NOT NULL CHECK (deduction_type = ANY (ARRAY['sss'::text, 'philhealth'::text, 'pagibig'::text, 'bir'::text])),
+  mode text NOT NULL DEFAULT 'auto'::text CHECK (mode = ANY (ARRAY['auto'::text, 'exempt'::text, 'percentage'::text, 'fixed'::text])),
+  percentage numeric CHECK (percentage >= 0::numeric AND percentage <= 100::numeric),
+  fixed_amount numeric CHECK (fixed_amount >= 0::numeric),
+  notes text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_by text,
+  CONSTRAINT deduction_overrides_pkey PRIMARY KEY (id),
+  CONSTRAINT deduction_overrides_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id)
+);
 CREATE TABLE public.departments (
   id text NOT NULL,
   name text NOT NULL UNIQUE,
@@ -583,6 +609,15 @@ CREATE TABLE public.payroll_runs (
   policy_snapshot jsonb,
   run_type text DEFAULT 'regular'::text CHECK (run_type = ANY (ARRAY['regular'::text, 'adjustment'::text, '13th_month'::text, 'final_pay'::text])),
   CONSTRAINT payroll_runs_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.payroll_signature_config (
+  id text NOT NULL DEFAULT 'default'::text,
+  mode text NOT NULL DEFAULT 'auto'::text CHECK (mode = ANY (ARRAY['auto'::text, 'manual'::text])),
+  signatory_name text NOT NULL DEFAULT ''::text,
+  signatory_title text NOT NULL DEFAULT ''::text,
+  signature_data_url text,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT payroll_signature_config_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.payslips (
   id text NOT NULL,

@@ -25,6 +25,7 @@ import type {
   Timesheet, AttendanceRuleSet,
   NotificationLog, NotificationRule,
   LocationPing, SiteSurveyPhoto, BreakRecord,
+  DeductionOverride, DeductionGlobalDefault, PayrollSignatureConfig,
 } from "@/types";
 
 // Re-export for convenience
@@ -447,6 +448,194 @@ export const payrollDb = {
 
   async upsertPaySchedule(config: PayScheduleConfig & { id: string }): Promise<boolean> {
     return upsertRow("pay_schedule_config", config as unknown as Record<string, unknown>);
+  },
+
+  /** Delete all payslips that belong to the given IDs (used by reset). */
+  async deletePayslipsByIds(ids: string[]): Promise<boolean> {
+    if (ids.length === 0) return true;
+    const { error } = await supabase().from("payslips").delete().in("id", ids);
+    if (error) console.error("[db] delete payslips:", error.message);
+    return !error;
+  },
+
+  /** Delete payroll runs by IDs. */
+  async deleteRunsByIds(ids: string[]): Promise<boolean> {
+    if (ids.length === 0) return true;
+    const { error } = await supabase().from("payroll_runs").delete().in("id", ids);
+    if (error) console.error("[db] delete payroll_runs:", error.message);
+    return !error;
+  },
+
+  /** Delete payroll adjustments by IDs. */
+  async deleteAdjustmentsByIds(ids: string[]): Promise<boolean> {
+    if (ids.length === 0) return true;
+    const { error } = await supabase().from("payroll_adjustments").delete().in("id", ids);
+    if (error) console.error("[db] delete payroll_adjustments:", error.message);
+    return !error;
+  },
+
+  /**
+   * Delete all payroll data in the correct FK order.
+   * Works regardless of whether migration 039 (ON DELETE CASCADE) has been applied.
+   * Sequence:
+   *   1. loan_deductions by payslip_id          (NOT NULL FK)
+   *   2. payroll_run_payslips junction           (NOT NULL FK — both payslip + run sides)
+   *   3. payroll_adjustments                     (NOT NULL FKs to run + payslip)
+   *   4. final_pay_computations                  (nullable FK — safe after adjustments gone)
+   *   5. payslips
+   *   6. payroll_runs
+   */
+  async deleteAllPayrollData(
+    payslipIds: string[],
+    runIds: string[],
+    adjustmentIds: string[],
+    finalPayIds: string[],
+  ): Promise<void> {
+    if (payslipIds.length > 0) {
+      const { error } = await supabase()
+        .from("loan_deductions")
+        .delete()
+        .in("payslip_id", payslipIds);
+      if (error) console.error("[db] delete loan_deductions:", error.message);
+    }
+
+    // Clear the junction table for both sides (payslip IDs and run IDs)
+    const junctionFilter = [
+      payslipIds.length > 0
+        ? supabase().from("payroll_run_payslips").delete().in("payslip_id", payslipIds)
+        : null,
+      runIds.length > 0
+        ? supabase().from("payroll_run_payslips").delete().in("run_id", runIds)
+        : null,
+    ].filter(Boolean);
+    await Promise.all(junctionFilter.map((q) => q!.then(({ error }: { error: { message: string } | null }) => {
+      if (error) console.error("[db] delete payroll_run_payslips:", error.message);
+    })));
+
+    // Delete adjustments (covers NOT NULL FKs to both run and payslip)
+    if (adjustmentIds.length > 0) {
+      const { error } = await supabase()
+        .from("payroll_adjustments")
+        .delete()
+        .in("id", adjustmentIds);
+      if (error) console.error("[db] delete payroll_adjustments:", error.message);
+    }
+
+    // Delete final pay computations
+    if (finalPayIds.length > 0) {
+      const { error } = await supabase()
+        .from("final_pay_computations")
+        .delete()
+        .in("id", finalPayIds);
+      if (error) console.error("[db] delete final_pay_computations:", error.message);
+    }
+
+    // Now safe to delete payslips and runs
+    await Promise.all([
+      payslipIds.length > 0
+        ? supabase().from("payslips").delete().in("id", payslipIds)
+            .then(({ error }: { error: { message: string } | null }) => { if (error) console.error("[db] delete payslips:", error.message); })
+        : Promise.resolve(),
+      runIds.length > 0
+        ? supabase().from("payroll_runs").delete().in("id", runIds)
+            .then(({ error }: { error: { message: string } | null }) => { if (error) console.error("[db] delete payroll_runs:", error.message); })
+        : Promise.resolve(),
+    ]);
+  },
+
+  /** Delete final pay computations by IDs. */
+  async deleteFinalPayByIds(ids: string[]): Promise<boolean> {
+    if (ids.length === 0) return true;
+    const { error } = await supabase().from("final_pay_computations").delete().in("id", ids);
+    if (error) console.error("[db] delete final_pay_computations:", error.message);
+    return !error;
+  },
+
+  // ─── Deduction Overrides (per-employee) ─────────────────────
+  fetchDeductionOverrides: () => fetchAll<DeductionOverride>("deduction_overrides"),
+
+  async upsertDeductionOverride(override: DeductionOverride & { id?: string }): Promise<boolean> {
+    // Use the composite unique (employee_id, deduction_type) for upsert
+    const dbRow = keysToSnake(override as unknown as Record<string, unknown>);
+    const { error } = await supabase()
+      .from("deduction_overrides")
+      .upsert(dbRow, { onConflict: "employee_id,deduction_type" });
+    if (error) {
+      if (error.code === "23505") return true; // unique_violation
+      console.error("[db] upsert deduction_overrides:", error.message);
+    }
+    return !error;
+  },
+
+  async deleteDeductionOverride(employeeId: string, deductionType: string): Promise<boolean> {
+    const { error } = await supabase()
+      .from("deduction_overrides")
+      .delete()
+      .eq("employee_id", employeeId)
+      .eq("deduction_type", deductionType);
+    if (error) console.error("[db] delete deduction_overrides:", error.message);
+    return !error;
+  },
+
+  async clearEmployeeDeductionOverrides(employeeId: string): Promise<boolean> {
+    const { error } = await supabase()
+      .from("deduction_overrides")
+      .delete()
+      .eq("employee_id", employeeId);
+    if (error) console.error("[db] clear deduction_overrides:", error.message);
+    return !error;
+  },
+
+  // ─── Deduction Global Defaults ──────────────────────────────
+  async fetchGlobalDefaults(): Promise<DeductionGlobalDefault[]> {
+    return fetchAll<DeductionGlobalDefault>("deduction_global_defaults");
+  },
+
+  async upsertGlobalDefault(row: Record<string, unknown>): Promise<boolean> {
+    const dbRow = keysToSnake(row);
+    const { error } = await supabase()
+      .from("deduction_global_defaults")
+      .upsert(dbRow, { onConflict: "deduction_type" });
+    if (error) console.error("[db] upsert deduction_global_defaults:", error.message);
+    return !error;
+  },
+
+  // ─── Payroll Signature Config ────────────────────────────────
+  async fetchSignatureConfig(): Promise<PayrollSignatureConfig | null> {
+    const { data, error } = await supabase()
+      .from("payroll_signature_config")
+      .select("*")
+      .eq("id", "default")
+      .single();
+    if (error) {
+      if (error.code !== "PGRST116") console.error("[db] fetchSignatureConfig:", error.message);
+      return null;
+    }
+    const row = keysToCamel(data as Record<string, unknown>) as Record<string, unknown>;
+    return {
+      mode: row.mode as "auto" | "manual",
+      signatoryName: row.signatoryName as string,
+      signatoryTitle: row.signatoryTitle as string,
+      signatureDataUrl: row.signatureDataUrl as string | undefined,
+    };
+  },
+
+  async upsertSignatureConfig(config: PayrollSignatureConfig): Promise<boolean> {
+    const { error } = await supabase()
+      .from("payroll_signature_config")
+      .upsert(
+        {
+          id: "default",
+          mode: config.mode,
+          signatory_name: config.signatoryName,
+          signatory_title: config.signatoryTitle,
+          signature_data_url: config.signatureDataUrl ?? null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
+    if (error) console.error("[db] upsertSignatureConfig:", error.message);
+    return !error;
   },
 };
 

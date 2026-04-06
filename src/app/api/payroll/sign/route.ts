@@ -85,22 +85,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!["published", "paid"].includes(payslip.status)) {
+    if (!["issued", "confirmed", "published", "paid"].includes(payslip.status)) {
       return NextResponse.json(
-        { ok: false, message: `Cannot sign payslip in "${payslip.status}" status. Must be published or paid.` },
+        { ok: false, message: `Cannot sign payslip in "${payslip.status}" status.` },
         { status: 400 }
       );
     }
 
     // Update payslip with signature
     const now = new Date().toISOString();
-    const { error: updateErr } = await supabase
+    const { data: updatedPayslip, error: updateErr } = await supabase
       .from("payslips")
       .update({
         signed_at: now,
         signature_data_url: signatureDataUrl,
       })
-      .eq("id", payslipId);
+      .eq("id", payslipId)
+      .select()
+      .single();
 
     if (updateErr) {
       console.error("[api/payroll/sign] update error:", updateErr.message);
@@ -110,7 +112,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ ok: true, signedAt: now });
+    return NextResponse.json({ ok: true, signedAt: now, payslip: updatedPayslip });
   } catch (err) {
     console.error("[api/payroll/sign] error:", err);
     return NextResponse.json(

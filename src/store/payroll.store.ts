@@ -2,8 +2,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
-import type { Payslip, PayrollRun, PayrollAdjustment, PayScheduleConfig, FinalPayComputation } from "@/types";
-import { SEED_PAYSLIPS } from "@/data/seed";
+import type { Payslip, PayrollRun, PayrollAdjustment, PayScheduleConfig, FinalPayComputation, PayrollSignatureConfig, DeductionOverride, DeductionGlobalDefault, DeductionType } from "@/types";
 import { POLICY_VERSIONS } from "@/lib/constants";
 
 export const DEFAULT_PAY_SCHEDULE: PayScheduleConfig = {
@@ -17,13 +16,33 @@ export const DEFAULT_PAY_SCHEDULE: PayScheduleConfig = {
     deductGovFrom: "second",
 };
 
+export const DEFAULT_SIGNATURE_CONFIG: PayrollSignatureConfig = {
+    mode: "manual",
+    signatoryName: "",
+    signatoryTitle: "",
+    signatureDataUrl: undefined,
+};
+
 interface PayrollState {
     payslips: Payslip[];
     runs: PayrollRun[];
     adjustments: PayrollAdjustment[];
     finalPayComputations: FinalPayComputation[];
     paySchedule: PayScheduleConfig;
+    signatureConfig: PayrollSignatureConfig;
+    deductionOverrides: DeductionOverride[];
+    globalDefaults: DeductionGlobalDefault[];
     updatePaySchedule: (patch: Partial<PayScheduleConfig>) => void;
+    updateSignatureConfig: (patch: Partial<PayrollSignatureConfig>) => void;
+    // ─── Government Deduction Overrides (PH Standard) ─────────
+    setDeductionOverride: (override: DeductionOverride) => void;
+    removeDeductionOverride: (employeeId: string, deductionType: DeductionType) => void;
+    clearEmployeeOverrides: (employeeId: string) => void;
+    getDeductionOverride: (employeeId: string, deductionType: DeductionType) => DeductionOverride | undefined;
+    getEmployeeOverrides: (employeeId: string) => DeductionOverride[];
+    // ─── Global Defaults ──────────────────────────────
+    updateGlobalDefault: (config: DeductionGlobalDefault) => void;
+    getGlobalDefault: (deductionType: DeductionType) => DeductionGlobalDefault | undefined;
     // ─── Payslip lifecycle ────────────────────────────
     issuePayslip: (payslip: Omit<Payslip, "id" | "status" | "issuedAt"> & { issuedAt?: string }) => void;
     confirmPayslip: (id: string) => void;
@@ -32,6 +51,8 @@ interface PayrollState {
     signPayslip: (id: string, signatureDataUrl: string) => void;
     acknowledgePayslip: (id: string, employeeId: string) => void;
     confirmPaidByFinance: (id: string, confirmedBy: string, method: string, reference: string) => void;
+    /** Update a payslip with data from server (avoids timestamp mismatch with write-through) */
+    updatePayslipFromServer: (payslip: Partial<Payslip> & { id: string }) => void;
     getPayslipsByStatus: (status: Payslip["status"]) => Payslip[];
     getSignedPayslips: () => Payslip[];
     getUnsignedPublished: () => Payslip[];
@@ -55,19 +76,73 @@ interface PayrollState {
     getPending: () => Payslip[];
     exportBankFile: (runDate: string, employees: { id: string; name: string; salary: number }[]) => void;
     resetToSeed: () => void;
+    clearAllPayroll: () => void;
 }
 
 export const usePayrollStore = create<PayrollState>()(
     persist(
         (set, get) => ({
-            payslips: SEED_PAYSLIPS,
+            payslips: [],
             runs: [],
             adjustments: [],
             finalPayComputations: [],
             paySchedule: DEFAULT_PAY_SCHEDULE,
+            signatureConfig: DEFAULT_SIGNATURE_CONFIG,
+            deductionOverrides: [],
+            globalDefaults: [
+                { deductionType: "sss", enabled: true, mode: "auto" },
+                { deductionType: "philhealth", enabled: true, mode: "auto" },
+                { deductionType: "pagibig", enabled: true, mode: "auto" },
+                { deductionType: "bir", enabled: true, mode: "auto" },
+            ],
 
             updatePaySchedule: (patch) =>
                 set((s) => ({ paySchedule: { ...s.paySchedule, ...patch } })),
+
+            updateSignatureConfig: (patch) =>
+                set((s) => ({ signatureConfig: { ...s.signatureConfig, ...patch } })),
+
+            // ─── Government Deduction Overrides (PH Standard) ─────────
+            setDeductionOverride: (override) =>
+                set((s) => ({
+                    deductionOverrides: [
+                        ...s.deductionOverrides.filter(
+                            (d) => !(d.employeeId === override.employeeId && d.deductionType === override.deductionType)
+                        ),
+                        override,
+                    ],
+                })),
+
+            removeDeductionOverride: (employeeId, deductionType) =>
+                set((s) => ({
+                    deductionOverrides: s.deductionOverrides.filter(
+                        (d) => !(d.employeeId === employeeId && d.deductionType === deductionType)
+                    ),
+                })),
+
+            clearEmployeeOverrides: (employeeId) =>
+                set((s) => ({
+                    deductionOverrides: s.deductionOverrides.filter((d) => d.employeeId !== employeeId),
+                })),
+
+            getDeductionOverride: (employeeId, deductionType) =>
+                get().deductionOverrides.find(
+                    (d) => d.employeeId === employeeId && d.deductionType === deductionType
+                ),
+
+            getEmployeeOverrides: (employeeId) =>
+                get().deductionOverrides.filter((d) => d.employeeId === employeeId),
+
+            // ─── Global Defaults ──────────────────────────────────────
+            updateGlobalDefault: (config) =>
+                set((s) => ({
+                    globalDefaults: s.globalDefaults.map((g) =>
+                        g.deductionType === config.deductionType ? { ...g, ...config } : g
+                    ),
+                })),
+
+            getGlobalDefault: (deductionType) =>
+                get().globalDefaults.find((g) => g.deductionType === deductionType),
 
             // ─── Payslip lifecycle ─────────────────────────────────────
             issuePayslip: (data) =>
@@ -134,6 +209,14 @@ export const usePayrollStore = create<PayrollState>()(
                         p.id === id && p.status === "published"
                             ? { ...p, status: "paid" as const, paidAt: new Date().toISOString(), paidConfirmedBy: confirmedBy, paidConfirmedAt: new Date().toISOString(), paymentMethod: method, bankReferenceId: reference }
                             : p
+                    ),
+                })),
+
+            /** Update payslip with server data (timestamps match DB, avoids write-through conflicts) */
+            updatePayslipFromServer: (serverPayslip) =>
+                set((s) => ({
+                    payslips: s.payslips.map((p) =>
+                        p.id === serverPayslip.id ? { ...p, ...serverPayslip } : p
                     ),
                 })),
 
@@ -444,18 +527,26 @@ export const usePayrollStore = create<PayrollState>()(
 
             resetToSeed: () =>
                 set(() => ({
-                    payslips: SEED_PAYSLIPS,
+                    payslips: [],
                     runs: [],
                     adjustments: [],
                     finalPayComputations: [],
                     paySchedule: DEFAULT_PAY_SCHEDULE,
                 })),
+
+            clearAllPayroll: () =>
+                set(() => ({
+                    payslips: [],
+                    runs: [],
+                    adjustments: [],
+                    finalPayComputations: [],
+                })),
         }),
         {
             name: "soren-payroll",
-            version: 6,
+            version: 7,
             migrate: () => ({
-                payslips: SEED_PAYSLIPS,
+                payslips: [],
                 runs: [],
                 adjustments: [],
                 finalPayComputations: [],

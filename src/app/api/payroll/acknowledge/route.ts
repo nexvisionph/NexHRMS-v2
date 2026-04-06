@@ -93,14 +93,16 @@ export async function POST(request: NextRequest) {
 
     // Update payslip
     const now = new Date().toISOString();
-    const { error: updateErr } = await supabase
+    const { data: updatedPayslip, error: updateErr } = await supabase
       .from("payslips")
       .update({
         status: "acknowledged",
         acknowledged_at: now,
         acknowledged_by: employeeId,
       })
-      .eq("id", payslipId);
+      .eq("id", payslipId)
+      .select()
+      .single();
 
     if (updateErr) {
       console.error("[api/payroll/acknowledge] update error:", updateErr.message);
@@ -110,7 +112,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ ok: true, acknowledgedAt: now });
+    return NextResponse.json({ ok: true, acknowledgedAt: now, payslip: updatedPayslip });
   } catch (err) {
     console.error("[api/payroll/acknowledge] error:", err);
     return NextResponse.json(

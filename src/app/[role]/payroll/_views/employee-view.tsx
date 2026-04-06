@@ -20,6 +20,7 @@ import { SignaturePad } from "@/components/ui/signature-pad";
 import { PrintablePayslip } from "@/components/payroll/printable-payslip";
 import { dispatchNotification } from "@/lib/notifications";
 import { formatCurrency } from "@/lib/format";
+import { keysToCamel } from "@/lib/db-utils";
 
 /* ═══════════════════════════════════════════════════════════════
    EMPLOYEE PAYROLL VIEW — "My Payslips"
@@ -35,7 +36,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: typeof 
 };
 
 export default function EmployeePayrollView() {
-    const { payslips, signPayslip, acknowledgePayslip } = usePayrollStore();
+    const { payslips, updatePayslipFromServer, signatureConfig } = usePayrollStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
 
@@ -65,25 +66,32 @@ export default function EmployeePayrollView() {
     // ─── Computed stats ───────────────────────────────────────────
     const totalEarned = useMemo(() => myPayslips.reduce((s, p) => s + p.netPay, 0), [myPayslips]);
     const latestPayslip = myPayslips[0];
-    // Employees can sign as soon as payslip is issued (standard HRMS practice)
-    const pendingSign = useMemo(() => myPayslips.filter((p) => ["issued", "published", "paid"].includes(p.status) && !p.signedAt), [myPayslips]);
+    // Employees can sign once payslip is issued (any status that isn't "acknowledged" and not yet signed)
+    const pendingSign = useMemo(() => myPayslips.filter((p) => ["issued", "confirmed", "published", "paid"].includes(p.status) && !p.signedAt), [myPayslips]);
     const pendingAck = useMemo(() => myPayslips.filter((p) => p.status === "paid" && !!p.signedAt && !p.acknowledgedAt), [myPayslips]);
 
-    // ─── E-Sign handler (updates store + calls API) ──────────────
+    // ─── E-Sign handler (calls API first, then updates store with server data) ───
     const handleSign = useCallback(async (payslipId: string, signatureDataUrl: string) => {
         if (!myEmployee) return;
         setSigningInProgress(true);
         try {
-            // Update local store first (optimistic)
-            signPayslip(payslipId, signatureDataUrl);
-            // Persist via API
+            // Call API first (uses admin client, bypasses RLS)
             const res = await fetch("/api/payroll/sign", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ payslipId, employeeId: myEmployee.id, signatureDataUrl }),
             });
             const data = await res.json();
-            if (!res.ok) console.warn("[payroll/sign] API:", data.message);
+            if (!res.ok) {
+                console.error("[payroll/sign] API error:", data.message);
+                toast.error(data.message || "Failed to sign payslip");
+                return;
+            }
+            // Update local store with server response (timestamps match DB, avoids write-through conflicts)
+            if (data.payslip) {
+                const camelPayslip = keysToCamel(data.payslip) as { id: string };
+                updatePayslipFromServer(camelPayslip);
+            }
             dispatchNotification("payslip_signed", {
                 name: myEmployee.name,
                 period: (() => { const ps = payslips.find(p => p.id === payslipId); return ps ? `${ps.periodStart} — ${ps.periodEnd}` : ""; })(),
@@ -92,34 +100,42 @@ export default function EmployeePayrollView() {
             setSignSlip(null);
         } catch (err) {
             console.error("[payroll/sign]", err);
-            toast.success("Payslip signed locally"); // still works via write-through
-            setSignSlip(null);
+            toast.error("Failed to sign payslip. Please try again.");
         } finally {
             setSigningInProgress(false);
         }
-    }, [myEmployee, signPayslip, payslips]);
+    }, [myEmployee, updatePayslipFromServer, payslips]);
 
     // ─── Acknowledge handler ─────────────────────────────────────
     const handleAcknowledge = useCallback(async (payslipId: string) => {
         if (!myEmployee) return;
         setAcknowledging(true);
         try {
-            acknowledgePayslip(payslipId, myEmployee.id);
+            // Call API first (uses admin client, bypasses RLS)
             const res = await fetch("/api/payroll/acknowledge", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ payslipId, employeeId: myEmployee.id }),
             });
             const data = await res.json();
-            if (!res.ok) console.warn("[payroll/acknowledge] API:", data.message);
+            if (!res.ok) {
+                console.error("[payroll/acknowledge] API error:", data.message);
+                toast.error(data.message || "Failed to acknowledge");
+                return;
+            }
+            // Update local store with server response (timestamps match DB)
+            if (data.payslip) {
+                const camelPayslip = keysToCamel(data.payslip) as { id: string };
+                updatePayslipFromServer(camelPayslip);
+            }
             toast.success("Payment receipt acknowledged — thank you!");
         } catch (err) {
             console.error("[payroll/acknowledge]", err);
-            toast.success("Acknowledged locally");
+            toast.error("Failed to acknowledge. Please try again.");
         } finally {
             setAcknowledging(false);
         }
-    }, [myEmployee, acknowledgePayslip]);
+    }, [myEmployee, updatePayslipFromServer]);
 
     return (
         <div className="space-y-6">
@@ -291,8 +307,7 @@ export default function EmployeePayrollView() {
                                         ) : myPayslips.map((ps) => {
                                             const sc = statusConfig[ps.status] || statusConfig.issued;
                                             const totalDed = (ps.sssDeduction || 0) + (ps.philhealthDeduction || 0) + (ps.pagibigDeduction || 0) + (ps.taxDeduction || 0) + (ps.otherDeductions || 0) + (ps.loanDeduction || 0);
-                                            // Allow signing at issued/published/paid status (standard HRMS workflow)
-                                            const canSign = ["issued", "published", "paid"].includes(ps.status) && !ps.signedAt;
+                                            const canSign = ["issued", "confirmed", "published", "paid"].includes(ps.status) && !ps.signedAt;
                                             const canAck = ps.status === "paid" && !!ps.signedAt && !ps.acknowledgedAt;
                                             return (
                                                 <TableRow key={ps.id}>
@@ -604,6 +619,7 @@ export default function EmployeePayrollView() {
                         payslip={printPS}
                         employeeName={myEmployee?.name || printPS.employeeId}
                         department={myEmployee?.department || ""}
+                        authorizedSignature={signatureConfig}
                         open={!!printPayslipId}
                         onClose={() => setPrintPayslipId(null)}
                     />

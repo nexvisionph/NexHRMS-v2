@@ -99,6 +99,9 @@ async function hydrateAllStoresInternal(): Promise<void> {
       payrollAdjustments,
       finalPayComputations,
       payScheduleRows,
+      deductionOverridesRows,
+      globalDefaultsRows,
+      signatureConfigRow,
       loans,
     ] = await Promise.all([
       employeesDb.fetchAll(),
@@ -120,6 +123,9 @@ async function hydrateAllStoresInternal(): Promise<void> {
       payrollDb.fetchAdjustments(),
       payrollDb.fetchFinalPay(),
       payrollDb.fetchPaySchedule(),
+      payrollDb.fetchDeductionOverrides(),
+      payrollDb.fetchGlobalDefaults(),
+      payrollDb.fetchSignatureConfig(),
       loansDb.fetchAll(),
     ]);
 
@@ -211,6 +217,9 @@ async function hydrateAllStoresInternal(): Promise<void> {
         ...(payrollAdjustments.length > 0 ? { adjustments: payrollAdjustments } : {}),
         ...(finalPayComputations.length > 0 ? { finalPayComputations } : {}),
         ...(payScheduleRows.length > 0 ? { paySchedule: payScheduleRows[0] } : {}),
+        ...(deductionOverridesRows.length > 0 ? { deductionOverrides: deductionOverridesRows } : {}),
+        ...(globalDefaultsRows.length > 0 ? { globalDefaults: globalDefaultsRows } : {}),
+        ...(signatureConfigRow ? { signatureConfig: signatureConfigRow } : {}),
       });
     }
 
@@ -477,7 +486,22 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     usePayrollStore.subscribe(
       (state, prevState) => {
+        // Only roles with payroll write access may push mutations through the browser
+        // client. Employees, supervisors, and auditors are read-only on payslips —
+        // their mutations go through API routes (admin client) to bypass RLS.
+        const payrollRole = useAuthStore.getState().currentUser?.role ?? "";
+        const canWritePayroll = ["admin", "hr", "finance", "payroll_admin"].includes(payrollRole);
+        if (!canWritePayroll) return;
+
+        // Build set of real employee IDs to guard FK integrity.
+        // Seed/demo payslips use placeholder IDs (EMP001 etc.) that may not
+        // exist in Supabase — skip those to avoid FK constraint violations.
+        const validEmployeeIds = new Set(
+          useEmployeesStore.getState().employees.map((e) => e.id)
+        );
+
         for (const ps of state.payslips) {
+          if (!validEmployeeIds.has(ps.employeeId)) continue; // skip seed data
           const prev = prevState.payslips.find((p) => p.id === ps.id);
           if (!prev || JSON.stringify(prev) !== JSON.stringify(ps)) {
             payrollDb.upsertPayslip(ps);
@@ -490,12 +514,14 @@ export function startWriteThrough(): void {
           }
         }
         for (const adj of state.adjustments) {
+          if (!validEmployeeIds.has(adj.employeeId)) continue;
           const prev = prevState.adjustments.find((a) => a.id === adj.id);
           if (!prev || JSON.stringify(prev) !== JSON.stringify(adj)) {
             payrollDb.upsertAdjustment(adj);
           }
         }
         for (const fp of state.finalPayComputations) {
+          if (!validEmployeeIds.has(fp.employeeId)) continue;
           const prev = prevState.finalPayComputations.find((f) => f.id === fp.id);
           if (!prev || JSON.stringify(prev) !== JSON.stringify(fp)) {
             payrollDb.upsertFinalPay(fp);
@@ -503,6 +529,39 @@ export function startWriteThrough(): void {
         }
         if (JSON.stringify(state.paySchedule) !== JSON.stringify(prevState.paySchedule)) {
           payrollDb.upsertPaySchedule({ id: "default", ...state.paySchedule });
+        }
+
+        // ─── Deduction Overrides write-through ─────────────────
+        // Upsert new or changed overrides
+        for (const ov of state.deductionOverrides) {
+          const prev = prevState.deductionOverrides.find(
+            (d) => d.employeeId === ov.employeeId && d.deductionType === ov.deductionType
+          );
+          if (!prev || JSON.stringify(prev) !== JSON.stringify(ov)) {
+            payrollDb.upsertDeductionOverride(ov);
+          }
+        }
+        // Delete removed overrides
+        for (const prev of prevState.deductionOverrides) {
+          const stillExists = state.deductionOverrides.find(
+            (d) => d.employeeId === prev.employeeId && d.deductionType === prev.deductionType
+          );
+          if (!stillExists) {
+            payrollDb.deleteDeductionOverride(prev.employeeId, prev.deductionType);
+          }
+        }
+
+        // ─── Global Defaults write-through ─────────────────────
+        for (const gd of state.globalDefaults) {
+          const prev = prevState.globalDefaults.find((d) => d.deductionType === gd.deductionType);
+          if (!prev || JSON.stringify(prev) !== JSON.stringify(gd)) {
+            payrollDb.upsertGlobalDefault(gd as unknown as Record<string, unknown>);
+          }
+        }
+
+        // ─── Signature Config write-through ────────────────────
+        if (JSON.stringify(state.signatureConfig) !== JSON.stringify(prevState.signatureConfig)) {
+          payrollDb.upsertSignatureConfig(state.signatureConfig);
         }
       }
     )
@@ -524,7 +583,20 @@ export function startWriteThrough(): void {
               const prevDeds = prev?.deductions ?? [];
               for (const ded of deductions) {
                 if (!prevDeds.find((d) => d.id === ded.id)) {
-                  loansDb.insertDeduction(ded);
+                  // Ensure the referenced payslip exists in the DB first (FK guard).
+                  // The payroll write-through is fire-and-forget, so we explicitly
+                  // upsert the payslip before inserting the loan deduction to avoid
+                  // a race condition that would violate fk_ld_payslip.
+                  const referencedPayslip = usePayrollStore
+                    .getState()
+                    .payslips.find((p) => p.id === ded.payslipId);
+                  if (referencedPayslip) {
+                    payrollDb.upsertPayslip(referencedPayslip).then(() => {
+                      loansDb.insertDeduction(ded);
+                    });
+                  } else {
+                    loansDb.insertDeduction(ded);
+                  }
                 }
               }
             }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import type { Payslip } from "@/types";
+import type { Payslip, PayrollSignatureConfig } from "@/types";
 import { formatCurrency } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,12 +14,13 @@ interface PrintablePayslipProps {
     employeeName: string;
     department: string;
     companyName?: string;
+    authorizedSignature?: PayrollSignatureConfig;
     open: boolean;
     onClose: () => void;
 }
 
 export function PrintablePayslip({
-    payslip, employeeName, department, companyName = "Soren Data Solutions Inc.", open, onClose,
+    payslip, employeeName, department, companyName = "Soren Data Solutions Inc.", authorizedSignature, open, onClose,
 }: PrintablePayslipProps) {
     const printRef = useRef<HTMLDivElement>(null);
 
@@ -236,9 +237,23 @@ export function PrintablePayslip({
                             )}
                         </div>
                         <div>
-                            <div style={{ borderTop: "1px solid #666", paddingTop: "4px", textAlign: "center", fontSize: "10px", color: "#666", marginTop: "48px" }}>
-                                Authorized Representative
-                            </div>
+                            {authorizedSignature?.mode === "auto" && authorizedSignature?.signatureDataUrl ? (
+                                <div>
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={authorizedSignature.signatureDataUrl} alt="Authorized signature" style={{ maxHeight: "48px", display: "block", margin: "0 auto 8px" }} />
+                                    <div style={{ borderTop: "1px solid #666", paddingTop: "4px", textAlign: "center", fontSize: "10px", color: "#666" }}>
+                                        Authorized Representative
+                                        {authorizedSignature.signatoryName && <><br />{authorizedSignature.signatoryName}</>}
+                                        {authorizedSignature.signatoryTitle && <><br /><span style={{ fontSize: "9px", color: "#999" }}>{authorizedSignature.signatoryTitle}</span></>}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{ borderTop: "1px solid #666", paddingTop: "4px", textAlign: "center", fontSize: "10px", color: "#666", marginTop: "48px" }}>
+                                    Authorized Representative
+                                    {authorizedSignature?.signatoryName && <><br />{authorizedSignature.signatoryName}</>}
+                                    {authorizedSignature?.signatoryTitle && <><br /><span style={{ fontSize: "9px", color: "#999" }}>{authorizedSignature.signatoryTitle}</span></>}
+                                </div>
+                            )}
                         </div>
                     </div>
 

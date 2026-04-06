@@ -28,7 +28,8 @@ import {
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, CheckCircle, Eye, Lock, Gift, Download, CalendarDays, RotateCcw, Send, CreditCard, FileText, Sparkles, Shield, PenTool, Search, Settings, Building2, Printer, Clock } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Plus, CheckCircle, Eye, Lock, Gift, Download, CalendarDays, RotateCcw, Send, CreditCard, FileText, Sparkles, Shield, PenTool, Search, Settings, Building2, Printer, Clock, Percent, Trash2, AlertCircle, Info, Save, Pencil, X, Loader2, FileSignature } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/format";
 import { computeAllPHDeductions } from "@/lib/ph-deductions";
@@ -41,6 +42,9 @@ import { PrintablePayslip } from "@/components/payroll/printable-payslip";
 import { format, endOfMonth, subMonths, getYear, getMonth } from "date-fns";
 import { dispatchNotification } from "@/lib/notifications";
 import { useAuditStore } from "@/store/audit.store";
+import { payrollDb } from "@/services/db.service";
+import type { DeductionType, DeductionOverrideMode } from "@/types";
+import { PH_EXEMPTION_REASONS } from "@/types";
 
 /* ═══════════════════════════════════════════════════════════════
    ADMIN / FINANCE / PAYROLL_ADMIN VIEW — Full Payroll Management
@@ -54,7 +58,7 @@ interface AdminPayrollViewProps {
 }
 
 export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewProps) {
-    const { payslips, runs, adjustments, finalPayComputations, issuePayslip, confirmPayslip, publishPayslip, recordPayment, confirmPaidByFinance, lockRun, publishRun, markRunPaid, approveAdjustment, applyAdjustment, createAdjustment, computeFinalPay, generate13thMonth, exportBankFile, createDraftRun, validateRun, resetToSeed, paySchedule, updatePaySchedule } = usePayrollStore();
+    const { payslips, runs, adjustments, finalPayComputations, issuePayslip, confirmPayslip, publishPayslip, recordPayment, confirmPaidByFinance, lockRun, publishRun, markRunPaid, approveAdjustment, applyAdjustment, createAdjustment, computeFinalPay, generate13thMonth, exportBankFile, createDraftRun, validateRun, resetToSeed, paySchedule, updatePaySchedule, signatureConfig, updateSignatureConfig, deductionOverrides, setDeductionOverride, removeDeductionOverride, clearEmployeeOverrides, getDeductionOverride, getEmployeeOverrides, globalDefaults, updateGlobalDefault, getGlobalDefault, updatePayslipFromServer } = usePayrollStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
     const { getActiveByEmployee, recordDeduction } = useLoansStore();
@@ -66,6 +70,21 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     const canIssue = hasPermission(currentUser.role, "payroll:generate");
     const canLock = hasPermission(currentUser.role, "payroll:lock");
     const canReset = mode === "admin";
+
+    const handleReset = async () => {
+        const payslipIds = payslips.map((p) => p.id);
+        const runIds = runs.map((r) => r.id);
+        const adjIds = adjustments.map((a) => a.id);
+        const fpIds = finalPayComputations.map((f) => f.id);
+
+        // Delete in FK-safe order: child records first, then payslips/runs.
+        // Works regardless of whether migration 039 (ON DELETE CASCADE) is applied.
+        await payrollDb.deleteAllPayrollData(payslipIds, runIds, adjIds, fpIds);
+
+        // Clear store → employee payslip views also immediately show empty state
+        resetToSeed();
+        toast.success("Payroll data reset");
+    };
 
     const [open, setOpen] = useState(false);
     const [snapshotRunDate, setSnapshotRunDate] = useState<string | null>(null);
@@ -93,6 +112,45 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     const [fpDialogOpen, setFpDialogOpen] = useState(false);
     const [printPayslipId, setPrintPayslipId] = useState<string | null>(null);
     const [govPeriod, setGovPeriod] = useState(format(new Date(), "yyyy-MM"));
+
+    // ─── Signature config draft state ────────────────────────────
+    const [sigEditing, setSigEditing] = useState(false);
+    const [sigSaving, setSigSaving] = useState(false);
+    const [sigDraft, setSigDraft] = useState({
+        mode: signatureConfig.mode,
+        signatoryName: signatureConfig.signatoryName,
+        signatoryTitle: signatureConfig.signatoryTitle,
+        signatureDataUrl: signatureConfig.signatureDataUrl,
+    });
+
+    const handleSigSave = async () => {
+        setSigSaving(true);
+        updateSignatureConfig(sigDraft);
+        await payrollDb.upsertSignatureConfig({ ...sigDraft });
+        setSigSaving(false);
+        setSigEditing(false);
+        toast.success("Authorized signature saved");
+    };
+
+    const handleSigEdit = () => {
+        setSigDraft({
+            mode: signatureConfig.mode,
+            signatoryName: signatureConfig.signatoryName,
+            signatoryTitle: signatureConfig.signatoryTitle,
+            signatureDataUrl: signatureConfig.signatureDataUrl,
+        });
+        setSigEditing(true);
+    };
+
+    const handleSigCancel = () => {
+        setSigDraft({
+            mode: signatureConfig.mode,
+            signatoryName: signatureConfig.signatoryName,
+            signatoryTitle: signatureConfig.signatoryTitle,
+            signatureDataUrl: signatureConfig.signatureDataUrl,
+        });
+        setSigEditing(false);
+    };
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
 
@@ -154,6 +212,13 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     const toggleSelectAll = () => { if (allSelected) setSelectedEmployeeIds([]); else setSelectedEmployeeIds(activeEmployees.map((e) => e.id)); };
     const toggleEmployee = (empId: string) => { setSelectedEmployeeIds((prev) => prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]); };
 
+    // Compute whether gov deductions will apply for the currently selected cutoff
+    const govDeductionsSkipped = useMemo(() => {
+        if (paySchedule.defaultFrequency !== "semi_monthly") return false;
+        if (paySchedule.deductGovFrom === "both") return false;
+        return paySchedule.deductGovFrom !== cutoff;
+    }, [paySchedule.defaultFrequency, paySchedule.deductGovFrom, cutoff]);
+
     // ─── Issue handler ────────────────────────────────────────────
     const handleIssue = () => {
         const issuanceDateLocked = isRunLocked(formIssuedAt);
@@ -189,10 +254,60 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
             const otherDed = Number(formOtherDeductions) || 0;
             const otHours = Number(formOTHours) || 0;
             const nightDiffHours = Number(formNightDiffHours) || 0;
-            const sss = Math.round(phDeductions.sss * govMultiplier);
-            const ph = Math.round(phDeductions.philHealth * govMultiplier);
-            const pi = Math.round(phDeductions.pagIBIG * govMultiplier);
-            const tax = Math.round(phDeductions.withholdingTax * govMultiplier);
+            
+            // Apply deduction overrides for each government contribution (Philippine Standard)
+            // Priority: per-employee override > global default > auto (standard PH calc)
+            const computeDeduction = (type: DeductionType, autoValue: number, basis: number = grossPay): number => {
+                const override = getDeductionOverride(empId, type);
+                const globalDef = getGlobalDefault(type);
+
+                // If the global default has this type disabled, return 0 (admin toggled it off)
+                if (globalDef && !globalDef.enabled) return 0;
+
+                // Use per-employee override if set, otherwise fall back to global default
+                const effective = override ?? (globalDef && globalDef.mode !== "auto" ? { mode: globalDef.mode, percentage: globalDef.percentage, fixedAmount: globalDef.fixedAmount } : null);
+
+                if (!effective || effective.mode === "auto") {
+                    return Math.round(autoValue * govMultiplier);
+                }
+                if (effective.mode === "exempt") {
+                    return 0;
+                }
+                if (effective.mode === "percentage" && effective.percentage !== undefined) {
+                    return Math.round(basis * (effective.percentage / 100) * govMultiplier);
+                }
+                if (effective.mode === "fixed" && effective.fixedAmount !== undefined) {
+                    return Math.round(effective.fixedAmount * govMultiplier);
+                }
+                return Math.round(autoValue * govMultiplier);
+            };
+
+            const sss = computeDeduction("sss", phDeductions.sss);
+            const ph = computeDeduction("philhealth", phDeductions.philHealth);
+            const pi = computeDeduction("pagibig", phDeductions.pagIBIG);
+            
+            // BIR tax is calculated on taxable income (gross minus gov contributions)
+            const taxableIncome = Math.max(0, grossPay - sss - ph - pi);
+            const birOverride = getDeductionOverride(empId, "bir");
+            const birGlobal = getGlobalDefault("bir");
+            let tax: number;
+            if (birGlobal && !birGlobal.enabled) {
+                tax = 0;
+            } else {
+                const birEffective = birOverride ?? (birGlobal && birGlobal.mode !== "auto" ? { mode: birGlobal.mode, percentage: birGlobal.percentage, fixedAmount: birGlobal.fixedAmount } : null);
+                if (!birEffective || birEffective.mode === "auto") {
+                    tax = Math.round(phDeductions.withholdingTax * govMultiplier);
+                } else if (birEffective.mode === "exempt") {
+                    tax = 0;
+                } else if (birEffective.mode === "percentage" && birEffective.percentage !== undefined) {
+                    tax = Math.round(taxableIncome * (birEffective.percentage / 100));
+                } else if (birEffective.mode === "fixed" && birEffective.fixedAmount !== undefined) {
+                    tax = Math.round(birEffective.fixedAmount * govMultiplier);
+                } else {
+                    tax = Math.round(phDeductions.withholdingTax * govMultiplier);
+                }
+            }
+            
             const totalGovDed = sss + ph + pi + tax;
 
             const dailyRate = Math.round(emp.salary / 22);
@@ -258,10 +373,11 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
 
     // ─── Status summary counts ───────────────────────────────────
     const statusCounts = useMemo(() => {
-        const counts = { issued: 0, confirmed: 0, published: 0, paid: 0, acknowledged: 0, signed: 0 };
+        const counts = { issued: 0, confirmed: 0, published: 0, paid: 0, acknowledged: 0, signed: 0, publishedSigned: 0 };
         payslips.forEach((p) => {
             if (p.status in counts) counts[p.status as keyof typeof counts]++;
             if (p.signedAt) counts.signed++;
+            if (p.status === "published" && p.signedAt) counts.publishedSigned++;
         });
         return counts;
     }, [payslips]);
@@ -297,15 +413,82 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     const handleBatchRecordPayment = useCallback(() => {
         const publishedSlips = filteredPayslips.filter((p) => p.status === "published");
         if (publishedSlips.length === 0) { toast.error("No published payslips to mark paid"); return; }
+        // PH DOLE standard: employee must sign before payment can be recorded
+        const signedSlips = publishedSlips.filter((p) => !!p.signedAt);
+        const unsignedCount = publishedSlips.length - signedSlips.length;
+        if (signedSlips.length === 0) { toast.error(`All ${unsignedCount} published payslip${unsignedCount > 1 ? "s" : ""} require employee signature before payment can be recorded.`); return; }
+        if (unsignedCount > 0) toast.warning(`Skipping ${unsignedCount} unsigned payslip${unsignedCount > 1 ? "s" : ""} — employee signature required first.`);
         setBatchProcessing(true);
-        publishedSlips.forEach((ps) => {
+        signedSlips.forEach((ps) => {
             recordPayment(ps.id, "bank_transfer", `BATCH-REF-${Date.now()}-${ps.id}`);
             useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payment_recorded", performedBy: currentUser.id });
             dispatchNotification("payment_confirmed", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}` }, ps.employeeId);
         });
-        toast.success(`Recorded payment for ${publishedSlips.length} payslip${publishedSlips.length > 1 ? "s" : ""}`);
+        toast.success(`Recorded payment for ${signedSlips.length} payslip${signedSlips.length > 1 ? "s" : ""}`);
         setBatchProcessing(false);
     }, [filteredPayslips, recordPayment, currentUser.id]);
+
+    /** Recompute government deductions on issued/confirmed payslips using current Tax Settings. */
+    const handleBatchRecomputeDeductions = useCallback(() => {
+        // Only recompute payslips that haven't been locked yet (issued or confirmed)
+        const eligible = filteredPayslips.filter((p) => p.status === "issued" || p.status === "confirmed");
+        if (eligible.length === 0) { toast.error("No unlocked payslips to recompute"); return; }
+        setBatchProcessing(true);
+        let updated = 0;
+        eligible.forEach((ps) => {
+            const emp = employees.find((e) => e.id === ps.employeeId);
+            if (!emp) return;
+            const phDeductions = computeAllPHDeductions(emp.salary);
+
+            // Re-use the same override/global default priority chain as handleIssue
+            const computeDeduction = (type: DeductionType, autoValue: number, basis: number = ps.grossPay): number => {
+                const override = getDeductionOverride(ps.employeeId, type);
+                const globalDef = getGlobalDefault(type);
+                if (globalDef && !globalDef.enabled) return 0;
+                const effective = override ?? (globalDef && globalDef.mode !== "auto" ? { mode: globalDef.mode, percentage: globalDef.percentage, fixedAmount: globalDef.fixedAmount } : null);
+                if (!effective || effective.mode === "auto") return Math.round(autoValue);
+                if (effective.mode === "exempt") return 0;
+                if (effective.mode === "percentage" && effective.percentage !== undefined) return Math.round(basis * (effective.percentage / 100));
+                if (effective.mode === "fixed" && effective.fixedAmount !== undefined) return Math.round(effective.fixedAmount);
+                return Math.round(autoValue);
+            };
+
+            const sss = computeDeduction("sss", phDeductions.sss);
+            const ph = computeDeduction("philhealth", phDeductions.philHealth);
+            const pi = computeDeduction("pagibig", phDeductions.pagIBIG);
+            const taxableIncome = Math.max(0, ps.grossPay - sss - ph - pi);
+            const birOverride = getDeductionOverride(ps.employeeId, "bir");
+            const birGlobal = getGlobalDefault("bir");
+            let tax: number;
+            if (birGlobal && !birGlobal.enabled) {
+                tax = 0;
+            } else {
+                const birEffective = birOverride ?? (birGlobal && birGlobal.mode !== "auto" ? { mode: birGlobal.mode, percentage: birGlobal.percentage, fixedAmount: birGlobal.fixedAmount } : null);
+                if (!birEffective || birEffective.mode === "auto") tax = Math.round(phDeductions.withholdingTax);
+                else if (birEffective.mode === "exempt") tax = 0;
+                else if (birEffective.mode === "percentage" && birEffective.percentage !== undefined) tax = Math.round(taxableIncome * (birEffective.percentage / 100));
+                else if (birEffective.mode === "fixed" && birEffective.fixedAmount !== undefined) tax = Math.round(birEffective.fixedAmount);
+                else tax = Math.round(phDeductions.withholdingTax);
+            }
+
+            const totalGovDed = sss + ph + pi + tax;
+            const oldGovDed = ps.sssDeduction + ps.philhealthDeduction + ps.pagibigDeduction + ps.taxDeduction;
+            const netPayDiff = oldGovDed - totalGovDed; // positive if deductions decreased
+            const newNetPay = ps.netPay + netPayDiff;
+
+            updatePayslipFromServer({
+                id: ps.id,
+                sssDeduction: sss,
+                philhealthDeduction: ph,
+                pagibigDeduction: pi,
+                taxDeduction: tax,
+                netPay: newNetPay,
+            });
+            updated++;
+        });
+        toast.success(`Recomputed deductions for ${updated} payslip${updated > 1 ? "s" : ""}`);
+        setBatchProcessing(false);
+    }, [filteredPayslips, employees, getDeductionOverride, getGlobalDefault, updatePayslipFromServer]);
 
     return (
         <div className="space-y-6">
@@ -326,7 +509,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                 <AlertDialogDescription>This will clear all payroll data and restore it to the initial demo state.</AlertDialogDescription></AlertDialogHeader>
                             <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => { resetToSeed(); toast.success("Payroll data reset"); }}>Reset</AlertDialogAction>
+                                <AlertDialogAction onClick={handleReset}>Reset</AlertDialogAction>
                             </AlertDialogFooter>
                         </AlertDialogContent>
                     </AlertDialog>
@@ -440,6 +623,18 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                             </CardContent>
                                         </Card>
                                     )}
+                                    {govDeductionsSkipped && selectedEmployeeIds.length > 0 && (
+                                        <Card className="border border-amber-400/50 bg-amber-50 dark:bg-amber-950/20">
+                                            <CardContent className="p-3 flex gap-2">
+                                                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                                                <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                                                    <strong>Gov deductions will be ₱0 for this cutoff.</strong><br />
+                                                    Pay Schedule is set to deduct SSS/PhilHealth/Pag-IBIG/BIR on the <strong>{paySchedule.deductGovFrom === "first" ? "1st" : "2nd"} cutoff</strong> only.
+                                                    You&apos;re issuing the {cutoff === "first" ? "1st" : "2nd"} cutoff. Use the <strong>Apply Deductions</strong> batch action on the Payslips tab to force-apply deductions after issuance.
+                                                </p>
+                                            </CardContent>
+                                        </Card>
+                                    )}
                                     <Button onClick={handleIssue} className="w-full" disabled={selectedEmployeeIds.length === 0}>
                                         Issue {selectedEmployeeIds.length} Payslip{selectedEmployeeIds.length !== 1 ? "s" : ""}
                                     </Button>
@@ -459,6 +654,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                     {canIssue && <TabsTrigger value="adjustments">Adjustments</TabsTrigger>}
                     {canIssue && <TabsTrigger value="final-pay">Final Pay</TabsTrigger>}
                     {canIssue && <TabsTrigger value="settings" className="gap-1.5"><Settings className="h-3.5 w-3.5" /> Pay Schedule</TabsTrigger>}
+                    {canIssue && <TabsTrigger value="tax-settings" className="gap-1.5"><Percent className="h-3.5 w-3.5" /> Tax Settings</TabsTrigger>}
                     {canIssue && <TabsTrigger value="gov-reports" className="gap-1.5"><Building2 className="h-3.5 w-3.5" /> Gov Reports</TabsTrigger>}
                 </TabsList>
 
@@ -505,11 +701,20 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                             </Button>
                             <Button
                                 variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-blue-600 border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/30"
-                                disabled={batchProcessing || statusCounts.published === 0}
+                                disabled={batchProcessing || statusCounts.publishedSigned === 0}
                                 onClick={handleBatchRecordPayment}
+                                title={statusCounts.published > statusCounts.publishedSigned ? `${statusCounts.published - statusCounts.publishedSigned} payslip(s) still awaiting employee signature` : undefined}
                             >
                                 <CreditCard className="h-3.5 w-3.5" />
-                                Record Payment All ({statusCounts.published})
+                                Record Payment ({statusCounts.publishedSigned}/{statusCounts.published} signed)
+                            </Button>
+                            <Button
+                                variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-emerald-600 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                disabled={batchProcessing || (statusCounts.issued + statusCounts.confirmed) === 0}
+                                onClick={handleBatchRecomputeDeductions}
+                            >
+                                <Sparkles className="h-3.5 w-3.5" />
+                                Apply Deductions ({statusCounts.issued + statusCounts.confirmed})
                             </Button>
                             {batchProcessing && <span className="text-xs text-muted-foreground animate-pulse ml-2">Processing...</span>}
                         </div>
@@ -574,7 +779,11 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                             <PenTool className="h-3.5 w-3.5" />
                                                             <span className="text-[10px] font-medium">View Sig</span>
                                                         </button>
-                                                    ) : ["issued", "published", "paid"].includes(ps.status) ? (
+                                                    ) : ps.status === "published" ? (
+                                                        <span className="text-[10px] text-red-600 dark:text-red-400 flex items-center gap-1 font-semibold" title="Employee must sign payslip before payment can be recorded (PH DOLE requirement)">
+                                                            <FileSignature className="h-3 w-3" /> Awaiting Signature
+                                                        </span>
+                                                    ) : ["issued", "confirmed", "paid"].includes(ps.status) ? (
                                                         <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
                                                             <Clock className="h-3 w-3" /> Pending
                                                         </span>
@@ -598,12 +807,18 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                             }}><Send className="h-3.5 w-3.5" /></Button>
                                                         )}
                                                         {canIssue && ps.status === "published" && (
-                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" title="Record Payment" onClick={() => {
-                                                                recordPayment(ps.id, "bank_transfer", `REF-${Date.now()}`);
-                                                                useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payment_recorded", performedBy: currentUser.id });
-                                                                dispatchNotification("payment_confirmed", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}` }, ps.employeeId);
-                                                                toast.success("Payment recorded");
-                                                            }}><CreditCard className="h-3.5 w-3.5" /></Button>
+                                                            ps.signedAt ? (
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" title="Record Payment" onClick={() => {
+                                                                    recordPayment(ps.id, "bank_transfer", `REF-${Date.now()}`);
+                                                                    useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payment_recorded", performedBy: currentUser.id });
+                                                                    dispatchNotification("payment_confirmed", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}` }, ps.employeeId);
+                                                                    toast.success("Payment recorded");
+                                                                }}><CreditCard className="h-3.5 w-3.5" /></Button>
+                                                            ) : (
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground/40 cursor-not-allowed" title="Employee must sign payslip before payment can be recorded (PH DOLE requirement)" disabled>
+                                                                    <CreditCard className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            )
                                                         )}
                                                     </div>
                                                 </TableCell>
@@ -824,6 +1039,562 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                     </TabsContent>
                 )}
 
+                {/* Tax & Signature Settings Tab */}
+                {canIssue && (
+                    <TabsContent value="tax-settings" className="mt-4 space-y-6">
+                        {/* Authorized Signature Section */}
+                        <Card className="border border-border/50">
+                            <CardContent className="p-5">
+                                <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                        <PenTool className="h-5 w-5 text-violet-500" />
+                                        <h3 className="text-lg font-semibold">Authorized Signature</h3>
+                                    </div>
+                                    {!sigEditing ? (
+                                        <Button variant="outline" size="sm" className="gap-1.5" onClick={handleSigEdit}>
+                                            <Pencil className="h-3.5 w-3.5" /> Edit
+                                        </Button>
+                                    ) : (
+                                        <div className="flex gap-2">
+                                            <Button variant="outline" size="sm" className="gap-1.5" onClick={handleSigCancel} disabled={sigSaving}>
+                                                <X className="h-3.5 w-3.5" /> Cancel
+                                            </Button>
+                                            <Button size="sm" className="gap-1.5" onClick={handleSigSave} disabled={sigSaving}>
+                                                {sigSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                                                {sigSaving ? "Saving…" : "Save"}
+                                            </Button>
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="text-sm text-muted-foreground mb-4">
+                                    Configure the authorized representative signature that appears on all printed payslips.
+                                </p>
+
+                                {/* Read-only summary when not editing */}
+                                {!sigEditing && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-3">
+                                            <div>
+                                                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Signature Mode</p>
+                                                <p className="text-sm mt-0.5">{signatureConfig.mode === "auto" ? "Auto — Use saved signature" : "Manual — Blank (physical signature)"}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Signatory Name</p>
+                                                <p className="text-sm mt-0.5">{signatureConfig.signatoryName || <span className="text-muted-foreground italic">Not set</span>}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Signatory Title</p>
+                                                <p className="text-sm mt-0.5">{signatureConfig.signatoryTitle || <span className="text-muted-foreground italic">Not set</span>}</p>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-2">Signature Image</p>
+                                            {signatureConfig.signatureDataUrl ? (
+                                                <div className="border rounded-lg p-4 bg-white inline-block">
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img src={signatureConfig.signatureDataUrl} alt="Authorized signature" className="h-16 object-contain" />
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground italic">No image uploaded</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Edit form */}
+                                {sigEditing && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-4">
+                                            <div>
+                                                <Label className="text-sm font-medium">Signature Mode</Label>
+                                                <Select value={sigDraft.mode} onValueChange={(v) => setSigDraft((d) => ({ ...d, mode: v as "auto" | "manual" }))}>
+                                                    <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="auto">Auto — Use saved signature</SelectItem>
+                                                        <SelectItem value="manual">Manual — Blank (physical signature)</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    {sigDraft.mode === "auto" ? "Saved signature will automatically appear on all payslips" : "Leave blank for physical signature"}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <Label className="text-sm font-medium">Signatory Name</Label>
+                                                <Input
+                                                    value={sigDraft.signatoryName}
+                                                    onChange={(e) => setSigDraft((d) => ({ ...d, signatoryName: e.target.value }))}
+                                                    placeholder="e.g. Juan Dela Cruz"
+                                                    className="mt-1.5"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label className="text-sm font-medium">Signatory Title</Label>
+                                                <Input
+                                                    value={sigDraft.signatoryTitle}
+                                                    onChange={(e) => setSigDraft((d) => ({ ...d, signatoryTitle: e.target.value }))}
+                                                    placeholder="e.g. Finance Manager"
+                                                    className="mt-1.5"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-3">
+                                            <Label className="text-sm font-medium">Signature Image</Label>
+                                            {sigDraft.signatureDataUrl ? (
+                                                <div className="border rounded-lg p-4 bg-white">
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img src={sigDraft.signatureDataUrl} alt="Authorized signature" className="h-16 object-contain mx-auto" />
+                                                    <div className="flex justify-center gap-2 mt-3">
+                                                        <Button variant="outline" size="sm" onClick={() => setSigDraft((d) => ({ ...d, signatureDataUrl: undefined }))}>
+                                                            <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Remove
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                                                    <p className="text-sm text-muted-foreground mb-3">No signature image</p>
+                                                    <input
+                                                        type="file"
+                                                        accept="image/png,image/jpeg,image/webp"
+                                                        className="hidden"
+                                                        id="sig-upload"
+                                                        onChange={(e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (!file) return;
+                                                            const reader = new FileReader();
+                                                            reader.onload = (ev) => setSigDraft((d) => ({ ...d, signatureDataUrl: ev.target?.result as string }));
+                                                            reader.readAsDataURL(file);
+                                                        }}
+                                                    />
+                                                    <Button variant="outline" size="sm" onClick={() => document.getElementById("sig-upload")?.click()}>
+                                                        Upload Signature Image
+                                                    </Button>
+                                                    <p className="text-xs text-muted-foreground mt-2">PNG, JPG or WebP. Recommended: transparent background.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Government Deduction Overrides Section — Philippine Standard */}
+                        <Card className="border border-border/50">
+                            <CardContent className="p-5">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2">
+                                        <Building2 className="h-5 w-5 text-green-600" />
+                                        <h3 className="text-lg font-semibold">Government Contribution Overrides</h3>
+                                    </div>
+                                    <Badge variant="secondary" className="text-xs">
+                                        {deductionOverrides.length} override{deductionOverrides.length !== 1 ? "s" : ""}
+                                    </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground mb-4">
+                                    Configure custom SSS, PhilHealth, Pag-IBIG, and BIR withholding tax calculations per employee. 
+                                    Use for minimum wage earners, senior citizens, PWDs, or special arrangements.
+                                </p>
+
+                                {/* Deductions Legend */}
+                                <div className="flex flex-wrap gap-3 mb-4 p-3 bg-muted/50 rounded-lg">
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-3 h-3 rounded bg-blue-500" />
+                                        <span className="text-xs">SSS</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-3 h-3 rounded bg-green-500" />
+                                        <span className="text-xs">PhilHealth</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-3 h-3 rounded bg-orange-500" />
+                                        <span className="text-xs">Pag-IBIG</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-3 h-3 rounded bg-purple-500" />
+                                        <span className="text-xs">BIR Tax</span>
+                                    </div>
+                                    <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                                        <Info className="h-3.5 w-3.5" />
+                                        Auto = Standard PH calculation
+                                    </div>
+                                </div>
+
+                                {/* ─── Global Defaults (Company-Wide) ─── */}
+                                <div className="p-4 bg-gradient-to-r from-blue-50/70 via-green-50/70 to-purple-50/70 dark:from-blue-950/20 dark:via-green-950/20 dark:to-purple-950/20 border rounded-lg mb-4">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Shield className="h-4 w-4 text-blue-600" />
+                                        <h4 className="text-sm font-semibold">Global Defaults (Company-Wide)</h4>
+                                        <span className="text-[10px] text-muted-foreground">— Applied when no per-employee override is set</span>
+                                    </div>
+                                    {/* Standard PH Reference Info per deduction type */}
+                                    {(() => {
+                                        const META: Record<DeductionType, {
+                                            law: string;
+                                            rate: string;
+                                            formula: string;
+                                            min: string;
+                                            max: string;
+                                            brackets?: { label: string; rate: string }[];
+                                            color: string;
+                                            border: string;
+                                            badge: string;
+                                        }> = {
+                                            sss: {
+                                                law: "RA 11199 — SSS Act of 2018",
+                                                rate: "4.5% Employee Share",
+                                                formula: "4.5% of Monthly Salary Credit (MSC)",
+                                                min: "₱180/mo (MSC ₱4,000)",
+                                                max: "₱1,575/mo (MSC ₱35,000)",
+                                                color: "border-blue-300 bg-blue-50/50 dark:bg-blue-950/30",
+                                                border: "border-blue-200",
+                                                badge: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+                                            },
+                                            philhealth: {
+                                                law: "RA 11223 — UHC Act",
+                                                rate: "2.5% Employee Share (5% total)",
+                                                formula: "2.5% of basic monthly salary",
+                                                min: "₱250/mo (salary ≤ ₱10,000)",
+                                                max: "₱2,500/mo (salary ≥ ₱100,000)",
+                                                color: "border-green-300 bg-green-50/50 dark:bg-green-950/30",
+                                                border: "border-green-200",
+                                                badge: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+                                            },
+                                            pagibig: {
+                                                law: "RA 9679 — HDMF Law",
+                                                rate: "2% Employee Share (capped)",
+                                                formula: "2% of salary, max ₱100/month",
+                                                min: "₱1/mo (salary ≤ ₱1,500 → 1%)",
+                                                max: "₱100/mo (salary > ₱1,500)",
+                                                color: "border-orange-300 bg-orange-50/50 dark:bg-orange-950/30",
+                                                border: "border-orange-200",
+                                                badge: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",
+                                            },
+                                            bir: {
+                                                law: "RA 10963 — TRAIN Law (2023+)",
+                                                rate: "0% – 35% Progressive",
+                                                formula: "Based on monthly taxable income",
+                                                min: "₱0 (taxable income ≤ ₱20,833/mo)",
+                                                max: "35% above ₱666,667/mo",
+                                                brackets: [
+                                                    { label: "≤ ₱20,833", rate: "Exempt" },
+                                                    { label: "₱20,834–₱33,333", rate: "15%" },
+                                                    { label: "₱33,334–₱66,667", rate: "20%" },
+                                                    { label: "₱66,668–₱166,667", rate: "25%" },
+                                                    { label: "₱166,668–₱666,667", rate: "30%" },
+                                                    { label: "> ₱666,667", rate: "35%" },
+                                                ],
+                                                color: "border-purple-300 bg-purple-50/50 dark:bg-purple-950/30",
+                                                border: "border-purple-200",
+                                                badge: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
+                                            },
+                                        };
+                                        const labelMap: Record<DeductionType, string> = {
+                                            sss: "SSS", philhealth: "PhilHealth", pagibig: "Pag-IBIG", bir: "BIR Tax",
+                                        };
+                                        return (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                                {(["sss", "philhealth", "pagibig", "bir"] as DeductionType[]).map((type) => {
+                                                    const gd = getGlobalDefault(type);
+                                                    const meta = META[type];
+                                                    return (
+                                                        <div key={type} className={`border rounded-lg p-3 ${meta.color}`}>
+                                                            {/* Header: label + toggle */}
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <div>
+                                                                    <span className="text-xs font-bold">{labelMap[type]}</span>
+                                                                    <p className="text-[9px] text-muted-foreground leading-tight">{meta.law}</p>
+                                                                </div>
+                                                                <label className="flex items-center gap-1 cursor-pointer shrink-0">
+                                                                    <span className={`text-[9px] font-semibold ${gd?.enabled ? "text-green-600" : "text-red-500"}`}>{gd?.enabled ? "ON" : "OFF"}</span>
+                                                                    <button
+                                                                        onClick={() => updateGlobalDefault({ deductionType: type, enabled: !gd?.enabled, mode: gd?.mode ?? "auto" })}
+                                                                        className={`relative w-9 h-5 rounded-full transition-colors ${gd?.enabled ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`}
+                                                                    >
+                                                                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${gd?.enabled ? "left-4" : "left-0.5"}`} />
+                                                                    </button>
+                                                                </label>
+                                                            </div>
+
+                                                            {gd?.enabled && (
+                                                                <div className="space-y-2">
+                                                                    {/* Mode selector */}
+                                                                    <Select
+                                                                        value={gd?.mode ?? "auto"}
+                                                                        onValueChange={(v: DeductionOverrideMode) => updateGlobalDefault({ deductionType: type, enabled: true, mode: v, percentage: v === "percentage" ? (gd?.percentage ?? 0) : undefined, fixedAmount: v === "fixed" ? (gd?.fixedAmount ?? 0) : undefined })}
+                                                                    >
+                                                                        <SelectTrigger className="h-7 text-[10px]"><SelectValue /></SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="auto">Auto (Standard PH)</SelectItem>
+                                                                            <SelectItem value="exempt">Exempt (₱0)</SelectItem>
+                                                                            <SelectItem value="percentage">Percentage (%)</SelectItem>
+                                                                            <SelectItem value="fixed">Fixed Amount (₱)</SelectItem>
+                                                                        </SelectContent>
+                                                                    </Select>
+
+                                                                    {/* Custom inputs */}
+                                                                    {gd?.mode === "percentage" && (
+                                                                        <div className="flex items-center gap-1">
+                                                                            <Input type="number" min={0} max={100} step={0.5} value={gd?.percentage ?? 0}
+                                                                                onChange={(e) => updateGlobalDefault({ ...gd, percentage: parseFloat(e.target.value) || 0 })}
+                                                                                className="h-6 text-[10px] w-16 px-1" />
+                                                                            <span className="text-[10px] text-muted-foreground">% of gross</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {gd?.mode === "fixed" && (
+                                                                        <div className="flex items-center gap-1">
+                                                                            <span className="text-[10px] text-muted-foreground">₱</span>
+                                                                            <Input type="number" min={0} step={50} value={gd?.fixedAmount ?? 0}
+                                                                                onChange={(e) => updateGlobalDefault({ ...gd, fixedAmount: parseFloat(e.target.value) || 0 })}
+                                                                                className="h-6 text-[10px] w-20 px-1" />
+                                                                            <span className="text-[10px] text-muted-foreground">/period</span>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {/* Standard PH reference — shown in auto mode */}
+                                                                    {(!gd?.mode || gd.mode === "auto") && (
+                                                                        <div className={`rounded p-2 border ${meta.border} bg-white/60 dark:bg-black/10 space-y-1`}>
+                                                                            <div className="flex items-center gap-1 mb-1">
+                                                                                <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${meta.badge}`}>{meta.rate}</span>
+                                                                            </div>
+                                                                            <p className="text-[9px] text-muted-foreground">{meta.formula}</p>
+                                                                            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 mt-1">
+                                                                                <div>
+                                                                                    <p className="text-[8px] text-muted-foreground uppercase tracking-wide">Min</p>
+                                                                                    <p className="text-[9px] font-medium">{meta.min}</p>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <p className="text-[8px] text-muted-foreground uppercase tracking-wide">Max</p>
+                                                                                    <p className="text-[9px] font-medium">{meta.max}</p>
+                                                                                </div>
+                                                                            </div>
+                                                                            {/* BIR Tax Brackets */}
+                                                                            {meta.brackets && (
+                                                                                <div className="mt-1.5 pt-1.5 border-t border-purple-200 dark:border-purple-800">
+                                                                                    <p className="text-[8px] uppercase tracking-wide text-muted-foreground mb-1">Monthly Tax Brackets</p>
+                                                                                    <div className="space-y-0.5">
+                                                                                        {meta.brackets.map((b) => (
+                                                                                            <div key={b.label} className="flex justify-between">
+                                                                                                <span className="text-[8px] text-muted-foreground">{b.label}</span>
+                                                                                                <span className={`text-[8px] font-semibold ${b.rate === "Exempt" ? "text-green-600" : "text-purple-700 dark:text-purple-300"}`}>{b.rate}</span>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                    {gd?.mode === "exempt" && (
+                                                                        <div className={`rounded p-2 border border-green-200 bg-green-50/60 dark:bg-green-950/20`}>
+                                                                            <p className="text-[9px] text-green-700 dark:text-green-400 font-medium">All employees — ₱0 deduction</p>
+                                                                            <p className="text-[9px] text-muted-foreground mt-0.5">Common for: MWE, senior citizens, PWDs, special payroll arrangements</p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {!gd?.enabled && (
+                                                                <div className="rounded p-2 border border-red-200 bg-red-50/60 dark:bg-red-950/20">
+                                                                    <p className="text-[9px] text-red-600 dark:text-red-400 font-semibold">Disabled — ₱0 company-wide</p>
+                                                                    <p className="text-[9px] text-muted-foreground mt-0.5">Toggle ON to re-enable standard deductions</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="text-xs w-[200px]">Employee</TableHead>
+                                                <TableHead className="text-xs text-center w-[140px]">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <div className="w-2 h-2 rounded bg-blue-500" />
+                                                        SSS
+                                                    </div>
+                                                </TableHead>
+                                                <TableHead className="text-xs text-center w-[140px]">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <div className="w-2 h-2 rounded bg-green-500" />
+                                                        PhilHealth
+                                                    </div>
+                                                </TableHead>
+                                                <TableHead className="text-xs text-center w-[140px]">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <div className="w-2 h-2 rounded bg-orange-500" />
+                                                        Pag-IBIG
+                                                    </div>
+                                                </TableHead>
+                                                <TableHead className="text-xs text-center w-[140px]">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <div className="w-2 h-2 rounded bg-purple-500" />
+                                                        BIR Tax
+                                                    </div>
+                                                </TableHead>
+                                                <TableHead className="text-xs w-[60px]"></TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {employees.filter((e) => e.status === "active").map((emp) => {
+                                                const empOverrides = getEmployeeOverrides(emp.id);
+                                                const hasAnyOverride = empOverrides.length > 0;
+                                                const phDed = computeAllPHDeductions(emp.salary);
+
+                                                const renderDeductionCell = (type: DeductionType, autoValue: number, colorClass: string) => {
+                                                    const override = getDeductionOverride(emp.id, type);
+                                                    const mode = override?.mode ?? "auto";
+
+                                                    return (
+                                                        <TableCell className="p-1">
+                                                            <div className="space-y-1">
+                                                                <Select
+                                                                    value={mode}
+                                                                    onValueChange={(v: DeductionOverrideMode) => {
+                                                                        if (v === "auto") {
+                                                                            removeDeductionOverride(emp.id, type);
+                                                                        } else {
+                                                                            setDeductionOverride({
+                                                                                employeeId: emp.id,
+                                                                                deductionType: type,
+                                                                                mode: v,
+                                                                                percentage: v === "percentage" ? 0 : undefined,
+                                                                                fixedAmount: v === "fixed" ? 0 : undefined,
+                                                                                notes: override?.notes,
+                                                                            });
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <SelectTrigger className={`h-7 text-[10px] ${mode !== "auto" ? colorClass + " font-medium" : ""}`}>
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="auto">Auto</SelectItem>
+                                                                        <SelectItem value="exempt">Exempt</SelectItem>
+                                                                        <SelectItem value="percentage">%</SelectItem>
+                                                                        <SelectItem value="fixed">₱</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                                {mode === "auto" && (
+                                                                    <p className="text-[9px] text-muted-foreground text-center">{formatCurrency(autoValue)}</p>
+                                                                )}
+                                                                {mode === "exempt" && (
+                                                                    <p className="text-[9px] text-green-600 font-medium text-center">₱0</p>
+                                                                )}
+                                                                {mode === "percentage" && (
+                                                                    <div className="flex items-center gap-0.5">
+                                                                        <Input
+                                                                            type="number"
+                                                                            min={0}
+                                                                            max={100}
+                                                                            step={0.5}
+                                                                            value={override?.percentage ?? 0}
+                                                                            onChange={(e) => setDeductionOverride({
+                                                                                ...override!,
+                                                                                percentage: parseFloat(e.target.value) || 0,
+                                                                            })}
+                                                                            className="h-6 text-[10px] w-14 px-1"
+                                                                        />
+                                                                        <span className="text-[9px] text-muted-foreground">%</span>
+                                                                    </div>
+                                                                )}
+                                                                {mode === "fixed" && (
+                                                                    <div className="flex items-center gap-0.5">
+                                                                        <span className="text-[9px] text-muted-foreground">₱</span>
+                                                                        <Input
+                                                                            type="number"
+                                                                            min={0}
+                                                                            step={50}
+                                                                            value={override?.fixedAmount ?? 0}
+                                                                            onChange={(e) => setDeductionOverride({
+                                                                                ...override!,
+                                                                                fixedAmount: parseFloat(e.target.value) || 0,
+                                                                            })}
+                                                                            className="h-6 text-[10px] w-16 px-1"
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                    );
+                                                };
+
+                                                return (
+                                                    <TableRow key={emp.id} className={hasAnyOverride ? "bg-amber-50/50 dark:bg-amber-950/10" : ""}>
+                                                        <TableCell className="py-2">
+                                                            <div>
+                                                                <p className="text-sm font-medium">{emp.name}</p>
+                                                                <p className="text-[10px] text-muted-foreground">{emp.department} • {formatCurrency(emp.salary)}/mo</p>
+                                                            </div>
+                                                        </TableCell>
+                                                        {renderDeductionCell("sss", phDed.sss, "bg-blue-100 dark:bg-blue-950")}
+                                                        {renderDeductionCell("philhealth", phDed.philHealth, "bg-green-100 dark:bg-green-950")}
+                                                        {renderDeductionCell("pagibig", phDed.pagIBIG, "bg-orange-100 dark:bg-orange-950")}
+                                                        {renderDeductionCell("bir", phDed.withholdingTax, "bg-purple-100 dark:bg-purple-950")}
+                                                        <TableCell className="p-1">
+                                                            {hasAnyOverride && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-6 w-6 text-red-500"
+                                                                    onClick={() => clearEmployeeOverrides(emp.id)}
+                                                                    title="Clear all overrides"
+                                                                >
+                                                                    <Trash2 className="h-3 w-3" />
+                                                                </Button>
+                                                            )}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+
+                                {/* Quick Override Presets */}
+                                <div className="mt-4 p-3 bg-muted/30 border rounded-lg">
+                                    <p className="text-xs font-medium mb-2">Quick Presets (Philippine HR Standard)</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        <Badge variant="outline" className="text-[10px] cursor-pointer hover:bg-green-100" onClick={() => {
+                                            const mwe = employees.filter(e => e.status === "active" && e.salary <= 35235); // 2026 NCR MWE threshold
+                                            mwe.forEach(emp => {
+                                                setDeductionOverride({ employeeId: emp.id, deductionType: "bir", mode: "exempt", notes: "Minimum wage earner" });
+                                            });
+                                            toast.success(`Applied BIR exempt to ${mwe.length} minimum wage earners`);
+                                        }}>
+                                            MWE: Exempt BIR
+                                        </Badge>
+                                        <Badge variant="outline" className="text-[10px] cursor-pointer hover:bg-blue-100" onClick={() => {
+                                            employees.filter(e => e.status === "active").forEach(emp => {
+                                                ["sss", "philhealth", "pagibig", "bir"].forEach(type => {
+                                                    removeDeductionOverride(emp.id, type as DeductionType);
+                                                });
+                                            });
+                                            toast.success("Reset all employees to auto");
+                                        }}>
+                                            Reset All to Auto
+                                        </Badge>
+                                    </div>
+                                </div>
+
+                                {/* Info Box */}
+                                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                                    <div className="flex gap-2">
+                                        <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                        <div className="text-xs text-blue-800 dark:text-blue-300 space-y-1">
+                                            <p><strong>Auto:</strong> Uses standard Philippine calculation (SSS table, PhilHealth 5%, Pag-IBIG ₱100, BIR TRAIN Law)</p>
+                                            <p><strong>Exempt:</strong> Sets contribution to ₱0 (e.g., MWE for BIR, senior citizens)</p>
+                                            <p><strong>Percentage:</strong> Custom % of gross salary (e.g., voluntary higher Pag-IBIG)</p>
+                                            <p><strong>Fixed:</strong> Exact ₱ amount per pay period (e.g., fixed withholding agreement)</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+                )}
+
                 {/* Government Reports Tab */}
                 {canIssue && (
                     <TabsContent value="gov-reports" className="mt-4">
@@ -878,6 +1649,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                         payslip={printPS}
                         employeeName={printEmp?.name || printPS.employeeId}
                         department={printEmp?.department || ""}
+                        authorizedSignature={signatureConfig}
                         open={!!printPayslipId}
                         onClose={() => setPrintPayslipId(null)}
                     />

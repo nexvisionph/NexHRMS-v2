@@ -109,6 +109,54 @@ export interface PayScheduleConfig {
   deductGovFrom: "first" | "second" | "both"; // which cutoff gets gov deductions (semi-monthly)
 }
 
+// ─── Payroll Signature Configuration ─────────────────────────
+
+export interface PayrollSignatureConfig {
+  mode: "auto" | "manual";          // auto = use saved signature; manual = leave blank for physical signature
+  signatoryName: string;            // name displayed under authorized signature
+  signatoryTitle: string;           // title displayed under authorized signature (e.g. "Finance Manager")
+  signatureDataUrl?: string;        // base64 data URL of the signature image
+}
+
+// ─── Government Deduction Overrides (Philippine Standard) ────
+// Supports SSS, PhilHealth, Pag-IBIG, and BIR withholding tax
+
+export type DeductionType = "sss" | "philhealth" | "pagibig" | "bir";
+export type DeductionOverrideMode = "auto" | "exempt" | "percentage" | "fixed";
+
+export interface DeductionOverride {
+  employeeId: string;
+  deductionType: DeductionType;
+  mode: DeductionOverrideMode;      // auto = standard calc; exempt = 0; percentage = custom %; fixed = flat amount
+  percentage?: number;              // when mode = "percentage" (0-100)
+  fixedAmount?: number;             // when mode = "fixed" (absolute ₱ amount)
+  notes?: string;                   // reason for override (e.g., "Minimum wage earner", "Senior citizen", "PWD")
+}
+
+export interface DeductionGlobalDefault {
+  id?: string;
+  deductionType: DeductionType;
+  enabled: boolean;                 // toggle on/off for entire company
+  mode: DeductionOverrideMode;      // auto = standard calc; exempt = 0; percentage = custom %; fixed = flat amount
+  percentage?: number;
+  fixedAmount?: number;
+  notes?: string;
+}
+
+// Common Philippine exemption reasons
+export const PH_EXEMPTION_REASONS = [
+  "Minimum wage earner",
+  "Senior citizen (60+)",
+  "Person with disability (PWD)",
+  "Solo parent",
+  "Tax treaty beneficiary",
+  "Voluntary higher contribution",
+  "Fixed withholding agreement",
+  "Multiple employer arrangement",
+  "Special arrangement",
+  "Other",
+] as const;
+
 export interface Employee {
   id: string;
   profileId?: string;     // links to auth.profiles(id)
