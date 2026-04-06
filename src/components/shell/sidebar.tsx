@@ -245,12 +245,12 @@ export function Sidebar() {
                                     {Icon && <Icon className="h-5 w-5 shrink-0" />}
                                     {showLabel && <span className="truncate">{item.label}</span>}
                                     {showLabel && item.href === "/messages" && totalUnreadMsgs > 0 && (
-                                        <span className="ml-auto text-[10px] font-semibold bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none">
+                                        <span className="ml-auto text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 rounded-full px-2 py-0.5 min-w-[20px] text-center border border-blue-200/50 dark:border-blue-800/30 shadow-sm leading-none">
                                             {totalUnreadMsgs}
                                         </span>
                                     )}
                                     {showLabel && item.href === "/notifications" && totalUnreadNotifications > 0 && (
-                                        <span className="ml-auto text-[10px] font-semibold bg-destructive text-destructive-foreground rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none">
+                                        <span className="ml-auto text-[10px] font-semibold bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400 rounded-full px-2 py-0.5 min-w-[20px] text-center border border-rose-200/50 dark:border-rose-800/30 shadow-sm leading-none">
                                             {totalUnreadNotifications}
                                         </span>
                                     )}

@@ -72,14 +72,9 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     const canReset = mode === "admin";
 
     const handleReset = async () => {
-        const payslipIds = payslips.map((p) => p.id);
-        const runIds = runs.map((r) => r.id);
-        const adjIds = adjustments.map((a) => a.id);
-        const fpIds = finalPayComputations.map((f) => f.id);
-
-        // Delete in FK-safe order: child records first, then payslips/runs.
-        // Works regardless of whether migration 039 (ON DELETE CASCADE) is applied.
-        await payrollDb.deleteAllPayrollData(payslipIds, runIds, adjIds, fpIds);
+        // Nuclear reset: wipe ALL payroll data from Supabase (not filtered by IDs).
+        // This ensures nothing survives regardless of store ↔ DB drift.
+        await payrollDb.resetAllPayrollData();
 
         // Clear store → employee payslip views also immediately show empty state
         resetToSeed();

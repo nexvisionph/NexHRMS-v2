@@ -532,6 +532,9 @@ export const usePayrollStore = create<PayrollState>()(
                     adjustments: [],
                     finalPayComputations: [],
                     paySchedule: DEFAULT_PAY_SCHEDULE,
+                    deductionOverrides: [],
+                    globalDefaults: [],
+                    signatureConfig: DEFAULT_SIGNATURE_CONFIG,
                 })),
 
             clearAllPayroll: () =>

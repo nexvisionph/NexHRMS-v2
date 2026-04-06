@@ -148,10 +148,10 @@ export function Topbar() {
                     </Button>
 
                     {/* Notifications */}
-                    <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground" onClick={() => router.push(`${rolePrefix}/notifications`)}>
-                        <Bell className="h-5 w-5" />
+                    <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors" onClick={() => router.push(`${rolePrefix}/notifications`)}>
+                        <Bell className="h-[1.125rem] w-[1.125rem]" />
                         {notifCount > 0 && (
-                            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground">
+                            <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white shadow-sm ring-2 ring-background">
                                 {notifCount > 9 ? "9+" : notifCount}
                             </span>
                         )}

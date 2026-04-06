@@ -543,6 +543,55 @@ export const payrollDb = {
     ]);
   },
 
+  /**
+   * Nuclear reset — wipe ALL payroll data from Supabase (not filtered by IDs).
+   * FK-safe order: children first, parents last.
+   * Uses `.neq("id", "")` to match all rows (Supabase workaround for bulk delete).
+   */
+  async resetAllPayrollData(): Promise<void> {
+    // 1. loan_deductions (FK → payslips)
+    const { error: e1 } = await supabase().from("loan_deductions").delete().neq("id", "");
+    if (e1) console.error("[db] reset loan_deductions:", e1.message);
+
+    // 2. payroll_run_payslips junction (FK → payslips + runs)
+    const { error: e2 } = await supabase().from("payroll_run_payslips").delete().neq("payslip_id", "");
+    if (e2) console.error("[db] reset payroll_run_payslips:", e2.message);
+
+    // 3. payroll_adjustments (FK → runs + payslips)
+    const { error: e3 } = await supabase().from("payroll_adjustments").delete().neq("id", "");
+    if (e3) console.error("[db] reset payroll_adjustments:", e3.message);
+
+    // 4. final_pay_computations
+    const { error: e4 } = await supabase().from("final_pay_computations").delete().neq("id", "");
+    if (e4) console.error("[db] reset final_pay_computations:", e4.message);
+
+    // 5. payslips
+    const { error: e5 } = await supabase().from("payslips").delete().neq("id", "");
+    if (e5) console.error("[db] reset payslips:", e5.message);
+
+    // 6. payroll_runs
+    const { error: e6 } = await supabase().from("payroll_runs").delete().neq("id", "");
+    if (e6) console.error("[db] reset payroll_runs:", e6.message);
+
+    // 7. deduction_overrides (per-employee)
+    const { error: e7 } = await supabase().from("deduction_overrides").delete().neq("employee_id", "");
+    if (e7) console.error("[db] reset deduction_overrides:", e7.message);
+
+    // 8. deduction_global_defaults
+    const { error: e8 } = await supabase().from("deduction_global_defaults").delete().neq("deduction_type", "");
+    if (e8) console.error("[db] reset deduction_global_defaults:", e8.message);
+
+    // 9. payroll_signature_config
+    const { error: e9 } = await supabase().from("payroll_signature_config").delete().neq("id", "");
+    if (e9) console.error("[db] reset payroll_signature_config:", e9.message);
+
+    // 10. pay_schedule_config (reset to defaults — delete custom row so hydration uses defaults)
+    const { error: e10 } = await supabase().from("pay_schedule_config").delete().neq("id", "");
+    if (e10) console.error("[db] reset pay_schedule_config:", e10.message);
+
+    console.log("[db] All payroll data reset from Supabase");
+  },
+
   /** Delete final pay computations by IDs. */
   async deleteFinalPayByIds(ids: string[]): Promise<boolean> {
     if (ids.length === 0) return true;

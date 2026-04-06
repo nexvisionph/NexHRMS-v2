@@ -209,19 +209,18 @@ async function hydrateAllStoresInternal(): Promise<void> {
       ...(Object.keys(employeeShiftsMap).length > 0 ? { employeeShifts: employeeShiftsMap } : {}),
     });
 
-    // Hydrate payroll store
-    if (payslips.length > 0 || payrollRuns.length > 0 || payrollAdjustments.length > 0 || finalPayComputations.length > 0) {
-      usePayrollStore.setState({
-        ...(payslips.length > 0 ? { payslips } : {}),
-        ...(payrollRuns.length > 0 ? { runs: payrollRuns } : {}),
-        ...(payrollAdjustments.length > 0 ? { adjustments: payrollAdjustments } : {}),
-        ...(finalPayComputations.length > 0 ? { finalPayComputations } : {}),
-        ...(payScheduleRows.length > 0 ? { paySchedule: payScheduleRows[0] } : {}),
-        ...(deductionOverridesRows.length > 0 ? { deductionOverrides: deductionOverridesRows } : {}),
-        ...(globalDefaultsRows.length > 0 ? { globalDefaults: globalDefaultsRows } : {}),
-        ...(signatureConfigRow ? { signatureConfig: signatureConfigRow } : {}),
-      });
-    }
+    // Hydrate payroll store — always set from Supabase to ensure resets propagate
+    // across sessions (e.g., admin resets, employee reloads → sees empty).
+    usePayrollStore.setState({
+      payslips: payslips.length > 0 ? payslips : [],
+      runs: payrollRuns.length > 0 ? payrollRuns : [],
+      adjustments: payrollAdjustments.length > 0 ? payrollAdjustments : [],
+      finalPayComputations: finalPayComputations.length > 0 ? finalPayComputations : [],
+      ...(payScheduleRows.length > 0 ? { paySchedule: payScheduleRows[0] } : {}),
+      deductionOverrides: deductionOverridesRows.length > 0 ? deductionOverridesRows : [],
+      globalDefaults: globalDefaultsRows.length > 0 ? globalDefaultsRows : [],
+      ...(signatureConfigRow ? { signatureConfig: signatureConfigRow } : {}),
+    });
 
     // Hydrate loans store — attach deductions & repayment schedules
     if (loans.length > 0) {
@@ -583,19 +582,28 @@ export function startWriteThrough(): void {
               const prevDeds = prev?.deductions ?? [];
               for (const ded of deductions) {
                 if (!prevDeds.find((d) => d.id === ded.id)) {
-                  // Ensure the referenced payslip exists in the DB first (FK guard).
-                  // The payroll write-through is fire-and-forget, so we explicitly
-                  // upsert the payslip before inserting the loan deduction to avoid
-                  // a race condition that would violate fk_ld_payslip.
-                  const referencedPayslip = usePayrollStore
-                    .getState()
-                    .payslips.find((p) => p.id === ded.payslipId);
-                  if (referencedPayslip) {
-                    payrollDb.upsertPayslip(referencedPayslip).then(() => {
-                      loansDb.insertDeduction(ded);
-                    });
-                  } else {
+                  // FK guard: loan_deductions.payslip_id → payslips.id
+                  // Only insert the deduction after the referenced payslip is
+                  // confirmed written to Supabase. If the payslip is unknown
+                  // (e.g. after a reset), skip entirely — inserting without the
+                  // parent row would always violate fk_ld_payslip.
+                  if (!ded.payslipId) {
+                    // No payslip reference at all — safe to insert directly
                     loansDb.insertDeduction(ded);
+                  } else {
+                    const referencedPayslip = usePayrollStore
+                      .getState()
+                      .payslips.find((p) => p.id === ded.payslipId);
+                    if (referencedPayslip) {
+                      // Upsert the payslip first; only proceed if it succeeded
+                      payrollDb.upsertPayslip(referencedPayslip).then((ok) => {
+                        if (ok) loansDb.insertDeduction(ded);
+                        else console.warn("[sync] Skipping loan deduction — payslip upsert failed:", ded.payslipId);
+                      });
+                    } else {
+                      // Payslip not in store → not in DB either; skip to avoid FK violation
+                      console.warn("[sync] Skipping loan deduction — referenced payslip not in store:", ded.payslipId);
+                    }
                   }
                 }
               }
@@ -1022,6 +1030,17 @@ export function startRealtime(): void {
         }));
       })
     )
+    .on(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "payslips" },
+      safe(({ old: row }: { old: Record<string, unknown> }) => {
+        if (row?.id) {
+          usePayrollStore.setState((s) => ({
+            payslips: s.payslips.filter((p) => p.id !== row.id),
+          }));
+        }
+      })
+    )
     // ── payroll_runs ─────────────────────────────────────────
     .on(
       "postgres_changes",
@@ -1046,6 +1065,17 @@ export function startRealtime(): void {
               : r
           ),
         }));
+      })
+    )
+    .on(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "payroll_runs" },
+      safe(({ old: row }: { old: Record<string, unknown> }) => {
+        if (row?.id) {
+          usePayrollStore.setState((s) => ({
+            runs: s.runs.filter((r) => r.id !== row.id),
+          }));
+        }
       })
     )
     // ── payroll_adjustments ─────────────────────────────────
@@ -1074,6 +1104,17 @@ export function startRealtime(): void {
         }));
       })
     )
+    .on(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "payroll_adjustments" },
+      safe(({ old: row }: { old: Record<string, unknown> }) => {
+        if (row?.id) {
+          usePayrollStore.setState((s) => ({
+            adjustments: s.adjustments.filter((a) => a.id !== row.id),
+          }));
+        }
+      })
+    )
     // ── final_pay_computations ──────────────────────────────
     .on(
       "postgres_changes",
@@ -1098,6 +1139,17 @@ export function startRealtime(): void {
               : f
           ),
         }));
+      })
+    )
+    .on(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "final_pay_computations" },
+      safe(({ old: row }: { old: Record<string, unknown> }) => {
+        if (row?.id) {
+          usePayrollStore.setState((s) => ({
+            finalPayComputations: s.finalPayComputations.filter((f) => f.id !== row.id),
+          }));
+        }
       })
     )
     // ── loans ────────────────────────────────────────────────
