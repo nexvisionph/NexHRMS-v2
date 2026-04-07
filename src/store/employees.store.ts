@@ -218,17 +218,21 @@ export const useEmployeesStore = create<EmployeesState>()(
         }),
         {
             name: "soren-employees",
-            version: 7,
-            migrate: () => ({
-                employees: SEED_EMPLOYEES,
-                salaryRequests: [],
-                salaryHistory: [],
-                documents: {},
-                searchQuery: "",
-                statusFilter: "all" as const,
-                workTypeFilter: "all" as const,
-                departmentFilter: "all",
-            }),
+            version: 8,
+            migrate: (persisted, fromVersion) => {
+                const state = persisted as Partial<EmployeesState> & { employees?: Employee[] };
+                const seedIds = new Set(SEED_EMPLOYEES.map((e) => e.id));
+                // v7→v8: reset productivity to 0 for non-seed employees that had the hardcoded 80 default
+                const employees = (state.employees ?? SEED_EMPLOYEES).map((e) =>
+                    !seedIds.has(e.id) && e.productivity === 80
+                        ? { ...e, productivity: 0 }
+                        : e
+                );
+                if (fromVersion < 7) {
+                    return { employees: SEED_EMPLOYEES, salaryRequests: [], salaryHistory: [], documents: {}, searchQuery: "", statusFilter: "all" as const, workTypeFilter: "all" as const, departmentFilter: "all" };
+                }
+                return { ...state, employees };
+            },
             // Auto-deduplicate employees on store rehydration
             merge: (persisted, current) => {
                 const persistedState = persisted as Partial<EmployeesState> | undefined;

@@ -457,7 +457,7 @@ export default function AdminEmployeesView() {
         
         const addResult = addEmployee({
             id, name: newName, email: newEmail, role: newRole, department: newDept, workType: newWorkType,
-            salary: Number(newSalary) || 0, joinDate: new Date().toISOString().split("T")[0], productivity: 80,
+            salary: Number(newSalary) || 0, joinDate: new Date().toISOString().split("T")[0], productivity: 0,
             status: "active", location: "", phone: formattedPhone,
             workDays: newWorkDays.length ? newWorkDays : undefined,
             birthday: newBirthday || undefined,
