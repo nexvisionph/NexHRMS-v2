@@ -14,6 +14,20 @@ import type { VerificationMethod } from "@/types";
 
 export async function GET(request: NextRequest) {
     try {
+        // Verify caller is authenticated
+        const { createServerSupabaseClient } = await import("@/services/supabase-server");
+        const supabase = await createServerSupabaseClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        // In demo mode, allow without auth for testing; in production, require auth
+        const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+        if (!user && !isDemoMode) {
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 },
+            );
+        }
+
         const projectId = request.nextUrl.searchParams.get("projectId");
         
         if (projectId) {

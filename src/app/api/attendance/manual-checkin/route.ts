@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createManualCheckin, getManualCheckinReasons } from "@/services/manual-checkin.service";
+import { createServerSupabaseClient } from "@/services/supabase-server";
 
 /**
  * POST /api/attendance/manual-checkin
@@ -20,6 +21,31 @@ import { createManualCheckin, getManualCheckinReasons } from "@/services/manual-
 
 export async function POST(request: NextRequest) {
     try {
+        // Authenticate & authorize caller (admin/HR only)
+        const supabase = await createServerSupabaseClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            return NextResponse.json(
+                { ok: false, error: "Unauthorized" },
+                { status: 401 }
+            );
+        }
+
+        // Only admin/HR can perform manual check-ins
+        const { data: profile } = await supabase
+            .from("employees")
+            .select("role")
+            .eq("profile_id", user.id)
+            .single();
+
+        const allowedRoles = ["admin", "hr", "supervisor"];
+        if (!profile || !allowedRoles.includes(profile.role)) {
+            return NextResponse.json(
+                { ok: false, error: "Forbidden — admin or HR role required" },
+                { status: 403 }
+            );
+        }
+
         const body = await request.json();
         const {
             employeeId,
@@ -45,14 +71,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Get performer from request (should be set by middleware or client)
-        const performerId = request.headers.get("x-user-id");
-        if (!performerId) {
-            return NextResponse.json(
-                { ok: false, error: "Missing performer ID" },
-                { status: 401 }
-            );
-        }
+        // Use the authenticated user's ID as performer
+        const performerId = user.id;
 
         // Create manual check-in
         const result = await createManualCheckin({

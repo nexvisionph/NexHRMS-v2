@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/services/supabase-server";
+import { validateKioskAuth } from "@/lib/kiosk-auth";
 import { nanoid } from "nanoid";
 
 /**
@@ -7,6 +8,7 @@ import { nanoid } from "nanoid";
  * 
  * Syncs offline attendance events from kiosk devices.
  * Validates and writes events that were queued during network outage.
+ * Requires kiosk API key authentication.
  * 
  * Request: {
  *   employeeId: string,
@@ -20,6 +22,15 @@ import { nanoid } from "nanoid";
  */
 
 export async function POST(request: NextRequest) {
+    // Authenticate kiosk device
+    const kioskAuth = validateKioskAuth(request.headers);
+    if (!kioskAuth.ok) {
+        return NextResponse.json(
+            { ok: false, error: kioskAuth.error || "Unauthorized" },
+            { status: kioskAuth.status || 401 }
+        );
+    }
+
     try {
         const body = await request.json();
         const {

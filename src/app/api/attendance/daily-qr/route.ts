@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateDailyQRPayload, getTodayDateString } from "@/lib/qr-utils";
-import { createAdminSupabaseClient } from "@/services/supabase-server";
+import { createAdminSupabaseClient, createServerSupabaseClient } from "@/services/supabase-server";
 
 /**
  * GET /api/attendance/daily-qr?employeeId=xxx
@@ -8,9 +8,20 @@ import { createAdminSupabaseClient } from "@/services/supabase-server";
  * Returns today's QR payload for an employee.
  * The payload rotates at midnight automatically.
  * Employees display this as a QR code on their phone/dashboard.
+ * Requires authentication — employee can only get their own QR.
  */
 export async function GET(request: NextRequest) {
     try {
+        // Verify caller is authenticated
+        const authSupabase = await createServerSupabaseClient();
+        const { data: { user } } = await authSupabase.auth.getUser();
+        if (!user) {
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 },
+            );
+        }
+
         const { searchParams } = new URL(request.url);
         const employeeId = searchParams.get("employeeId");
 
@@ -29,11 +40,11 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Verify the employee actually exists in the database
+        // Verify the employee actually exists and caller owns this employee record
         const supabase = await createAdminSupabaseClient();
         const { data: emp } = await supabase
             .from("employees")
-            .select("id")
+            .select("id, profile_id")
             .eq("id", employeeId)
             .single();
 
@@ -42,6 +53,23 @@ export async function GET(request: NextRequest) {
                 { error: "Employee not found" },
                 { status: 404 },
             );
+        }
+
+        // Ownership check: employee can only request their own QR
+        // Admin/HR can request for any employee
+        if (emp.profile_id !== user.id) {
+            const { data: callerProfile } = await supabase
+                .from("employees")
+                .select("role")
+                .eq("profile_id", user.id)
+                .single();
+            const adminRoles = ["admin", "hr", "supervisor"];
+            if (!callerProfile || !adminRoles.includes(callerProfile.role)) {
+                return NextResponse.json(
+                    { error: "Forbidden — can only request your own QR code" },
+                    { status: 403 },
+                );
+            }
         }
 
         const date = getTodayDateString();
