@@ -1157,12 +1157,7 @@ export default function AdminEmployeesView() {
                                                                         <KeyRound className="h-2.5 w-2.5 mr-0.5" /> pw reset
                                                                     </Badge>
                                                                 )}
-                                                                {!acc.profileComplete && (
-                                                                    <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300 dark:text-blue-400 dark:border-blue-700">
-                                                                        <User className="h-2.5 w-2.5 mr-0.5" /> onboarding
-                                                                    </Badge>
-                                                                )}
-                                                                {!acc.mustChangePassword && acc.profileComplete && (
+                                                                {!acc.mustChangePassword && (
                                                                     <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700">
                                                                         <ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> active
                                                                     </Badge>
