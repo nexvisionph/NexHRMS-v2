@@ -46,12 +46,19 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
         if (!mounted || !isAuthenticated) return;
 
         const supabase = createClient();
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string) => {
-            if (event === "SIGNED_OUT") {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: import("@supabase/supabase-js").Session | null) => {
+            // TOKEN_REFRESH_FAILED fires when the stored refresh token is
+            // expired or revoked (e.g. after a server-side sign-out or token
+            // rotation). SIGNED_OUT fires on explicit logout. Both should
+            // redirect to login cleanly.
+            // INITIAL_SESSION with a null session also means no valid auth.
+            const shouldSignOut =
+                event === "SIGNED_OUT" ||
+                event === "TOKEN_REFRESHED" && !session ||
+                (event as string) === "TOKEN_REFRESH_FAILED";
+            if (shouldSignOut) {
                 stopRealtime();
                 stopWriteThrough();
-                // logout() sets isAuthenticated = false, which triggers the
-                // redirect useEffect above to send the user to /login.
                 useAuthStore.getState().logout();
             }
         });

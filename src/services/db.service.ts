@@ -86,7 +86,11 @@ async function fetchAll<T>(table: string, options?: {
 async function upsertRow(table: string, row: Record<string, unknown>) {
   const dbRow = keysToSnake(row);
   const { error } = await supabase().from(table).upsert(dbRow, { onConflict: "id" });
-  if (error) console.error(`[db] upsert ${table}:`, error.message);
+  if (error) {
+    if (isNetworkError(error) && isDemoMode) return false;
+    if (error.code === "42501" && isDemoMode) return false;
+    console.error(`[db] upsert ${table}:`, error.message);
+  }
   return !error;
 }
 
@@ -99,6 +103,8 @@ async function insertRow(table: string, row: Record<string, unknown>) {
     // This can occur when the write-through subscriber fires after hydration and
     // re-attempts to insert records that were just fetched from the DB.
     if (error.code === "23505") return true;
+    // Network errors ("Failed to fetch") — Supabase unreachable in demo mode.
+    if (isNetworkError(error) && isDemoMode) return false;
     // 42501 = insufficient_privilege (RLS policy violation).
     // Suppress in demo mode — Supabase is not configured so the
     // anonymous client has no JWT that satisfies RLS predicates.
@@ -112,14 +118,22 @@ async function insertRow(table: string, row: Record<string, unknown>) {
 async function updateRow(table: string, id: string, patch: Record<string, unknown>) {
   const dbPatch = keysToSnake(patch);
   const { error } = await supabase().from(table).update(dbPatch).eq("id", id);
-  if (error) console.error(`[db] update ${table}:`, error.message);
+  if (error) {
+    if (isNetworkError(error) && isDemoMode) return false;
+    if (error.code === "42501" && isDemoMode) return false;
+    console.error(`[db] update ${table}:`, error.message);
+  }
   return !error;
 }
 
 /** Generic delete by id */
 async function deleteRow(table: string, id: string) {
   const { error } = await supabase().from(table).delete().eq("id", id);
-  if (error) console.error(`[db] delete ${table}:`, error.message);
+  if (error) {
+    if (isNetworkError(error) && isDemoMode) return false;
+    if (error.code === "42501" && isDemoMode) return false;
+    console.error(`[db] delete ${table}:`, error.message);
+  }
   return !error;
 }
 
