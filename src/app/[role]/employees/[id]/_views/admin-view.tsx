@@ -68,7 +68,8 @@ export default function AdminProfileView() {
     const allLoans = useLoansStore((s) => s.loans);
     const getActiveByEmployee = useLoansStore((s) => s.getActiveByEmployee);
     const getEmployeeBalances = useLeaveStore((s) => s.getEmployeeBalances);
-    const activeDepartments = useDepartmentsStore((s) => s.departments.filter((d) => d.isActive));
+    const departments = useDepartmentsStore((s) => s.departments);
+    const activeDepartments = useMemo(() => departments.filter((d) => d.isActive), [departments]);
 
     const employee = employees.find((e) => e.id === id);
     const empAttendance = useMemo(() => attendanceLogs.filter((l) => l.employeeId === id).slice(0, 20), [attendanceLogs, id]);
