@@ -317,7 +317,7 @@ export default function AdminEmployeesView() {
     const [addOpen, setAddOpen] = useState(false);
     const [newName, setNewName] = useState("");
     const [newEmail, setNewEmail] = useState("");
-    const [newRole, setNewRole] = useState("");
+    const [newJobTitle, setNewJobTitle] = useState("");
     const [newDept, setNewDept] = useState("");
     const [newWorkType, setNewWorkType] = useState<WorkType>("WFO");
     const [newSalary, setNewSalary] = useState("");
@@ -353,6 +353,7 @@ export default function AdminEmployeesView() {
     const [editName, setEditName] = useState("");
     const [editEmail, setEditEmail] = useState("");
     const [editRole, setEditRole] = useState("");
+    const [editJobTitle, setEditJobTitle] = useState("");
     const [editDept, setEditDept] = useState("");
     const [editWorkType, setEditWorkType] = useState<WorkType>("WFO");
     const [editSalary, setEditSalary] = useState("");
@@ -437,7 +438,7 @@ export default function AdminEmployeesView() {
 
     const handleAddEmployee = async () => {
         if (!canManage) { toast.error("You don't have permission to add employees"); return; }
-        if (!newName || !newEmail || !newRole || !newDept) { toast.error("Please fill all required fields"); return; }
+        if (!newName || !newEmail || !newJobTitle || !newDept) { toast.error("Please fill all required fields"); return; }
         if (employees.some((e) => e.email.toLowerCase() === newEmail.toLowerCase())) { toast.error("An employee with this email already exists"); return; }
         
         // Validate phone number format if provided
@@ -456,7 +457,7 @@ export default function AdminEmployeesView() {
         const formattedPhone = newPhone ? validatePhone(newPhone).formatted : undefined;
         
         const addResult = addEmployee({
-            id, name: newName, email: newEmail, role: newRole, department: newDept, workType: newWorkType,
+            id, name: newName, email: newEmail, role: newSystemRole, jobTitle: newJobTitle, department: newDept, workType: newWorkType,
             salary: Number(newSalary) || 0, joinDate: new Date().toISOString().split("T")[0], productivity: 0,
             status: "active", location: "", phone: formattedPhone,
             workDays: newWorkDays.length ? newWorkDays : undefined,
@@ -495,13 +496,13 @@ export default function AdminEmployeesView() {
         if (newProjectId && newProjectId !== "none") assignToProject(newProjectId, id);
         // Sync shift assignment to attendance store
         if (newShiftId && newShiftId !== "none") assignShift(id, newShiftId);
-        setNewName(""); setNewEmail(""); setNewRole(""); setNewDept(""); setNewWorkType("WFO"); setNewSalary(""); setNewPhone(""); setNewPayFreq("company"); setNewSystemRole("employee"); setNewPassword(""); setNewMustChange(true); setNewWorkDays(["Mon", "Tue", "Wed", "Thu", "Fri"]); setNewProjectId("none"); setNewBirthday(""); setNewTeamLeader("none"); setNewShiftId("none"); setNewEmergencyContact(""); setNewAddress("");
+        setNewName(""); setNewEmail(""); setNewJobTitle(""); setNewDept(""); setNewWorkType("WFO"); setNewSalary(""); setNewPhone(""); setNewPayFreq("company"); setNewSystemRole("employee"); setNewPassword(""); setNewMustChange(true); setNewWorkDays(["Mon", "Tue", "Wed", "Thu", "Fri"]); setNewProjectId("none"); setNewBirthday(""); setNewTeamLeader("none"); setNewShiftId("none"); setNewEmergencyContact(""); setNewAddress("");
         setAddOpen(false);
         setAddingEmployee(false);
     };
 
     const handleOpenEdit = (emp: Employee) => {
-        setEditingEmp(emp); setEditName(emp.name); setEditEmail(emp.email); setEditRole(emp.role); setEditDept(emp.department);
+        setEditingEmp(emp); setEditName(emp.name); setEditEmail(emp.email); setEditRole(emp.role); setEditJobTitle(emp.jobTitle || ""); setEditDept(emp.department);
         setEditWorkType(emp.workType); setEditSalary(String(emp.salary)); setEditPhone(emp.phone || "");
         setEditProductivity(String(emp.productivity)); setEditPayFreq(emp.payFrequency || "company");
         setEditWorkDays(emp.workDays || ["Mon", "Tue", "Wed", "Thu", "Fri"]);
@@ -513,7 +514,7 @@ export default function AdminEmployeesView() {
 
     const handleSaveEdit = () => {
         if (!canManage || !editingEmp) { toast.error("You don't have permission to edit employees"); return; }
-        if (!editName || !editEmail || !editRole || !editDept) { toast.error("Please fill all required fields"); return; }
+        if (!editName || !editEmail || !editDept) { toast.error("Please fill all required fields"); return; }
         if (employees.some((e) => e.id !== editingEmp.id && e.email.toLowerCase() === editEmail.toLowerCase())) { toast.error("An employee with this email already exists"); return; }
         
         // Validate phone if provided
@@ -528,7 +529,7 @@ export default function AdminEmployeesView() {
         }
         
         updateEmployee(editingEmp.id, {
-            name: editName, email: editEmail, role: editRole, department: editDept, workType: editWorkType,
+            name: editName, email: editEmail, role: editRole, jobTitle: editJobTitle, department: editDept, workType: editWorkType,
             salary: Number(editSalary) || 0, phone: formattedPhone,
             productivity: Number(editProductivity) || 80, payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
             birthday: editBirthday || undefined,
@@ -611,7 +612,7 @@ export default function AdminEmployeesView() {
                                         <div className="p-4 space-y-3">
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div><label className="text-xs font-medium text-muted-foreground">Job Title <span className="text-destructive">*</span></label>
-                                                    <Select value={newRole} onValueChange={(val) => { setNewRole(val); const jt = jobTitles.find((j) => j.name === val); if (jt?.department) setNewDept(jt.department); }}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select role" /></SelectTrigger><SelectContent>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
+                                                    <Select value={newJobTitle} onValueChange={(val) => { setNewJobTitle(val); const jt = jobTitles.find((j) => j.name === val); if (jt?.department) setNewDept(jt.department); }}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select job title" /></SelectTrigger><SelectContent>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
                                                 </div>
                                                 <div><label className="text-xs font-medium text-muted-foreground">Department <span className="text-destructive">*</span></label>
                                                     <Select value={newDept} onValueChange={setNewDept}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select dept" /></SelectTrigger><SelectContent>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
@@ -732,12 +733,18 @@ export default function AdminEmployeesView() {
                                     <div><label className="text-sm font-medium">Email *</label><Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="mt-1" /></div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="text-sm font-medium">Job Title *</label>
-                                        <Select value={editRole} onValueChange={setEditRole}><SelectTrigger className="mt-1"><SelectValue placeholder="Select role" /></SelectTrigger><SelectContent>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
+                                    <div><label className="text-sm font-medium">Job Title</label>
+                                        <Select value={editJobTitle} onValueChange={setEditJobTitle}><SelectTrigger className="mt-1"><SelectValue placeholder="Select job title" /></SelectTrigger><SelectContent>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
                                     </div>
                                     <div><label className="text-sm font-medium">Department *</label>
                                         <Select value={editDept} onValueChange={setEditDept}><SelectTrigger className="mt-1"><SelectValue placeholder="Select dept" /></SelectTrigger><SelectContent>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
                                     </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-sm font-medium">System Role</label>
+                                        <Select value={editRole} onValueChange={setEditRole}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="employee">Employee</SelectItem><SelectItem value="supervisor">Supervisor</SelectItem><SelectItem value="hr">HR</SelectItem><SelectItem value="finance">Finance</SelectItem><SelectItem value="payroll_admin">Payroll Admin</SelectItem><SelectItem value="auditor">Auditor</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select>
+                                    </div>
+                                    <div className="flex items-end"><p className="text-xs text-muted-foreground pb-2">Controls what pages and features this employee can access.</p></div>
                                 </div>
                                 <div className="grid grid-cols-3 gap-3">
                                     <div><label className="text-sm font-medium">Work Type</label>

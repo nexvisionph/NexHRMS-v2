@@ -24,6 +24,7 @@ import {
 import { getInitials, formatCurrency, formatDate, validatePhone } from "@/lib/format";
 import { ROLES, LOCATIONS } from "@/lib/constants";
 import { useDepartmentsStore } from "@/store/departments.store";
+import { useJobTitlesStore } from "@/store/job-titles.store";
 import { Mail, MapPin, Phone, Briefcase, Calendar, DollarSign, FileText, Pencil, Banknote, UserMinus, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
@@ -70,6 +71,7 @@ export default function AdminProfileView() {
     const getEmployeeBalances = useLeaveStore((s) => s.getEmployeeBalances);
     const departments = useDepartmentsStore((s) => s.departments);
     const activeDepartments = useMemo(() => departments.filter((d) => d.isActive), [departments]);
+    const jobTitles = useJobTitlesStore((s) => s.jobTitles);
 
     const employee = employees.find((e) => e.id === id);
     const empAttendance = useMemo(() => attendanceLogs.filter((l) => l.employeeId === id).slice(0, 20), [attendanceLogs, id]);
@@ -82,6 +84,7 @@ export default function AdminProfileView() {
     const [editEmail, setEditEmail] = useState("");
     const [editPhone, setEditPhone] = useState("");
     const [editRole, setEditRole] = useState("");
+    const [editJobTitle, setEditJobTitle] = useState("");
     const [editDept, setEditDept] = useState("");
     const [editWorkType, setEditWorkType] = useState<WorkType>("WFO");
     const [editSalary, setEditSalary] = useState("");
@@ -99,6 +102,7 @@ export default function AdminProfileView() {
         setEditEmail(employee.email);
         setEditPhone(employee.phone || "");
         setEditRole(employee.role);
+        setEditJobTitle(employee.jobTitle || "");
         setEditDept(employee.department);
         setEditWorkType(employee.workType);
         setEditSalary(String(employee.salary));
@@ -126,7 +130,7 @@ export default function AdminProfileView() {
         
         updateEmployee(employee.id, {
             name: editName, email: editEmail, phone: formattedPhone,
-            role: editRole, department: editDept, workType: editWorkType,
+            role: editRole, jobTitle: editJobTitle, department: editDept, workType: editWorkType,
             salary: Number(editSalary) || employee.salary, location: editLocation,
             payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
         });
@@ -184,7 +188,7 @@ export default function AdminProfileView() {
                                 <Badge variant="secondary" className={employee.status === "active" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : "bg-red-500/15 text-red-700 dark:text-red-400"}>{employee.status}</Badge>
                                 <Badge variant="outline">{employee.workType}</Badge>
                             </div>
-                            <p className="text-muted-foreground mt-1">{employee.role} · {employee.department}</p>
+                            <p className="text-muted-foreground mt-1">{employee.jobTitle || employee.role} · {employee.department}</p>
                             <div className="flex flex-wrap gap-4 mt-3 text-sm text-muted-foreground">
                                 <span className="flex items-center gap-1.5"><Mail className="h-4 w-4" />{employee.email}</span>
                                 {employee.phone && <span className="flex items-center gap-1.5"><Phone className="h-4 w-4" />{employee.phone}</span>}
@@ -238,7 +242,7 @@ export default function AdminProfileView() {
                         <Card className="border border-border/50">
                             <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold">Personal Information</CardTitle></CardHeader>
                             <CardContent className="space-y-3">
-                                <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Role" value={employee.role} />
+                                <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Job Title" value={employee.jobTitle || employee.role} />
                                 <InfoRow icon={<MapPin className="h-4 w-4" />} label="Location" value={employee.location} />
                                 <InfoRow icon={<Calendar className="h-4 w-4" />} label="Birthday" value={employee.birthday ? formatDate(employee.birthday) : "—"} />
                                 <InfoRow icon={<Phone className="h-4 w-4" />} label="Phone" value={employee.phone || "—"} />
@@ -265,7 +269,8 @@ export default function AdminProfileView() {
                     <Card className="border border-border/50">
                         <CardContent className="p-6 space-y-4">
                             <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Department" value={employee.department} />
-                            <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Role" value={employee.role} />
+                            <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Job Title" value={employee.jobTitle || "—"} />
+                            <InfoRow icon={<Briefcase className="h-4 w-4" />} label="System Role" value={employee.role} />
                             <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Work Type" value={employee.workType} />
                             <InfoRow icon={<Calendar className="h-4 w-4" />} label="Joined" value={formatDate(employee.joinDate)} />
                             <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Team Leader" value={employee.teamLeader ? employees.find((e) => e.id === employee.teamLeader)?.name || "—" : "—"} />
@@ -495,6 +500,11 @@ export default function AdminProfileView() {
                             <div><label className="text-sm font-medium">Role</label>
                                 <Select value={editRole} onValueChange={setEditRole}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{ROLES.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent></Select>
                             </div>
+                            <div><label className="text-sm font-medium">Job Title</label>
+                                <Select value={editJobTitle} onValueChange={setEditJobTitle}><SelectTrigger className="mt-1"><SelectValue placeholder="Select title" /></SelectTrigger><SelectContent><SelectItem value="">— None —</SelectItem>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
                             <div><label className="text-sm font-medium">Department</label>
                                 <Select value={editDept} onValueChange={setEditDept}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{activeDepartments.map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
                             </div>

@@ -239,21 +239,26 @@ export const useEmployeesStore = create<EmployeesState>()(
         }),
         {
             name: "soren-employees",
-            version: 9,
+            version: 10,
             migrate: (persisted, fromVersion) => {
                 const state = persisted as Partial<EmployeesState> & { employees?: Employee[] };
                 if (fromVersion < 7) {
                     return { employees: SEED_EMPLOYEES, salaryRequests: [], salaryHistory: [], documents: {}, searchQuery: "", statusFilter: "all" as const, workTypeFilter: "all" as const, departmentFilter: "all" };
                 }
+                const SYSTEM_ROLES = new Set(["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"]);
                 const seedIds = new Set(SEED_EMPLOYEES.map((e) => e.id));
                 // v7→v8: reset productivity to 0 for non-seed employees with hardcoded 80
                 // v8→v9: deduplicate by email (keeps profileId-linked record)
+                // v9→v10: if role is a job title (not a system role), move to jobTitle and default role to "employee"
                 const employees = dedupeAll(
-                    (state.employees ?? SEED_EMPLOYEES).map((e) =>
-                        !seedIds.has(e.id) && e.productivity === 80
-                            ? { ...e, productivity: 0 }
-                            : e
-                    )
+                    (state.employees ?? SEED_EMPLOYEES).map((e) => {
+                        let updated = e;
+                        if (!seedIds.has(e.id) && e.productivity === 80) updated = { ...updated, productivity: 0 };
+                        if (!SYSTEM_ROLES.has(e.role)) {
+                            updated = { ...updated, jobTitle: updated.jobTitle ?? e.role, role: "employee" };
+                        }
+                        return updated;
+                    })
                 );
                 return { ...state, employees };
             },

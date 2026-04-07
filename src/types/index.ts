@@ -162,7 +162,8 @@ export interface Employee {
   profileId?: string;     // links to auth.profiles(id)
   name: string;
   email: string;
-  role: string;
+  role: string;           // system access role: admin | hr | finance | employee | supervisor | payroll_admin | auditor
+  jobTitle?: string;      // display position/title: e.g. "DevOps Engineer", "HR Manager"
   department: string;
   status: EmployeeStatus;
   workType: WorkType;
