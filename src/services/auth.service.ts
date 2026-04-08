@@ -78,6 +78,8 @@ export async function signOut() {
  * Admin-only: Create a new user account.
  * Requires SUPABASE_SERVICE_ROLE_KEY env var.
  * Caller must be an authenticated admin.
+ * 
+ * OPTIMIZED: Parallelizes DB operations where possible.
  */
 export async function createUserAccount(input: {
   name: string;
@@ -91,6 +93,11 @@ export async function createUserAccount(input: {
   address?: string;
   emergencyContact?: string;
 }) {
+  // Password complexity - check before any network calls
+  if (input.password.length < 8) {
+    return { ok: false as const, error: "Password must be at least 8 characters" };
+  }
+
   // Verify the caller is an authenticated admin
   const caller = await createServerSupabaseClient();
   const { data: { user: callerUser } } = await caller.auth.getUser();
@@ -106,13 +113,9 @@ export async function createUserAccount(input: {
     return { ok: false as const, error: "Only admins can create accounts" };
   }
 
-  // Password complexity
-  if (input.password.length < 8) {
-    return { ok: false as const, error: "Password must be at least 8 characters" };
-  }
-
   const supabase = await createAdminSupabaseClient();
 
+  // Create auth user
   const { data, error } = await supabase.auth.admin.createUser({
     email: input.email,
     password: input.password,
@@ -125,54 +128,41 @@ export async function createUserAccount(input: {
 
   if (error) return { ok: false as const, error: error.message };
 
-  // Update profile with additional fields
+  // Run profile update and employee lookup in parallel
   if (data.user) {
-    await supabase.from("profiles").update({
-      name: input.name,
-      role: input.role,
-      department: input.department ?? "",
-      must_change_password: input.mustChangePassword ?? true,
-      phone: input.phone ?? null,
-      birthday: input.birthday ?? null,
-      address: input.address ?? null,
-      emergency_contact: input.emergencyContact ?? null,
-    }).eq("id", data.user.id);
-
-    // Check if employee with this email already exists (created via addEmployee first)
-    const { data: existingEmployee } = await supabase
-      .from("employees")
-      .select("id")
-      .eq("email", input.email)
-      .maybeSingle();
-
-    if (existingEmployee) {
-      // Link existing employee to profile
-      await supabase.from("employees").update({
-        profile_id: data.user.id,
-      }).eq("id", existingEmployee.id);
-    } else {
-      // Create a new linked employee record
-      const employeeId = `EMP-${Date.now()}`;
-      await supabase.from("employees").insert({
-        id: employeeId,
-        profile_id: data.user.id,
+    const [, employeeResult] = await Promise.all([
+      // Update profile with additional fields
+      supabase.from("profiles").update({
         name: input.name,
-        email: input.email,
         role: input.role,
         department: input.department ?? "",
-        status: "active",
-        work_type: "WFO",
-        salary: 0,
-        join_date: new Date().toISOString().split("T")[0],
+        must_change_password: input.mustChangePassword ?? true,
         phone: input.phone ?? null,
         birthday: input.birthday ?? null,
         address: input.address ?? null,
         emergency_contact: input.emergencyContact ?? null,
-      });
+      }).eq("id", data.user.id),
+      
+      // Check if employee with this email already exists (created via addEmployee first)
+      supabase.from("employees")
+        .select("id")
+        .ilike("email", input.email)
+        .maybeSingle(),
+    ]);
+
+    // Link existing employee to profile (don't create - write-through handles that)
+    if (employeeResult.data?.id) {
+      await supabase.from("employees").update({
+        profile_id: data.user.id,
+        phone: input.phone ?? null,
+        birthday: input.birthday ?? null,
+        address: input.address ?? null,
+        emergency_contact: input.emergencyContact ?? null,
+      }).eq("id", employeeResult.data.id);
     }
   }
 
-  return { ok: true as const, userId: data.user.id };
+  return { ok: true as const, userId: data.user?.id };
 }
 
 /**

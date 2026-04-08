@@ -485,6 +485,18 @@ export default function AdminEmployeesView() {
             return;
         }
         
+        // Close dialog immediately for better perceived performance
+        setAddOpen(false);
+        
+        // Reset form fields
+        const resetForm = () => {
+            setNewName(""); setNewEmail(""); setNewJobTitle(""); setNewDept(""); setNewWorkType("WFO"); setNewSalary(""); setNewPhone(""); setNewPayFreq("company"); setNewSystemRole("employee"); setNewPassword(""); setNewMustChange(true); setNewWorkDays(["Mon", "Tue", "Wed", "Thu", "Fri"]); setNewProjectId("none"); setNewBirthday(""); setNewTeamLeader("none"); setNewShiftId("none"); setNewEmergencyContact(""); setNewAddress("");
+        };
+        
+        // Handle project and shift assignments
+        if (newProjectId && newProjectId !== "none") assignToProject(newProjectId, id);
+        if (newShiftId && newShiftId !== "none") assignShift(id, newShiftId);
+        
         if (newPassword) {
             if (USE_DEMO_MODE) {
                 const result = createAccount({ name: newName, email: newEmail, role: newSystemRole, password: newPassword, mustChangePassword: newMustChange, profileComplete: true }, currentUser.email);
@@ -493,8 +505,13 @@ export default function AdminEmployeesView() {
                     if (result.userId) updateEmployee(id, { profileId: result.userId });
                     toast.success(`${newName} added with a login account.`);
                 }
+                resetForm();
+                setAddingEmployee(false);
             } else {
-                const result = await createUserAccount({
+                // Show immediate feedback
+                toast.info(`Employee added. Creating login account...`);
+                // Create account in background - don't block UI
+                createUserAccount({
                     name: newName,
                     email: newEmail,
                     role: newSystemRole,
@@ -505,21 +522,24 @@ export default function AdminEmployeesView() {
                     birthday: newBirthday || undefined,
                     address: newAddress || undefined,
                     emergencyContact: newEmergencyContact || undefined,
+                }).then((result) => {
+                    if (!result.ok) toast.warning(`Employee added but account creation failed: ${result.error}`);
+                    else {
+                        if (result.userId) updateEmployee(id, { profileId: result.userId });
+                        toast.success(`${newName} added with a login account.`);
+                        // Refresh accounts list in background
+                        refreshAccounts();
+                    }
+                }).finally(() => {
+                    setAddingEmployee(false);
                 });
-                if (!result.ok) toast.warning(`Employee added but account creation failed: ${result.error}`);
-                else {
-                    if (result.userId) updateEmployee(id, { profileId: result.userId });
-                    toast.success(`${newName} added with a login account.`);
-                    refreshAccounts();
-                }
+                resetForm();
             }
-        } else toast.success(`${newName} added successfully!`);
-        if (newProjectId && newProjectId !== "none") assignToProject(newProjectId, id);
-        // Sync shift assignment to attendance store
-        if (newShiftId && newShiftId !== "none") assignShift(id, newShiftId);
-        setNewName(""); setNewEmail(""); setNewJobTitle(""); setNewDept(""); setNewWorkType("WFO"); setNewSalary(""); setNewPhone(""); setNewPayFreq("company"); setNewSystemRole("employee"); setNewPassword(""); setNewMustChange(true); setNewWorkDays(["Mon", "Tue", "Wed", "Thu", "Fri"]); setNewProjectId("none"); setNewBirthday(""); setNewTeamLeader("none"); setNewShiftId("none"); setNewEmergencyContact(""); setNewAddress("");
-        setAddOpen(false);
-        setAddingEmployee(false);
+        } else {
+            toast.success(`${newName} added successfully!`);
+            resetForm();
+            setAddingEmployee(false);
+        }
     };
 
     const handleOpenEdit = (emp: Employee) => {
