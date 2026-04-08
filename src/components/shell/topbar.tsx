@@ -53,6 +53,7 @@ export function Topbar() {
     const companyName = useAppearanceStore((s) => s.companyName);
     const showCompanyNameInTopbar = useAppearanceStore((s) => s.showCompanyNameInTopbar);
     const accentBadgeText = useAppearanceStore((s) => s.accentBadgeText);
+    const markAllAsRead = useNotificationsStore((s) => s.markAllAsRead);
     const rolePrefix = `/${currentUser.role}`;
 
     // Get current employee ID for notification count
@@ -60,6 +61,14 @@ export function Topbar() {
         (e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name
     )?.id;
     const notifCount = currentEmployeeId ? getUnreadCountForEmployee(currentEmployeeId) : 0;
+
+    const handleNotificationClick = () => {
+        // Mark all notifications as read when clicking the bell icon
+        if (currentEmployeeId && notifCount > 0) {
+            markAllAsRead(currentEmployeeId);
+        }
+        router.push(`${rolePrefix}/notifications`);
+    };
 
     useEffect(() => {
         const down = (e: KeyboardEvent) => {
@@ -148,7 +157,7 @@ export function Topbar() {
                     </Button>
 
                     {/* Notifications */}
-                    <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors" onClick={() => router.push(`${rolePrefix}/notifications`)}>
+                    <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors" onClick={handleNotificationClick}>
                         <Bell className="h-[1.125rem] w-[1.125rem]" />
                         {notifCount > 0 && (
                             <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white shadow-sm ring-2 ring-background">
