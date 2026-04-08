@@ -70,6 +70,7 @@ interface AuthState {
     // Account management
     createAccount: (input: CreateAccountInput, createdByEmail?: string) => { ok: boolean; userId?: string; error?: string };
     changePassword: (userId: string, oldPassword: string, newPassword: string) => { ok: boolean; error?: string };
+    forceSetPassword: (userId: string, newPassword: string) => { ok: boolean; error?: string };
     adminSetPassword: (userId: string, newPassword: string) => void;
     completeOnboarding: (userId: string, profile: Partial<DemoUser>, newPassword?: string) => void;
     updateProfile: (userId: string, profile: Partial<DemoUser>) => void;
@@ -139,6 +140,21 @@ export const useAuthStore = create<AuthState>()(
                 }
                 if (newPassword.length < 6) {
                     return { ok: false, error: "New password must be at least 6 characters." };
+                }
+                const updated = { ...user, passwordHash: hashPassword(newPassword), mustChangePassword: false };
+                const newAccounts = accounts.map((u) => (u.id === userId ? updated : u));
+                const newCurrent = currentUser.id === userId ? updated : currentUser;
+                set({ accounts: newAccounts, currentUser: newCurrent });
+                return { ok: true };
+            },
+
+            // Force set password without requiring old password (for first-login password change)
+            forceSetPassword: (userId, newPassword) => {
+                const { accounts, currentUser } = get();
+                const user = accounts.find((u) => u.id === userId);
+                if (!user) return { ok: false, error: "Account not found." };
+                if (newPassword.length < 8) {
+                    return { ok: false, error: "New password must be at least 8 characters." };
                 }
                 const updated = { ...user, passwordHash: hashPassword(newPassword), mustChangePassword: false };
                 const newAccounts = accounts.map((u) => (u.id === userId ? updated : u));

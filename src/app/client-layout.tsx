@@ -8,6 +8,14 @@ import { useAuthStore } from "@/store/auth.store";
 import { useEffect, useState } from "react";
 import { createClient, clearAuthStorage, resetClient } from "@/services/supabase-browser";
 import { hydrateAllStores, startWriteThrough, startRealtime, stopRealtime, stopWriteThrough } from "@/services/sync.service";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { KeyRound, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { toast } from "sonner";
+
+const USE_DEMO_MODE = process.env.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 
 function AppLoadingScreen() {
     return (
@@ -17,6 +25,123 @@ function AppLoadingScreen() {
                 <p className="text-sm text-muted-foreground">Loading…</p>
             </div>
         </div>
+    );
+}
+
+function ForcePasswordChangeModal() {
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const forceSetPassword = useAuthStore((s) => s.forceSetPassword);
+    const setUser = useAuthStore((s) => s.setUser);
+
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    const isOpen = currentUser?.mustChangePassword === true;
+    const isValid = newPassword.length >= 8 && newPassword === confirmPassword;
+
+    const handleSubmit = async () => {
+        if (!isValid) return;
+        setLoading(true);
+
+        try {
+            if (USE_DEMO_MODE) {
+                // Demo mode: use forceSetPassword to update password without requiring old password
+                const result = forceSetPassword(currentUser.id, newPassword);
+                if (!result.ok) {
+                    toast.error(result.error || "Failed to change password");
+                    setLoading(false);
+                    return;
+                }
+                toast.success("Password changed successfully!");
+            } else {
+                // Supabase mode: call API to change password
+                const res = await fetch("/api/auth/change-password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ newPassword }),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    toast.error(data.error || "Failed to change password");
+                    setLoading(false);
+                    return;
+                }
+                // Update local state
+                setUser({ ...currentUser, mustChangePassword: false });
+                toast.success("Password changed successfully!");
+            }
+            setNewPassword("");
+            setConfirmPassword("");
+        } catch {
+            toast.error("Failed to change password. Please try again.");
+        }
+        setLoading(false);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <Dialog open={true}>
+            <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+                <DialogHeader>
+                    <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                        <AlertTriangle className="h-5 w-5" />
+                        <DialogTitle>Password Change Required</DialogTitle>
+                    </div>
+                    <DialogDescription>
+                        For security reasons, you must set a new password before continuing.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="new-password">New Password</Label>
+                        <div className="relative">
+                            <Input
+                                id="new-password"
+                                type={showPassword ? "text" : "password"}
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="Min. 8 characters"
+                                autoFocus
+                            />
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                                onClick={() => setShowPassword(!showPassword)}
+                            >
+                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                        </div>
+                        {newPassword && newPassword.length < 8 && (
+                            <p className="text-xs text-destructive">Password must be at least 8 characters</p>
+                        )}
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="confirm-password">Confirm Password</Label>
+                        <Input
+                            id="confirm-password"
+                            type={showPassword ? "text" : "password"}
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="Re-enter password"
+                        />
+                        {confirmPassword && newPassword !== confirmPassword && (
+                            <p className="text-xs text-destructive">Passwords do not match</p>
+                        )}
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button onClick={handleSubmit} disabled={!isValid || loading} className="w-full gap-2">
+                        <KeyRound className="h-4 w-4" />
+                        {loading ? "Changing..." : "Set New Password"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -107,6 +232,8 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
         <TooltipProvider>
             <ThemeProvider>
                 {skipShell ? children : <AppShell>{children}</AppShell>}
+                {/* Force password change modal - blocks UI until password is changed */}
+                {isAuthenticated && !isKiosk && <ForcePasswordChangeModal />}
             </ThemeProvider>
         </TooltipProvider>
     );
