@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useTasksStore } from "@/store/tasks.store";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
+import { tasksDb } from "@/services/db.service";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -18,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import {
     ListTodo, CheckCircle2, ArrowUpRight, Eye,
-    AlertTriangle, Camera, ChevronRight, Search, Filter,
+    AlertTriangle, Camera, ChevronRight, Search, Filter, Loader2,
 } from "lucide-react";
 import type { Task, TaskStatus, TaskPriority, TaskCompletionReport } from "@/types";
 
@@ -129,6 +130,11 @@ export default function EmployeeTasksView() {
     const roleHref = useRoleHref();
     const [search, setSearch] = useState("");
     const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
+    
+    // Loading state for DB fetch fallback
+    const [isLoading, setIsLoading] = useState(true);
+    const [fetchedTasks, setFetchedTasks] = useState<Task[]>([]);
+    const [fetchAttempted, setFetchAttempted] = useState(false);
 
     // Resolve the HR employee record by email so tasks assigned to "EMP026"
     // are found even though the DemoUser id is "U004".
@@ -137,12 +143,54 @@ export default function EmployeeTasksView() {
         [employees, currentUser.email, currentUser.name, currentUser.id],
     );
 
+    // Fetch from DB if store tasks are empty and employees not loaded yet
+    useEffect(() => {
+        // If employees are loaded and tasks exist, we're ready
+        if (employees.length > 0 && tasks.length > 0) {
+            setIsLoading(false);
+            return;
+        }
+        
+        // If we already tried fetching, don't retry
+        if (fetchAttempted) {
+            return;
+        }
+
+        // Give hydration a moment to complete, then fetch if still empty
+        const timer = setTimeout(async () => {
+            if (tasks.length === 0) {
+                try {
+                    const allTasks = await tasksDb.fetchTasks();
+                    setFetchedTasks(allTasks);
+                    // Update the store with fetched tasks
+                    if (allTasks.length > 0) {
+                        useTasksStore.setState((s) => ({
+                            tasks: allTasks.length > s.tasks.length ? allTasks : s.tasks,
+                        }));
+                    }
+                } catch (err) {
+                    console.error("[EmployeeTasks] Failed to fetch tasks:", err);
+                }
+            }
+            setIsLoading(false);
+            setFetchAttempted(true);
+        }, 500); // Small delay to allow hydration
+
+        return () => clearTimeout(timer);
+    }, [tasks.length, employees.length, fetchAttempted]);
+
+    // Combine store tasks with fetched tasks (prefer store)
+    const allTasks = useMemo(() => {
+        if (tasks.length > 0) return tasks;
+        return fetchedTasks;
+    }, [tasks, fetchedTasks]);
+
     // Filter tasks assigned to current employee and sort by createdAt descending (newest first)
     const myTasks = useMemo(
-        () => tasks
+        () => allTasks
             .filter((t) => t.assignedTo.includes(myEmployeeId))
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-        [tasks, myEmployeeId],
+        [allTasks, myEmployeeId],
     );
 
     const filteredTasks = useMemo(() => {
@@ -174,6 +222,16 @@ export default function EmployeeTasksView() {
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name ?? id;
     const getGroupName = (id: string) => groups.find((g) => g.id === id)?.name ?? id;
+
+    // Show loading state while hydrating/fetching
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[50vh] text-muted-foreground">
+                <Loader2 className="h-10 w-10 mb-3 opacity-40 animate-spin" />
+                <p className="text-sm">Loading your tasks...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4 pb-6">

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useTasksStore } from "@/store/tasks.store";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useRolesStore } from "@/store/roles.store";
 import { useMessagingStore } from "@/store/messaging.store";
+import { tasksDb } from "@/services/db.service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,9 +27,9 @@ import { useRoleHref } from "@/lib/hooks/use-role-href";
 import Link from "next/link";
 import {
     ArrowLeft, Camera, MapPin, CheckCircle2, XCircle,
-    ArrowUpRight, Eye, Send, AlertTriangle, Image as ImageIcon, Megaphone,
+    ArrowUpRight, Eye, Send, AlertTriangle, Image as ImageIcon, Megaphone, Loader2,
 } from "lucide-react";
-import type { TaskStatus, TaskPriority } from "@/types";
+import type { Task, TaskStatus, TaskPriority } from "@/types";
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string }> = {
     open: { label: "Open", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
@@ -52,14 +53,67 @@ export default function TaskDetailPage() {
     const {
         getTaskById, changeStatus,
         submitCompletion, verifyCompletion, rejectCompletion, addComment,
-        groups, completionReports, comments: allComments,
+        groups, completionReports, comments: allComments, tasks,
     } = useTasksStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
     const hasPermission = useRolesStore((s) => s.hasPermission);
     const roleHref = useRoleHref();
 
-    const task = getTaskById(taskId);
+    // ── Loading state for async task fetch ──────────────────
+    const [isLoading, setIsLoading] = useState(true);
+    const [fetchedTask, setFetchedTask] = useState<Task | null>(null);
+    const [fetchAttempted, setFetchAttempted] = useState(false);
+
+    // Get task from store first (instant if hydrated)
+    const storeTask = getTaskById(taskId);
+    
+    // Use store task if available, otherwise use fetched task
+    const task = storeTask ?? fetchedTask;
+
+    // Fetch from DB if not in store (handles pre-hydration and missing tasks)
+    useEffect(() => {
+        // If we have the task in store, we're done loading
+        if (storeTask) {
+            setIsLoading(false);
+            return;
+        }
+        
+        // If already fetched (and still no task), don't retry
+        if (fetchAttempted) {
+            return;
+        }
+
+        // Fetch from DB as fallback
+        const fetchTask = async () => {
+            try {
+                const allTasks = await tasksDb.fetchTasks();
+                const found = allTasks.find((t) => t.id === taskId);
+                if (found) {
+                    setFetchedTask(found);
+                    // Also update the store so it's available elsewhere
+                    useTasksStore.setState((s) => ({
+                        tasks: s.tasks.some((t) => t.id === found.id) ? s.tasks : [...s.tasks, found],
+                    }));
+                }
+            } catch (err) {
+                console.error("[TaskDetail] Failed to fetch task:", err);
+            } finally {
+                setIsLoading(false);
+                setFetchAttempted(true);
+            }
+        };
+
+        fetchTask();
+    }, [taskId, storeTask, fetchAttempted]);
+
+    // Also re-check when tasks array changes (hydration completes)
+    useEffect(() => {
+        if (tasks.some((t) => t.id === taskId)) {
+            setIsLoading(false);
+        }
+    }, [tasks, taskId]);
+
     const comments = useMemo(() => allComments.filter((c) => c.taskId === taskId), [allComments, taskId]);
     const report = useMemo(() => completionReports.find((r) => r.taskId === taskId), [completionReports, taskId]);
     const group = task ? groups.find((g) => g.id === task.groupId) : undefined;
@@ -176,6 +230,16 @@ export default function TaskDetailPage() {
     };
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
+
+    // Show loading state while fetching task
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground">
+                <Loader2 className="h-12 w-12 mb-3 opacity-40 animate-spin" />
+                <p className="text-lg font-medium">Loading task...</p>
+            </div>
+        );
+    }
 
     if (!task) {
         return (

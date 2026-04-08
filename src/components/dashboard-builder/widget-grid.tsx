@@ -15,7 +15,7 @@ export function WidgetGrid({ widgets }: WidgetGridProps) {
     const sorted = [...widgets].sort((a, b) => a.order - b.order);
 
     return (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-start">
             {sorted.map((w) => {
                 const colClass =
                     w.colSpan === 4 ? "sm:col-span-2 lg:col-span-4" :

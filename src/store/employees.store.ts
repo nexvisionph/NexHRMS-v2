@@ -13,10 +13,12 @@ interface EmployeesState {
     searchQuery: string;
     statusFilter: EmployeeStatus | "all";
     workTypeFilter: WorkType | "all";
+    roleFilter: string;
     departmentFilter: string;
     setSearchQuery: (q: string) => void;
     setStatusFilter: (s: EmployeeStatus | "all") => void;
     setWorkTypeFilter: (w: WorkType | "all") => void;
+    setRoleFilter: (r: string) => void;
     setDepartmentFilter: (d: string) => void;
     addEmployee: (emp: Employee) => { ok: boolean; error?: string };
     updateEmployee: (id: string, data: Partial<Employee>) => void;
@@ -78,10 +80,12 @@ export const useEmployeesStore = create<EmployeesState>()(
             searchQuery: "",
             statusFilter: "all",
             workTypeFilter: "all",
+            roleFilter: "all",
             departmentFilter: "all",
             setSearchQuery: (q) => set({ searchQuery: q }),
             setStatusFilter: (s) => set({ statusFilter: s }),
             setWorkTypeFilter: (w) => set({ workTypeFilter: w }),
+            setRoleFilter: (r) => set({ roleFilter: r }),
             setDepartmentFilter: (d) => set({ departmentFilter: d }),
             addEmployee: (emp) => {
                 const { employees } = get();
@@ -128,7 +132,7 @@ export const useEmployeesStore = create<EmployeesState>()(
                 })),
             getEmployee: (id) => get().employees.find((e) => e.id === id),
             getFiltered: () => {
-                const { employees, searchQuery, statusFilter, workTypeFilter, departmentFilter } = get();
+                const { employees, searchQuery, statusFilter, workTypeFilter, roleFilter, departmentFilter } = get();
                 return employees.filter((e) => {
                     const matchesSearch =
                         !searchQuery ||
@@ -137,8 +141,9 @@ export const useEmployeesStore = create<EmployeesState>()(
                         e.id.toLowerCase().includes(searchQuery.toLowerCase());
                     const matchesStatus = statusFilter === "all" || e.status === statusFilter;
                     const matchesWorkType = workTypeFilter === "all" || e.workType === workTypeFilter;
+                    const matchesRole = roleFilter === "all" || e.role === roleFilter;
                     const matchesDept = departmentFilter === "all" || e.department === departmentFilter;
-                    return matchesSearch && matchesStatus && matchesWorkType && matchesDept;
+                    return matchesSearch && matchesStatus && matchesWorkType && matchesRole && matchesDept;
                 });
             },
             deduplicateEmployees: () => {
@@ -234,6 +239,7 @@ export const useEmployeesStore = create<EmployeesState>()(
                     searchQuery: "",
                     statusFilter: "all",
                     workTypeFilter: "all",
+                    roleFilter: "all",
                     departmentFilter: "all",
                 }),
         }),
@@ -243,7 +249,7 @@ export const useEmployeesStore = create<EmployeesState>()(
             migrate: (persisted, fromVersion) => {
                 const state = persisted as Partial<EmployeesState> & { employees?: Employee[] };
                 if (fromVersion < 7) {
-                    return { employees: SEED_EMPLOYEES, salaryRequests: [], salaryHistory: [], documents: {}, searchQuery: "", statusFilter: "all" as const, workTypeFilter: "all" as const, departmentFilter: "all" };
+                    return { employees: SEED_EMPLOYEES, salaryRequests: [], salaryHistory: [], documents: {}, searchQuery: "", statusFilter: "all" as const, workTypeFilter: "all" as const, roleFilter: "all", departmentFilter: "all" };
                 }
                 const SYSTEM_ROLES = new Set(["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"]);
                 const seedIds = new Set(SEED_EMPLOYEES.map((e) => e.id));

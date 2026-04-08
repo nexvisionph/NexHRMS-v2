@@ -68,7 +68,7 @@ function SortIndicator({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortK
 }
 
 export default function AdminEmployeesView() {
-    const { employees, searchQuery, setSearchQuery, statusFilter, setStatusFilter, workTypeFilter, setWorkTypeFilter, departmentFilter, setDepartmentFilter, toggleStatus, addEmployee, updateEmployee, removeEmployee, resignEmployee, proposeSalaryChange, salaryRequests, approveSalaryChange, rejectSalaryChange } = useEmployeesStore();
+    const { employees, searchQuery, setSearchQuery, statusFilter, setStatusFilter, workTypeFilter, setWorkTypeFilter, roleFilter, setRoleFilter, departmentFilter, setDepartmentFilter, toggleStatus, addEmployee, updateEmployee, removeEmployee, resignEmployee, proposeSalaryChange, salaryRequests, approveSalaryChange, rejectSalaryChange } = useEmployeesStore();
     const { currentUser, createAccount } = useAuthStore();
     const demoAccounts = useAuthStore((s) => s.accounts);
     const demoAdminSetPassword = useAuthStore((s) => s.adminSetPassword);
@@ -859,6 +859,10 @@ export default function AdminEmployeesView() {
                                 <Select value={workTypeFilter} onValueChange={(v) => { setWorkTypeFilter(v as "all" | "WFH" | "WFO" | "HYBRID"); setPage(1); }}>
                                     <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="Work Type" /></SelectTrigger>
                                     <SelectContent><SelectItem value="all">All Types</SelectItem><SelectItem value="WFH">WFH</SelectItem><SelectItem value="WFO">WFO</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem></SelectContent>
+                                </Select>
+                                <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setPage(1); }}>
+                                    <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="Role" /></SelectTrigger>
+                                    <SelectContent><SelectItem value="all">All Roles</SelectItem><SelectItem value="admin">Admin</SelectItem><SelectItem value="hr">HR</SelectItem><SelectItem value="finance">Finance</SelectItem><SelectItem value="payroll_admin">Payroll Admin</SelectItem><SelectItem value="supervisor">Supervisor</SelectItem><SelectItem value="employee">Employee</SelectItem><SelectItem value="auditor">Auditor</SelectItem></SelectContent>
                                 </Select>
                                 <Sheet>
                                     <SheetTrigger asChild>
