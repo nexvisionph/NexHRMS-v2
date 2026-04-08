@@ -242,7 +242,7 @@ export default function TimesheetsPage() {
             </div>
 
             <Tabs defaultValue="timesheets">
-                <TabsList className="w-full overflow-x-auto justify-start">
+                <TabsList className="w-full justify-start">
                     <TabsTrigger value="timesheets">Timesheets</TabsTrigger>
                     <TabsTrigger value="rulesets" className="gap-1.5">
                         <ClipboardList className="h-3.5 w-3.5" /> Rule Sets
