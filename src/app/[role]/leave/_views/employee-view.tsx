@@ -100,10 +100,9 @@ export default function EmployeeLeaveView() {
     });
 
     const handleSubmit = () => {
-        if (!formStart || !formEnd || formReason.length < 5) {
-            toast.error("Please fill all fields. Reason must be at least 5 characters.");
-            return;
-        }
+        if (!formStart) { toast.error("Please select a start date"); return; }
+        if (!formEnd) { toast.error("Please select an end date"); return; }
+        if (formReason.length < 5) { toast.error("Reason must be at least 5 characters"); return; }
         if (formEnd < formStart) { toast.error("End date cannot be before start date"); return; }
         // Half-day only valid for single-day requests
         if ((formDuration === "half_day_am" || formDuration === "half_day_pm") && formStart !== formEnd) {

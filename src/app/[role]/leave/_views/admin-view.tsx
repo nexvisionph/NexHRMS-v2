@@ -140,10 +140,9 @@ export default function AdminLeaveView() {
 
     const handleSubmit = () => {
         if (!formEmpId) { toast.error("Please select an employee"); return; }
-        if (!formStart || !formEnd || formReason.length < 5) {
-            toast.error("Please fill all fields. Reason must be at least 5 characters.");
-            return;
-        }
+        if (!formStart) { toast.error("Please select a start date"); return; }
+        if (!formEnd) { toast.error("Please select an end date"); return; }
+        if (formReason.length < 5) { toast.error("Reason must be at least 5 characters"); return; }
         if (formEnd < formStart) { toast.error("End date cannot be before start date"); return; }
         addRequest({ employeeId: formEmpId, type: formType, startDate: formStart, endDate: formEnd, reason: formReason, duration: "full_day" });
         toast.success("Leave request submitted!");

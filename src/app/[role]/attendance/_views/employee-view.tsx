@@ -247,7 +247,10 @@ export default function EmployeeView() {
     const todayDateStr = useMemo(() => new Date().toISOString().split("T")[0], []);
 
     const handleSubmitOT = () => {
-        if (!myEmployeeId || !otDate || !otHours || !otReason) { toast.error("Please fill all fields"); return; }
+        if (!myEmployeeId) { toast.error("Unable to identify employee"); return; }
+        if (!otDate) { toast.error("Please select a date"); return; }
+        if (!otHours || Number(otHours) < 1) { toast.error("Please enter valid hours"); return; }
+        if (!otReason || otReason.length < 3) { toast.error("Please provide a reason"); return; }
         submitOvertimeRequest({ employeeId: myEmployeeId, date: otDate, hoursRequested: Number(otHours), reason: otReason });
         toast.success("Overtime request submitted");
         setOtOpen(false); setOtDate(""); setOtHours("1"); setOtReason("");
