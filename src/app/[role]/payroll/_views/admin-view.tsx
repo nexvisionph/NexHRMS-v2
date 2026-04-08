@@ -242,7 +242,9 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
             }
 
             const empLoans = getActiveByEmployee(empId);
-            const empLoanDeduction = empLoans.reduce((sum, l) => sum + Math.min(l.monthlyDeduction, l.remainingBalance), 0);
+            const rawLoanDeduction = empLoans.reduce((sum, l) => sum + Math.min(l.monthlyDeduction, l.remainingBalance), 0);
+            // Enforce 30% deduction cap per DB schema (loans.deduction_cap_percent DEFAULT 30)
+            const empLoanDeduction = Math.min(rawLoanDeduction, Math.round(grossPay * 0.30));
             totalLoanDeductions += empLoanDeduction;
 
             const allowances = Number(formAllowances) || 0;

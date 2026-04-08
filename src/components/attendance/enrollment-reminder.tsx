@@ -41,10 +41,10 @@ export function EnrollmentReminder({ adminView = false, compact = false, employe
     const enrollPath = `/${currentUser.role}/face-enrollment`;
 
     const [isEnrolled, setIsEnrolled] = useState<boolean | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!!resolvedEmployeeId);
 
     useEffect(() => {
-        if (!resolvedEmployeeId) { setLoading(false); return; }
+        if (!resolvedEmployeeId) return;
 
         fetch(`/api/face-recognition/enroll?action=status&employeeId=${encodeURIComponent(resolvedEmployeeId)}`)
             .then((r) => r.json())

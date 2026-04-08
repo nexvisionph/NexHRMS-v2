@@ -154,8 +154,22 @@ export const useLeaveStore = create<LeaveState>()(
                     const year = new Date(req.startDate).getFullYear();
                     const days = calculateLeaveDays(req.startDate, req.endDate, req.duration, req.hours);
 
-                    // If approving, deduct from balance
+                    // If approving, deduct from balance (prevent negative unless allowed by policy)
                     if (status === "approved" && req.status !== "approved") {
+                        const bal = s.balances.find(
+                            (b) => b.employeeId === req.employeeId && b.leaveType === req.type && b.year === year
+                        );
+                        const policy = s.policies.find((p) => p.leaveType === req.type);
+                        if (bal && bal.remaining < days && !policy?.negativeLeaveAllowed) {
+                            // Insufficient balance — reject instead of approving
+                            return {
+                                requests: s.requests.map((r) =>
+                                    r.id === id
+                                        ? { ...r, status: "rejected" as const, reviewedBy, reviewedAt: new Date().toISOString().split("T")[0] }
+                                        : r
+                                ),
+                            };
+                        }
                         return {
                             requests: updatedRequests,
                             balances: s.balances.map((b) =>

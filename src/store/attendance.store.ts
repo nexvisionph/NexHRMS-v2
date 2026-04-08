@@ -286,6 +286,10 @@ export const useAttendanceStore = create<AttendanceState>()(
                 const existing = get().logs.find(
                     (l) => l.employeeId === employeeId && l.date === today
                 );
+                if (existing && existing.checkIn) {
+                    // Already checked in today — don't overwrite
+                    return;
+                }
                 if (existing) {
                     set((s) => ({
                         logs: s.logs.map((l) =>
@@ -316,6 +320,14 @@ export const useAttendanceStore = create<AttendanceState>()(
                 const today = new Date().toISOString().split("T")[0];
                 const now = new Date();
                 const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+                // Verify employee has checked in today before allowing check-out
+                const todayLog = get().logs.find(
+                    (l) => l.employeeId === employeeId && l.date === today
+                );
+                if (!todayLog?.checkIn) {
+                    return; // Cannot check out without checking in first
+                }
 
                 // Append OUT event
                 set((s) => ({

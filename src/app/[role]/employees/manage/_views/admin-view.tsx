@@ -30,7 +30,7 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-    Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
+    Sheet, SheetContent, SheetTitle, SheetTrigger,
 } from "@/components/ui/sheet";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
@@ -100,7 +100,16 @@ export default function AdminEmployeesView() {
         setAccountsLoading(false);
     }, []);
 
-    useEffect(() => { void refreshAccounts(); }, [refreshAccounts]);
+    useEffect(() => {
+        if (USE_DEMO_MODE) return;
+        let cancelled = false;
+        listUserAccounts().then((result) => {
+            if (cancelled) return;
+            if (result.ok) setRealAccounts(result.accounts);
+            setAccountsLoading(false);
+        });
+        return () => { cancelled = true; };
+    }, []);
 
     const accounts = USE_DEMO_MODE ? demoAccounts : realAccounts;
 
@@ -434,7 +443,7 @@ export default function AdminEmployeesView() {
 
     const si = (col: SortKey) => <SortIndicator col={col} sortKey={sortKey} sortDir={sortDir} />;
 
-    const [_addingEmployee, setAddingEmployee] = useState(false);
+    const [addingEmployee, setAddingEmployee] = useState(false);
 
     const handleAddEmployee = async () => {
         if (!canManage) { toast.error("You don't have permission to add employees"); return; }
@@ -717,7 +726,7 @@ export default function AdminEmployeesView() {
                                 </div>
                                 <div className="flex items-center justify-end gap-2 px-6 py-4 border-t bg-muted/20">
                                     <Button variant="outline" onClick={() => setAddOpen(false)} className="h-8 text-sm">Cancel</Button>
-                                    <Button onClick={handleAddEmployee} className="gap-1.5 h-8 text-sm"><Plus className="h-3.5 w-3.5" /> Add Employee</Button>
+                                    <Button onClick={handleAddEmployee} disabled={addingEmployee} className="gap-1.5 h-8 text-sm"><Plus className="h-3.5 w-3.5" /> {addingEmployee ? "Adding…" : "Add Employee"}</Button>
                                 </div>
                             </DialogContent>
                         </Dialog>

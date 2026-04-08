@@ -2,7 +2,7 @@
 
 import { useAuthStore } from "@/store/auth.store";
 import { useParams, useRouter, usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { Role } from "@/types";
 
 const VALID_ROLES: Role[] = ["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"];
@@ -23,16 +23,16 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
     const userRole = useAuthStore((s) => s.currentUser.role);
     const router = useRouter();
     const pathname = usePathname();
-    const [mounting, setMounting] = useState(true);
+    const mountedRef = useRef(false);
 
     const isValidRole = VALID_ROLES.includes(urlRole as Role);
 
     useEffect(() => {
-        setMounting(false);
+        mountedRef.current = true;
     }, []);
 
     useEffect(() => {
-        if (mounting) return;
+        if (!mountedRef.current) return;
         if (!isValidRole) {
             router.replace(`/${userRole}/dashboard`);
             return;
@@ -42,10 +42,10 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
             const subPath = pathname.replace(`/${urlRole}`, "");
             router.replace(`/${userRole}${subPath}`);
         }
-    }, [urlRole, userRole, isValidRole, router, pathname, mounting]);
+    }, [urlRole, userRole, isValidRole, router, pathname]);
 
-    // Show loading state while mounting or when role mismatch is being resolved
-    if (mounting || !isValidRole || urlRole !== userRole) {
+    // Show loading state when role mismatch is being resolved
+    if (!isValidRole || urlRole !== userRole) {
         return <RoleLoadingState />;
     }
 
