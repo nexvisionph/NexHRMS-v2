@@ -250,7 +250,7 @@ export const NAV_ITEMS: {
             label: "My Profile",
             href: "/profile",
             icon: "UserCircle",
-            roles: ["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"],
+            roles: ["hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"],
             permission: "page:dashboard",
         },
         {
@@ -293,7 +293,6 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
         "/audit",
         "/kiosk",
         "/custom",
-        "/profile",
     ],
     hr: ["/dashboard", "/employees", "/projects", "/tasks", "/messages", "/attendance", "/leave", "/reports", "/notifications", "/timesheets", "/settings/shifts", "/kiosk", "/profile"],
     finance: ["/dashboard", "/payroll", "/loans", "/reports", "/reports/government", "/employees/directory", "/employees/manage", "/notifications", "/profile"],
