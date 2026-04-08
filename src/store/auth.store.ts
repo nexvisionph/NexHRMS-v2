@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Role, DemoUser } from "@/types";
 import { DEMO_USERS } from "@/data/seed";
+import { useEmployeesStore } from "@/store/employees.store";
 
 // ⚠️ WARNING: Demo-only reversible "hash" for localStorage.
 // These functions must NEVER run in production (NEXT_PUBLIC_DEMO_MODE !== 'true').
@@ -128,6 +129,31 @@ export const useAuthStore = create<AuthState>()(
                     createdBy: createdByEmail,
                 };
                 set({ accounts: [...accounts, newAccount] });
+                
+                // Also create an employee record if one doesn't exist (demo mode reconciliation)
+                const employeesState = useEmployeesStore.getState();
+                const existingEmployee = employeesState.employees.find(
+                    (e) => e.email?.toLowerCase() === input.email.toLowerCase() || e.profileId === userId
+                );
+                if (!existingEmployee) {
+                    const employeeId = `EMP-${Date.now().toString(36).toUpperCase()}`;
+                    employeesState.addEmployee({
+                        id: employeeId,
+                        name: input.name,
+                        email: input.email,
+                        role: input.role,
+                        profileId: userId,
+                        department: "",
+                        status: "active",
+                        workType: "WFO",
+                        salary: 0,
+                        joinDate: new Date().toISOString().split("T")[0],
+                        productivity: 0,
+                        location: "",
+                        jobTitle: "",
+                    });
+                }
+                
                 return { ok: true, userId };
             },
 

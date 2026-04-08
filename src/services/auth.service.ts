@@ -150,8 +150,8 @@ export async function createUserAccount(input: {
         .maybeSingle(),
     ]);
 
-    // Link existing employee to profile (don't create - write-through handles that)
     if (employeeResult.data?.id) {
+      // Link existing employee to profile
       await supabase.from("employees").update({
         profile_id: data.user.id,
         phone: input.phone ?? null,
@@ -159,6 +159,28 @@ export async function createUserAccount(input: {
         address: input.address ?? null,
         emergency_contact: input.emergencyContact ?? null,
       }).eq("id", employeeResult.data.id);
+    } else {
+      // No employee record exists - create one linked to this profile
+      // This ensures every account has a corresponding employee record
+      const employeeId = `EMP-${Date.now().toString(36).toUpperCase()}`;
+      await supabase.from("employees").insert({
+        id: employeeId,
+        profile_id: data.user.id,
+        name: input.name,
+        email: input.email,
+        role: input.role,
+        department: input.department ?? "",
+        status: "active",
+        work_type: "WFO",
+        salary: 0,
+        join_date: new Date().toISOString().split("T")[0],
+        productivity: 0,
+        location: "",
+        phone: input.phone ?? null,
+        birthday: input.birthday ?? null,
+        address: input.address ?? null,
+        emergency_contact: input.emergencyContact ?? null,
+      });
     }
   }
 
@@ -249,6 +271,7 @@ export async function changeMyPassword(newPassword: string) {
 
 /**
  * Admin-only: List all user accounts (profiles).
+ * Also reconciles orphan profiles by creating missing employee records.
  */
 export async function listUserAccounts() {
   const caller = await createServerSupabaseClient();
@@ -266,14 +289,63 @@ export async function listUserAccounts() {
   }
 
   const supabase = await createAdminSupabaseClient();
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("*")
-    .order("created_at", { ascending: true });
+  
+  // Fetch profiles and employees in parallel
+  const [profilesResult, employeesResult] = await Promise.all([
+    supabase.from("profiles").select("*").order("created_at", { ascending: true }),
+    supabase.from("employees").select("id, email, profile_id"),
+  ]);
+  
+  const profiles = profilesResult.data ?? [];
+  const employees = employeesResult.data ?? [];
+  
+  // Create a set of profile IDs that already have employees
+  const profileIdsWithEmployees = new Set(
+    employees.filter((e) => e.profile_id).map((e) => e.profile_id)
+  );
+  // Create a map of emails to employee IDs for linking
+  const emailToEmployeeId = new Map(
+    employees.map((e) => [e.email?.toLowerCase(), e.id])
+  );
+  
+  // Find profiles without corresponding employees and create them
+  const orphanProfiles = profiles.filter((p) => {
+    // Already has an employee via profile_id link
+    if (profileIdsWithEmployees.has(p.id)) return false;
+    // Already has an employee via email match
+    if (emailToEmployeeId.has(p.email?.toLowerCase())) return false;
+    return true;
+  });
+  
+  // Create missing employee records for orphan profiles
+  if (orphanProfiles.length > 0) {
+    const newEmployees = orphanProfiles.map((p) => ({
+      id: `EMP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+      profile_id: p.id,
+      name: p.name,
+      email: p.email,
+      role: p.role || "employee",
+      department: p.department || "",
+      status: "active",
+      work_type: "WFO",
+      salary: 0,
+      join_date: new Date().toISOString().split("T")[0],
+      productivity: 0,
+      location: "",
+      phone: p.phone ?? null,
+      birthday: p.birthday ?? null,
+      address: p.address ?? null,
+      emergency_contact: p.emergency_contact ?? null,
+    }));
+    
+    // Insert in batches to avoid hitting limits
+    await supabase.from("employees").insert(newEmployees);
+    console.log(`[listUserAccounts] Created ${newEmployees.length} missing employee records`);
+  }
 
   return {
     ok: true as const,
-    accounts: (profiles ?? []).map((p): DemoUserLike => ({
+    accounts: profiles.map((p): DemoUserLike => ({
       id: p.id,
       name: p.name,
       email: p.email,
