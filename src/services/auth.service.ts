@@ -19,11 +19,33 @@ export async function signIn(email: string, password: string) {
     .eq("id", data.user.id)
     .single();
 
-  const { data: employee } = await supabase
+  // Try to find employee by profile_id first
+  let { data: employee } = await supabase
     .from("employees")
     .select("*")
     .eq("profile_id", data.user.id)
     .single();
+
+  // If not found by profile_id, try by email and link the profile_id
+  if (!employee && data.user.email) {
+    const { data: empByEmail } = await supabase
+      .from("employees")
+      .select("*")
+      .ilike("email", data.user.email)
+      .single();
+
+    if (empByEmail && !empByEmail.profile_id) {
+      // Link the employee to this profile
+      const adminSupabase = await createAdminSupabaseClient();
+      await adminSupabase
+        .from("employees")
+        .update({ profile_id: data.user.id })
+        .eq("id", empByEmail.id);
+      employee = { ...empByEmail, profile_id: data.user.id };
+    } else if (empByEmail) {
+      employee = empByEmail;
+    }
+  }
 
   return {
     ok: true as const,

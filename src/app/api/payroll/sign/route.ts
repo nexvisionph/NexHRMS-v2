@@ -44,13 +44,23 @@ export async function POST(request: NextRequest) {
     const supabase = await createAdminSupabaseClient();
 
     // Verify the session user owns this employee record
+    // Check by profile_id first, fallback to email if profile_id is null
     const { data: emp, error: empErr } = await supabase
       .from("employees")
-      .select("id, profile_id")
+      .select("id, profile_id, email")
       .eq("id", employeeId)
       .single();
 
-    if (empErr || !emp || emp.profile_id !== user.id) {
+    if (empErr || !emp) {
+      return NextResponse.json(
+        { ok: false, message: "Employee not found" },
+        { status: 404 }
+      );
+    }
+
+    // Ownership check: profile_id match OR email match (for unlinked employees)
+    const ownsEmployee = emp.profile_id === user.id || emp.email?.toLowerCase() === user.email?.toLowerCase();
+    if (!ownsEmployee) {
       return NextResponse.json(
         { ok: false, message: "Forbidden — employee does not match session" },
         { status: 403 }
