@@ -44,7 +44,7 @@ const CHANNEL_LABELS: Record<MessageChannel, string> = {
 
 export default function AdminMessagesView() {
     const {
-        announcements, channels,
+        announcements, channels, messages,
         sendAnnouncement, createChannel, deleteChannel, archiveChannel,
         sendMessage, getChannelMessages, getUnreadCount, deleteAnnouncement,
         markMessageRead,
@@ -76,7 +76,8 @@ export default function AdminMessagesView() {
     const selectedChannel = channels.find((c) => c.id === selectedChannelId);
     const channelMsgs = useMemo(
         () => (selectedChannelId ? getChannelMessages(selectedChannelId) : []),
-        [selectedChannelId, getChannelMessages]
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [selectedChannelId, getChannelMessages, messages]
     );
 
     // Mark messages as read when channel is selected

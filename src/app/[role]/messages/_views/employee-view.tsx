@@ -31,6 +31,7 @@ const CHANNEL_LABELS: Record<MessageChannel, string> = {
 
 export default function EmployeeMessagesView() {
     const {
+        messages,
         getChannelsForEmployee, getChannelMessages, getUnreadCount,
         sendMessage, markMessageRead, markAnnouncementRead,
         getAnnouncementsForEmployee,
@@ -75,7 +76,8 @@ export default function EmployeeMessagesView() {
     const selectedChannel = myChannels.find((c) => c.id === selectedChannelId);
     const channelMsgs = useMemo(
         () => (selectedChannelId ? getChannelMessages(selectedChannelId) : []),
-        [selectedChannelId, getChannelMessages],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [selectedChannelId, getChannelMessages, messages],
     );
 
     useEffect(() => {
