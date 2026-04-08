@@ -448,6 +448,7 @@ export default function AdminEmployeesView() {
     const handleAddEmployee = async () => {
         if (!canManage) { toast.error("You don't have permission to add employees"); return; }
         if (!newName || !newEmail || !newJobTitle || !newDept) { toast.error("Please fill all required fields"); return; }
+        if (!newPassword || newPassword.length < 8) { toast.error("Password is required and must be at least 8 characters"); return; }
         if (employees.some((e) => e.email.toLowerCase() === newEmail.toLowerCase())) { toast.error("An employee with this email already exists"); return; }
         
         // Validate phone number format if provided
@@ -683,31 +684,32 @@ export default function AdminEmployeesView() {
                                         <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/40 rounded-t-lg">
                                             <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
                                             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Login Account</span>
+                                            <span className="ml-auto text-[10px] font-semibold text-red-500">* required</span>
                                         </div>
                                         <div className="p-4 space-y-3">
-                                            {newPassword ? (
+                                            {newPassword && newPassword.length >= 8 ? (
                                                 <div className="flex items-center gap-2 rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-2.5 text-xs text-emerald-800 dark:text-emerald-300">
                                                     <ShieldCheck className="h-3.5 w-3.5 shrink-0" /><span>Account will be created — employee can log in immediately after being added.</span>
                                                 </div>
                                             ) : (
-                                                <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-2.5 text-xs text-amber-800 dark:text-amber-300">
-                                                    <KeyRound className="h-3.5 w-3.5 mt-0.5 shrink-0" /><span>No password set — this employee <strong>won&apos;t be able to log in</strong>. Set a password or generate one below.</span>
+                                                <div className="flex items-start gap-2 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-2.5 text-xs text-red-800 dark:text-red-300">
+                                                    <KeyRound className="h-3.5 w-3.5 mt-0.5 shrink-0" /><span>Password is <strong>required</strong> (minimum 8 characters). Set a password or generate one below.</span>
                                                 </div>
                                             )}
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div><label className="text-xs font-medium text-muted-foreground">System Role</label>
                                                     <Select value={newSystemRole} onValueChange={(v) => setNewSystemRole(v as Role)}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="employee">Employee</SelectItem><SelectItem value="supervisor">Supervisor</SelectItem><SelectItem value="hr">HR</SelectItem><SelectItem value="finance">Finance</SelectItem><SelectItem value="payroll_admin">Payroll Admin</SelectItem><SelectItem value="auditor">Auditor</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select>
                                                 </div>
-                                                <div><label className="text-xs font-medium text-muted-foreground">Initial Password</label>
+                                                <div><label className="text-xs font-medium text-muted-foreground">Initial Password <span className="text-red-500">*</span></label>
                                                     <div className="flex gap-1.5 mt-1">
-                                                        <Input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Set a password…" className="h-8 text-sm font-mono" />
+                                                        <Input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min. 8 characters" className={`h-8 text-sm font-mono ${!newPassword || newPassword.length < 8 ? "border-red-300 focus-visible:ring-red-500" : ""}`} />
                                                         <button type="button" onClick={generatePassword} title="Generate random password" className="shrink-0 rounded-md border h-8 px-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"><RefreshCw className="h-3.5 w-3.5" /></button>
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className={`flex items-center justify-between rounded-md border px-3 py-2 transition-colors ${newPassword ? "bg-background" : "bg-muted/30 opacity-50"}`}>
+                                            <div className={`flex items-center justify-between rounded-md border px-3 py-2 transition-colors ${newPassword && newPassword.length >= 8 ? "bg-background" : "bg-muted/30 opacity-50"}`}>
                                                 <div><p className="text-xs font-medium">Require password change on first login</p><p className="text-[11px] text-muted-foreground">Prompts employee to set their own password</p></div>
-                                                <Switch checked={newMustChange} onCheckedChange={setNewMustChange} disabled={!newPassword} />
+                                                <Switch checked={newMustChange} onCheckedChange={setNewMustChange} disabled={!newPassword || newPassword.length < 8} />
                                             </div>
                                         </div>
                                     </div>
@@ -737,7 +739,7 @@ export default function AdminEmployeesView() {
                                 </div>
                                 <div className="flex items-center justify-end gap-2 px-6 py-4 border-t bg-muted/20">
                                     <Button variant="outline" onClick={() => setAddOpen(false)} className="h-8 text-sm">Cancel</Button>
-                                    <Button onClick={handleAddEmployee} disabled={addingEmployee} className="gap-1.5 h-8 text-sm"><Plus className="h-3.5 w-3.5" /> {addingEmployee ? "Adding…" : "Add Employee"}</Button>
+                                    <Button onClick={handleAddEmployee} disabled={addingEmployee || !newPassword || newPassword.length < 8} className="gap-1.5 h-8 text-sm"><Plus className="h-3.5 w-3.5" /> {addingEmployee ? "Adding…" : "Add Employee"}</Button>
                                 </div>
                             </DialogContent>
                         </Dialog>
