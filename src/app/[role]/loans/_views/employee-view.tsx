@@ -16,7 +16,7 @@ export default function EmployeeLoansView() {
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
 
-    const myEmployeeId = employees.find((e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name)?.id;
+    const myEmployeeId = employees.find((e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name)?.id;
 
     const myLoans = useMemo(() => loans.filter((l) => l.employeeId === myEmployeeId), [loans, myEmployeeId]);
     const myDeductions = useMemo(() => getAllDeductions().filter((d) => myLoans.some((l) => l.id === d.loanId)), [getAllDeductions, myLoans]);

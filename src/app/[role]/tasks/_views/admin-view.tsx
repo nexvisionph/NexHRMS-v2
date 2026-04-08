@@ -152,7 +152,7 @@ export default function AdminTasksView() {
             employees.find(
                 (e) =>
                     e.profileId === currentUser.id ||
-                    e.email === currentUser.email ||
+                    e.email?.toLowerCase() === currentUser.email?.toLowerCase() ||
                     e.name === currentUser.name,
             )?.id ?? currentUser.id,
         [employees, currentUser],

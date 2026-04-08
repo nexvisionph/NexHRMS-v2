@@ -102,7 +102,7 @@ export function Sidebar() {
     const getUnreadCountForEmployee = useNotificationsStore((s) => s.getUnreadCountForEmployee);
     const currentEmployeeId = useMemo(() => {
         const emp = employees.find(
-            (e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name
+            (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name
         );
         return emp?.id;
     }, [employees, currentUser]);
@@ -113,7 +113,7 @@ export function Sidebar() {
     const hasFaceProject = useMemo(() => {
         if (role !== "employee" && role !== "supervisor") return false;
         const myEmp = employees.find(
-            (e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name
+            (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name
         );
         if (!myEmp) return false;
         const project = getProjectForEmployee(myEmp.id);

@@ -65,7 +65,7 @@ export default function TimesheetsPage() {
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
 
-    const myEmpId = employees.find((e) => e.name === currentUser.name || e.email === currentUser.email)?.id;
+    const myEmpId = employees.find((e) => e.name === currentUser.name || e.email?.toLowerCase() === currentUser.email?.toLowerCase())?.id;
 
     // When employee changes in compute dialog, auto-fill their assigned shift times
     const handleComputeEmpChange = (empId: string) => {

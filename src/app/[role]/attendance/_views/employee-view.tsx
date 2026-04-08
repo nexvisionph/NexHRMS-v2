@@ -178,7 +178,7 @@ export default function EmployeeView() {
     const penaltySettings = useKioskStore((s) => s.settings);
 
     const myEmployeeId = employees.find(
-        (e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name
+        (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name
     )?.id;
     const todayLog = myEmployeeId ? getTodayLog(myEmployeeId) : undefined;
     const myProject = myEmployeeId ? getProjectForEmployee(myEmployeeId) : undefined;

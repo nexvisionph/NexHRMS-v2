@@ -554,7 +554,7 @@ function MyLeaveBalance() {
     const leaveRequests = useLeaveStore((s) => s.requests);
     const rh = useRoleHref();
 
-    const empRecord = useMemo(() => employees.find((e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name), [employees, currentUser]);
+    const empRecord = useMemo(() => employees.find((e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name), [employees, currentUser]);
 
     const leaveTypes: LeaveType[] = ["VL", "SL", "EL", "OTHER", "ML", "PL", "SPL"];
     const leaveLabels: Record<LeaveType, string> = { VL: "Vacation Leave", SL: "Sick Leave", EL: "Emergency Leave", OTHER: "Other Leave", ML: "Maternity Leave", PL: "Paternity Leave", SPL: "Solo Parent Leave" };
@@ -615,7 +615,7 @@ function MyLatestPayslip() {
     const payslips = usePayrollStore((s) => s.payslips);
     const rh = useRoleHref();
 
-    const empRecord = useMemo(() => employees.find((e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name), [employees, currentUser]);
+    const empRecord = useMemo(() => employees.find((e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name), [employees, currentUser]);
     const latestPayslip = useMemo(() => {
         if (!empRecord) return undefined;
         return payslips
@@ -657,7 +657,7 @@ function MyLeaveRequests() {
     const leaveRequests = useLeaveStore((s) => s.requests);
     const rh = useRoleHref();
 
-    const empRecord = useMemo(() => employees.find((e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name), [employees, currentUser]);
+    const empRecord = useMemo(() => employees.find((e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name), [employees, currentUser]);
     const myLeaves = useMemo(() => {
         if (!empRecord) return [];
         return leaveRequests.filter((r) => r.employeeId === empRecord.id);

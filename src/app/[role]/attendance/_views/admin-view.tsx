@@ -102,7 +102,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const canImportCSV = mode === "admin" || mode === "hr";
 
     // ─── Identity ─────────────────────────────────────────────────
-    const myEmployeeId = employees.find((e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name)?.id;
+    const myEmployeeId = employees.find((e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name)?.id;
     const todayLog = myEmployeeId ? getTodayLog(myEmployeeId) : undefined;
     const myProject = myEmployeeId ? getProjectForEmployee(myEmployeeId) : undefined;
 

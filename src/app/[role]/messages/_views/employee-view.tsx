@@ -44,7 +44,7 @@ export default function EmployeeMessagesView() {
     // Channels use EMP-prefixed IDs; auth users have U-prefixed IDs.
     const effectiveId = useMemo(() => {
         const emp = employees.find(
-            (e) => e.profileId === currentUser.id || e.email === currentUser.email
+            (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase()
         );
         return emp?.id ?? currentUser.id;
     }, [employees, currentUser.id, currentUser.email]);

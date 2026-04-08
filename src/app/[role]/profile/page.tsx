@@ -29,7 +29,7 @@ export default function ProfilePage() {
     const currentUser = useAuthStore((s) => s.currentUser);
     const shiftTemplates = useAttendanceStore((s) => s.shiftTemplates);
 
-    const employee = employees.find((e) => e.email === currentUser.email);
+    const employee = employees.find((e) => e.email?.toLowerCase() === currentUser.email?.toLowerCase());
 
     const [editing, setEditing] = useState(false);
     const [phone, setPhone] = useState(employee?.phone || "");

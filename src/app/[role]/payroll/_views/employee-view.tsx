@@ -47,7 +47,7 @@ export default function EmployeePayrollView() {
     const [acknowledging, setAcknowledging] = useState(false);
 
     const myEmployee = useMemo(
-        () => employees.find((e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name),
+        () => employees.find((e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name),
         [employees, currentUser.email, currentUser.name],
     );
 

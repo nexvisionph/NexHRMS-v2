@@ -66,7 +66,7 @@ export default function FaceEnrollmentPage() {
 
     // Resolve the actual employee ID (e.g. "EMP026") from the auth profile
     const myEmployee = employees.find(
-        (e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name
+        (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name
     );
     const employeeId = myEmployee?.id || currentUser.id || "";
     const myProject = myEmployee ? getProjectForEmployee(myEmployee.id) : undefined;

@@ -66,7 +66,7 @@ export default function TaskDetailPage() {
 
     // Resolve HR employee record by email (DemoUser "U004" ↔ Employee "EMP026")
     const myEmployeeId = useMemo(
-        () => employees.find((e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name)?.id ?? currentUser.id,
+        () => employees.find((e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name)?.id ?? currentUser.id,
         [employees, currentUser.email, currentUser.name, currentUser.id],
     );
 

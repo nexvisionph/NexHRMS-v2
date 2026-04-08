@@ -63,7 +63,7 @@ export function Topbar() {
 
     // Get current employee ID for notification count
     const currentEmployeeId = employees.find(
-        (e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name
+        (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name
     )?.id;
     const notifCount = currentEmployeeId ? getUnreadCountForEmployee(currentEmployeeId) : 0;
     const recentNotifications = currentEmployeeId 

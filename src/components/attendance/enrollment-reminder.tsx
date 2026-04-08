@@ -33,7 +33,7 @@ export function EnrollmentReminder({ adminView = false, compact = false, employe
     const myEmployee = employeeIdProp
         ? employees.find((e) => e.id === employeeIdProp)
         : employees.find(
-            (e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name
+            (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name
         );
     const resolvedEmployeeId = employeeIdProp ?? myEmployee?.id;
 

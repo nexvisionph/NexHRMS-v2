@@ -126,7 +126,7 @@ export default function EmployeeTasksView() {
     // Resolve the HR employee record by email so tasks assigned to "EMP026"
     // are found even though the DemoUser id is "U004".
     const myEmployeeId = useMemo(
-        () => employees.find((e) => e.profileId === currentUser.id || e.email === currentUser.email || e.name === currentUser.name)?.id ?? currentUser.id,
+        () => employees.find((e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name)?.id ?? currentUser.id,
         [employees, currentUser.email, currentUser.name, currentUser.id],
     );
 
