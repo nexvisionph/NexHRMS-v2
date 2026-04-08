@@ -7,7 +7,7 @@
  * Uses Supabase client with user session for RLS enforcement.
  */
 
-import { createServerSupabaseClient } from "./supabase-server";
+import { createServerSupabaseClient, createAdminSupabaseClient } from "./supabase-server";
 import type { Employee, ServiceResult, SalaryChangeRequest, SalaryHistoryEntry } from "@/types";
 import { keysToCamel, keysToSnake, roleToDbFormat, roleFromDb } from "@/lib/db-utils";
 
@@ -66,7 +66,20 @@ export async function updateEmployee(id: string, patch: Partial<Employee>): Prom
   const row = employeeToDb(patch);
   const { data, error } = await supabase.from("employees").update(row).eq("id", id).select().single();
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: employeeFromDb(data as Record<string, unknown>) };
+
+  // Sync email/name/role to profiles table if employee has a linked profile
+  const employee = employeeFromDb(data as Record<string, unknown>);
+  const profileId = (data as { profile_id?: string }).profile_id;
+  if (profileId && (patch.email || patch.name || patch.role)) {
+    const adminSupabase = await createAdminSupabaseClient();
+    const profilePatch: Record<string, unknown> = {};
+    if (patch.email) profilePatch.email = patch.email;
+    if (patch.name) profilePatch.name = patch.name;
+    if (patch.role) profilePatch.role = roleToDbFormat(patch.role);
+    await adminSupabase.from("profiles").update(profilePatch).eq("id", profileId);
+  }
+
+  return { ok: true, data: employee };
 }
 
 export async function deleteEmployee(id: string): Promise<ServiceResult<void>> {

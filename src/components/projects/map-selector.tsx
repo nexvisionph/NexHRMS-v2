@@ -227,8 +227,8 @@ export function MapSelector({
 
   return (
     <div className="space-y-4">
-      {/* Search Bar */}
-      <div className="relative">
+      {/* Search Bar — z-[100] keeps dropdown above Leaflet's internal z-indices (~400-600) */}
+      <div className="relative z-[100]">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -305,8 +305,8 @@ export function MapSelector({
         </div>
       </div>
 
-      {/* Map Container — component is dynamically imported with ssr:false so always browser-only */}
-      <div className="border border-border rounded-lg overflow-hidden shadow-sm">
+      {/* Map Container — isolation:isolate keeps Leaflet's z-indices inside this stacking context */}
+      <div className="border border-border rounded-lg overflow-hidden shadow-sm isolate" style={{ isolation: "isolate" }}>
         <MapContainer
             center={[mapLat, mapLng]}
             zoom={16}

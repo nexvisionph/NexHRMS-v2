@@ -22,7 +22,7 @@ import {
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { getInitials, formatCurrency, formatDate, validatePhone } from "@/lib/format";
-import { ROLES, LOCATIONS } from "@/lib/constants";
+import { SYSTEM_ROLES, LOCATIONS } from "@/lib/constants";
 import { useDepartmentsStore } from "@/store/departments.store";
 import { useJobTitlesStore } from "@/store/job-titles.store";
 import { Mail, MapPin, Phone, Briefcase, Calendar, DollarSign, FileText, Pencil, Banknote, UserMinus, X } from "lucide-react";
@@ -243,7 +243,7 @@ export default function AdminProfileView() {
                             <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold">Personal Information</CardTitle></CardHeader>
                             <CardContent className="space-y-3">
                                 <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Job Title" value={employee.jobTitle || employee.role} />
-                                <InfoRow icon={<MapPin className="h-4 w-4" />} label="Location" value={employee.location} />
+                                <InfoRow icon={<MapPin className="h-4 w-4" />} label="Address" value={employee.address || "—"} />
                                 <InfoRow icon={<Calendar className="h-4 w-4" />} label="Birthday" value={employee.birthday ? formatDate(employee.birthday) : "—"} />
                                 <InfoRow icon={<Phone className="h-4 w-4" />} label="Phone" value={employee.phone || "—"} />
                             </CardContent>
@@ -498,7 +498,7 @@ export default function AdminProfileView() {
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div><label className="text-sm font-medium">Role</label>
-                                <Select value={editRole} onValueChange={setEditRole}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{ROLES.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent></Select>
+                                <Select value={editRole} onValueChange={setEditRole}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{SYSTEM_ROLES.map((r) => <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>)}</SelectContent></Select>
                             </div>
                             <div><label className="text-sm font-medium">Job Title</label>
                                 <Select value={editJobTitle} onValueChange={setEditJobTitle}><SelectTrigger className="mt-1"><SelectValue placeholder="Select title" /></SelectTrigger><SelectContent><SelectItem value="">— None —</SelectItem>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>

@@ -1,5 +1,16 @@
 import type { Role, Permission, HolidayType } from "@/types";
 
+// System roles (auth/permission level) - matches Role type
+export const SYSTEM_ROLES: readonly Role[] = [
+    "admin",
+    "hr",
+    "finance",
+    "employee",
+    "supervisor",
+    "payroll_admin",
+    "auditor",
+] as const;
+
 export const DEPARTMENTS = [
     "Engineering",
     "Design",
