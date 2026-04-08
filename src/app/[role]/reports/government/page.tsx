@@ -188,7 +188,7 @@ export default function GovernmentReportsPage() {
                 </Card>
             ) : (
                 <Tabs defaultValue="sss">
-                    <TabsList className="w-full overflow-x-auto justify-start">
+                    <TabsList className="w-full justify-start">
                         <TabsTrigger value="sss">SSS</TabsTrigger>
                         <TabsTrigger value="philhealth">PhilHealth</TabsTrigger>
                         <TabsTrigger value="pagibig">Pag-IBIG</TabsTrigger>
