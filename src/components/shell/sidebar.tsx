@@ -194,26 +194,27 @@ export function Sidebar() {
                         <img
                             src={logoUrl}
                             alt={companyName}
-                            className="sidebar-logo h-9 max-w-[140px] object-contain transition-all duration-300"
+                            className="sidebar-logo max-h-[40px] w-auto max-w-[160px] object-contain transition-all duration-300"
+                            style={{ marginLeft: showLabel ? "8px" : "0" }}
                         />
                     ) : (
                         <>
                             <Image
                                 src="/logo.png"
                                 alt={companyName}
-                                width={showLabel ? 140 : 36}
-                                height={36}
+                                width={showLabel ? 160 : 40}
+                                height={40}
                                 className="sidebar-logo transition-all duration-300 dark:hidden"
-                                style={{ width: "auto", height: "auto", maxHeight: 36 }}
+                                style={{ width: "auto", height: "auto", maxHeight: 40, marginLeft: showLabel ? "8px" : "0" }}
                                 priority
                             />
                             <Image
                                 src="/darklogo.png"
                                 alt={companyName}
-                                width={showLabel ? 140 : 36}
-                                height={36}
+                                width={showLabel ? 160 : 40}
+                                height={40}
                                 className="sidebar-logo transition-all duration-300 hidden dark:block"
-                                style={{ width: "auto", height: "auto", maxHeight: 36 }}
+                                style={{ width: "auto", height: "auto", maxHeight: 40, marginLeft: showLabel ? "8px" : "0" }}
                                 priority
                             />
                         </>
