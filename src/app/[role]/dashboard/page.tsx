@@ -3,6 +3,7 @@
 import { useAuthStore } from "@/store/auth.store";
 import { useRolesStore } from "@/store/roles.store";
 import { WidgetGrid } from "@/components/dashboard-builder/widget-grid";
+import { AdminDashboardView } from "./_components/admin-dashboard";
 
 export default function DashboardPage() {
     const currentUser = useAuthStore((s) => s.currentUser);
@@ -19,6 +20,11 @@ export default function DashboardPage() {
         employee: "Your personal workspace — attendance, leave, and payslips.",
         auditor: "Audit overview — system activity and compliance monitoring.",
     };
+
+    // Replace the default widget grid with the polished admin view
+    if (role === "admin") {
+        return <AdminDashboardView />;
+    }
 
     return (
         <div className="space-y-4">
