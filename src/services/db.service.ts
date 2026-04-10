@@ -1108,3 +1108,35 @@ export function shouldSync(): boolean {
   if (typeof window === "undefined") return false;
   return true;
 }
+
+/**
+ * Check if we have a valid auth session before attempting sync.
+ * Returns false if refresh token is invalid or session is expired.
+ * This prevents unnecessary requests that will fail due to RLS.
+ */
+export async function hasValidSession(): Promise<boolean> {
+  if (!shouldSync()) return false;
+  
+  try {
+    const { data, error } = await supabase().auth.getSession();
+    
+    if (error) {
+      // Check for refresh token errors
+      const err = error as { code?: string; message?: string };
+      if (
+        err.code === "refresh_token_not_found" ||
+        err.message?.includes("Refresh Token") ||
+        err.message?.includes("Invalid Refresh Token")
+      ) {
+        return false;
+      }
+      // Other auth errors - still might have a valid session
+      console.warn("[db] Session check error:", err.message);
+    }
+    
+    return !!data.session?.access_token;
+  } catch (err) {
+    // Network or other error - assume no valid session
+    return false;
+  }
+}

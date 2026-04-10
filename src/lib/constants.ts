@@ -287,6 +287,7 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
         "/attendance",
         "/leave",
         "/payroll",
+        "/payroll/settings",
         "/loans",
         "/reports",
         "/reports/government",
@@ -303,10 +304,10 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
         "/custom",
     ],
     hr: ["/dashboard", "/employees", "/projects", "/tasks", "/messages", "/attendance", "/leave", "/reports", "/notifications", "/timesheets", "/settings/shifts", "/kiosk", "/profile"],
-    finance: ["/dashboard", "/payroll", "/loans", "/reports", "/reports/government", "/employees/directory", "/employees/manage", "/notifications", "/profile"],
+    finance: ["/dashboard", "/payroll", "/payroll/settings", "/loans", "/reports", "/reports/government", "/employees/directory", "/employees/manage", "/notifications", "/profile"],
     employee: ["/dashboard", "/attendance", "/leave", "/payroll", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile"],
     supervisor: ["/dashboard", "/attendance", "/leave", "/timesheets", "/employees", "/projects", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile"],
-    payroll_admin: ["/dashboard", "/payroll", "/loans", "/reports", "/reports/government", "/timesheets", "/notifications", "/profile"],
+    payroll_admin: ["/dashboard", "/payroll", "/payroll/settings", "/loans", "/reports", "/reports/government", "/timesheets", "/notifications", "/profile"],
     auditor: ["/dashboard", "/audit", "/reports", "/employees", "/notifications", "/profile"],
 };
 
@@ -322,6 +323,7 @@ export const PATH_TO_PERMISSION: Record<string, Permission> = {
     "/attendance": "page:attendance",
     "/leave": "page:leave",
     "/payroll": "page:payroll",
+    "/payroll/settings": "page:payroll",
     "/loans": "page:loans",
     "/reports": "page:reports",
     "/reports/government": "reports:government",

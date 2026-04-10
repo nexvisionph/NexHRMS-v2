@@ -168,19 +168,22 @@ export function installAuthErrorSuppression() {
   // Suppress global errors that are auth-related
   const originalError = console.error;
   console.error = (...args: unknown[]) => {
-    const message = args[0];
-    if (
-      typeof message === "string" &&
-      (message.includes("Refresh Token") || message.includes("AuthApiError") || message.includes("refresh_token_not_found"))
-    ) {
-      // Suppress this error, handle silently
-      console.info("[Auth] Suppressed console error:", message);
-      return;
-    }
-    // Check if first arg is an Error object with refresh token message
-    if (message instanceof Error && isRefreshTokenError(message)) {
-      console.info("[Auth] Suppressed error object:", message.message);
-      return;
+    // Check all arguments for auth error indicators
+    for (const arg of args) {
+      if (isRefreshTokenError(arg)) {
+        // Suppress this error entirely
+        return;
+      }
+      // Check string messages
+      if (
+        typeof arg === "string" &&
+        (arg.includes("Refresh Token") || 
+         arg.includes("AuthApiError") || 
+         arg.includes("refresh_token_not_found") ||
+         arg.includes("Invalid Refresh Token"))
+      ) {
+        return;
+      }
     }
     originalError.apply(console, args);
   };

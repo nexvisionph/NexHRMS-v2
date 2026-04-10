@@ -71,7 +71,7 @@ interface PayrollState {
     computeFinalPay: (data: { employeeId: string; resignedAt: string; salary: number; unpaidOTHours: number; leaveDays: number; loanBalance: number }) => void;
     getFinalPay: (employeeId: string) => FinalPayComputation | undefined;
     // ─── Helpers ──────────────────────────────────────
-    generate13thMonth: (employees: { id: string; salary: number; joinDate?: string }[]) => void;
+    generate13thMonth: (employees: { id: string; salary: number; joinDate?: string }[], year?: number) => void;
     getByEmployee: (employeeId: string) => Payslip[];
     getPending: () => Payslip[];
     exportBankFile: (runDate: string, employees: { id: string; name: string; salary: number }[]) => void;
@@ -135,11 +135,17 @@ export const usePayrollStore = create<PayrollState>()(
 
             // ─── Global Defaults ──────────────────────────────────────
             updateGlobalDefault: (config) =>
-                set((s) => ({
-                    globalDefaults: s.globalDefaults.map((g) =>
-                        g.deductionType === config.deductionType ? { ...g, ...config } : g
-                    ),
-                })),
+                set((s) => {
+                    const exists = s.globalDefaults.some((g) => g.deductionType === config.deductionType);
+                    if (exists) {
+                        return {
+                            globalDefaults: s.globalDefaults.map((g) =>
+                                g.deductionType === config.deductionType ? { ...g, ...config } : g
+                            ),
+                        };
+                    }
+                    return { globalDefaults: [...s.globalDefaults, config as DeductionGlobalDefault] };
+                }),
 
             getGlobalDefault: (deductionType) =>
                 get().globalDefaults.find((g) => g.deductionType === deductionType),
@@ -449,19 +455,19 @@ export const usePayrollStore = create<PayrollState>()(
             // ─── Helpers ──────────────────────────────────────────────
             // 13th month = (total basic salary earned in the year) / 12
             // Pro-rated for mid-year joiners: only months worked count
-            generate13thMonth: (employees) =>
+            generate13thMonth: (employees, year?: number) =>
                 set((s) => {
                     const today = new Date().toISOString().split("T")[0];
-                    const currentYear = new Date().getFullYear();
+                    const targetYear = year ?? new Date().getFullYear();
                     const newSlips: Payslip[] = employees.map((emp) => {
                         // Determine how many full months the employee worked this year
                         let monthsWorked = 12;
                         if (emp.joinDate) {
                             const join = new Date(emp.joinDate);
-                            if (join.getFullYear() === currentYear) {
+                            if (join.getFullYear() === targetYear) {
                                 // Joined this year: count from join month to December (inclusive)
                                 monthsWorked = 12 - join.getMonth(); // getMonth() is 0-based
-                            } else if (join.getFullYear() > currentYear) {
+                            } else if (join.getFullYear() > targetYear) {
                                 monthsWorked = 0; // hasn't started yet
                             }
                         }
@@ -470,8 +476,8 @@ export const usePayrollStore = create<PayrollState>()(
                         return {
                             id: `PS-${nanoid(8)}`,
                             employeeId: emp.id,
-                            periodStart: `${currentYear}-01-01`,
-                            periodEnd: `${currentYear}-12-31`,
+                            periodStart: `${targetYear}-01-01`,
+                            periodEnd: `${targetYear}-12-31`,
                             grossPay: thirteenthPay,
                             allowances: 0,
                             sssDeduction: 0,
@@ -483,7 +489,7 @@ export const usePayrollStore = create<PayrollState>()(
                             netPay: thirteenthPay,
                             issuedAt: today,
                             status: "draft" as const,
-                            notes: `13th Month Pay (${monthsWorked}/12 months)`,
+                            notes: `13th Month Pay ${targetYear} (${monthsWorked}/12 months)`,
                         };
                     }).filter((s) => s.netPay > 0);
                     return { payslips: [...s.payslips, ...newSlips] };

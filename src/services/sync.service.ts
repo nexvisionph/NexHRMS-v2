@@ -13,6 +13,7 @@
 
 import {
   shouldSync,
+  hasValidSession,
   employeesDb,
   employeeFromDb,
   salaryDb,
@@ -72,6 +73,14 @@ export async function forceRehydrate(): Promise<void> {
 async function hydrateAllStoresInternal(): Promise<void> {
   if (!shouldSync()) return;
   if (_hydrated) return;
+
+  // Check for valid session before attempting to fetch data.
+  // This prevents 406 errors when the refresh token is invalid.
+  const hasSession = await hasValidSession();
+  if (!hasSession) {
+    console.info("[sync] No valid session — skipping hydration");
+    return;
+  }
 
   try {
     // Fetch all core data in two sequential batches of ~20 to stay well under
@@ -219,7 +228,12 @@ async function hydrateAllStoresInternal(): Promise<void> {
       finalPayComputations: finalPayComputations.length > 0 ? finalPayComputations : [],
       ...(payScheduleRows.length > 0 ? { paySchedule: payScheduleRows[0] } : {}),
       deductionOverrides: deductionOverridesRows.length > 0 ? deductionOverridesRows : [],
-      globalDefaults: globalDefaultsRows.length > 0 ? globalDefaultsRows : [],
+      globalDefaults: globalDefaultsRows.length > 0 ? globalDefaultsRows : [
+        { deductionType: "sss", enabled: true, mode: "auto" },
+        { deductionType: "philhealth", enabled: true, mode: "auto" },
+        { deductionType: "pagibig", enabled: true, mode: "auto" },
+        { deductionType: "bir", enabled: true, mode: "auto" },
+      ],
       ...(signatureConfigRow ? { signatureConfig: signatureConfigRow } : {}),
     });
 

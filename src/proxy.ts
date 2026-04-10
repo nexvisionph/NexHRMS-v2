@@ -2,6 +2,40 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { canAccessRoute } from "@/lib/permissions-server";
 
+/**
+ * Check if an error is an auth/refresh token error.
+ * These are expected when sessions expire and should be handled silently.
+ */
+function isAuthError(error: unknown): boolean {
+  if (!error) return false;
+  const err = error as { code?: string; message?: string; __isAuthError?: boolean };
+  return Boolean(
+    err.__isAuthError === true ||
+    err.code === "refresh_token_not_found" ||
+    err.message?.includes("Refresh Token") ||
+    err.message?.includes("Invalid Refresh Token") ||
+    err.message?.includes("AuthApiError")
+  );
+}
+
+// Suppress auth errors from polluting server logs.
+// The actual error handling is done in the proxy function below.
+const originalConsoleError = console.error;
+console.error = (...args: unknown[]) => {
+  // Check if this is an auth-related error we should suppress
+  for (const arg of args) {
+    if (isAuthError(arg)) return;
+    if (typeof arg === "string" && 
+        (arg.includes("Refresh Token") || 
+         arg.includes("AuthApiError") ||
+         arg.includes("refresh_token_not_found") ||
+         arg.includes("Invalid Refresh Token"))) {
+      return;
+    }
+  }
+  originalConsoleError.apply(console, args);
+};
+
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -81,8 +115,7 @@ export async function proxy(request: NextRequest) {
         error.message?.includes("Invalid Refresh Token");
       
       if (isRefreshTokenError) {
-        console.warn("[proxy] Invalid refresh token — clearing auth cookies");
-        // Delete all sb-* auth cookies so the next request starts clean
+        // Silently clear cookies - this is expected for expired sessions
         for (const cookie of request.cookies.getAll()) {
           if (cookie.name.startsWith("sb-")) {
             supabaseResponse.cookies.delete(cookie.name);
@@ -108,13 +141,16 @@ export async function proxy(request: NextRequest) {
     const isAuthError =
       err != null && typeof err === "object" && "__isAuthError" in err;
     
-    // Check if thrown error is a refresh token error
+    // Check if thrown error is a refresh token error (by code or message)
+    const errObj = err as { code?: string; message?: string };
     const isRefreshTokenError =
-      err instanceof Error &&
-      (err.message?.includes("Refresh Token") || err.message?.includes("refresh_token_not_found"));
+      errObj.code === "refresh_token_not_found" ||
+      errObj.message?.includes("Refresh Token") || 
+      errObj.message?.includes("refresh_token_not_found") ||
+      errObj.message?.includes("Invalid Refresh Token");
     
     if (isAuthError || isRefreshTokenError) {
-      // Delete all sb-* auth cookies so the next request starts clean
+      // Silently clear cookies - this is expected for expired sessions
       for (const cookie of request.cookies.getAll()) {
         if (cookie.name.startsWith("sb-")) {
           supabaseResponse.cookies.delete(cookie.name);

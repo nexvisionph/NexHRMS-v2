@@ -46,6 +46,7 @@ import type { DeductionType, DeductionOverrideMode, DeductionTemplate, Deduction
 import { PH_EXEMPTION_REASONS } from "@/types";
 import { useDepartmentsStore } from "@/store/departments.store";
 import { useProjectsStore } from "@/store/projects.store";
+import { ThirteenthMonthModal } from "@/components/payroll/thirteenth-month-modal";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -363,11 +364,15 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         setOpen(false); setSelectedEmployeeIds([]); setFormAllowances("0"); setFormOtherDeductions("0"); setFormOTHours("0"); setFormNightDiffHours("0"); setFormNotes(""); setFormIssuedAt(format(new Date(), "yyyy-MM-dd"));
     };
 
-    const handle13thMonth = () => {
-        const activeEmps = employees.filter((e) => e.status === "active");
-        generate13thMonth(activeEmps.map((e) => ({ id: e.id, salary: e.salary, joinDate: e.joinDate })));
-        toast.success(`Generated 13th Month Pay for ${activeEmps.length} employees`);
-    };
+    // ─── 13th Month Modal State ─────────────────────────────────
+    const [thirteenthMonthOpen, setThirteenthMonthOpen] = useState(false);
+    const { departments } = useDepartmentsStore();
+    const { projects } = useProjectsStore();
+
+    const handle13thMonthGenerate = useCallback((selectedEmployees: { id: string; salary: number; joinDate: string }[], year: number) => {
+        generate13thMonth(selectedEmployees, year);
+        toast.success(`Generated 13th Month Pay ${year} for ${selectedEmployees.length} employee${selectedEmployees.length > 1 ? "s" : ""}`);
+    }, [generate13thMonth]);
 
     const payrollRuns = useMemo(() => {
         const grouped: Record<string, { date: string; count: number; totalNet: number; totalGross: number; published: number }> = {};
@@ -388,6 +393,15 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
 
     // ─── Batch action state ──────────────────────────────────────
     const [batchProcessing, setBatchProcessing] = useState(false);
+    const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+
+    // ─── Draft payslips with zero government deductions (warn before publish) ───
+    const draftZeroDeductionCount = useMemo(() =>
+        filteredPayslips.filter((p) =>
+            p.status === "draft" &&
+            (p.sssDeduction || 0) + (p.philhealthDeduction || 0) + (p.pagibigDeduction || 0) + (p.taxDeduction || 0) === 0
+        ).length
+    , [filteredPayslips]);
 
     // ─── Status summary counts ───────────────────────────────────
     const statusCounts = useMemo(() => {
@@ -539,7 +553,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                 <Settings className="h-4 w-4" /> <span className="hidden sm:inline">Payroll Settings</span>
                             </Button>
                         </Link>
-                        <Button variant="outline" size="sm" className="gap-1.5" onClick={handle13thMonth}>
+                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setThirteenthMonthOpen(true)}>
                             <Gift className="h-4 w-4" /> <span className="hidden sm:inline">13th Month</span>
                         </Button>
                         <Dialog open={open} onOpenChange={setOpen}>
@@ -626,6 +640,45 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                             <div><label className="text-xs text-muted-foreground">Night Diff Hours (+10%, 10PM–6AM per Art. 86)</label><Input type="number" min={0} step="0.5" value={formNightDiffHours} onChange={(e) => setFormNightDiffHours(e.target.value)} className="mt-1 h-9" placeholder="0" /></div>
                                         </div>
                                     </div>
+                                    {/* Gov't Deduction Quick Controls */}
+                                    <div className="border border-border/60 rounded-lg p-3 bg-muted/30">
+                                        <p className="text-xs font-semibold mb-2 flex items-center gap-1.5">
+                                            <Percent className="h-3.5 w-3.5" /> Gov&apos;t Deduction Controls
+                                        </p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {(["sss", "philhealth", "pagibig", "bir"] as DeductionType[]).map((type) => {
+                                                const gd = getGlobalDefault(type);
+                                                const labels: Record<DeductionType, string> = { sss: "SSS", philhealth: "PhilHealth", pagibig: "Pag-IBIG", bir: "BIR Tax" };
+                                                const modeLabel = !gd?.enabled
+                                                    ? "Disabled"
+                                                    : gd?.mode === "exempt" ? "Exempt (₱0)"
+                                                    : gd?.mode === "percentage" ? `${gd.percentage ?? 0}% custom`
+                                                    : gd?.mode === "fixed" ? `₱${gd.fixedAmount ?? 0} fixed`
+                                                    : "Auto PH";
+                                                const modeColor = !gd?.enabled || gd?.mode === "exempt"
+                                                    ? "text-red-500"
+                                                    : "text-emerald-600";
+                                                return (
+                                                    <div key={type} className="flex items-center justify-between bg-background border border-border/50 rounded px-2.5 py-2">
+                                                        <div>
+                                                            <span className="text-xs font-medium">{labels[type]}</span>
+                                                            <p className={`text-[9px] leading-tight ${modeColor}`}>{modeLabel}</p>
+                                                        </div>
+                                                        <label className="flex items-center gap-1.5 cursor-pointer">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => updateGlobalDefault({ deductionType: type, enabled: !gd?.enabled, mode: gd?.mode ?? "auto" })}
+                                                                className={`relative w-9 h-5 rounded-full transition-colors ${gd?.enabled && gd?.mode !== "exempt" ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`}
+                                                            >
+                                                                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${gd?.enabled && gd?.mode !== "exempt" ? "left-4" : "left-0.5"}`} />
+                                                            </button>
+                                                        </label>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <p className="text-[10px] text-muted-foreground mt-2">Synced with Tax Settings tab · changes apply company-wide</p>
+                                    </div>
                                     {/* Notes */}
                                     <div><label className="text-xs text-muted-foreground">Notes (optional)</label><Input value={formNotes} onChange={(e) => setFormNotes(e.target.value)} placeholder="e.g. bonus included" className="mt-1" /></div>
                                     {selectedEmployeeIds.length > 0 && (
@@ -703,14 +756,47 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                     {canIssue && (
                         <div className="flex flex-wrap items-center gap-2 p-3 bg-muted/30 border border-border/50 rounded-lg">
                             <span className="text-xs font-medium text-muted-foreground mr-2">Batch Actions:</span>
-                            <Button
-                                variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-violet-600 border-violet-200 dark:border-violet-800 hover:bg-violet-50 dark:hover:bg-violet-950/30"
-                                disabled={batchProcessing || statusCounts.draft === 0}
-                                onClick={handleBatchPublish}
-                            >
-                                <Send className="h-3.5 w-3.5" />
-                                Publish All Draft ({statusCounts.draft})
-                            </Button>
+                            <AlertDialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
+                                <AlertDialogTrigger asChild>
+                                    <Button
+                                        variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-violet-600 border-violet-200 dark:border-violet-800 hover:bg-violet-50 dark:hover:bg-violet-950/30"
+                                        disabled={batchProcessing || statusCounts.draft === 0}
+                                    >
+                                        <Send className="h-3.5 w-3.5" />
+                                        Publish All Draft ({statusCounts.draft})
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Publish {statusCounts.draft} Draft Payslip{statusCounts.draft !== 1 ? "s" : ""}?</AlertDialogTitle>
+                                        <AlertDialogDescription asChild>
+                                            <div className="space-y-3 text-sm">
+                                                {draftZeroDeductionCount > 0 ? (
+                                                    <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 text-amber-800 dark:text-amber-300">
+                                                        <p className="font-semibold mb-1">⚠ Deductions not yet applied</p>
+                                                        <p><strong>{draftZeroDeductionCount}</strong> of the {statusCounts.draft} draft payslip{statusCounts.draft !== 1 ? "s" : ""} still have <strong>₱0 government deductions</strong> (SSS, PhilHealth, Pag-IBIG, BIR Tax).</p>
+                                                        <p className="mt-1.5">Use <strong>Apply Deductions</strong> first to compute and attach deductions before publishing, or proceed to publish as-is.</p>
+                                                    </div>
+                                                ) : (
+                                                    <p>This will publish all <strong>{statusCounts.draft}</strong> draft payslip{statusCounts.draft !== 1 ? "s" : ""} and notify employees. This action cannot be undone.</p>
+                                                )}
+                                                <p className="text-muted-foreground text-xs">Employees will be able to view their payslips after publishing.</p>
+                                            </div>
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        {draftZeroDeductionCount > 0 && (
+                                            <Button variant="outline" size="sm" onClick={() => { setPublishConfirmOpen(false); handleBatchRecomputeDeductions(); }}>
+                                                Apply Deductions First
+                                            </Button>
+                                        )}
+                                        <AlertDialogAction onClick={handleBatchPublish}>
+                                            {draftZeroDeductionCount > 0 ? "Publish Anyway" : "Publish All"}
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
                             <Button
                                 variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-blue-600 border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/30"
                                 disabled={batchProcessing || statusCounts.signed === 0}
@@ -1623,6 +1709,16 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                     )}
                 </DialogContent>
             </Dialog>
+
+            {/* 13th Month Modal */}
+            <ThirteenthMonthModal
+                open={thirteenthMonthOpen}
+                onOpenChange={setThirteenthMonthOpen}
+                employees={employees}
+                departments={departments}
+                projects={projects}
+                onGenerate={handle13thMonthGenerate}
+            />
         </div>
     );
 }
