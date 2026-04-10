@@ -130,7 +130,7 @@ export default function PageBuilderPage() {
     const handleExport = () => {
         const blob = new Blob([store.exportPages()], { type: "application/json" });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement("a"); a.href = url; a.download = "sdsi-pages.json"; a.click();
+        const a = document.createElement("a"); a.href = url; a.download = "nexhrms-pages.json"; a.click();
         URL.revokeObjectURL(url);
         toast.success("Pages exported");
     };

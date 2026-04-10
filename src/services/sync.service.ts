@@ -906,7 +906,7 @@ export function startRealtime(): void {
 
   const supabase = createClient();
   const channel = supabase
-    .channel("soren-realtime")
+    .channel("nexhrms-realtime")
     // ── attendance_logs ──────────────────────────────────────
     .on(
       "postgres_changes",

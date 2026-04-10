@@ -218,7 +218,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }, [colorTheme, customPrimaryLight, customPrimaryDark]);
 
     useEffect(() => {
-        const styleId = "soren-theme-vars";
+        const styleId = "nexhrms-theme-vars";
         let style = document.getElementById(styleId) as HTMLStyleElement | null;
         if (!style) {
             style = document.createElement("style");
@@ -242,7 +242,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         if (!opt) return;
 
         // Load Google Font stylesheet if required
-        const linkId = "soren-gfont";
+        const linkId = "nexhrms-gfont";
         const existing = document.getElementById(linkId);
         if (opt.googleFont) {
             if (!existing) {

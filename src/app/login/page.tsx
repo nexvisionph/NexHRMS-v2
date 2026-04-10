@@ -18,16 +18,16 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 const DEMO_ACCOUNTS = [
-    { role: "Admin", email: "admin@sdsi.com", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
-    { role: "HR", email: "hr@sdsi.com", color: "bg-blue-500/15 text-blue-700 dark:text-blue-400" },
-    { role: "Finance", email: "finance@sdsi.com", color: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
-    { role: "Employee", email: "employee@sdsi.com", color: "bg-purple-500/15 text-purple-700 dark:text-purple-400" },
-    { role: "Supervisor", email: "supervisor@sdsi.com", color: "bg-orange-500/15 text-orange-700 dark:text-orange-400" },
-    { role: "Payroll", email: "payroll@sdsi.com", color: "bg-teal-500/15 text-teal-700 dark:text-teal-400" },
-    { role: "Auditor", email: "auditor@sdsi.com", color: "bg-slate-500/15 text-slate-700 dark:text-slate-400" },
-    { role: "QR Employee 1", email: "qr@sdsi.com", color: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400" },
-    { role: "QR Employee 2", email: "qr2@sdsi.com", color: "bg-pink-500/15 text-pink-700 dark:text-pink-400" },
-    { role: "\uD83E\uDD16 Face Demo", email: "face@sdsi.com", color: "bg-violet-500/15 text-violet-700 dark:text-violet-400" },
+    { role: "Admin", email: "admin@nexhrms.com", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
+    { role: "HR", email: "hr@nexhrms.com", color: "bg-blue-500/15 text-blue-700 dark:text-blue-400" },
+    { role: "Finance", email: "finance@nexhrms.com", color: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
+    { role: "Employee", email: "employee@nexhrms.com", color: "bg-purple-500/15 text-purple-700 dark:text-purple-400" },
+    { role: "Supervisor", email: "supervisor@nexhrms.com", color: "bg-orange-500/15 text-orange-700 dark:text-orange-400" },
+    { role: "Payroll", email: "payroll@nexhrms.com", color: "bg-teal-500/15 text-teal-700 dark:text-teal-400" },
+    { role: "Auditor", email: "auditor@nexhrms.com", color: "bg-slate-500/15 text-slate-700 dark:text-slate-400" },
+    { role: "QR Employee 1", email: "qr@nexhrms.com", color: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400" },
+    { role: "QR Employee 2", email: "qr2@nexhrms.com", color: "bg-pink-500/15 text-pink-700 dark:text-pink-400" },
+    { role: "\uD83E\uDD16 Face Demo", email: "face@nexhrms.com", color: "bg-violet-500/15 text-violet-700 dark:text-violet-400" },
 ];
 const PAYROLL_TEST_ACCOUNTS = [
     { role: "Sr. Engineer", email: "maria.cruz@nexhrms.test", color: "bg-rose-500/15 text-rose-700 dark:text-rose-400", name: "Maria Cruz" },
@@ -192,7 +192,7 @@ export default function LoginPage() {
                             <label className="text-sm font-medium">Email</label>
                             <Input
                                 type="email"
-                                placeholder="admin@sdsi.com"
+                                placeholder="admin@nexhrms.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 className="mt-1.5"

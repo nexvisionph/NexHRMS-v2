@@ -1,4 +1,4 @@
-import type {
+﻿import type {
     Employee,
     AttendanceLog,
     LeaveRequest,
@@ -17,20 +17,20 @@ import type {
     ChannelMessage,
 } from "@/types";
 
-// ─── Demo Users ──────────────────────────────────────────────
+// â”€â”€â”€ Demo Users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const DEMO_USERS: DemoUser[] = [
-    { id: "U001", name: "Alex Rivera", role: "admin", email: "admin@sdsi.com" },
-    { id: "U002", name: "Jordan Lee", role: "hr", email: "hr@sdsi.com" },
-    { id: "U003", name: "Morgan Chen", role: "finance", email: "finance@sdsi.com" },
-    { id: "U004", name: "Sam Torres", role: "employee", email: "employee@sdsi.com" },
-    { id: "U006", name: "Pat Reyes", role: "supervisor", email: "supervisor@sdsi.com" },
-    { id: "U007", name: "Dana Cruz", role: "payroll_admin", email: "payroll@sdsi.com" },
-    { id: "U008", name: "Rene Santos", role: "auditor", email: "auditor@sdsi.com" },
-    { id: "U009", name: "Jamie Reyes", role: "employee", email: "qr@sdsi.com" },
-    { id: "U010", name: "Riley Santos", role: "employee", email: "qr2@sdsi.com" },
-    // Face recognition test account — dedicated for biometric attendance testing
-    { id: "U011", name: "Alex Reyes", role: "employee", email: "face@sdsi.com" },
-    // ── Payroll test accounts ─────────────────────────────────
+    { id: "U001", name: "Alex Rivera", role: "admin", email: "admin@nexhrms.com" },
+    { id: "U002", name: "Jordan Lee", role: "hr", email: "hr@nexhrms.com" },
+    { id: "U003", name: "Morgan Chen", role: "finance", email: "finance@nexhrms.com" },
+    { id: "U004", name: "Sam Torres", role: "employee", email: "employee@nexhrms.com" },
+    { id: "U006", name: "Pat Reyes", role: "supervisor", email: "supervisor@nexhrms.com" },
+    { id: "U007", name: "Dana Cruz", role: "payroll_admin", email: "payroll@nexhrms.com" },
+    { id: "U008", name: "Rene Santos", role: "auditor", email: "auditor@nexhrms.com" },
+    { id: "U009", name: "Jamie Reyes", role: "employee", email: "qr@nexhrms.com" },
+    { id: "U010", name: "Riley Santos", role: "employee", email: "qr2@nexhrms.com" },
+    // Face recognition test account â€” dedicated for biometric attendance testing
+    { id: "U011", name: "Alex Reyes", role: "employee", email: "face@nexhrms.com" },
+    // â”€â”€ Payroll test accounts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     { id: "U-PAY-001", name: "Maria Santos Cruz", role: "employee", email: "maria.cruz@nexhrms.test" },
     { id: "U-PAY-002", name: "Juan Miguel Reyes", role: "employee", email: "juan.reyes@nexhrms.test" },
     { id: "U-PAY-003", name: "Ana Patricia Villanueva", role: "finance", email: "ana.villanueva@nexhrms.test" },
@@ -41,7 +41,7 @@ export const DEMO_USERS: DemoUser[] = [
     { id: "U-PAY-008", name: "Mark Anthony Dela Cruz", role: "employee", email: "mark.delacruz@nexhrms.test" },
 ];
 
-// ─── Employees ───────────────────────────────────────────────
+// â”€â”€â”€ Employees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_EMPLOYEES: Employee[] = [
     { id: "EMP001", name: "Olivia Harper", email: "olivia@company.com", role: "Frontend Developer", department: "Engineering", status: "active", workType: "HYBRID", salary: 95000, joinDate: "2023-03-15", productivity: 87, location: "New York", phone: "+1-555-0101", birthday: "1994-06-12", teamLeader: "EMP010", pin: "111111", nfcId: "NFC-001" },
     { id: "EMP002", name: "Ethan Brooks", email: "ethan@company.com", role: "Backend Developer", department: "Engineering", status: "active", workType: "WFH", salary: 105000, joinDate: "2022-07-01", productivity: 92, location: "San Francisco", phone: "+1-555-0102", birthday: "1991-11-22", teamLeader: "EMP010", pin: "222222", nfcId: "NFC-002" },
@@ -68,26 +68,26 @@ export const SEED_EMPLOYEES: Employee[] = [
     { id: "EMP023", name: "Luna Adams", email: "luna@company.com", role: "UI/UX Designer", department: "Design", status: "active", workType: "WFO", salary: 82000, joinDate: "2023-06-05", productivity: 77, location: "Tokyo", phone: "+81-555-0123", birthday: "1997-05-14", teamLeader: "EMP011" },
     { id: "EMP024", name: "Leo Campbell", email: "leo@company.com", role: "QA Engineer", department: "Engineering", status: "active", workType: "WFH", salary: 87000, joinDate: "2022-12-10", productivity: 86, location: "Manila", phone: "+63-555-0124", birthday: "1994-10-31" },
     { id: "EMP025", name: "Aria Evans", email: "aria@company.com", role: "HR Specialist", department: "Human Resources", status: "active", workType: "HYBRID", salary: 74000, joinDate: "2023-08-01", productivity: 80, location: "Singapore", phone: "+65-555-0125", birthday: "1995-12-20" },
-    // Sam Torres (Employee demo user — face recognition test account)
-    { id: "EMP026", name: "Sam Torres", email: "employee@sdsi.com", role: "Frontend Developer", department: "Engineering", status: "active", workType: "WFO", salary: 88000, joinDate: "2024-01-10", productivity: 82, location: "Manila", phone: "+63-917-5550126", birthday: "1995-04-20", teamLeader: "EMP010", profileId: "U004", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", whatsappNumber: "+63-917-5550126", preferredChannel: "in_app", address: "88 Rizal Avenue, Malate, Manila, Metro Manila", emergencyContact: "Maria Torres (Mother) - +63-918-5550001", pin: "262626", nfcId: "NFC-026" },
-    // Jamie Reyes (QR demo user 1) — uses QR code at kiosk, no employee PIN
-    { id: "EMP027", name: "Jamie Reyes", email: "qr@sdsi.com", role: "Field Technician", department: "Operations", status: "active", workType: "ONSITE", salary: 45000, joinDate: "2025-03-15", productivity: 88, location: "Marikina, Metro Manila", phone: "+63-917-1234567", birthday: "1998-05-22", profileId: "U009", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", whatsappNumber: "+63-917-1234567", preferredChannel: "in_app", address: "123 Shoe Ave, Marikina City, Metro Manila", emergencyContact: "Maria Reyes - +63-918-7654321" },
-    // Riley Santos (QR demo user 2) — uses QR code at kiosk, no employee PIN
-    { id: "EMP028", name: "Riley Santos", email: "qr2@sdsi.com", role: "Field Technician", department: "Operations", status: "active", workType: "ONSITE", salary: 42000, joinDate: "2025-06-01", productivity: 82, location: "Quezon City, Metro Manila", phone: "+63-918-9876543", birthday: "1999-11-08", profileId: "U010", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", whatsappNumber: "+63-918-9876543", preferredChannel: "in_app", address: "456 Commonwealth Ave, Quezon City, Metro Manila", emergencyContact: "Carlos Santos - +63-919-1112222" },
-    // Alex Reyes — dedicated face recognition test account
-    { id: "EMP029", name: "Alex Reyes", email: "face@sdsi.com", role: "Security Officer", department: "Operations", status: "active", workType: "ONSITE", salary: 52000, joinDate: "2025-01-15", productivity: 90, location: "Makati, Metro Manila", phone: "+63-917-5550029", birthday: "1993-07-14", profileId: "U011", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", whatsappNumber: "+63-917-5550029", preferredChannel: "in_app", address: "29 Dela Rosa Street, Legazpi Village, Makati City, Metro Manila", emergencyContact: "Rosa Reyes (Mother) - +63-918-5550029", pin: "290290", nfcId: "NFC-029" },
-    // ── Payroll test employees ────────────────────────────────
+    // Sam Torres (Employee demo user â€” face recognition test account)
+    { id: "EMP026", name: "Sam Torres", email: "employee@nexhrms.com", role: "Frontend Developer", department: "Engineering", status: "active", workType: "WFO", salary: 88000, joinDate: "2024-01-10", productivity: 82, location: "Manila", phone: "+63-917-5550126", birthday: "1995-04-20", teamLeader: "EMP010", profileId: "U004", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", whatsappNumber: "+63-917-5550126", preferredChannel: "in_app", address: "88 Rizal Avenue, Malate, Manila, Metro Manila", emergencyContact: "Maria Torres (Mother) - +63-918-5550001", pin: "262626", nfcId: "NFC-026" },
+    // Jamie Reyes (QR demo user 1) â€” uses QR code at kiosk, no employee PIN
+    { id: "EMP027", name: "Jamie Reyes", email: "qr@nexhrms.com", role: "Field Technician", department: "Operations", status: "active", workType: "ONSITE", salary: 45000, joinDate: "2025-03-15", productivity: 88, location: "Marikina, Metro Manila", phone: "+63-917-1234567", birthday: "1998-05-22", profileId: "U009", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", whatsappNumber: "+63-917-1234567", preferredChannel: "in_app", address: "123 Shoe Ave, Marikina City, Metro Manila", emergencyContact: "Maria Reyes - +63-918-7654321" },
+    // Riley Santos (QR demo user 2) â€” uses QR code at kiosk, no employee PIN
+    { id: "EMP028", name: "Riley Santos", email: "qr2@nexhrms.com", role: "Field Technician", department: "Operations", status: "active", workType: "ONSITE", salary: 42000, joinDate: "2025-06-01", productivity: 82, location: "Quezon City, Metro Manila", phone: "+63-918-9876543", birthday: "1999-11-08", profileId: "U010", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", whatsappNumber: "+63-918-9876543", preferredChannel: "in_app", address: "456 Commonwealth Ave, Quezon City, Metro Manila", emergencyContact: "Carlos Santos - +63-919-1112222" },
+    // Alex Reyes â€” dedicated face recognition test account
+    { id: "EMP029", name: "Alex Reyes", email: "face@nexhrms.com", role: "Security Officer", department: "Operations", status: "active", workType: "ONSITE", salary: 52000, joinDate: "2025-01-15", productivity: 90, location: "Makati, Metro Manila", phone: "+63-917-5550029", birthday: "1993-07-14", profileId: "U011", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", whatsappNumber: "+63-917-5550029", preferredChannel: "in_app", address: "29 Dela Rosa Street, Legazpi Village, Makati City, Metro Manila", emergencyContact: "Rosa Reyes (Mother) - +63-918-5550029", pin: "290290", nfcId: "NFC-029" },
+    // â”€â”€ Payroll test employees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     { id: "EMP-PAYROLL-001", name: "Maria Santos Cruz", email: "maria.cruz@nexhrms.test", role: "employee", jobTitle: "Senior Software Engineer", department: "Engineering", status: "active", workType: "HYBRID", salary: 85000, joinDate: "2023-01-15", productivity: 92, location: "Makati City", phone: "+63 917 555 0001", birthday: "1990-08-15", profileId: "U-PAY-001", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", preferredChannel: "in_app", address: "Unit 1205 The Residences, Ayala Avenue, Makati City 1226", emergencyContact: "Juan Cruz (Husband) - +63 918 555 0001" },
     { id: "EMP-PAYROLL-002", name: "Juan Miguel Reyes", email: "juan.reyes@nexhrms.test", role: "employee", jobTitle: "Full Stack Developer", department: "Engineering", status: "active", workType: "WFH", salary: 65000, joinDate: "2023-06-01", productivity: 88, location: "Quezon City", phone: "+63 918 555 0002", birthday: "1992-03-22", profileId: "U-PAY-002", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", preferredChannel: "in_app", address: "123 Kalayaan Avenue, Diliman, Quezon City 1101", emergencyContact: "Rosa Reyes (Mother) - +63 919 555 0002" },
     { id: "EMP-PAYROLL-003", name: "Ana Patricia Villanueva", email: "ana.villanueva@nexhrms.test", role: "finance", jobTitle: "Senior Accountant", department: "Finance", status: "active", workType: "WFO", salary: 55000, joinDate: "2022-09-15", productivity: 95, location: "Ortigas Center", phone: "+63 917 555 0003", birthday: "1988-11-30", profileId: "U-PAY-003", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", preferredChannel: "in_app", address: "Block 5 Lot 12, Greenwoods Executive Village, Pasig City 1600", emergencyContact: "Pedro Villanueva (Father) - +63 920 555 0003" },
-    { id: "EMP-PAYROLL-004", name: "Carlo Miguel Gonzales", email: "carlo.gonzales@nexhrms.test", role: "employee", jobTitle: "Field Technician", department: "Operations", status: "active", workType: "ONSITE", salary: 28000, joinDate: "2024-01-10", productivity: 85, location: "Parañaque City", phone: "+63 919 555 0004", birthday: "1995-05-18", profileId: "U-PAY-004", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], payFrequency: "semi_monthly", preferredChannel: "in_app", address: "456 Don Bosco Street, BF Homes, Parañaque City 1720", emergencyContact: "Lucia Gonzales (Wife) - +63 921 555 0004" },
+    { id: "EMP-PAYROLL-004", name: "Carlo Miguel Gonzales", email: "carlo.gonzales@nexhrms.test", role: "employee", jobTitle: "Field Technician", department: "Operations", status: "active", workType: "ONSITE", salary: 28000, joinDate: "2024-01-10", productivity: 85, location: "ParaÃ±aque City", phone: "+63 919 555 0004", birthday: "1995-05-18", profileId: "U-PAY-004", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], payFrequency: "semi_monthly", preferredChannel: "in_app", address: "456 Don Bosco Street, BF Homes, ParaÃ±aque City 1720", emergencyContact: "Lucia Gonzales (Wife) - +63 921 555 0004" },
     { id: "EMP-PAYROLL-005", name: "Elena Marie Tan", email: "elena.tan@nexhrms.test", role: "hr", jobTitle: "HR Manager", department: "Human Resources", status: "active", workType: "HYBRID", salary: 75000, joinDate: "2021-03-01", productivity: 90, location: "BGC Taguig", phone: "+63 917 555 0005", birthday: "1985-12-08", profileId: "U-PAY-005", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", preferredChannel: "in_app", address: "8th Avenue corner 26th Street, BGC, Taguig City 1634", emergencyContact: "Michael Tan (Brother) - +63 922 555 0005" },
     { id: "EMP-PAYROLL-006", name: "Roberto James Aquino", email: "roberto.aquino@nexhrms.test", role: "supervisor", jobTitle: "Engineering Lead", department: "Engineering", status: "active", workType: "HYBRID", salary: 120000, joinDate: "2020-06-15", productivity: 94, location: "Makati City", phone: "+63 918 555 0006", birthday: "1983-07-25", profileId: "U-PAY-006", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "monthly", preferredChannel: "in_app", address: "Tower 2, Greenbelt Residences, Makati City 1223", emergencyContact: "Cristina Aquino (Wife) - +63 923 555 0006" },
     { id: "EMP-PAYROLL-007", name: "Lisa Marie Fernandez", email: "lisa.fernandez@nexhrms.test", role: "employee", jobTitle: "Marketing Specialist", department: "Marketing", status: "active", workType: "WFH", salary: 45000, joinDate: "2023-11-01", productivity: 82, location: "Cebu City", phone: "+63 917 555 0007", birthday: "1994-09-14", profileId: "U-PAY-007", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], payFrequency: "semi_monthly", preferredChannel: "in_app", address: "Unit 502 IT Park Tower, Lahug, Cebu City 6000", emergencyContact: "Carmen Fernandez (Mother) - +63 924 555 0007" },
     { id: "EMP-PAYROLL-008", name: "Mark Anthony Dela Cruz", email: "mark.delacruz@nexhrms.test", role: "employee", jobTitle: "Sales Executive", department: "Sales", status: "active", workType: "ONSITE", salary: 35000, joinDate: "2024-03-15", productivity: 78, location: "Alabang", phone: "+63 919 555 0008", birthday: "1996-02-28", profileId: "U-PAY-008", workDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], payFrequency: "semi_monthly", preferredChannel: "in_app", address: "Phase 3 Block 7, Filinvest Corporate City, Alabang 1781", emergencyContact: "Sandra Dela Cruz (Sister) - +63 925 555 0008" },
 ];
 
-// ─── Seed Projects ───────────────────────────────────────────
+// â”€â”€â”€ Seed Projects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_PROJECTS: Project[] = [
     {
         id: "PRJ001",
@@ -110,7 +110,7 @@ export const SEED_PROJECTS: Project[] = [
     {
         id: "PRJ003",
         name: "Client Portal Redesign",
-        description: "Remote project — UX redesign for enterprise client portal.",
+        description: "Remote project â€” UX redesign for enterprise client portal.",
         location: { lat: 40.7128, lng: -74.006, radius: 500 },
         assignedEmployeeIds: ["EMP003", "EMP011", "EMP023"],
         createdAt: "2026-01-05T00:00:00Z",
@@ -125,7 +125,7 @@ export const SEED_PROJECTS: Project[] = [
     },
     {
         id: "PRJ005",
-        name: "Office HQ – QR Check-in",
+        name: "Office HQ â€“ QR Check-in",
         description: "Main office location using QR code attendance verification at the kiosk. Address: Kamagong Street, Industrial Valley, District I, Marikina, Metro Manila",
         location: { lat: 14.6253, lng: 121.0615, radius: 500 },
         assignedEmployeeIds: ["EMP027", "EMP028"],
@@ -134,7 +134,7 @@ export const SEED_PROJECTS: Project[] = [
     },
     {
         id: "PRJ006",
-        name: "Makati Security Post – Face Check-in",
+        name: "Makati Security Post â€“ Face Check-in",
         description: "Makati CBD security post using face recognition for attendance. Demo account for testing biometric check-in. Address: Dela Rosa Street, Legazpi Village, Makati City.",
         location: { lat: 14.5567, lng: 121.0178, radius: 300 },
         assignedEmployeeIds: ["EMP029"],
@@ -144,7 +144,7 @@ export const SEED_PROJECTS: Project[] = [
     },
 ];
 
-// ─── Attendance Logs (last 30 days, EXCLUDING today) ─────────
+// â”€â”€â”€ Attendance Logs (last 30 days, EXCLUDING today) â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function generateAttendanceLogs(): AttendanceLog[] {
     const logs: AttendanceLog[] = [];
     const today = new Date();
@@ -165,7 +165,7 @@ function generateAttendanceLogs(): AttendanceLog[] {
             const checkInMin = Math.floor(Math.random() * 60);
             const hoursWorked = 7 + Math.floor(Math.random() * 3);
 
-            // Compute late minutes: shift starts at 08:00 with 10-min grace → late after 08:10
+            // Compute late minutes: shift starts at 08:00 with 10-min grace â†’ late after 08:10
             let lateMinutes = 0;
             if (status === "present") {
                 const checkInTotalMin = checkInHour * 60 + checkInMin;
@@ -194,7 +194,7 @@ function generateAttendanceLogs(): AttendanceLog[] {
 
 export const SEED_ATTENDANCE: AttendanceLog[] = generateAttendanceLogs();
 
-// ─── Leave Requests ──────────────────────────────────────────
+// â”€â”€â”€ Leave Requests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_LEAVES: LeaveRequest[] = [
     { id: "LV001", employeeId: "EMP001", type: "VL", startDate: "2026-02-20", endDate: "2026-02-22", duration: "full_day", reason: "Family vacation planned for the long weekend.", status: "pending" },
     { id: "LV002", employeeId: "EMP003", type: "SL", startDate: "2026-02-10", endDate: "2026-02-11", duration: "full_day", reason: "Not feeling well, need to rest.", status: "approved", reviewedBy: "EMP006", reviewedAt: "2026-02-09" },
@@ -205,11 +205,11 @@ export const SEED_LEAVES: LeaveRequest[] = [
     { id: "LV007", employeeId: "EMP002", type: "SL", startDate: "2026-01-20", endDate: "2026-01-21", duration: "full_day", reason: "Flu symptoms.", status: "approved", reviewedBy: "EMP006", reviewedAt: "2026-01-19" },
     { id: "LV008", employeeId: "EMP018", type: "OTHER", startDate: "2026-02-14", endDate: "2026-02-14", duration: "half_day_pm", reason: "Conference attendance.", status: "approved", reviewedBy: "EMP006", reviewedAt: "2026-02-12" },
     { id: "LV009", employeeId: "EMP008", type: "ML", startDate: "2026-03-10", endDate: "2026-05-31", duration: "full_day", reason: "Maternity leave (105 days).", status: "approved", reviewedBy: "EMP006", reviewedAt: "2026-03-05" },
-    { id: "LV010", employeeId: "EMP011", type: "PL", startDate: "2026-03-10", endDate: "2026-03-16", duration: "full_day", reason: "Paternity leave — newborn.", status: "approved", reviewedBy: "EMP006", reviewedAt: "2026-03-08" },
+    { id: "LV010", employeeId: "EMP011", type: "PL", startDate: "2026-03-10", endDate: "2026-03-16", duration: "full_day", reason: "Paternity leave â€” newborn.", status: "approved", reviewedBy: "EMP006", reviewedAt: "2026-03-08" },
     { id: "LV011", employeeId: "EMP014", type: "SPL", startDate: "2026-04-01", endDate: "2026-04-07", duration: "full_day", reason: "Solo parent leave.", status: "pending" },
 ];
 
-// ─── Payslips (based on MONTHLY salary, semi-monthly 1st cutoff Jan 1–15) ────
+// â”€â”€â”€ Payslips (based on MONTHLY salary, semi-monthly 1st cutoff Jan 1â€“15) â”€â”€â”€â”€
 export const SEED_PAYSLIPS: Payslip[] = [
     { id: "PS001", employeeId: "EMP001", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 47500, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2375, pagibigDeduction: 100, taxDeduction: 14613, otherDeductions: 0, loanDeduction: 0, netPay: 28837, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
     { id: "PS002", employeeId: "EMP002", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 52500, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2500, pagibigDeduction: 100, taxDeduction: 17082, otherDeductions: 0, loanDeduction: 0, netPay: 31243, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-22", publishedAt: "2026-01-22" },
@@ -219,11 +219,11 @@ export const SEED_PAYSLIPS: Payslip[] = [
     { id: "PS006", employeeId: "EMP010", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 60000, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2500, pagibigDeduction: 100, taxDeduction: 20832, otherDeductions: 0, loanDeduction: 0, netPay: 34993, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
     { id: "PS007", employeeId: "EMP011", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 47500, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2375, pagibigDeduction: 100, taxDeduction: 14613, otherDeductions: 0, loanDeduction: 0, netPay: 28837, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
     { id: "PS008", employeeId: "EMP016", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 50000, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2500, pagibigDeduction: 100, taxDeduction: 15832, otherDeductions: 0, loanDeduction: 0, netPay: 29993, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
-    // EMP026 — Sam Torres (salary ₱88,000/mo → semi-monthly gross ₱44,000)
+    // EMP026 â€” Sam Torres (salary â‚±88,000/mo â†’ semi-monthly gross â‚±44,000)
     { id: "PS009", employeeId: "EMP026", periodStart: "2026-01-01", periodEnd: "2026-01-15", grossPay: 44000, allowances: 0, sssDeduction: 1575, philhealthDeduction: 2200, pagibigDeduction: 100, taxDeduction: 12907, otherDeductions: 0, loanDeduction: 0, netPay: 27218, issuedAt: "2026-01-20", status: "published", confirmedAt: "2026-01-21", publishedAt: "2026-01-22" },
 ];
 
-// ─── Events ──────────────────────────────────────────────────
+// â”€â”€â”€ Events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_EVENTS: CalendarEvent[] = [
     { id: "EVT001", title: "Team Standup", time: "09:00", date: "2026-04-14", type: "meeting" },
     { id: "EVT002", title: "Sprint Review", time: "14:00", date: "2026-04-17", type: "meeting" },
@@ -235,40 +235,40 @@ export const SEED_EVENTS: CalendarEvent[] = [
     { id: "EVT008", title: "Q2 Performance Review Deadline", time: "17:00", date: "2026-05-30", type: "deadline" },
 ];
 
-// ─── Loans ───────────────────────────────────────────────────
+// â”€â”€â”€ Loans â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_LOANS: Loan[] = [
     { id: "LN001", employeeId: "EMP001", type: "cash_advance", amount: 15000, remainingBalance: 10000, monthlyDeduction: 2500, deductionCapPercent: 30, status: "active", approvedBy: "U001", createdAt: "2026-01-15", remarks: "Emergency cash advance" },
     { id: "LN002", employeeId: "EMP004", type: "salary_loan", amount: 50000, remainingBalance: 50000, monthlyDeduction: 5000, deductionCapPercent: 30, status: "active", approvedBy: "U001", createdAt: "2026-02-01", remarks: "Salary loan for housing" },
     { id: "LN003", employeeId: "EMP009", type: "cash_advance", amount: 8000, remainingBalance: 0, monthlyDeduction: 2000, deductionCapPercent: 30, status: "settled", approvedBy: "U001", createdAt: "2025-11-10" },
 ];
 
-// ─── Task Groups ─────────────────────────────────────────────
+// â”€â”€â”€ Task Groups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_TASK_GROUPS: TaskGroup[] = [
     { id: "TG-001", name: "Field Operations", description: "On-site inspections and field tasks for Metro Tower.", projectId: "PRJ001", createdBy: "EMP006", memberEmployeeIds: ["EMP001", "EMP002", "EMP003", "EMP004", "EMP005", "EMP007", "EMP026", "EMP009"], announcementPermission: "group_leads", createdAt: "2026-01-15T08:00:00Z" },
     { id: "TG-002", name: "Office Tasks", description: "Internal office admin and reporting tasks.", createdBy: "EMP006", memberEmployeeIds: ["EMP010", "EMP012", "EMP013", "EMP015", "EMP016", "EMP020", "EMP021", "EMP022", "EMP023", "EMP024", "EMP025", "EMP026"], announcementPermission: "admin_only", createdAt: "2026-01-20T08:00:00Z" },
 ];
 
-// ─── Tasks ───────────────────────────────────────────────────
+// â”€â”€â”€ Tasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_TASKS: Task[] = [
-    { id: "TSK-001", groupId: "TG-001", title: "Site inspection – Makati", description: "Conduct full site inspection at Metro Tower Makati. Check structural progress and safety compliance.", priority: "high", status: "verified", dueDate: "2026-02-20", assignedTo: ["EMP003"], createdBy: "EMP006", createdAt: "2026-02-15T09:00:00Z", updatedAt: "2026-02-20T16:00:00Z", completionRequired: true, tags: ["inspection", "safety"] },
+    { id: "TSK-001", groupId: "TG-001", title: "Site inspection â€“ Makati", description: "Conduct full site inspection at Metro Tower Makati. Check structural progress and safety compliance.", priority: "high", status: "verified", dueDate: "2026-02-20", assignedTo: ["EMP003"], createdBy: "EMP006", createdAt: "2026-02-15T09:00:00Z", updatedAt: "2026-02-20T16:00:00Z", completionRequired: true, tags: ["inspection", "safety"] },
     { id: "TSK-002", groupId: "TG-001", title: "Delivery to BGC office", description: "Deliver equipment and documents to the BGC satellite office. Get confirmation photo.", priority: "medium", status: "submitted", dueDate: "2026-03-05", assignedTo: ["EMP005"], createdBy: "EMP006", createdAt: "2026-03-01T08:00:00Z", updatedAt: "2026-03-04T14:00:00Z", completionRequired: true, tags: ["delivery"] },
-    { id: "TSK-003", groupId: "TG-001", title: "Equipment check – Pasig", description: "Verify all heavy equipment at the Pasig warehouse is operational and accounted for.", priority: "high", status: "in_progress", dueDate: "2026-03-10", assignedTo: ["EMP003", "EMP007"], createdBy: "EMP006", createdAt: "2026-03-02T09:00:00Z", updatedAt: "2026-03-02T09:00:00Z", completionRequired: true, tags: ["equipment"] },
+    { id: "TSK-003", groupId: "TG-001", title: "Equipment check â€“ Pasig", description: "Verify all heavy equipment at the Pasig warehouse is operational and accounted for.", priority: "high", status: "in_progress", dueDate: "2026-03-10", assignedTo: ["EMP003", "EMP007"], createdBy: "EMP006", createdAt: "2026-03-02T09:00:00Z", updatedAt: "2026-03-02T09:00:00Z", completionRequired: true, tags: ["equipment"] },
     { id: "TSK-004", groupId: "TG-002", title: "Prepare monthly report", description: "Compile and format the February monthly status report for stakeholder presentation.", priority: "medium", status: "open", dueDate: "2026-03-08", assignedTo: ["EMP010"], createdBy: "EMP006", createdAt: "2026-03-01T08:00:00Z", updatedAt: "2026-03-01T08:00:00Z", completionRequired: false, tags: ["report"] },
     { id: "TSK-005", groupId: "TG-002", title: "Office supply inventory", description: "Count and catalog all office supplies. Update inventory spreadsheet.", priority: "low", status: "open", dueDate: "2026-03-12", assignedTo: ["EMP012", "EMP015"], createdBy: "EMP006", createdAt: "2026-03-03T08:00:00Z", updatedAt: "2026-03-03T08:00:00Z", completionRequired: false, tags: ["inventory"] },
-    { id: "TSK-006", groupId: "TG-001", title: "Safety audit – Taguig", description: "Perform full safety audit at the Taguig construction site. Document all findings.", priority: "urgent", status: "rejected", dueDate: "2026-02-28", assignedTo: ["EMP005"], createdBy: "EMP006", createdAt: "2026-02-22T08:00:00Z", updatedAt: "2026-02-27T16:00:00Z", completionRequired: true, tags: ["safety", "audit"] },
+    { id: "TSK-006", groupId: "TG-001", title: "Safety audit â€“ Taguig", description: "Perform full safety audit at the Taguig construction site. Document all findings.", priority: "urgent", status: "rejected", dueDate: "2026-02-28", assignedTo: ["EMP005"], createdBy: "EMP006", createdAt: "2026-02-22T08:00:00Z", updatedAt: "2026-02-27T16:00:00Z", completionRequired: true, tags: ["safety", "audit"] },
 ];
 
 // Placeholder 1x1 PNG (tiny valid base64 image for seed data)
 const PLACEHOLDER_PHOTO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPj/HwADBwIAMCbHYQAAAABJRU5ErkJggg==";
 
-// ─── Task Completion Reports ─────────────────────────────────
+// â”€â”€â”€ Task Completion Reports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_COMPLETION_REPORTS: TaskCompletionReport[] = [
-    { id: "TCR-001", taskId: "TSK-001", employeeId: "EMP003", photoDataUrl: PLACEHOLDER_PHOTO, gpsLat: 14.5547, gpsLng: 121.0244, gpsAccuracyMeters: 12, reverseGeoAddress: "14.5547°N, 121.0244°E (Makati CBD)", notes: "All structural checks passed. Fire exits clear.", submittedAt: "2026-02-20T15:30:00Z", verifiedBy: "EMP006", verifiedAt: "2026-02-20T16:00:00Z" },
-    { id: "TCR-002", taskId: "TSK-002", employeeId: "EMP005", photoDataUrl: PLACEHOLDER_PHOTO, gpsLat: 14.5515, gpsLng: 121.0498, gpsAccuracyMeters: 8, reverseGeoAddress: "14.5515°N, 121.0498°E (BGC, Taguig)", notes: "Delivered to reception. Signed by guard.", submittedAt: "2026-03-04T14:00:00Z" },
-    { id: "TCR-003", taskId: "TSK-006", employeeId: "EMP005", photoDataUrl: PLACEHOLDER_PHOTO, gpsLat: 14.5176, gpsLng: 121.0509, gpsAccuracyMeters: 15, reverseGeoAddress: "14.5176°N, 121.0509°E (Taguig)", notes: "Completed safety walkthrough.", submittedAt: "2026-02-27T15:00:00Z", rejectionReason: "Photos are blurry and incomplete. Please redo with higher quality images." },
+    { id: "TCR-001", taskId: "TSK-001", employeeId: "EMP003", photoDataUrl: PLACEHOLDER_PHOTO, gpsLat: 14.5547, gpsLng: 121.0244, gpsAccuracyMeters: 12, reverseGeoAddress: "14.5547Â°N, 121.0244Â°E (Makati CBD)", notes: "All structural checks passed. Fire exits clear.", submittedAt: "2026-02-20T15:30:00Z", verifiedBy: "EMP006", verifiedAt: "2026-02-20T16:00:00Z" },
+    { id: "TCR-002", taskId: "TSK-002", employeeId: "EMP005", photoDataUrl: PLACEHOLDER_PHOTO, gpsLat: 14.5515, gpsLng: 121.0498, gpsAccuracyMeters: 8, reverseGeoAddress: "14.5515Â°N, 121.0498Â°E (BGC, Taguig)", notes: "Delivered to reception. Signed by guard.", submittedAt: "2026-03-04T14:00:00Z" },
+    { id: "TCR-003", taskId: "TSK-006", employeeId: "EMP005", photoDataUrl: PLACEHOLDER_PHOTO, gpsLat: 14.5176, gpsLng: 121.0509, gpsAccuracyMeters: 15, reverseGeoAddress: "14.5176Â°N, 121.0509Â°E (Taguig)", notes: "Completed safety walkthrough.", submittedAt: "2026-02-27T15:00:00Z", rejectionReason: "Photos are blurry and incomplete. Please redo with higher quality images." },
 ];
 
-// ─── Task Comments ───────────────────────────────────────────
+// â”€â”€â”€ Task Comments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_TASK_COMMENTS: TaskComment[] = [
     { id: "TC-001", taskId: "TSK-001", employeeId: "EMP003", message: "Starting the inspection now. Will focus on floors 8-12 first.", createdAt: "2026-02-20T09:15:00Z" },
     { id: "TC-002", taskId: "TSK-001", employeeId: "EMP006", message: "Great. Make sure to document the fire exit compliance on each floor.", createdAt: "2026-02-20T09:30:00Z" },
@@ -276,7 +276,7 @@ export const SEED_TASK_COMMENTS: TaskComment[] = [
     { id: "TC-004", taskId: "TSK-006", employeeId: "EMP006", message: "Please retake the photos with better lighting. The current ones are not usable for the audit report.", createdAt: "2026-02-27T16:30:00Z" },
 ];
 
-// ─── Task Tags ───────────────────────────────────────────────
+// â”€â”€â”€ Task Tags â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_TASK_TAGS: TaskTag[] = [
     { id: "TAG-001", name: "inspection",  color: "#6366f1", createdBy: "EMP006", createdAt: "2026-01-15T08:00:00Z" },
     { id: "TAG-002", name: "safety",      color: "#ef4444", createdBy: "EMP006", createdAt: "2026-01-15T08:00:00Z" },
@@ -287,23 +287,23 @@ export const SEED_TASK_TAGS: TaskTag[] = [
     { id: "TAG-007", name: "audit",       color: "#f97316", createdBy: "EMP006", createdAt: "2026-01-15T08:00:00Z" },
 ];
 
-// ─── Text Channels ───────────────────────────────────────────
+// â”€â”€â”€ Text Channels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_TEXT_CHANNELS: TextChannel[] = [
     { id: "CH-001", name: "#general", memberEmployeeIds: SEED_EMPLOYEES.filter(e => e.status === "active").map(e => e.id), createdBy: "EMP006", createdAt: "2026-01-01T00:00:00Z", isArchived: false },
     { id: "CH-002", name: "#field-ops", groupId: "TG-001", memberEmployeeIds: ["EMP001", "EMP002", "EMP003", "EMP004", "EMP005", "EMP007", "EMP026", "EMP009"], createdBy: "EMP006", createdAt: "2026-01-15T08:00:00Z", isArchived: false },
     { id: "CH-003", name: "#admin-hr", memberEmployeeIds: ["EMP006", "EMP013", "EMP025"], createdBy: "EMP006", createdAt: "2026-01-15T08:00:00Z", isArchived: false },
 ];
 
-// ─── Announcements ───────────────────────────────────────────
+// â”€â”€â”€ Announcements â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_ANNOUNCEMENTS: Announcement[] = [
-    { id: "ANN-001", subject: "March payslip released", body: "Hi everyone, January semi-monthly payslips have been published. Please log in to Soren Data Solutions to view and sign your payslip. Contact finance if you have any discrepancies.", channel: "email", scope: "all_employees", sentBy: "EMP007", sentAt: "2026-01-22T10:00:00Z", status: "simulated", readBy: ["EMP001", "EMP002", "EMP003"] },
+    { id: "ANN-001", subject: "March payslip released", body: "Hi everyone, January semi-monthly payslips have been published. Please log in to NexHRMS to view and sign your payslip. Contact finance if you have any discrepancies.", channel: "email", scope: "all_employees", sentBy: "EMP007", sentAt: "2026-01-22T10:00:00Z", status: "simulated", readBy: ["EMP001", "EMP002", "EMP003"] },
     { id: "ANN-002", subject: "Weather alert: postpone outdoor tasks", body: "Due to Typhoon Signal #2 warning, all outdoor field tasks are postponed until further notice. Stay safe and work from home if possible.", channel: "whatsapp", scope: "task_group", targetGroupId: "TG-001", sentBy: "EMP006", sentAt: "2026-02-18T07:00:00Z", status: "simulated", readBy: ["EMP003", "EMP005"] },
-    { id: "ANN-003", subject: "Training schedule update", body: "The leadership training originally scheduled for March 5 has been moved to March 12. Please update your calendars. Venue remains the same — Conference Room B.", channel: "email", scope: "selected_employees", targetEmployeeIds: ["EMP005", "EMP010", "EMP020"], sentBy: "EMP006", sentAt: "2026-03-01T09:00:00Z", status: "simulated", readBy: [] },
+    { id: "ANN-003", subject: "Training schedule update", body: "The leadership training originally scheduled for March 5 has been moved to March 12. Please update your calendars. Venue remains the same â€” Conference Room B.", channel: "email", scope: "selected_employees", targetEmployeeIds: ["EMP005", "EMP010", "EMP020"], sentBy: "EMP006", sentAt: "2026-03-01T09:00:00Z", status: "simulated", readBy: [] },
     { id: "ANN-004", subject: "Equipment list attached", body: "Please review the attached equipment checklist before proceeding with the Pasig warehouse check. Mark off each item as you verify it.", channel: "in_app", scope: "task_assignees", targetTaskId: "TSK-003", sentBy: "EMP006", sentAt: "2026-03-02T09:30:00Z", status: "simulated", readBy: ["EMP003"] },
     { id: "ANN-005", subject: "Holiday reminder: March 10", body: "Reminder: March 10 (Monday) is a special non-working holiday. Office will be closed. Enjoy the long weekend!", channel: "whatsapp", scope: "all_employees", sentBy: "EMP006", sentAt: "2026-03-05T09:00:00Z", status: "simulated", readBy: [] },
 ];
 
-// ─── Channel Messages ────────────────────────────────────────
+// â”€â”€â”€ Channel Messages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const SEED_CHANNEL_MESSAGES: ChannelMessage[] = [
     { id: "MSG-001", channelId: "CH-001", employeeId: "EMP006", message: "Good morning everyone! Reminder: town hall meeting at 2pm today.", createdAt: "2026-02-18T08:00:00Z", readBy: ["EMP001", "EMP002", "EMP003", "EMP010"] },
     { id: "MSG-002", channelId: "CH-001", employeeId: "EMP010", message: "Thanks for the reminder! Will the slides be shared beforehand?", createdAt: "2026-02-18T08:15:00Z", readBy: ["EMP006", "EMP001"] },

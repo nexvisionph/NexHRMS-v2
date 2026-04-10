@@ -13,7 +13,7 @@
  *    Kept for backward compatibility only.
  */
 
-const QR_SECRET = process.env.QR_HMAC_SECRET || "soren-qr-attendance-2025";
+const QR_SECRET = process.env.QR_HMAC_SECRET || "nexhrms-qr-attendance-2025";
 const QR_PREFIX = "SDS-QR:";
 const DAILY_PREFIX = "SDS-DAY:";
 

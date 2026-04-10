@@ -49,10 +49,10 @@ export default function FaceKioskPage() {
     // Persistent device identifier (same pattern as QR kiosk)
     const [deviceId] = useState(() => {
         if (typeof window === "undefined") return "";
-        const stored = localStorage.getItem("soren-kiosk-face-device-id");
+        const stored = localStorage.getItem("nexhrms-kiosk-face-device-id");
         if (stored) return stored;
         const id = `KIOSK-FACE-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-        localStorage.setItem("soren-kiosk-face-device-id", id);
+        localStorage.setItem("nexhrms-kiosk-face-device-id", id);
         return id;
     });
 
@@ -506,7 +506,7 @@ export default function FaceKioskPage() {
                         <img src={logoUrl} alt={companyName}
                             className={cn("h-7 max-w-[100px] object-contain", !isAutoTheme && "brightness-0 invert opacity-90")} />
                     ) : (
-                        <span className={cn("font-semibold text-sm", textMutedClass)}>{companyName || "Soren Data Solutions Inc."}</span>
+                        <span className={cn("font-semibold text-sm", textMutedClass)}>{companyName || "NexHRMS"}</span>
                     )}
                 </div>
             </header>
@@ -790,7 +790,7 @@ export default function FaceKioskPage() {
             {/* Footer */}
             <footer className="relative z-10 w-full flex items-center justify-center pb-4 sm:pb-6">
                 <div className={cn("flex items-center gap-2 text-xs", textFaintClass)}>
-                    <span>{companyName || "Soren Data Solutions Inc."} • Face Recognition Kiosk</span>
+                    <span>{companyName || "NexHRMS"} • Face Recognition Kiosk</span>
                 </div>
             </footer>
         </div>

@@ -118,7 +118,7 @@ export default function RolesPage() {
         const blob = new Blob([exportConfig()], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = url; a.download = "sdsi-roles-config.json"; a.click();
+        a.href = url; a.download = "nexhrms-roles-config.json"; a.click();
         URL.revokeObjectURL(url);
         toast.success("Configuration exported");
     };

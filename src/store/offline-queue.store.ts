@@ -169,7 +169,7 @@ export const useOfflineQueueStore = create<OfflineQueueStore>()(
             },
         }),
         {
-            name: "soren-offline-queue",
+            name: "nexhrms-offline-queue",
             version: 1,
         }
     )

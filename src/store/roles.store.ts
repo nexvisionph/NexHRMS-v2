@@ -531,7 +531,7 @@ export const useRolesStore = create<RolesState>()(
             resetToDefaults: () => set({ roles: buildSystemRoles() }),
         }),
         {
-            name: "soren-roles",
+            name: "nexhrms-roles",
             version: 2,
             migrate: () => ({ roles: buildSystemRoles() }),
         }

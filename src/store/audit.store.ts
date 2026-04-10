@@ -49,6 +49,6 @@ export const useAuditStore = create<AuditState>()(
             clearLogs: () => set({ logs: [] }),
             resetToSeed: () => set({ logs: [] }),
         }),
-        { name: "soren-audit", version: 1 }
+        { name: "nexhrms-audit", version: 1 }
     )
 );

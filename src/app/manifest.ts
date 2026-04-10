@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
     return {
-        name: "Soren Data Solutions Inc. — HRMS",
-        short_name: "SDSI HRMS",
+        name: "NexHRMS — Human Resource Management System",
+        short_name: "NexHRMS",
         description: "Human Resource Management System",
         start_url: "/login",
         display: "standalone",

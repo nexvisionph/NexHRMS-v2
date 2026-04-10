@@ -548,7 +548,7 @@ export const usePayrollStore = create<PayrollState>()(
                 })),
         }),
         {
-            name: "soren-payroll",
+            name: "nexhrms-payroll",
             version: 7,
             migrate: () => ({
                 payslips: [],

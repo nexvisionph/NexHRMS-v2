@@ -1,6 +1,6 @@
-/**
+﻿/**
  * seed-face-account.ts
- * Inserts the Alex Reyes (face@sdsi.com) face recognition demo account
+ * Inserts the Alex Reyes (face@nexhrms.com) face recognition demo account
  * directly into Supabase using the service-role key.
  *
  * Run:  npx ts-node --project tsconfig.json scripts/seed-face-account.ts
@@ -29,48 +29,48 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
 });
 
 async function run() {
-    console.log("\n🚀  Seeding face recognition demo account…\n");
+    console.log("\nðŸš€  Seeding face recognition demo accountâ€¦\n");
 
-    // ── 1. Create Supabase Auth user ────────────────────────────────────────
+    // â”€â”€ 1. Create Supabase Auth user â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: "face@sdsi.com",
+        email: "face@nexhrms.com",
         password: "demo1234",
         email_confirm: true,
         user_metadata: { name: "Alex Reyes", role: "employee" },
     });
 
     if (authError && !authError.message.includes("already been registered")) {
-        console.error("❌  Failed to create auth user:", authError.message);
+        console.error("âŒ  Failed to create auth user:", authError.message);
         process.exit(1);
     }
 
     const authUserId = authData?.user?.id;
-    console.log("✅  Auth user:", authUserId ?? "(already existed — skipped)");
+    console.log("âœ…  Auth user:", authUserId ?? "(already existed â€” skipped)");
 
-    // ── 2. Upsert profile ───────────────────────────────────────────────────
+    // â”€â”€ 2. Upsert profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (authUserId) {
         const { error: profileError } = await supabase.from("profiles").upsert(
             {
                 id: authUserId,
                 name: "Alex Reyes",
-                email: "face@sdsi.com",
+                email: "face@nexhrms.com",
                 role: "employee",
                 profile_complete: true,
             },
             { onConflict: "id" }
         );
         if (profileError) {
-            console.warn("⚠️  Profile upsert:", profileError.message);
+            console.warn("âš ï¸  Profile upsert:", profileError.message);
         } else {
-            console.log("✅  Profile upserted:", authUserId);
+            console.log("âœ…  Profile upserted:", authUserId);
         }
     }
 
-    // ── 3. Upsert employee record ───────────────────────────────────────────
+    // â”€â”€ 3. Upsert employee record â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const employee = {
         id: "EMP029",
         name: "Alex Reyes",
-        email: "face@sdsi.com",
+        email: "face@nexhrms.com",
         role: "employee",
         department: "Operations",
         status: "active",
@@ -97,16 +97,16 @@ async function run() {
         .upsert(employee, { onConflict: "id" });
 
     if (empError) {
-        console.error("❌  Employee upsert failed:", empError.message);
+        console.error("âŒ  Employee upsert failed:", empError.message);
         process.exit(1);
     }
-    console.log("✅  Employee EMP029 upserted");
+    console.log("âœ…  Employee EMP029 upserted");
 
-    // ── 4. Upsert project ───────────────────────────────────────────────────
+    // â”€â”€ 4. Upsert project â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const { error: projError } = await supabase.from("projects").upsert(
         {
             id: "PRJ006",
-            name: "Makati Security Post – Face Check-in",
+            name: "Makati Security Post â€“ Face Check-in",
             description:
                 "Makati CBD security post using face recognition for attendance. Demo account for testing biometric check-in.",
             location_lat: 14.5567,
@@ -122,26 +122,26 @@ async function run() {
     );
 
     if (projError) {
-        console.error("❌  Project upsert failed:", projError.message);
-        // Non-fatal — continue
+        console.error("âŒ  Project upsert failed:", projError.message);
+        // Non-fatal â€” continue
     } else {
-        console.log("✅  Project PRJ006 upserted");
+        console.log("âœ…  Project PRJ006 upserted");
     }
 
-    // ── 5. Upsert project_assignment ────────────────────────────────────────
+    // â”€â”€ 5. Upsert project_assignment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const { error: assignError } = await supabase.from("project_assignments").upsert(
         { project_id: "PRJ006", employee_id: "EMP029" },
         { onConflict: "project_id,employee_id" }
     );
 
     if (assignError) {
-        console.warn("⚠️  Assignment upsert:", assignError.message);
+        console.warn("âš ï¸  Assignment upsert:", assignError.message);
     } else {
-        console.log("✅  Project assignment EMP029 ↔ PRJ006 upserted");
+        console.log("âœ…  Project assignment EMP029 â†” PRJ006 upserted");
     }
 
-    console.log("\n🎉  Done! Alex Reyes (face@sdsi.com) is ready.\n");
-    console.log("   Login:    face@sdsi.com");
+    console.log("\nðŸŽ‰  Done! Alex Reyes (face@nexhrms.com) is ready.\n");
+    console.log("   Login:    face@nexhrms.com");
     console.log("   Password: demo1234");
     console.log("   Employee: EMP029 | Project: PRJ006 (face_only)\n");
 }

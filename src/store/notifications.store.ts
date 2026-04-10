@@ -7,7 +7,7 @@ import type { NotificationLog, NotificationType, NotificationChannel, Notificati
 // ─── Default Rules ────────────────────────────────────────────
 
 const DEFAULT_RULES: NotificationRule[] = [
-    { id: "NR-01", trigger: "payslip_published", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Payslip Ready: {period}", bodyTemplate: "Hi {name}, your payslip for {period} is ready. Net pay: {amount}. Please sign in Soren Data Solutions.", smsTemplate: "Your payslip for {period} is ready. Net: {amount}." },
+    { id: "NR-01", trigger: "payslip_published", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Payslip Ready: {period}", bodyTemplate: "Hi {name}, your payslip for {period} is ready. Net pay: {amount}. Please sign in NexHRMS.", smsTemplate: "Your payslip for {period} is ready. Net: {amount}." },
     { id: "NR-02", trigger: "leave_submitted", enabled: true, channel: "email", recipientRoles: ["admin", "hr"], timing: "immediate", subjectTemplate: "Leave Request: {name}", bodyTemplate: "{name} submitted a {leaveType} leave request ({dates})." },
     { id: "NR-03", trigger: "leave_approved", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Leave {status}: {dates}", bodyTemplate: "Hi {name}, your {leaveType} leave ({dates}) has been {status}.", smsTemplate: "Your {leaveType} leave ({dates}) has been {status}." },
     { id: "NR-04", trigger: "leave_rejected", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Leave Rejected: {dates}", bodyTemplate: "Hi {name}, your {leaveType} leave ({dates}) has been rejected." },
@@ -39,7 +39,7 @@ const DEFAULT_PROVIDER: NotificationProviderConfig = {
     emailProvider: "simulated",
     smsEnabled: true,
     emailEnabled: true,
-    defaultSenderName: "Soren Data Solutions",
+    defaultSenderName: "NexHRMS",
 };
 
 // ─── Store ────────────────────────────────────────────────────
@@ -270,7 +270,7 @@ export const useNotificationsStore = create<NotificationsState>()(
             resetToSeed: () => set({ logs: [], rules: [...DEFAULT_RULES], providerConfig: { ...DEFAULT_PROVIDER } }),
         }),
         {
-            name: "soren-notifications",
+            name: "nexhrms-notifications",
             version: 3,
             migrate: () => ({ logs: [], rules: [...DEFAULT_RULES], providerConfig: { ...DEFAULT_PROVIDER } }),
         }

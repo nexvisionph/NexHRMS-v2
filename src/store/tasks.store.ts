@@ -326,7 +326,7 @@ export const useTasksStore = create<TasksState>()(
                     taskTags: SEED_TASK_TAGS,
                 }),
         }),
-        { name: "soren-tasks", version: 2,
+        { name: "nexhrms-tasks", version: 2,
             migrate: (persisted) => {
                 const state = persisted as Partial<{ groups: unknown; tasks: unknown; completionReports: unknown; comments: unknown; taskTags: unknown[] }>;
                 // v1→v2: inject seed tags for existing users who had empty taskTags

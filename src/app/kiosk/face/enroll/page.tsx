@@ -393,7 +393,7 @@ export default function FaceEnrollPage() {
             {/* Footer */}
             <footer className="relative z-10 w-full flex items-center justify-center pb-4 sm:pb-6">
                 <div className="flex items-center gap-2 text-white/20 text-xs">
-                    <span>{companyName || "Soren Data Solutions Inc."} • Face Enrollment</span>
+                    <span>{companyName || "NexHRMS"} • Face Enrollment</span>
                 </div>
             </footer>
         </div>

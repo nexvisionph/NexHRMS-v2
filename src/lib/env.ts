@@ -65,7 +65,7 @@ export function getQwenModel(): string {
 
 /** Face template encryption key — server-side only. */
 export function getFaceTemplateEncryptionKey(): string {
-  return process.env.FACE_TEMPLATE_ENCRYPTION_KEY || "soren-default-key-change-in-production";
+  return process.env.FACE_TEMPLATE_ENCRYPTION_KEY || "nexhrms-default-key-change-in-production";
 }
 
 // ─── Kiosk Security ───────────────────────────────────────────────────────────

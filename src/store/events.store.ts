@@ -33,7 +33,7 @@ export const useEventsStore = create<EventsState>()(
             resetToSeed: () => set({ events: SEED_EVENTS }),
         }),
         { 
-            name: "soren-events", 
+            name: "nexhrms-events", 
             version: 2,
             migrate: () => ({ events: SEED_EVENTS }),
         }

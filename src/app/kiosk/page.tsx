@@ -185,7 +185,7 @@ export default function KioskLandingPage() {
                         />
                     ) : (
                         <span className={cn("font-bold text-lg tracking-tight", textClass)}>
-                            {companyName || "SDSI"}
+                            {companyName || "NexHRMS"}
                         </span>
                     )}
                 </div>
@@ -397,7 +397,7 @@ export default function KioskLandingPage() {
                     {settings.showSecurityBadge && (
                         <>
                             <Building2 className="h-3.5 w-3.5" />
-                            <span>{companyName || "Soren Data Solutions Inc."} Attendance Kiosk</span>
+                            <span>{companyName || "NexHRMS"} Attendance Kiosk</span>
                         </>
                     )}
                 </div>

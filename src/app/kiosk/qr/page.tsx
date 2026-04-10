@@ -38,10 +38,10 @@ export default function QRKioskPage() {
     const [errorMessage, setErrorMessage] = useState("QR code not recognized");
     const [deviceId] = useState(() => {
         if (typeof window === "undefined") return "";
-        const stored = localStorage.getItem("sdsi-kiosk-qr-device-id");
+        const stored = localStorage.getItem("nexhrms-kiosk-qr-device-id");
         if (stored) return stored;
         const id = `KIOSK-QR-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-        localStorage.setItem("sdsi-kiosk-qr-device-id", id);
+        localStorage.setItem("nexhrms-kiosk-qr-device-id", id);
         return id;
     });
 
@@ -406,7 +406,7 @@ export default function QRKioskPage() {
                         <img src={logoUrl} alt={companyName}
                             className={cn("h-7 max-w-[100px] object-contain", !isAutoTheme && "brightness-0 invert opacity-90")} />
                     ) : (
-                        <span className={cn("font-semibold text-sm", textMutedClass)}>{companyName || "SDSI"}</span>
+                        <span className={cn("font-semibold text-sm", textMutedClass)}>{companyName || "NexHRMS"}</span>
                     )}
                 </div>
             </header>
@@ -633,7 +633,7 @@ export default function QRKioskPage() {
             {/* Footer */}
             <footer className="relative z-10 w-full flex items-center justify-center pb-4 sm:pb-6">
                 <div className={cn("flex items-center gap-2 text-xs", textFaintClass)}>
-                    <span>{companyName || "SDSI"} • QR Code Kiosk</span>
+                    <span>{companyName || "NexHRMS"} • QR Code Kiosk</span>
                 </div>
             </footer>
         </div>

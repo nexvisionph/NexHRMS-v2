@@ -594,7 +594,7 @@ export default function BrandingPage() {
                                 <Input
                                     value={appearance.loginHeading}
                                     onChange={(e) => appearance.setLoginConfig({ loginHeading: e.target.value })}
-                                    placeholder="SDSI"
+                                    placeholder="NexHRMS"
                                 />
                             </div>
                             <div className="space-y-1.5">
@@ -718,7 +718,7 @@ export default function BrandingPage() {
                                     "bg-card border border-border rounded-lg p-4 shadow-sm text-center space-y-2",
                                     appearance.loginCardStyle === "split" ? "m-auto w-3/4 max-w-[200px]" : "w-48"
                                 )}>
-                                    <p className="text-xs font-bold">{appearance.loginHeading || "SDSI"}</p>
+                                    <p className="text-xs font-bold">{appearance.loginHeading || "NexHRMS"}</p>
                                     <p className="text-[9px] text-muted-foreground">{appearance.loginSubheading || "Sign in"}</p>
                                     <div className="h-px bg-border" />
                                     <div className="h-3 w-full bg-muted rounded" />

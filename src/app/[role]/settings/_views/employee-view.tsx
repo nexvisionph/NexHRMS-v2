@@ -17,7 +17,7 @@ import { toast } from "sonner";
 const defaultPrefs = { emailAbsenceAlerts: true, emailLeaveUpdates: true, emailPayrollAlerts: true };
 function readNotifPrefs() {
     if (typeof window === "undefined") return defaultPrefs;
-    try { const s = localStorage.getItem("sdsi-org-settings"); if (s) { const p = JSON.parse(s); return { emailAbsenceAlerts: p.emailAbsenceAlerts ?? true, emailLeaveUpdates: p.emailLeaveUpdates ?? true, emailPayrollAlerts: p.emailPayrollAlerts ?? true }; } } catch { /* ignore */ }
+    try { const s = localStorage.getItem("nexhrms-org-settings"); if (s) { const p = JSON.parse(s); return { emailAbsenceAlerts: p.emailAbsenceAlerts ?? true, emailLeaveUpdates: p.emailLeaveUpdates ?? true, emailPayrollAlerts: p.emailPayrollAlerts ?? true }; } } catch { /* ignore */ }
     return defaultPrefs;
 }
 
@@ -27,9 +27,9 @@ function useNotificationPrefs() {
     const update = (patch: Partial<typeof prefs>) => {
         setPrefs((prev) => {
             const next = { ...prev, ...patch };
-            const stored = localStorage.getItem("sdsi-org-settings");
+            const stored = localStorage.getItem("nexhrms-org-settings");
             const full = stored ? { ...JSON.parse(stored), ...next } : next;
-            localStorage.setItem("sdsi-org-settings", JSON.stringify(full));
+            localStorage.setItem("nexhrms-org-settings", JSON.stringify(full));
             return next;
         });
     };

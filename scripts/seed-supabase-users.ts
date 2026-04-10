@@ -1,10 +1,10 @@
-/**
+﻿/**
  * seed-supabase-users.ts
  *
  * Creates all 8 demo user accounts in Supabase Auth, ensures profiles are
  * correct, and upserts employees table records for the employee-role accounts.
  *
- * Idempotent — safe to run multiple times. Existing auth users get their
+ * Idempotent â€” safe to run multiple times. Existing auth users get their
  * password reset to demo1234 and their profile/employee records corrected.
  *
  * Usage:
@@ -21,12 +21,12 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL) {
-  console.error("❌ Missing NEXT_PUBLIC_SUPABASE_URL in .env.local");
+  console.error("âŒ Missing NEXT_PUBLIC_SUPABASE_URL in .env.local");
   process.exit(1);
 }
 if (!SERVICE_ROLE_KEY) {
-  console.error("❌ Missing SUPABASE_SERVICE_ROLE_KEY in .env.local");
-  console.error("   Get it from: Supabase Dashboard → Settings → API → service_role");
+  console.error("âŒ Missing SUPABASE_SERVICE_ROLE_KEY in .env.local");
+  console.error("   Get it from: Supabase Dashboard â†’ Settings â†’ API â†’ service_role");
   process.exit(1);
 }
 
@@ -36,18 +36,18 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
 
 const DEMO_PASSWORD = "demo1234";
 
-// ─── Auth + Profile accounts ─────────────────────────────────────────────────
+// â”€â”€â”€ Auth + Profile accounts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const DEMO_ACCOUNTS = [
-  { name: "Alex Rivera",  email: "admin@sdsi.com",      role: "admin",         department: "Management" },
-  { name: "Jordan Lee",   email: "hr@sdsi.com",         role: "hr",            department: "Human Resources" },
-  { name: "Morgan Chen",  email: "finance@sdsi.com",    role: "finance",       department: "Finance" },
-  { name: "Sam Torres",   email: "employee@sdsi.com",   role: "employee",      department: "Engineering" },
-  { name: "Pat Reyes",    email: "supervisor@sdsi.com", role: "supervisor",    department: "Engineering" },
-  { name: "Dana Cruz",    email: "payroll@sdsi.com",    role: "payroll_admin", department: "Finance" },
-  { name: "Rene Santos",  email: "auditor@sdsi.com",    role: "auditor",       department: "Compliance" },
-  { name: "Jamie Reyes",  email: "qr@sdsi.com",         role: "employee",      department: "Operations" },
-  { name: "Riley Santos", email: "qr2@sdsi.com",        role: "employee",      department: "Operations" },
-  // ─── Payroll Test Accounts ─────────────────────────────────────────────────
+  { name: "Alex Rivera",  email: "admin@nexhrms.com",      role: "admin",         department: "Management" },
+  { name: "Jordan Lee",   email: "hr@nexhrms.com",         role: "hr",            department: "Human Resources" },
+  { name: "Morgan Chen",  email: "finance@nexhrms.com",    role: "finance",       department: "Finance" },
+  { name: "Sam Torres",   email: "employee@nexhrms.com",   role: "employee",      department: "Engineering" },
+  { name: "Pat Reyes",    email: "supervisor@nexhrms.com", role: "supervisor",    department: "Engineering" },
+  { name: "Dana Cruz",    email: "payroll@nexhrms.com",    role: "payroll_admin", department: "Finance" },
+  { name: "Rene Santos",  email: "auditor@nexhrms.com",    role: "auditor",       department: "Compliance" },
+  { name: "Jamie Reyes",  email: "qr@nexhrms.com",         role: "employee",      department: "Operations" },
+  { name: "Riley Santos", email: "qr2@nexhrms.com",        role: "employee",      department: "Operations" },
+  // â”€â”€â”€ Payroll Test Accounts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   { name: "Maria Santos Cruz",       email: "maria.cruz@nexhrms.test",       role: "employee",   department: "Engineering" },
   { name: "Juan Miguel Reyes",       email: "juan.reyes@nexhrms.test",       role: "employee",   department: "Engineering" },
   { name: "Ana Patricia Villanueva", email: "ana.villanueva@nexhrms.test",   role: "employee",   department: "Finance" },
@@ -58,7 +58,7 @@ const DEMO_ACCOUNTS = [
   { name: "Mark Anthony Dela Cruz",  email: "mark.delacruz@nexhrms.test",    role: "employee",   department: "Sales" },
 ];
 
-// ─── employees table records for accounts that are role="employee" ────────────
+// â”€â”€â”€ employees table records for accounts that are role="employee" â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // profileId is populated at runtime after auth user is resolved.
 const DEMO_EMPLOYEE_RECORDS: Record<string, {
   id: string; name: string; email: string; department: string;
@@ -68,10 +68,10 @@ const DEMO_EMPLOYEE_RECORDS: Record<string, {
   address?: string; emergency_contact?: string;
   work_days?: string[]; pay_frequency?: string; whatsapp_number?: string;
 }> = {
-  "employee@sdsi.com": {
+  "employee@nexhrms.com": {
     id: "EMP026",
     name: "Sam Torres",
-    email: "employee@sdsi.com",
+    email: "employee@nexhrms.com",
     department: "Engineering",
     job_title: "Frontend Developer",
     work_type: "WFO",
@@ -84,10 +84,10 @@ const DEMO_EMPLOYEE_RECORDS: Record<string, {
     pin: "666666",
     status: "active",
   },
-  "qr@sdsi.com": {
+  "qr@nexhrms.com": {
     id: "EMP027",
     name: "Jamie Reyes",
-    email: "qr@sdsi.com",
+    email: "qr@nexhrms.com",
     department: "Operations",
     job_title: "Field Technician",
     work_type: "ONSITE",
@@ -105,10 +105,10 @@ const DEMO_EMPLOYEE_RECORDS: Record<string, {
     pay_frequency: "semi_monthly",
     whatsapp_number: "+63-917-1234567",
   },
-  "qr2@sdsi.com": {
+  "qr2@nexhrms.com": {
     id: "EMP028",
     name: "Riley Santos",
-    email: "qr2@sdsi.com",
+    email: "qr2@nexhrms.com",
     department: "Operations",
     job_title: "Field Technician",
     work_type: "ONSITE",
@@ -126,7 +126,7 @@ const DEMO_EMPLOYEE_RECORDS: Record<string, {
     pay_frequency: "semi_monthly",
     whatsapp_number: "+63-918-9876543",
   },
-  // ─── Payroll Test Employees ─────────────────────────────────────────────────
+  // â”€â”€â”€ Payroll Test Employees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   "maria.cruz@nexhrms.test": {
     id: "EMP-PAY-001",
     name: "Maria Santos Cruz",
@@ -197,12 +197,12 @@ const DEMO_EMPLOYEE_RECORDS: Record<string, {
     salary: 28000,
     join_date: "2024-01-10",
     productivity: 85,
-    location: "Parañaque City",
+    location: "ParaÃ±aque City",
     phone: "+63 919 555 0004",
     birthday: "1995-05-18",
     pin: "400400",
     status: "active",
-    address: "456 Don Bosco Street, BF Homes, Parañaque City 1720",
+    address: "456 Don Bosco Street, BF Homes, ParaÃ±aque City 1720",
     emergency_contact: "Lucia Gonzales (Wife) - +63 921 555 0004",
     work_days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     pay_frequency: "semi_monthly",
@@ -290,7 +290,7 @@ const DEMO_EMPLOYEE_RECORDS: Record<string, {
 };
 
 async function seedUsers() {
-  console.log("🔄 Seeding demo users in Supabase...\n");
+  console.log("ðŸ”„ Seeding demo users in Supabase...\n");
   console.log(`   URL: ${SUPABASE_URL}`);
   console.log(`   Accounts: ${DEMO_ACCOUNTS.length}\n`);
 
@@ -304,7 +304,7 @@ async function seedUsers() {
   let updated = 0;
   let failed = 0;
 
-  // Map email → resolved auth user ID
+  // Map email â†’ resolved auth user ID
   const resolvedIds: Record<string, string> = {};
 
   for (const account of DEMO_ACCOUNTS) {
@@ -318,7 +318,7 @@ async function seedUsers() {
         user_metadata: { name: account.name, role: account.role },
       });
       if (pwErr) {
-        console.warn(`   ⚠️  ${account.email} — could not reset password: ${pwErr.message}`);
+        console.warn(`   âš ï¸  ${account.email} â€” could not reset password: ${pwErr.message}`);
       }
 
       // Fix profile role/department if wrong
@@ -332,7 +332,7 @@ async function seedUsers() {
         profile_complete: true,
       }, { onConflict: "id" });
 
-      console.log(`   🔄  ${account.email} (${account.role}) — updated (password reset)`);
+      console.log(`   ðŸ”„  ${account.email} (${account.role}) â€” updated (password reset)`);
       resolvedIds[account.email] = existing.id;
       updated++;
       continue;
@@ -347,7 +347,7 @@ async function seedUsers() {
     });
 
     if (error || !data.user) {
-      console.error(`   ❌ ${account.email} (${account.role}) — ${error?.message ?? "unknown error"}`);
+      console.error(`   âŒ ${account.email} (${account.role}) â€” ${error?.message ?? "unknown error"}`);
       failed++;
       continue;
     }
@@ -363,20 +363,20 @@ async function seedUsers() {
       profile_complete: true,
     }, { onConflict: "id" });
 
-    console.log(`   ✅  ${account.email} (${account.role}) — created [${data.user.id}]`);
+    console.log(`   âœ…  ${account.email} (${account.role}) â€” created [${data.user.id}]`);
     resolvedIds[account.email] = data.user.id;
     created++;
   }
 
-  console.log(`\n📊 Auth results: ${created} created, ${updated} updated, ${failed} failed`);
+  console.log(`\nðŸ“Š Auth results: ${created} created, ${updated} updated, ${failed} failed`);
 
-  // ─── Upsert employees table records for employee-role accounts ───────────────
-  console.log("\n🔄 Upserting employees table records...\n");
+  // â”€â”€â”€ Upsert employees table records for employee-role accounts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  console.log("\nðŸ”„ Upserting employees table records...\n");
 
   for (const [email, empData] of Object.entries(DEMO_EMPLOYEE_RECORDS)) {
     const profileId = resolvedIds[email];
     if (!profileId) {
-      console.warn(`   ⚠️  No auth user resolved for ${email} — skipping employees row`);
+      console.warn(`   âš ï¸  No auth user resolved for ${email} â€” skipping employees row`);
       continue;
     }
 
@@ -404,19 +404,19 @@ async function seedUsers() {
     }, { onConflict: "id" });
 
     if (empErr) {
-      console.error(`   ❌ employees row for ${email} — ${empErr.message}`);
+      console.error(`   âŒ employees row for ${email} â€” ${empErr.message}`);
     } else {
       // Also patch profile_id on existing row in case it was null
       await supabase.from("employees")
         .update({ profile_id: profileId })
         .eq("email", email)
         .is("profile_id", null);
-      console.log(`   ✅  employees[${empData.id}] ${email} → profile_id ${profileId.substring(0, 8)}...`);
+      console.log(`   âœ…  employees[${empData.id}] ${email} â†’ profile_id ${profileId.substring(0, 8)}...`);
     }
   }
 
-  // ─── Final verification ───────────────────────────────────────────────────────
-  console.log("\n🔍 Final verification\n");
+  // â”€â”€â”€ Final verification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  console.log("\nðŸ” Final verification\n");
 
   const { data: profiles } = await supabase
     .from("profiles")
@@ -426,7 +426,7 @@ async function seedUsers() {
 
   if (profiles && profiles.length > 0) {
     console.log("   Profile | Role           | Email");
-    console.log("   " + "─".repeat(60));
+    console.log("   " + "â”€".repeat(60));
     for (const p of profiles) {
       console.log(`   ${p.id.substring(0, 8)}  | ${(p.role ?? "").padEnd(14)} | ${p.email}`);
     }
@@ -439,20 +439,20 @@ async function seedUsers() {
 
   if (empRows && empRows.length > 0) {
     console.log("\n   Employee | Name         | Email              | profile_id");
-    console.log("   " + "─".repeat(70));
+    console.log("   " + "â”€".repeat(70));
     for (const e of empRows) {
       console.log(
         `   ${e.id.padEnd(8)} | ${(e.name ?? "").padEnd(12)} | ${(e.email ?? "").padEnd(18)} | ` +
-        `${e.profile_id ? e.profile_id.substring(0, 8) + "..." : "❌ NULL"}`
+        `${e.profile_id ? e.profile_id.substring(0, 8) + "..." : "âŒ NULL"}`
       );
     }
   }
 
-  console.log("\n✅ Done! All demo accounts are ready.");
+  console.log("\nâœ… Done! All demo accounts are ready.");
   console.log("   Password for all accounts: demo1234");
   console.log("\n   Quick login accounts:");
   for (const a of DEMO_ACCOUNTS) {
-    console.log(`   ${a.role.padEnd(14)} → ${a.email}`);
+    console.log(`   ${a.role.padEnd(14)} â†’ ${a.email}`);
   }
 }
 

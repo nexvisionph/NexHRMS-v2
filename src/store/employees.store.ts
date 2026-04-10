@@ -244,7 +244,7 @@ export const useEmployeesStore = create<EmployeesState>()(
                 }),
         }),
         {
-            name: "soren-employees",
+            name: "nexhrms-employees",
             version: 12,
             migrate: (persisted, fromVersion) => {
                 const state = persisted as Partial<EmployeesState> & { employees?: Employee[] };

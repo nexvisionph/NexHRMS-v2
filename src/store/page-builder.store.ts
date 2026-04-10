@@ -141,7 +141,7 @@ export const usePageBuilderStore = create<PageBuilderState>()(
             },
         }),
         {
-            name: "soren-pages",
+            name: "nexhrms-pages",
             version: 1,
         }
     )

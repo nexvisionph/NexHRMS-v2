@@ -28,8 +28,8 @@ const DEFAULT_CONFIG: MessagingConfig = {
     defaultChannel: "email",
     whatsappEnabled: true,
     smsEnabled: false,
-    emailFromName: "Soren Data Solutions",
-    emailFromAddress: "noreply@sdsi.com",
+    emailFromName: "NexHRMS",
+    emailFromAddress: "noreply@nexhrms.com",
 };
 
 interface MessagingState {
@@ -255,6 +255,6 @@ export const useMessagingStore = create<MessagingState>()(
                     config: DEFAULT_CONFIG,
                 }),
         }),
-        { name: "soren-messaging", version: 1 }
+        { name: "nexhrms-messaging", version: 1 }
     )
 );

@@ -51,10 +51,10 @@ const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
    ═══════════════════════════════════════════════════════════════ */
 
 interface OrgSettings { companyName: string; industry: string; emailAbsenceAlerts: boolean; emailLeaveUpdates: boolean; emailPayrollAlerts: boolean; }
-const defaultOrgSettings: OrgSettings = { companyName: "Soren Data Solutions Inc.", industry: "technology", emailAbsenceAlerts: true, emailLeaveUpdates: true, emailPayrollAlerts: true };
+const defaultOrgSettings: OrgSettings = { companyName: "NexHRMS", industry: "technology", emailAbsenceAlerts: true, emailLeaveUpdates: true, emailPayrollAlerts: true };
 function readOrgSettings() {
     if (typeof window === "undefined") return defaultOrgSettings;
-    try { const s = localStorage.getItem("sdsi-org-settings"); if (s) return { ...defaultOrgSettings, ...JSON.parse(s) }; } catch { /* ignore */ }
+    try { const s = localStorage.getItem("nexhrms-org-settings"); if (s) return { ...defaultOrgSettings, ...JSON.parse(s) }; } catch { /* ignore */ }
     return defaultOrgSettings;
 }
 
@@ -63,7 +63,7 @@ function useOrgSettings() {
     const update = (patch: Partial<OrgSettings>) => {
         setSettings((prev: OrgSettings) => {
             const next = { ...prev, ...patch };
-            localStorage.setItem("sdsi-org-settings", JSON.stringify(next));
+            localStorage.setItem("nexhrms-org-settings", JSON.stringify(next));
             return next;
         });
     };

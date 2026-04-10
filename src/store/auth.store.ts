@@ -253,7 +253,7 @@ export const useAuthStore = create<AuthState>()(
             },
         }),
         {
-            name: "soren-auth",
+            name: "nexhrms-auth",
             version: 8,
             migrate: (persisted: unknown, version: number) => {
                 console.log(`[auth] Migration running: v${version} → v8`);
