@@ -225,12 +225,14 @@ export const SEED_PAYSLIPS: Payslip[] = [
 
 // ─── Events ──────────────────────────────────────────────────
 export const SEED_EVENTS: CalendarEvent[] = [
-    { id: "EVT001", title: "Team Standup", time: "09:00", date: "2026-02-18", type: "meeting" },
-    { id: "EVT002", title: "Sprint Review", time: "14:00", date: "2026-02-20", type: "meeting" },
-    { id: "EVT003", title: "Company All-Hands", time: "10:00", date: "2026-02-25", type: "event" },
-    { id: "EVT004", title: "Design Workshop", time: "13:00", date: "2026-02-22", type: "event" },
-    { id: "EVT005", title: "Q1 Planning", time: "09:30", date: "2026-03-01", type: "meeting" },
-    { id: "EVT006", title: "Company Anniversary", time: "18:00", date: "2026-03-15", type: "event" },
+    { id: "EVT001", title: "Team Standup", time: "09:00", date: "2026-04-14", type: "meeting" },
+    { id: "EVT002", title: "Sprint Review", time: "14:00", date: "2026-04-17", type: "meeting" },
+    { id: "EVT003", title: "Company All-Hands", time: "10:00", date: "2026-04-21", type: "event" },
+    { id: "EVT004", title: "Design Workshop", time: "13:00", date: "2026-04-24", type: "event" },
+    { id: "EVT005", title: "Q2 Planning", time: "09:30", date: "2026-04-28", type: "meeting" },
+    { id: "EVT006", title: "Company Anniversary", time: "18:00", date: "2026-05-15", type: "event" },
+    { id: "EVT007", title: "Safety Training", time: "08:00", date: "2026-05-06", type: "training" },
+    { id: "EVT008", title: "Q2 Performance Review Deadline", time: "17:00", date: "2026-05-30", type: "deadline" },
 ];
 
 // ─── Loans ───────────────────────────────────────────────────

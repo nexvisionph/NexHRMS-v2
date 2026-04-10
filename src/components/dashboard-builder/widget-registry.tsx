@@ -734,10 +734,11 @@ function MyLeaveRequests() {
 // General widgets 
 function EventsWidgetComponent({ readOnly = false }: { readOnly?: boolean }) {
     const { events, addEvent, updateEvent, removeEvent } = useEventsStore();
+    const rh = useRoleHref();
     const [open, setOpen] = useState(false);
     const [title, setTitle] = useState("");
-    const [date, setDate] = useState("");
-    const [time, setTime] = useState("");
+    const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+    const [time, setTime] = useState("09:00");
     const [editOpen, setEditOpen] = useState(false);
     const [editEvt, setEditEvt] = useState<(typeof events)[0] | null>(null);
     const [editTitle, setEditTitle] = useState("");
@@ -761,7 +762,9 @@ function EventsWidgetComponent({ readOnly = false }: { readOnly?: boolean }) {
     const handleAdd = () => {
         if (!title || !date || !time) return;
         addEvent({ title, date, time, type: "event" });
-        setTitle(""); setDate(""); setTime("");
+        setTitle("");
+        setDate(new Date().toISOString().split("T")[0]);
+        setTime("09:00");
         setOpen(false);
         toast.success("Event created");
     };
@@ -788,6 +791,8 @@ function EventsWidgetComponent({ readOnly = false }: { readOnly?: boolean }) {
                         </div>
                         <CardTitle className="text-base font-semibold tracking-tight">Events & Meetings</CardTitle>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <Link href={rh("/events")}><Button variant="ghost" size="sm" className="h-7 text-xs">View All</Button></Link>
                     {!readOnly && (
                         <Dialog open={open} onOpenChange={setOpen}>
                             <DialogTrigger asChild>
@@ -806,6 +811,7 @@ function EventsWidgetComponent({ readOnly = false }: { readOnly?: boolean }) {
                             </DialogContent>
                         </Dialog>
                     )}
+                    </div>
                 </div>
             </CardHeader>
             <CardContent className="space-y-3">
