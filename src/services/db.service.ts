@@ -279,8 +279,33 @@ export const attendanceDb = {
       row.locationLng = log.locationSnapshot.lng;
     }
     delete row.locationSnapshot;
-    // attendance_logs has a unique constraint on (employee_id, date) in addition to PK
-    return upsertRow("attendance_logs", row, "employee_id,date");
+
+    const dbRow = keysToSnake(row);
+
+    // Prefer ON CONFLICT (employee_id, date) — requires migration 015 to be applied.
+    const { error } = await supabase()
+      .from("attendance_logs")
+      .upsert(dbRow, { onConflict: "employee_id,date" });
+
+    if (!error) return true;
+
+    // 42P10: no unique constraint yet (migration pending) — fall back to PK-based upsert.
+    // This keeps writes functional until the migration is applied.
+    if (error.code === "42P10") {
+      const { error: fallback } = await supabase()
+        .from("attendance_logs")
+        .upsert(dbRow, { onConflict: "id" });
+      if (!fallback) return true;
+      if (fallback.code === "23505") return true;
+      if (isNetworkError(fallback) && isDemoMode) return false;
+      console.error("[db] upsert attendance_logs (fallback):", fallback.message);
+      return false;
+    }
+
+    if (error.code === "23505") return true;
+    if (isNetworkError(error) && isDemoMode) return false;
+    console.error("[db] upsert attendance_logs:", error.message);
+    return false;
   },
 
   async insertEvent(event: AttendanceEvent): Promise<boolean> {

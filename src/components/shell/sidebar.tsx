@@ -189,32 +189,32 @@ export function Sidebar() {
         <>
             {/* Logo */}
             <div className={cn("flex h-16 items-center px-4", showLabel || isMobile ? "justify-between" : "justify-center")}>
-                <Link href={`${rolePrefix}/dashboard`} className="flex items-center gap-2.5">
+                <Link href={`${rolePrefix}/dashboard`} className="flex items-center gap-2.5 min-w-0">
                     {logoUrl ? (
                         <img
                             src={logoUrl}
                             alt={companyName}
-                            className="sidebar-logo max-h-[40px] w-auto max-w-[160px] object-contain transition-all duration-300"
-                            style={{ marginLeft: showLabel ? "8px" : "0" }}
+                            className="sidebar-logo max-h-[36px] w-auto max-w-[140px] object-contain transition-all duration-300"
+                            style={{ marginLeft: showLabel ? "4px" : "0" }}
                         />
                     ) : (
                         <>
                             <Image
                                 src="/logo.png"
                                 alt={companyName}
-                                width={showLabel ? 160 : 40}
-                                height={40}
+                                width={showLabel || isMobile ? 130 : 36}
+                                height={36}
                                 className="sidebar-logo transition-all duration-300 dark:hidden"
-                                style={{ width: "auto", height: "auto", maxHeight: 40, marginLeft: showLabel ? "8px" : "0" }}
+                                style={{ width: "auto", height: "auto", maxHeight: 36, maxWidth: showLabel || isMobile ? 130 : 36, marginLeft: showLabel ? "4px" : "0" }}
                                 priority
                             />
                             <Image
                                 src="/darklogo.png"
                                 alt={companyName}
-                                width={showLabel ? 160 : 40}
-                                height={40}
+                                width={showLabel || isMobile ? 130 : 36}
+                                height={36}
                                 className="sidebar-logo transition-all duration-300 hidden dark:block"
-                                style={{ width: "auto", height: "auto", maxHeight: 40, marginLeft: showLabel ? "8px" : "0" }}
+                                style={{ width: "auto", height: "auto", maxHeight: 36, maxWidth: showLabel || isMobile ? 130 : 36, marginLeft: showLabel ? "4px" : "0" }}
                                 priority
                             />
                         </>

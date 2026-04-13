@@ -89,6 +89,7 @@ CREATE TABLE public.attendance_logs (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT attendance_logs_pkey PRIMARY KEY (id),
+  CONSTRAINT attendance_logs_employee_id_date_key UNIQUE (employee_id, date),
   CONSTRAINT attendance_logs_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id),
   CONSTRAINT fk_al_project FOREIGN KEY (project_id) REFERENCES public.projects(id),
   CONSTRAINT fk_al_shift FOREIGN KEY (shift_id) REFERENCES public.shift_templates(id)
