@@ -284,6 +284,10 @@ export default function KioskLandingPage() {
                             Change PIN in Admin Settings → Kiosk
                         </p>
 
+                        <p className={cn("text-center text-[11px]", textSubtleClass)}>
+                            Default PIN: <span className="font-mono font-semibold tracking-widest">000000</span>
+                        </p>
+
                         {(settings.enableFace || settings.enableQr || settings.enablePin) && (
                             <div className={cn("flex items-center justify-center gap-5 pt-3 border-t", isAutoTheme ? "border-border" : "border-white/10")}>
                                 {settings.enableFace && (
