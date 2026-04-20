@@ -687,6 +687,10 @@ export interface Project {
   assignedEmployeeIds: string[];
   status?: "active" | "completed" | "on_hold";
   createdAt: string;
+  // Extended fields (migration 027) — DB columns: require_geofence, verification_method, geofence_radius_meters
+  requireGeofence?: boolean;
+  verificationMethod?: "face_only" | "qr_only" | "face_or_qr" | "manual_only";
+  geofenceRadiusMeters?: number;
 }
 
 // ─── Notification System ─────────────────────────────────────
@@ -1124,21 +1128,5 @@ export interface FaceVerificationResult {
   spoofIndicators?: string[];
 }
 
-// Extend Project interface with verification fields
-export interface Project {
-  id: string;
-  name: string;
-  description?: string;
-  location: {
-    lat: number;
-    lng: number;
-    radius: number;
-    address?: string;
-  };
-  assignedEmployeeIds: string[];
-  status?: "active" | "completed" | "on_hold";
-  createdAt: string;
-  verificationMethod?: VerificationMethod;
-  requireGeofence?: boolean;
-  geofenceRadiusMeters?: number;
-}
+// Project interface with verification fields — defined above in Project & Geofencing section
+// (Duplicate removed to avoid interface merging confusion)

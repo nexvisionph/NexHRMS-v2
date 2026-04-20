@@ -108,9 +108,41 @@ export async function POST(request: NextRequest) {
         const timeStr = `${String(manilaTime.getHours()).padStart(2, "0")}:${String(manilaTime.getMinutes()).padStart(2, "0")}`;
         const eventId = `EVT-${nanoid(8)}`;
 
+        // ── Duplicate check: prevent double check-in/check-out ──
         let eventWritten = false;
         try {
             const supabase = await createAdminSupabaseClient();
+
+            const { data: existingLog } = await supabase
+                .from("attendance_logs")
+                .select("check_in, check_out")
+                .eq("employee_id", result.employeeId)
+                .eq("date", today)
+                .single();
+
+            if (eventType === "IN" && existingLog?.check_in) {
+                return NextResponse.json({
+                    valid: false,
+                    employeeId: result.employeeId,
+                    message: `Already checked in today at ${existingLog.check_in}`,
+                    duplicate: true,
+                });
+            }
+            if (eventType === "OUT" && !existingLog?.check_in) {
+                return NextResponse.json({
+                    valid: false,
+                    employeeId: result.employeeId,
+                    message: "Cannot check out without checking in first",
+                });
+            }
+            if (eventType === "OUT" && existingLog?.check_out) {
+                return NextResponse.json({
+                    valid: false,
+                    employeeId: result.employeeId,
+                    message: `Already checked out today at ${existingLog.check_out}`,
+                    duplicate: true,
+                });
+            }
 
             // 1. Append to event ledger (immutable)
             const { error: evtError } = await supabase.from("attendance_events").insert({
@@ -129,13 +161,16 @@ export async function POST(request: NextRequest) {
 
                 // 1b. Record attendance evidence for audit trail
                 const evidenceId = `EVI-${nanoid(8)}`;
+                // geofence_pass: true when location was provided AND geofence passed;
+                // null when no location was submitted (geofence check not applicable).
+                const geofencePassValue = location != null ? (result.geofencePass ?? true) : null;
                 const { error: eviError } = await supabase.from("attendance_evidence").insert({
                     id: evidenceId,
                     event_id: eventId,
                     gps_lat: location?.lat ?? null,
                     gps_lng: location?.lng ?? null,
                     gps_accuracy_meters: location?.accuracy ?? null,
-                    geofence_pass: true, // If we got here, geofence passed (or wasn't required)
+                    geofence_pass: geofencePassValue,
                     qr_token_id: result.qrType === "dynamic" ? qrPayload : null,
                     device_integrity_result: null, // QR scan doesn't verify device integrity
                     face_verified: null, // QR scan doesn't verify face
