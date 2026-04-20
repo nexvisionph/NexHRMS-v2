@@ -7,7 +7,7 @@ const MAX_BATCH_SIZE = 100;
 /**
  * POST /api/payroll/status
  * Admin/Finance transitions a payslip or batch of payslips to the next status.
- * Body: { payslipIds: string[], action: "confirm" | "publish" | "record_payment", paymentMethod?, bankReferenceId?, performedBy }
+ * Body: { payslipIds: string[], action: "confirm" | "publish" | "record_payment", paymentMethod?, bankReferenceId?, cashAmount?, paymentProofUrl?, performedBy }
  * Auth: Requires valid Supabase session with admin/finance/payroll_admin role.
  */
 export async function POST(request: NextRequest) {
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { payslipIds, action, paymentMethod, bankReferenceId, performedBy } = body;
+    const { payslipIds, action, paymentMethod, bankReferenceId, cashAmount, paymentProofUrl, performedBy } = body;
 
     if (!payslipIds || !Array.isArray(payslipIds) || payslipIds.length === 0 || !action || !performedBy) {
       return NextResponse.json(
@@ -89,7 +89,9 @@ export async function POST(request: NextRequest) {
         update = {
           paid_at: now,
           payment_method: paymentMethod || "bank_transfer",
-          bank_reference_id: bankReferenceId || `REF-${Date.now()}`,
+          bank_reference_id: bankReferenceId || null,
+          cash_amount: paymentMethod === "cash" ? cashAmount : null,
+          payment_proof_url: paymentProofUrl || null,
           paid_confirmed_by: performedBy,
           paid_confirmed_at: now,
         };

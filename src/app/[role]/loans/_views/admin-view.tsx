@@ -17,6 +17,7 @@ import { useAuditStore } from "@/store/audit.store";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { EmployeeCombobox } from "@/components/ui/employee-combobox";
 
 export default function AdminLoansView() {
     const { loans, createLoan, deductFromLoan, settleLoan, freezeLoan, unfreezeLoan, getAllDeductions, getSchedule, updateLoan, cancelLoan } = useLoansStore();
@@ -86,7 +87,7 @@ export default function AdminLoansView() {
                         <DialogHeader><DialogTitle>Create Loan / Cash Advance</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
                             <div><label className="text-sm font-medium">Employee</label>
-                                <Select value={formEmpId} onValueChange={setFormEmpId}><SelectTrigger className="mt-1"><SelectValue placeholder="Select employee" /></SelectTrigger><SelectContent>{employees.filter((e) => e.status === "active" && e.id).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="mt-1"><EmployeeCombobox value={formEmpId} onValueChange={setFormEmpId} required placeholder="Select employee" className="w-full" /></div></div>
                             <div><label className="text-sm font-medium">Loan Type</label>
                                 <Select value={formType} onValueChange={setFormType}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash_advance">Cash Advance</SelectItem><SelectItem value="salary_loan">Salary Loan</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
                             <div className="grid grid-cols-2 gap-3">

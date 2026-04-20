@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { AuditLogEntry, AuditAction } from "@/types";
 
@@ -49,6 +50,6 @@ export const useAuditStore = create<AuditState>()(
             clearLogs: () => set({ logs: [] }),
             resetToSeed: () => set({ logs: [] }),
         }),
-        { name: "nexhrms-audit", version: 1 }
+        { name: "nexhrms-audit", version: 1, storage: safePersistStorage }
     )
 );

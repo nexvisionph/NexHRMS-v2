@@ -1,20 +1,19 @@
 ﻿"use client";
 
+import { lazy } from "react";
 import { RoleViewDispatcher } from "@/components/ui/role-dispatcher";
-import EmployeePayrollView from "./_views/employee-view";
-import AdminPayrollView from "./_views/admin-view";
 
-const FinanceView = () => <AdminPayrollView mode="finance" />;
-const PayrollAdminView = () => <AdminPayrollView mode="payroll_admin" />;
+const AdminPayrollView = lazy(() => import("./_views/admin-view"));
+const EmployeePayrollView = lazy(() => import("./_views/employee-view"));
 
 export default function PayrollPage() {
     return (
         <RoleViewDispatcher
             views={{
                 admin: () => <AdminPayrollView mode="admin" />,
-                finance: FinanceView,
-                payroll_admin: PayrollAdminView,
-                employee: EmployeePayrollView,
+                finance: () => <AdminPayrollView mode="finance" />,
+                payroll_admin: () => <AdminPayrollView mode="payroll_admin" />,
+                employee: () => <EmployeePayrollView />,
             }}
         />
     );

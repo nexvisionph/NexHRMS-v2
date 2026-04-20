@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { CalendarEvent } from "@/types";
 import { SEED_EVENTS } from "@/data/seed";
@@ -33,7 +34,7 @@ export const useEventsStore = create<EventsState>()(
             resetToSeed: () => set({ events: SEED_EVENTS }),
         }),
         { 
-            name: "nexhrms-events", 
+            name: "nexhrms-events", storage: safePersistStorage,
             version: 2,
             migrate: () => ({ events: SEED_EVENTS }),
         }

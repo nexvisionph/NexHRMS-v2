@@ -1,8 +1,10 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { NotificationLog, NotificationType, NotificationChannel, NotificationRule, NotificationTrigger } from "@/types";
+import { useEmployeesStore } from "@/store/employees.store";
 
 // ─── Default Rules ────────────────────────────────────────────
 
@@ -22,6 +24,12 @@ const DEFAULT_RULES: NotificationRule[] = [
     { id: "NR-13", trigger: "location_disabled", enabled: true, channel: "both", recipientRoles: ["admin"], timing: "immediate", subjectTemplate: "Location Disabled: {name}", bodyTemplate: "{name} has disabled location tracking at {time}.", smsTemplate: "{name} disabled GPS at {time}." },
     { id: "NR-14", trigger: "payslip_signed", enabled: true, channel: "email", recipientRoles: ["admin", "finance"], timing: "immediate", subjectTemplate: "Payslip Signed: {name} ({period})", bodyTemplate: "{name} has signed their payslip for {period}." },
     { id: "NR-15", trigger: "payment_confirmed", enabled: true, channel: "sms", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Payment Confirmed: {period}", bodyTemplate: "Your payment for {period} has been confirmed. Amount: {amount}.", smsTemplate: "Payment confirmed for {period}. Amount: {amount}." },
+    { id: "NR-16", trigger: "cheat_detected", enabled: true, channel: "both", recipientRoles: ["admin", "hr"], timing: "immediate", subjectTemplate: "Anti-Cheat Alert: {name}", bodyTemplate: "{name} triggered anti-cheat detection: {reason}. A {penalty} minute lockout has been applied." },
+    { id: "NR-21", trigger: "absence", enabled: true, channel: "both", recipientRoles: ["admin", "hr"], timing: "immediate", subjectTemplate: "Absence: {name}", bodyTemplate: "{name} has been marked absent for {date}." },
+    { id: "NR-17", trigger: "task_assigned", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "New Task: {title}", bodyTemplate: "You have been assigned a new task: {title}. Due: {dueDate}." },
+    { id: "NR-18", trigger: "task_submitted", enabled: true, channel: "both", recipientRoles: ["admin", "hr"], timing: "immediate", subjectTemplate: "Task Submitted: {title}", bodyTemplate: "{name} has submitted \"{title}\" for your review." },
+    { id: "NR-19", trigger: "task_verified", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Task Approved: {title}", bodyTemplate: "Your task \"{title}\" has been verified and approved." },
+    { id: "NR-20", trigger: "task_rejected", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Task Rejected: {title}", bodyTemplate: "Your task \"{title}\" was rejected: {reason}." },
 ];
 
 // ─── Provider config (MVP — simulated) ───────────────────────
@@ -48,6 +56,10 @@ interface NotificationsState {
     logs: NotificationLog[];
     rules: NotificationRule[];
     providerConfig: NotificationProviderConfig;
+    hasFetchedFromDb: boolean;
+
+    // DB sync
+    fetchFromDb: () => Promise<void>;
 
     // Log management
     addLog: (data: Omit<NotificationLog, "id" | "sentAt" | "status">) => void;
@@ -70,10 +82,60 @@ interface NotificationsState {
     // Provider
     updateProviderConfig: (patch: Partial<NotificationProviderConfig>) => void;
 
+    // Per-employee opt-out preferences (keyed by employeeId)
+    employeePrefs: Record<string, EmployeeNotifPrefs>;
+    setEmployeePref: (employeeId: string, patch: Partial<EmployeeNotifPrefs>) => void;
+    getEmployeePref: (employeeId: string) => EmployeeNotifPrefs;
+
     // Dispatch (simulated send)
     dispatch: (trigger: NotificationTrigger, vars: Record<string, string>, recipientEmployeeId: string, recipientEmail?: string, recipientPhone?: string, link?: string) => void;
 
     resetToSeed: () => void;
+}
+
+// Per-employee notification opt-out preferences.
+// Defaults to all enabled — only opt-outs are stored.
+export interface EmployeeNotifPrefs {
+    leaveUpdates: boolean;   // leave_approved, leave_rejected
+    absenceAlerts: boolean;  // absence, attendance_missing
+    payrollAlerts: boolean;  // payslip_published, payment_confirmed, payslip_unsigned_reminder
+    pushEnabled: boolean;    // Web Push notifications (browser-level)
+}
+
+export const DEFAULT_EMPLOYEE_PREFS: EmployeeNotifPrefs = {
+    leaveUpdates: true,
+    absenceAlerts: true,
+    payrollAlerts: true,
+    pushEnabled: true,
+};
+
+/** Returns which pref key gates a given trigger, or null if always allowed. */
+export function prefKeyForTrigger(trigger: NotificationTrigger | string): keyof EmployeeNotifPrefs | null {
+    if (trigger === "leave_submitted" || trigger === "leave_approved" || trigger === "leave_rejected") return "leaveUpdates";
+    if (trigger === "absence" || trigger === "attendance_missing") return "absenceAlerts";
+    if (
+        trigger === "payslip_published" ||
+        trigger === "payment_confirmed" ||
+        trigger === "payslip_unsigned_reminder" ||
+        trigger === "payslip_signed"
+    ) return "payrollAlerts";
+    return null;
+}
+
+/** Check if a notification should be allowed for the given employee. */
+export function isNotificationAllowed(employeeId: string, triggerOrType: NotificationTrigger | string): boolean {
+    const state = useNotificationsStore.getState();
+    const prefs = { ...DEFAULT_EMPLOYEE_PREFS, ...state.employeePrefs[employeeId] };
+    const prefKey = prefKeyForTrigger(triggerOrType);
+    if (prefKey !== null && !prefs[prefKey]) return false;
+    return true;
+}
+
+/** Check if push is enabled for the given employee. */
+export function isPushAllowed(employeeId: string): boolean {
+    const state = useNotificationsStore.getState();
+    const prefs = { ...DEFAULT_EMPLOYEE_PREFS, ...state.employeePrefs[employeeId] };
+    return prefs.pushEnabled;
 }
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
@@ -105,6 +167,7 @@ function getDefaultLinkForTrigger(trigger: NotificationTrigger): string {
         task_submitted: "/tasks",
         task_verified: "/tasks",
         task_rejected: "/tasks",
+        cheat_detected: "/attendance",
     };
     return linkMap[trigger] || "/notifications";
 }
@@ -115,19 +178,76 @@ export const useNotificationsStore = create<NotificationsState>()(
             logs: [],
             rules: [...DEFAULT_RULES],
             providerConfig: { ...DEFAULT_PROVIDER },
+            employeePrefs: {} as Record<string, EmployeeNotifPrefs>,
+            hasFetchedFromDb: false,
 
-            addLog: (data) =>
+            fetchFromDb: async () => {
+                try {
+                    const res = await fetch("/api/settings/notifications");
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    if (data && typeof data === "object") {
+                        const patch: Partial<NotificationsState> = { hasFetchedFromDb: true };
+                        if (Array.isArray(data.rules) && data.rules.length > 0) {
+                            // Merge DB rules with local defaults for any triggers not in DB
+                            const dbTriggers = new Set(data.rules.map((r: { trigger: string }) => r.trigger));
+                            const merged = [
+                                ...data.rules,
+                                ...DEFAULT_RULES.filter((r) => !dbTriggers.has(r.trigger)),
+                            ];
+                            patch.rules = merged as NotificationRule[];
+                        }
+                        if (data.providerConfig) {
+                            patch.providerConfig = { ...DEFAULT_PROVIDER, ...data.providerConfig };
+                        }
+                        set(patch as Partial<NotificationsState> & object);
+                    } else {
+                        set({ hasFetchedFromDb: true });
+                    }
+                } catch {
+                    set({ hasFetchedFromDb: true });
+                }
+            },
+
+            addLog: (data) => {
+                // Check per-employee category opt-out
+                const empPrefs = { ...DEFAULT_EMPLOYEE_PREFS, ...get().employeePrefs[data.employeeId] };
+                const prefKey = prefKeyForTrigger(data.type);
+                if (prefKey !== null && !empPrefs[prefKey]) return; // employee opted out of this category
+
+                const notificationId = `NOTIF-${nanoid(8)}`;
                 set((s) => ({
                     logs: [
                         {
                             ...data,
-                            id: `NOTIF-${nanoid(8)}`,
+                            id: notificationId,
                             sentAt: new Date().toISOString(),
                             status: "simulated" as const,
                         },
                         ...s.logs,
                     ].slice(0, 500), // keep max 500
-                })),
+                }));
+                // Fire push notification only if employee has push enabled
+                if (!empPrefs.pushEnabled) return;
+                try {
+                    let pushUrl = data.link || "/notifications";
+                    const emp = useEmployeesStore.getState().employees.find((e) => e.id === data.employeeId);
+                    if (emp?.role) {
+                        pushUrl = `/${emp.role}${data.link || "/notifications"}`;
+                    }
+                    fetch("/api/push/send", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            employeeId: data.employeeId,
+                            title: data.subject,
+                            body: data.body,
+                            url: pushUrl,
+                            tag: notificationId,
+                        }),
+                    }).catch(() => { /* push is best-effort */ });
+                } catch { /* best-effort */ }
+            },
 
             clearLogs: () => set({ logs: [] }),
 
@@ -176,29 +296,82 @@ export const useNotificationsStore = create<NotificationsState>()(
                 get().logs.filter((l) => l.employeeId === employeeId && !l.read),
 
             // ─── Rules ─────────────────────────────────
-            updateRule: (ruleId, patch) =>
+            updateRule: (ruleId, patch) => {
                 set((s) => ({
                     rules: s.rules.map((r) => (r.id === ruleId ? { ...r, ...patch } : r)),
-                })),
+                }));
+                // Sync updated rule to DB
+                const updated = get().rules.find((r) => r.id === ruleId);
+                if (updated) {
+                    void fetch("/api/settings/notifications", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ rule: updated }),
+                    }).catch(() => {});
+                }
+            },
 
-            toggleRule: (ruleId) =>
+            toggleRule: (ruleId) => {
                 set((s) => ({
                     rules: s.rules.map((r) => (r.id === ruleId ? { ...r, enabled: !r.enabled } : r)),
-                })),
+                }));
+                const updated = get().rules.find((r) => r.id === ruleId);
+                if (updated) {
+                    void fetch("/api/settings/notifications", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ rule: updated }),
+                    }).catch(() => {});
+                }
+            },
 
             getRuleByTrigger: (trigger) => get().rules.find((r) => r.trigger === trigger),
 
-            resetRules: () => set({ rules: [...DEFAULT_RULES] }),
+            resetRules: () => {
+                set({ rules: [...DEFAULT_RULES] });
+                void fetch("/api/settings/notifications", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ rules: DEFAULT_RULES }),
+                }).catch(() => {});
+            },
 
             // ─── Provider ──────────────────────────────
-            updateProviderConfig: (patch) =>
-                set((s) => ({ providerConfig: { ...s.providerConfig, ...patch } })),
+            updateProviderConfig: (patch) => {
+                set((s) => ({ providerConfig: { ...s.providerConfig, ...patch } }));
+                void fetch("/api/settings/notifications", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ providerConfig: { ...get().providerConfig, ...patch } }),
+                }).catch(() => {});
+            },
+
+            // ─── Per-employee prefs ─────────────────────
+            setEmployeePref: (employeeId, patch) =>
+                set((s) => ({
+                    employeePrefs: {
+                        ...s.employeePrefs,
+                        [employeeId]: { ...DEFAULT_EMPLOYEE_PREFS, ...s.employeePrefs[employeeId], ...patch },
+                    },
+                })),
+
+            getEmployeePref: (employeeId) => ({
+                ...DEFAULT_EMPLOYEE_PREFS,
+                ...get().employeePrefs[employeeId],
+            }),
 
             // ─── Dispatch ──────────────────────────────
             dispatch: (trigger, vars, recipientEmployeeId, recipientEmail, recipientPhone, link) => {
                 const state = get();
                 const rule = state.rules.find((r) => r.trigger === trigger);
                 if (!rule || !rule.enabled) return;
+
+                // Check per-employee opt-out preference
+                const prefKey = prefKeyForTrigger(trigger);
+                if (prefKey !== null) {
+                    const prefs = { ...DEFAULT_EMPLOYEE_PREFS, ...state.employeePrefs[recipientEmployeeId] };
+                    if (!prefs[prefKey]) return; // employee opted out
+                }
 
                 const subject = renderTemplate(rule.subjectTemplate, vars);
                 const body = renderTemplate(rule.bodyTemplate, vars);
@@ -207,72 +380,93 @@ export const useNotificationsStore = create<NotificationsState>()(
                 // Auto-generate link based on trigger type if not provided
                 const autoLink = link || getDefaultLinkForTrigger(trigger);
 
-                // Log different channels
-                if (channel === "email" || channel === "both") {
-                    set((s) => ({
-                        logs: [
-                            {
-                                id: `NOTIF-${nanoid(8)}`,
-                                employeeId: recipientEmployeeId,
-                                type: trigger,
-                                channel: "email" as const,
-                                subject,
-                                body,
-                                sentAt: new Date().toISOString(),
-                                status: "simulated" as const,
-                                recipientEmail,
-                                link: autoLink,
-                            },
-                            ...s.logs,
-                        ].slice(0, 500),
-                    }));
-                }
-                if (channel === "sms" || channel === "both") {
-                    const smsBody = rule.smsTemplate ? renderTemplate(rule.smsTemplate, vars) : body;
-                    set((s) => ({
-                        logs: [
-                            {
-                                id: `NOTIF-${nanoid(8)}`,
-                                employeeId: recipientEmployeeId,
-                                type: trigger,
-                                channel: "sms" as const,
-                                subject,
-                                body: smsBody,
-                                sentAt: new Date().toISOString(),
-                                status: "simulated" as const,
-                                recipientPhone,
-                                link: autoLink,
-                            },
-                            ...s.logs,
-                        ].slice(0, 500),
-                    }));
-                }
-                if (channel === "in_app") {
-                    set((s) => ({
-                        logs: [
-                            {
-                                id: `NOTIF-${nanoid(8)}`,
-                                employeeId: recipientEmployeeId,
-                                type: trigger,
-                                channel: "in_app" as const,
-                                subject,
-                                body,
-                                sentAt: new Date().toISOString(),
-                                status: "simulated" as const,
-                                link: autoLink,
-                            },
-                            ...s.logs,
-                        ].slice(0, 500),
-                    }));
+                // Generate unique notification ID upfront so we can use it for both log and push tag
+                const notificationId = `NOTIF-${nanoid(8)}`;
+
+                // Always create exactly ONE log entry per dispatch regardless of channel.
+                // Previously channel="both" created two entries (email + SMS), causing
+                // duplicate notifications visible to the employee.
+                const logBody =
+                    (channel === "sms" || channel === "both") && rule.smsTemplate
+                        ? renderTemplate(rule.smsTemplate, vars)
+                        : body;
+
+                set((s) => ({
+                    logs: [
+                        {
+                            id: notificationId,
+                            employeeId: recipientEmployeeId,
+                            type: trigger,
+                            channel: channel as NotificationLog["channel"],
+                            subject,
+                            body: logBody,
+                            sentAt: new Date().toISOString(),
+                            status: "simulated" as const,
+                            recipientEmail: channel === "email" || channel === "both" ? recipientEmail : undefined,
+                            recipientPhone: channel === "sms" || channel === "both" ? recipientPhone : undefined,
+                            link: autoLink,
+                        },
+                        ...s.logs,
+                    ].slice(0, 500),
+                }));
+
+                // ─── Fire real push notification (fire-and-forget) ───
+                // Only send push if the employee has push enabled in their prefs.
+                const recipientPrefs = { ...DEFAULT_EMPLOYEE_PREFS, ...state.employeePrefs[recipientEmployeeId] };
+                if (recipientPrefs.pushEnabled) {
+                    let pushUrl = autoLink;
+                    try {
+                        const emp = useEmployeesStore.getState().employees.find((e) => e.id === recipientEmployeeId);
+                        if (emp?.role) {
+                            pushUrl = `/${emp.role}${autoLink}`;
+                        }
+                    } catch { /* best-effort */ }
+
+                    fetch("/api/push/send", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            employeeId: recipientEmployeeId,
+                            title: subject,
+                            body,
+                            url: pushUrl,
+                            tag: notificationId,
+                        }),
+                    }).catch((err) => {
+                        console.debug("[notifications] Push send failed (non-critical):", err);
+                    });
                 }
             },
 
-            resetToSeed: () => set({ logs: [], rules: [...DEFAULT_RULES], providerConfig: { ...DEFAULT_PROVIDER } }),
+            resetToSeed: () => {
+                set({ logs: [], rules: [...DEFAULT_RULES], providerConfig: { ...DEFAULT_PROVIDER }, employeePrefs: {} });
+                // Sync defaults back to DB
+                void fetch("/api/settings/notifications", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ rules: DEFAULT_RULES }),
+                }).catch(() => {});
+                void fetch("/api/settings/notifications", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ providerConfig: DEFAULT_PROVIDER }),
+                }).catch(() => {});
+            },
         }),
         {
             name: "nexhrms-notifications",
-            version: 3,
-            migrate: () => ({ logs: [], rules: [...DEFAULT_RULES], providerConfig: { ...DEFAULT_PROVIDER } }),
+            version: 5,
+            storage: safePersistStorage,
+            migrate: (persisted: unknown) => {
+                // Carry over rules and logs from previous versions; reset everything else.
+                const p = persisted as Partial<NotificationsState> | null;
+                return {
+                    logs: p?.logs ?? [],
+                    rules: p?.rules ?? [...DEFAULT_RULES],
+                    providerConfig: p?.providerConfig ?? { ...DEFAULT_PROVIDER },
+                    employeePrefs: (p as Record<string, unknown>)?.employeePrefs as Record<string, EmployeeNotifPrefs> ?? {},
+                };
+            },
         }
     )
 );

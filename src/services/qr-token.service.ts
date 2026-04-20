@@ -396,9 +396,9 @@ export async function validateDailyQR(
   valid?: boolean;
   employeeId?: string;
   message?: string;
-  error?: string;
   geofencePass?: boolean;
   distanceMeters?: number;
+  error?: string;
 }> {
   try {
     const parsed = await parseDailyQRPayload(payload);
@@ -413,18 +413,18 @@ export async function validateDailyQR(
         return {
           ok: true,
           valid: false,
-          message: `Location validation failed: ${locationResult.message}`,
-          geofencePass: locationResult.geofencePass,
+          geofencePass: false,
           distanceMeters: locationResult.distanceMeters,
+          message: `Location validation failed: ${locationResult.message}`,
         };
       }
       return {
         ok: true,
         valid: true,
         employeeId: parsed.employeeId,
-        message: "Daily QR validated successfully",
         geofencePass: locationResult.geofencePass,
         distanceMeters: locationResult.distanceMeters,
+        message: "Daily QR validated successfully",
       };
     }
 
@@ -432,6 +432,7 @@ export async function validateDailyQR(
       ok: true,
       valid: true,
       employeeId: parsed.employeeId,
+      geofencePass: undefined, // no location provided — geofence not checked
       message: "Daily QR validated successfully",
     };
   } catch (error) {
@@ -452,9 +453,9 @@ export async function validateStaticQR(
   valid?: boolean;
   employeeId?: string;
   message?: string;
-  error?: string;
   geofencePass?: boolean;
   distanceMeters?: number;
+  error?: string;
 }> {
   try {
     const parsed = await parseEmployeeQRPayload(payload);
@@ -468,18 +469,18 @@ export async function validateStaticQR(
         return {
           ok: true,
           valid: false,
-          message: `Location validation failed: ${locationResult.message}`,
-          geofencePass: locationResult.geofencePass,
+          geofencePass: false,
           distanceMeters: locationResult.distanceMeters,
+          message: `Location validation failed: ${locationResult.message}`,
         };
       }
       return {
         ok: true,
         valid: true,
         employeeId: parsed.employeeId,
-        message: "Static QR validated successfully",
         geofencePass: locationResult.geofencePass,
         distanceMeters: locationResult.distanceMeters,
+        message: "Static QR validated successfully",
       };
     }
 
@@ -487,6 +488,7 @@ export async function validateStaticQR(
       ok: true,
       valid: true,
       employeeId: parsed.employeeId,
+      geofencePass: undefined,
       message: "Static QR validated successfully",
     };
   } catch (error) {
@@ -508,9 +510,9 @@ export async function validateAnyQR(
   employeeId?: string;
   message?: string;
   qrType?: string;
-  error?: string;
   geofencePass?: boolean;
   distanceMeters?: number;
+  error?: string;
 }> {
   const qrType = detectQRType(payload);
 

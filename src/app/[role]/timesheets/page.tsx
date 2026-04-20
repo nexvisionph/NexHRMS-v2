@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClipboardList, Calculator, CheckCircle, XCircle, Eye, Clock, Timer, Moon, Zap } from "lucide-react";
 import { toast } from "sonner";
 import type { Timesheet } from "@/types";
+import { EmployeeCombobox } from "@/components/ui/employee-combobox";
 
 export default function TimesheetsPage() {
     const { timesheets, ruleSets, computeTimesheet, submitTimesheet, approveTimesheet, rejectTimesheet, getPendingApproval, addRuleSet } = useTimesheetStore();
@@ -254,15 +255,7 @@ export default function TimesheetsPage() {
                     <div className="flex flex-wrap items-center gap-3">
                         <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="w-full sm:w-[180px]" />
                         {isSupervisor && (
-                            <Select value={empFilter} onValueChange={setEmpFilter}>
-                                <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="All Employees" /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Employees</SelectItem>
-                                    {employees.filter((e) => e.status === "active" && e.id).map((e) => (
-                                        <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <EmployeeCombobox value={empFilter} onValueChange={setEmpFilter} className="w-full sm:w-[220px]" />
                         )}
                         <Select value={statusFilter} onValueChange={setStatusFilter}>
                                 <SelectTrigger className="w-full sm:w-[150px]"><SelectValue /></SelectTrigger>
@@ -430,19 +423,9 @@ export default function TimesheetsPage() {
                     <div className="space-y-4 pt-2">
                         <div>
                             <label className="text-sm font-medium">Employee</label>
-                            <Select value={computeEmpId} onValueChange={handleComputeEmpChange}>
-                                <SelectTrigger className="mt-1"><SelectValue placeholder="Select employee" /></SelectTrigger>
-                                <SelectContent>
-                                    {employees.filter((e) => e.status === "active" && e.id).map((e) => {
-                                        const shift = getEmployeeShift(e.id);
-                                        return (
-                                            <SelectItem key={e.id} value={e.id}>
-                                                {e.name}{shift ? ` · ${shift.name}` : ""}
-                                            </SelectItem>
-                                        );
-                                    })}
-                                </SelectContent>
-                            </Select>
+                            <div className="mt-1">
+                                <EmployeeCombobox value={computeEmpId} onValueChange={handleComputeEmpChange} required placeholder="Select employee" className="w-full" />
+                            </div>
                         </div>
                         <div>
                             <label className="text-sm font-medium">Date</label>

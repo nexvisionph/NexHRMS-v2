@@ -71,9 +71,9 @@ function TaskCard({
             <Card className="border border-border/50 hover:border-border active:scale-[0.99] transition-all cursor-pointer touch-manipulation">
                 <CardContent className="p-3.5 sm:p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium leading-snug">{task.title}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">{groupName}</p>
+                        <div className="min-w-0 flex-1 overflow-hidden">
+                            <p className="text-sm font-medium leading-snug break-words">{task.title}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">{groupName}</p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                             <Badge variant="secondary" className={`text-[10px] ${sc.color}`}>{sc.label}</Badge>
@@ -81,7 +81,7 @@ function TaskCard({
                         </div>
                     </div>
                     {task.description && (
-                        <p className="text-xs text-muted-foreground line-clamp-2">{task.description}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2 break-words">{task.description}</p>
                     )}
                     <div className="flex items-center gap-1.5 flex-wrap">
                         <Badge variant="secondary" className={`text-[10px] ${pc.color}`}>{pc.label}</Badge>
@@ -131,9 +131,9 @@ export default function EmployeeTasksView() {
     const [search, setSearch] = useState("");
     const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
     
-    // Loading state for DB fetch fallback
+    // Loading state — show spinner until we've made at least one DB fetch
+    // so the employee never sees stale seed/localStorage tasks.
     const [isLoading, setIsLoading] = useState(true);
-    const [fetchedTasks, setFetchedTasks] = useState<Task[]>([]);
     const [fetchAttempted, setFetchAttempted] = useState(false);
 
     // Resolve the HR employee record by email so tasks assigned to "EMP026"
@@ -143,54 +143,46 @@ export default function EmployeeTasksView() {
         [employees, currentUser.email, currentUser.name, currentUser.id],
     );
 
-    // Fetch from DB if store tasks are empty and employees not loaded yet
+    // Always fetch fresh tasks from DB on mount so newly assigned tasks are
+    // visible even when hydrateAllStores() ran before the task was created.
+    // The 400ms delay gives the global hydration a head-start; if that already
+    // set a non-empty tasks array we still replace it with the freshest data.
     useEffect(() => {
-        // If employees are loaded and tasks exist, we're ready
-        if (employees.length > 0 && tasks.length > 0) {
-            setIsLoading(false);
-            return;
-        }
-        
-        // If we already tried fetching, don't retry
-        if (fetchAttempted) {
-            return;
-        }
+        if (fetchAttempted) return;
 
-        // Give hydration a moment to complete, then fetch if still empty
         const timer = setTimeout(async () => {
-            if (tasks.length === 0) {
-                try {
-                    const allTasks = await tasksDb.fetchTasks();
-                    setFetchedTasks(allTasks);
-                    // Update the store with fetched tasks
-                    if (allTasks.length > 0) {
-                        useTasksStore.setState((s) => ({
-                            tasks: allTasks.length > s.tasks.length ? allTasks : s.tasks,
-                        }));
-                    }
-                } catch (err) {
-                    console.error("[EmployeeTasks] Failed to fetch tasks:", err);
-                }
+            try {
+                const allTasks = await tasksDb.fetchTasks();
+                // Always replace store tasks with authoritative DB data
+                useTasksStore.setState({ tasks: allTasks });
+            } catch (err) {
+                console.error("[EmployeeTasks] Failed to fetch tasks:", err);
+            } finally {
+                setIsLoading(false);
+                setFetchAttempted(true);
             }
-            setIsLoading(false);
-            setFetchAttempted(true);
-        }, 500); // Small delay to allow hydration
+        }, 400);
 
         return () => clearTimeout(timer);
-    }, [tasks.length, employees.length, fetchAttempted]);
+    }, [fetchAttempted]);
 
-    // Combine store tasks with fetched tasks (prefer store)
-    const allTasks = useMemo(() => {
-        if (tasks.length > 0) return tasks;
-        return fetchedTasks;
-    }, [tasks, fetchedTasks]);
+    // If the store was already hydrated with real (non-seed) tasks before the
+    // component-level fetch completes, stop the spinner immediately so the user
+    // doesn't wait unnecessarily.
+    useEffect(() => {
+        if (!fetchAttempted && employees.length > 0 && tasks.length > 0) {
+            // Only skip the loading spinner, not the DB refresh — the timer above
+            // will still fire and reconcile with Supabase in the background.
+            setIsLoading(false);
+        }
+    }, [fetchAttempted, employees.length, tasks.length]);
 
     // Filter tasks assigned to current employee and sort by createdAt descending (newest first)
     const myTasks = useMemo(
-        () => allTasks
+        () => tasks
             .filter((t) => t.assignedTo.includes(myEmployeeId))
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-        [allTasks, myEmployeeId],
+        [tasks, myEmployeeId],
     );
 
     const filteredTasks = useMemo(() => {

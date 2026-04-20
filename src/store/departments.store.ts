@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { Department } from "@/types";
 import { DEPARTMENTS } from "@/lib/constants";
@@ -111,6 +112,7 @@ export const useDepartmentsStore = create<DepartmentsState>()(
         {
             name: "hrms-departments",
             version: 1,
+            storage: safePersistStorage,
         }
     )
 );

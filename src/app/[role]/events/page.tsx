@@ -44,7 +44,8 @@ import {
     TabsList,
     TabsTrigger,
 } from "@/components/ui/tabs";
-import { Calendar, Plus, Pencil, Trash2, Clock, CalendarDays, Filter, Video, Users } from "lucide-react";
+import { Calendar, Plus, Pencil, Trash2, Clock, CalendarDays, Filter, Video, Users, XCircle, LayoutGrid, Table2 } from "lucide-react";
+import { FullScreenCalendar, type CalendarItem, type CalendarItemColor } from "@/components/ui/fullscreen-calendar";
 import { format, parseISO, isAfter, isBefore, isToday, startOfDay } from "date-fns";
 import { toast } from "sonner";
 import type { CalendarEvent } from "@/types";
@@ -67,6 +68,15 @@ const typeIcons: Record<string, React.ElementType> = {
     other: CalendarDays,
 };
 
+const EVENT_TYPE_COLORS: Record<string, CalendarItemColor> = {
+    event: { bg: "bg-violet-500/15", text: "text-violet-700 dark:text-violet-400", dot: "bg-violet-500" },
+    meeting: { bg: "bg-blue-500/15", text: "text-blue-700 dark:text-blue-400", dot: "bg-blue-500" },
+    holiday: { bg: "bg-emerald-500/15", text: "text-emerald-700 dark:text-emerald-400", dot: "bg-emerald-500" },
+    training: { bg: "bg-amber-500/15", text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" },
+    deadline: { bg: "bg-red-500/15", text: "text-red-700 dark:text-red-400", dot: "bg-red-500" },
+    other: { bg: "bg-slate-500/15", text: "text-slate-700 dark:text-slate-400", dot: "bg-slate-400" },
+};
+
 const eventTypes = ["event", "meeting", "holiday", "training", "deadline", "other"] as const;
 
 export default function EventsPage() {
@@ -86,6 +96,9 @@ export default function EventsPage() {
     const [date, setDate] = useState("");
     const [time, setTime] = useState("");
     const [type, setType] = useState<string>("event");
+
+    // View state
+    const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
 
     // Filters
     const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -138,6 +151,32 @@ export default function EventsPage() {
     }, [events, today]);
 
     const pastCount = events.length - upcomingCount;
+
+    // Calendar items — ALL events (not filtered by tab)
+    const calendarItems: CalendarItem[] = useMemo(() =>
+        events
+            .filter((e) => {
+                if (typeFilter !== "all" && (e.type || "event") !== typeFilter) return false;
+                if (searchQuery) {
+                    const q = searchQuery.toLowerCase();
+                    if (!e.title.toLowerCase().includes(q)) return false;
+                }
+                return true;
+            })
+            .map((e) => ({
+                id: e.id,
+                title: e.title,
+                date: e.date,
+                time: e.time,
+                type: e.type || "event",
+            })),
+        [events, typeFilter, searchQuery],
+    );
+
+    const handleCalendarItemClick = (item: CalendarItem) => {
+        const event = events.find((e) => e.id === item.id);
+        if (event && canEdit) openEdit(event);
+    };
 
     const handleAdd = () => {
         if (!title || !date || !time) {
@@ -351,16 +390,39 @@ export default function EventsPage() {
                 </Card>
             </div>
 
-            {/* Filters & Table */}
+            {/* Filters & Content */}
             <Card>
                 <CardHeader className="pb-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
-                            <TabsList>
-                                <TabsTrigger value="upcoming">Upcoming ({upcomingCount})</TabsTrigger>
-                                <TabsTrigger value="past">Past ({pastCount})</TabsTrigger>
-                            </TabsList>
-                        </Tabs>
+                        <div className="flex items-center gap-3">
+                            {/* View mode toggle */}
+                            <div className="inline-flex -space-x-px rounded-lg shadow-sm shadow-black/5">
+                                <Button
+                                    variant={viewMode === "calendar" ? "default" : "outline"}
+                                    size="sm"
+                                    className="rounded-none first:rounded-s-lg last:rounded-e-lg shadow-none text-xs gap-1.5"
+                                    onClick={() => setViewMode("calendar")}
+                                >
+                                    <CalendarDays className="h-3.5 w-3.5" /> Calendar
+                                </Button>
+                                <Button
+                                    variant={viewMode === "list" ? "default" : "outline"}
+                                    size="sm"
+                                    className="rounded-none first:rounded-s-lg last:rounded-e-lg shadow-none text-xs gap-1.5"
+                                    onClick={() => setViewMode("list")}
+                                >
+                                    <Table2 className="h-3.5 w-3.5" /> List
+                                </Button>
+                            </div>
+                            {viewMode === "list" && (
+                                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-auto">
+                                    <TabsList>
+                                        <TabsTrigger value="upcoming">Upcoming ({upcomingCount})</TabsTrigger>
+                                        <TabsTrigger value="past">Past ({pastCount})</TabsTrigger>
+                                    </TabsList>
+                                </Tabs>
+                            )}
+                        </div>
                         <div className="flex items-center gap-2">
                             <div className="relative">
                                 <Input
@@ -371,8 +433,8 @@ export default function EventsPage() {
                                 />
                             </div>
                             <Select value={typeFilter} onValueChange={setTypeFilter}>
-                                <SelectTrigger className="w-32">
-                                    <Filter className="h-4 w-4 mr-2" />
+                                <SelectTrigger className="w-[160px]">
+                                    <Filter className="h-4 w-4 mr-2 shrink-0" />
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -382,11 +444,46 @@ export default function EventsPage() {
                                     ))}
                                 </SelectContent>
                             </Select>
+                            {(searchQuery || typeFilter !== "all") && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => { setSearchQuery(""); setTypeFilter("all"); }}
+                                    className="h-9 text-xs gap-1"
+                                >
+                                    <XCircle className="h-3 w-3" /> Clear
+                                </Button>
+                            )}
                         </div>
                     </div>
                 </CardHeader>
                 <CardContent>
-                    {filteredEvents.length === 0 ? (
+                    {viewMode === "calendar" ? (
+                        <div className="-mx-6 -mb-6">
+                            <FullScreenCalendar
+                                items={calendarItems}
+                                colorMap={EVENT_TYPE_COLORS}
+                                onItemClick={handleCalendarItemClick}
+                                onDayClick={(date) => {
+                                    if (canEdit) {
+                                        setDate(format(date, "yyyy-MM-dd"));
+                                        setTime("09:00");
+                                        setType("event");
+                                        setTitle("");
+                                        setAddOpen(true);
+                                    }
+                                }}
+                                itemLabel="Events"
+                                headerActions={
+                                    canEdit ? (
+                                        <Button size="sm" className="w-full gap-2 md:w-auto" onClick={() => setAddOpen(true)}>
+                                            <Plus className="h-4 w-4" /> New Event
+                                        </Button>
+                                    ) : undefined
+                                }
+                            />
+                        </div>
+                    ) : filteredEvents.length === 0 ? (
                         <div className="text-center py-12">
                             <Calendar className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
                             <h3 className="text-lg font-medium">No events found</h3>

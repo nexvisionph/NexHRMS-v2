@@ -4,10 +4,13 @@ import { useState } from "react";
 import { useAuthStore } from "@/store/auth.store";
 import { useRolesStore } from "@/store/roles.store";
 import { useEmployeesStore } from "@/store/employees.store";
+import { useDepartmentsStore } from "@/store/departments.store";
+import { useJobTitlesStore } from "@/store/job-titles.store";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -18,71 +21,42 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, Building2, Users } from "lucide-react";
+import { Plus, Pencil, Trash2, Building2, Users, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-
-interface Department {
-    id: string;
-    code: string;
-    name: string;
-}
-
-interface Position {
-    id: string;
-    title: string;
-    departmentId: string;
-    level: "junior" | "mid" | "senior" | "lead" | "manager";
-}
-
-const INITIAL_DEPARTMENTS: Department[] = [
-    { id: "dept-1", code: "ENG", name: "Engineering" },
-    { id: "dept-2", code: "HR", name: "Human Resources" },
-    { id: "dept-3", code: "FIN", name: "Finance" },
-    { id: "dept-4", code: "OPS", name: "Operations" },
-    { id: "dept-5", code: "MKT", name: "Marketing" },
-];
-
-const INITIAL_POSITIONS: Position[] = [
-    { id: "pos-1", title: "Software Engineer", departmentId: "dept-1", level: "mid" },
-    { id: "pos-2", title: "Senior Engineer", departmentId: "dept-1", level: "senior" },
-    { id: "pos-3", title: "Team Lead", departmentId: "dept-1", level: "lead" },
-    { id: "pos-4", title: "HR Specialist", departmentId: "dept-2", level: "mid" },
-    { id: "pos-5", title: "HR Manager", departmentId: "dept-2", level: "manager" },
-    { id: "pos-6", title: "Accountant", departmentId: "dept-3", level: "mid" },
-    { id: "pos-7", title: "Finance Manager", departmentId: "dept-3", level: "manager" },
-    { id: "pos-8", title: "Operations Analyst", departmentId: "dept-4", level: "junior" },
-];
-
-const levelColors: Record<string, string> = {
-    junior: "bg-slate-500/15 text-slate-700 dark:text-slate-400",
-    mid: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
-    senior: "bg-purple-500/15 text-purple-700 dark:text-purple-400",
-    lead: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-    manager: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-};
+import type { Department, JobTitle } from "@/types";
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function OrganizationPage() {
     const currentUser = useAuthStore((s) => s.currentUser);
     const employees = useEmployeesStore((s) => s.employees);
 
+    // Use persisted stores instead of local state
+    const { departments, addDepartment, updateDepartment, deleteDepartment, resetToSeed: resetDepts } = useDepartmentsStore();
+    const { jobTitles, addJobTitle, updateJobTitle, deleteJobTitle, resetToSeed: resetJobTitles } = useJobTitlesStore();
+
     const { hasPermission } = useRolesStore();
     const canManage = hasPermission(currentUser.role, "settings:organization");
-
-    const [departments, setDepartments] = useState<Department[]>(INITIAL_DEPARTMENTS);
-    const [positions, setPositions] = useState<Position[]>(INITIAL_POSITIONS);
 
     // Department dialog
     const [deptOpen, setDeptOpen] = useState(false);
     const [editDept, setEditDept] = useState<Department | null>(null);
     const [deptName, setDeptName] = useState("");
-    const [deptCode, setDeptCode] = useState("");
+    const [deptDesc, setDeptDesc] = useState("");
+    const [deptColor, setDeptColor] = useState("#6366f1");
 
     // Position dialog
     const [posOpen, setPosOpen] = useState(false);
-    const [editPos, setEditPos] = useState<Position | null>(null);
+    const [editPos, setEditPos] = useState<JobTitle | null>(null);
     const [posTitle, setPosTitle] = useState("");
-    const [posDeptId, setPosDeptId] = useState("");
-    const [posLevel, setPosLevel] = useState<Position["level"]>("mid");
+    const [posDept, setPosDept] = useState("");
+    const [posIsLead, setPosIsLead] = useState(false);
+    const [posColor, setPosColor] = useState("#6366f1");
+
+    // Reset confirmation
+    const [resetOpen, setResetOpen] = useState(false);
 
     if (!canManage) {
         return (
@@ -93,58 +67,54 @@ export default function OrganizationPage() {
         );
     }
 
-    const getDeptName = (id: string) => departments.find((d) => d.id === id)?.name || id;
-    const getEmpCountForDept = (deptId: string) => {
-        const deptName = getDeptName(deptId);
+    const getEmpCountForDept = (deptName: string) => {
         return employees.filter((e) => e.department === deptName && e.status === "active").length;
     };
 
     const handleSaveDept = () => {
-        if (!deptName || !deptCode) { toast.error("Name and code are required"); return; }
+        if (!deptName) { toast.error("Department name is required"); return; }
         if (editDept) {
-            setDepartments((prev) => prev.map((d) => d.id === editDept.id ? { ...d, name: deptName, code: deptCode } : d));
+            updateDepartment(editDept.id, { name: deptName, description: deptDesc || undefined, color: deptColor });
             toast.success("Department updated");
         } else {
-            setDepartments((prev) => [...prev, { id: `dept-${Date.now()}`, code: deptCode.toUpperCase(), name: deptName }]);
+            addDepartment({ name: deptName, description: deptDesc || undefined, color: deptColor, isActive: true, createdBy: currentUser.id });
             toast.success("Department added");
         }
-        setDeptOpen(false); setEditDept(null); setDeptName(""); setDeptCode("");
+        setDeptOpen(false); setEditDept(null); setDeptName(""); setDeptDesc(""); setDeptColor("#6366f1");
     };
 
     const handleDeleteDept = (id: string) => {
-        setDepartments((prev) => prev.filter((d) => d.id !== id));
-        setPositions((prev) => prev.filter((p) => p.departmentId !== id));
+        deleteDepartment(id);
         toast.success("Department removed");
     };
 
     const handleSavePos = () => {
-        if (!posTitle || !posDeptId) { toast.error("Title and department are required"); return; }
+        if (!posTitle || !posDept) { toast.error("Title and department are required"); return; }
         if (editPos) {
-            setPositions((prev) => prev.map((p) => p.id === editPos.id ? { ...p, title: posTitle, departmentId: posDeptId, level: posLevel } : p));
+            updateJobTitle(editPos.id, { name: posTitle, department: posDept, isLead: posIsLead, color: posColor });
             toast.success("Position updated");
         } else {
-            setPositions((prev) => [...prev, { id: `pos-${Date.now()}`, title: posTitle, departmentId: posDeptId, level: posLevel }]);
+            addJobTitle({ name: posTitle, department: posDept, isActive: true, isLead: posIsLead, color: posColor, createdBy: currentUser.id });
             toast.success("Position added");
         }
-        setPosOpen(false); setEditPos(null); setPosTitle(""); setPosDeptId(""); setPosLevel("mid");
+        setPosOpen(false); setEditPos(null); setPosTitle(""); setPosDept(""); setPosIsLead(false); setPosColor("#6366f1");
     };
 
     const handleDeletePos = (id: string) => {
-        setPositions((prev) => prev.filter((p) => p.id !== id));
+        deleteJobTitle(id);
         toast.success("Position removed");
     };
 
-    const deptCount = departments.length;
-    const posCount = positions.length;
-    const activeEmpCount = employees.filter((e) => e.status === "active").length;
+    const handleReset = () => {
+        resetDepts();
+        resetJobTitles();
+        setResetOpen(false);
+        toast.success("Organization structure reset to defaults");
+    };
 
-    if (!canManage) {
-        return (
-            <div className="flex flex-col items-center justify-center h-64 gap-3">
-                <p className="text-sm text-muted-foreground">You don&apos;t have access to this page.</p>
-            </div>
-        );
-    }
+    const deptCount = departments.length;
+    const posCount = jobTitles.length;
+    const activeEmpCount = employees.filter((e) => e.status === "active").length;
 
     return (
         <div className="space-y-6">
@@ -181,6 +151,13 @@ export default function OrganizationPage() {
                 </Card>
             </div>
 
+            {/* Reset button */}
+            <div className="flex justify-end">
+                <Button variant="outline" size="sm" className="gap-1.5 text-muted-foreground" onClick={() => setResetOpen(true)}>
+                    <RotateCcw className="h-3.5 w-3.5" /> Reset to Defaults
+                </Button>
+            </div>
+
             <Tabs defaultValue="departments">
                 <TabsList className="w-full justify-start">
                     <TabsTrigger value="departments" className="gap-1.5">
@@ -195,7 +172,7 @@ export default function OrganizationPage() {
                 <TabsContent value="departments" className="mt-4">
                     <div className="flex items-center justify-between mb-3">
                         <p className="text-sm text-muted-foreground">{departments.length} departments</p>
-                        <Button size="sm" className="gap-1.5" onClick={() => { setEditDept(null); setDeptName(""); setDeptCode(""); setDeptOpen(true); }}>
+                        <Button size="sm" className="gap-1.5" onClick={() => { setEditDept(null); setDeptName(""); setDeptDesc(""); setDeptColor("#6366f1"); setDeptOpen(true); }}>
                             <Plus className="h-3.5 w-3.5" /> Add Department
                         </Button>
                     </div>
@@ -205,8 +182,9 @@ export default function OrganizationPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="text-xs">Code</TableHead>
+                                        <TableHead className="text-xs w-3"></TableHead>
                                         <TableHead className="text-xs">Name</TableHead>
+                                        <TableHead className="text-xs">Description</TableHead>
                                         <TableHead className="text-xs">Positions</TableHead>
                                         <TableHead className="text-xs">Active Employees</TableHead>
                                         <TableHead className="text-xs w-20">Actions</TableHead>
@@ -216,15 +194,16 @@ export default function OrganizationPage() {
                                     {departments.map((dept) => (
                                         <TableRow key={dept.id}>
                                             <TableCell>
-                                                <Badge variant="secondary" className="font-mono text-[10px]">{dept.code}</Badge>
+                                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: dept.color || "#6366f1" }} />
                                             </TableCell>
                                             <TableCell className="text-sm font-medium">{dept.name}</TableCell>
-                                            <TableCell className="text-sm text-muted-foreground">{positions.filter((p) => p.departmentId === dept.id).length}</TableCell>
-                                            <TableCell className="text-sm text-muted-foreground">{getEmpCountForDept(dept.id)}</TableCell>
+                                            <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{dept.description || "—"}</TableCell>
+                                            <TableCell className="text-sm text-muted-foreground">{jobTitles.filter((jt) => jt.department === dept.name).length}</TableCell>
+                                            <TableCell className="text-sm text-muted-foreground">{getEmpCountForDept(dept.name)}</TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-1">
                                                     <Button variant="ghost" size="icon" className="h-7 w-7"
-                                                        onClick={() => { setEditDept(dept); setDeptName(dept.name); setDeptCode(dept.code); setDeptOpen(true); }}>
+                                                        onClick={() => { setEditDept(dept); setDeptName(dept.name); setDeptDesc(dept.description || ""); setDeptColor(dept.color || "#6366f1"); setDeptOpen(true); }}>
                                                         <Pencil className="h-3.5 w-3.5" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500"
@@ -245,8 +224,8 @@ export default function OrganizationPage() {
                 {/* Positions Tab */}
                 <TabsContent value="positions" className="mt-4">
                     <div className="flex items-center justify-between mb-3">
-                        <p className="text-sm text-muted-foreground">{positions.length} positions</p>
-                        <Button size="sm" className="gap-1.5" onClick={() => { setEditPos(null); setPosTitle(""); setPosDeptId(""); setPosLevel("mid"); setPosOpen(true); }}>
+                        <p className="text-sm text-muted-foreground">{jobTitles.length} positions</p>
+                        <Button size="sm" className="gap-1.5" onClick={() => { setEditPos(null); setPosTitle(""); setPosDept(""); setPosIsLead(false); setPosColor("#6366f1"); setPosOpen(true); }}>
                             <Plus className="h-3.5 w-3.5" /> Add Position
                         </Button>
                     </div>
@@ -256,28 +235,34 @@ export default function OrganizationPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
+                                        <TableHead className="text-xs w-3"></TableHead>
                                         <TableHead className="text-xs">Title</TableHead>
                                         <TableHead className="text-xs">Department</TableHead>
-                                        <TableHead className="text-xs">Level</TableHead>
+                                        <TableHead className="text-xs">Type</TableHead>
                                         <TableHead className="text-xs w-20">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {positions.map((pos) => (
-                                        <TableRow key={pos.id}>
-                                            <TableCell className="text-sm font-medium">{pos.title}</TableCell>
-                                            <TableCell className="text-sm text-muted-foreground">{getDeptName(pos.departmentId)}</TableCell>
+                                    {jobTitles.map((jt) => (
+                                        <TableRow key={jt.id}>
                                             <TableCell>
-                                                <Badge variant="secondary" className={`text-[10px] capitalize ${levelColors[pos.level]}`}>{pos.level}</Badge>
+                                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: jt.color || "#6366f1" }} />
+                                            </TableCell>
+                                            <TableCell className="text-sm font-medium">{jt.name}</TableCell>
+                                            <TableCell className="text-sm text-muted-foreground">{jt.department || "—"}</TableCell>
+                                            <TableCell>
+                                                <Badge variant="secondary" className={`text-[10px] ${jt.isLead ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" : "bg-slate-500/15 text-slate-700 dark:text-slate-400"}`}>
+                                                    {jt.isLead ? "Lead" : "Member"}
+                                                </Badge>
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-1">
                                                     <Button variant="ghost" size="icon" className="h-7 w-7"
-                                                        onClick={() => { setEditPos(pos); setPosTitle(pos.title); setPosDeptId(pos.departmentId); setPosLevel(pos.level); setPosOpen(true); }}>
+                                                        onClick={() => { setEditPos(jt); setPosTitle(jt.name); setPosDept(jt.department || ""); setPosIsLead(jt.isLead); setPosColor(jt.color || "#6366f1"); setPosOpen(true); }}>
                                                         <Pencil className="h-3.5 w-3.5" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500"
-                                                        onClick={() => handleDeletePos(pos.id)}>
+                                                        onClick={() => handleDeletePos(jt.id)}>
                                                         <Trash2 className="h-3.5 w-3.5" />
                                                     </Button>
                                                 </div>
@@ -298,12 +283,19 @@ export default function OrganizationPage() {
                     <DialogHeader><DialogTitle>{editDept ? "Edit Department" : "Add Department"}</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
                         <div>
-                            <label className="text-sm font-medium">Department Name</label>
+                            <label className="text-sm font-medium">Department Name *</label>
                             <Input value={deptName} onChange={(e) => setDeptName(e.target.value)} placeholder="e.g. Engineering" className="mt-1" />
                         </div>
                         <div>
-                            <label className="text-sm font-medium">Code</label>
-                            <Input value={deptCode} onChange={(e) => setDeptCode(e.target.value.toUpperCase())} placeholder="e.g. ENG" maxLength={5} className="mt-1 font-mono" />
+                            <label className="text-sm font-medium">Description</label>
+                            <Textarea value={deptDesc} onChange={(e) => setDeptDesc(e.target.value)} placeholder="What does this department do?" className="mt-1" rows={2} />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">Color</label>
+                            <div className="flex items-center gap-2 mt-1">
+                                <Input type="color" value={deptColor} onChange={(e) => setDeptColor(e.target.value)} className="w-12 h-9 p-1" />
+                                <Input value={deptColor} onChange={(e) => setDeptColor(e.target.value)} className="flex-1 font-mono text-sm" />
+                            </div>
                         </div>
                         <Button onClick={handleSaveDept} className="w-full">{editDept ? "Save Changes" : "Add Department"}</Button>
                     </div>
@@ -316,37 +308,56 @@ export default function OrganizationPage() {
                     <DialogHeader><DialogTitle>{editPos ? "Edit Position" : "Add Position"}</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
                         <div>
-                            <label className="text-sm font-medium">Title</label>
+                            <label className="text-sm font-medium">Title *</label>
                             <Input value={posTitle} onChange={(e) => setPosTitle(e.target.value)} placeholder="e.g. Software Engineer" className="mt-1" />
                         </div>
                         <div>
-                            <label className="text-sm font-medium">Department</label>
-                            <Select value={posDeptId} onValueChange={setPosDeptId}>
+                            <label className="text-sm font-medium">Department *</label>
+                            <Select value={posDept} onValueChange={setPosDept}>
                                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select department" /></SelectTrigger>
                                 <SelectContent>
-                                    {departments.filter((d) => d.id).map((d) => (
-                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                    {departments.map((d) => (
+                                        <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                         </div>
+                        <div className="flex items-center justify-between p-3 rounded-lg border border-border/50">
+                            <div>
+                                <p className="text-sm font-medium">Leadership Role</p>
+                                <p className="text-xs text-muted-foreground">Mark as team lead or manager position</p>
+                            </div>
+                            <input type="checkbox" checked={posIsLead} onChange={(e) => setPosIsLead(e.target.checked)} className="h-4 w-4" />
+                        </div>
                         <div>
-                            <label className="text-sm font-medium">Level</label>
-                            <Select value={posLevel} onValueChange={(v) => setPosLevel(v as Position["level"])}>
-                                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="junior">Junior</SelectItem>
-                                    <SelectItem value="mid">Mid</SelectItem>
-                                    <SelectItem value="senior">Senior</SelectItem>
-                                    <SelectItem value="lead">Lead</SelectItem>
-                                    <SelectItem value="manager">Manager</SelectItem>
-                                </SelectContent>
-                            </Select>
+                            <label className="text-sm font-medium">Color</label>
+                            <div className="flex items-center gap-2 mt-1">
+                                <Input type="color" value={posColor} onChange={(e) => setPosColor(e.target.value)} className="w-12 h-9 p-1" />
+                                <Input value={posColor} onChange={(e) => setPosColor(e.target.value)} className="flex-1 font-mono text-sm" />
+                            </div>
                         </div>
                         <Button onClick={handleSavePos} className="w-full">{editPos ? "Save Changes" : "Add Position"}</Button>
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Reset Confirmation */}
+            <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Reset Organization Structure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will reset all departments and positions to their default values. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleReset} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Reset to Defaults
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

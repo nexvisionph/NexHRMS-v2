@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
-import { useProjectsStore } from "@/store/projects.store";
 import { signOut } from "@/services/auth.service";
 import { stopWriteThrough } from "@/services/sync.service";
 import { useUIStore } from "@/store/ui.store";
@@ -15,6 +14,7 @@ import { usePageBuilderStore } from "@/store/page-builder.store";
 import { useAppearanceStore } from "@/store/appearance.store";
 import { useMessagingStore } from "@/store/messaging.store";
 import { useNotificationsStore } from "@/store/notifications.store";
+import { useProjectsStore } from "@/store/projects.store";
 import { NAV_ITEMS } from "@/lib/constants";
 import {
     LayoutDashboard,
@@ -46,8 +46,9 @@ import {
     ScanFace,
     UserCircle,
 } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useEffect, useMemo } from "react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useEffect, useMemo, useCallback, memo } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 const iconMap: Record<string, React.ElementType> = {
     LayoutDashboard,
@@ -77,25 +78,46 @@ const iconMap: Record<string, React.ElementType> = {
     UserCircle,
 };
 
-export function Sidebar() {
+function SidebarComponent() {
     const pathname = usePathname();
-    const role = useAuthStore((s) => s.currentUser.role);
-    const currentUser = useAuthStore((s) => s.currentUser);
-    const { sidebarOpen, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUIStore();
+    
+    // Consolidated auth store selector
+    const { role, currentUserId, currentUserEmail, currentUserName } = useAuthStore(
+        useShallow((s) => ({
+            role: s.currentUser.role,
+            currentUserId: s.currentUser.id,
+            currentUserEmail: s.currentUser.email,
+            currentUserName: s.currentUser.name,
+        }))
+    );
+    
+    // Consolidated UI store selector
+    const { sidebarOpen, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUIStore(
+        useShallow((s) => ({
+            sidebarOpen: s.sidebarOpen,
+            toggleSidebar: s.toggleSidebar,
+            mobileSidebarOpen: s.mobileSidebarOpen,
+            setMobileSidebarOpen: s.setMobileSidebarOpen,
+        }))
+    );
+    
     const hasPermission = useRolesStore((s) => s.hasPermission);
     const getVisiblePages = usePageBuilderStore((s) => s.getVisiblePages);
     const customPages = useMemo(() => getVisiblePages(role), [getVisiblePages, role]);
 
-    // Appearance store
-    const modules = useAppearanceStore((s) => s.modules);
-    const navOverrides = useAppearanceStore((s) => s.navOverrides);
-    const sidebarVariant = useAppearanceStore((s) => s.sidebarVariant);
-    const logoUrl = useAppearanceStore((s) => s.logoUrl);
-    const companyName = useAppearanceStore((s) => s.companyName);
-    const logoTextVisible = useAppearanceStore((s) => s.logoTextVisible);
+    // Consolidated appearance store selector
+    const { modules, navOverrides, sidebarVariant, logoUrl, companyName, logoTextVisible } = useAppearanceStore(
+        useShallow((s) => ({
+            modules: s.modules,
+            navOverrides: s.navOverrides,
+            sidebarVariant: s.sidebarVariant,
+            logoUrl: s.logoUrl,
+            companyName: s.companyName,
+            logoTextVisible: s.logoTextVisible,
+        }))
+    );
 
     // Unread messages badge
-    const currentUserId = useAuthStore((s) => s.currentUser.id);
     const getTotalUnreadForEmployee = useMessagingStore((s) => s.getTotalUnreadForEmployee);
     const totalUnreadMsgs = getTotalUnreadForEmployee(currentUserId);
 
@@ -104,38 +126,38 @@ export function Sidebar() {
     const getUnreadCountForEmployee = useNotificationsStore((s) => s.getUnreadCountForEmployee);
     const currentEmployeeId = useMemo(() => {
         const emp = employees.find(
-            (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name
+            (e) => e.profileId === currentUserId || e.email?.toLowerCase() === currentUserEmail?.toLowerCase() || e.name === currentUserName
         );
         return emp?.id;
-    }, [employees, currentUser]);
+    }, [employees, currentUserId, currentUserEmail, currentUserName]);
     const totalUnreadNotifications = currentEmployeeId ? getUnreadCountForEmployee(currentEmployeeId) : 0;
 
-    // Check if employee is assigned to a face-recognition project
+    // Check if this employee is assigned to a face-enabled project
     const getProjectForEmployee = useProjectsStore((s) => s.getProjectForEmployee);
     const hasFaceProject = useMemo(() => {
-        if (role !== "employee" && role !== "supervisor") return false;
-        const myEmp = employees.find(
-            (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name
-        );
-        if (!myEmp) return false;
-        const project = getProjectForEmployee(myEmp.id);
-        return project?.verificationMethod === "face_only";
-    }, [role, employees, currentUser, getProjectForEmployee]);
+        if (!currentEmployeeId) return false;
+        const project = getProjectForEmployee(currentEmployeeId);
+        // Show face enrollment only if the employee's project uses face verification
+        return !!project && project.verificationMethod === "face_only";
+    }, [currentEmployeeId, getProjectForEmployee]);
 
     // Permission-based filtering + module flags + nav overrides
     const filtered = useMemo(() => {
         const systemItems = NAV_ITEMS
             .filter((item) => {
-                // Face Enrollment: only show for employees with face-recognition projects
-                if (item.href === "/face-enrollment" && !hasFaceProject) {
-                    return false;
-                }
                 // Module flag check
                 if (item.moduleFlag && !modules[item.moduleFlag as keyof typeof modules]) {
                     return false;
                 }
-                // Permission check
+                // Face enrollment: only show for employees on face-enabled projects
+                if (item.href === "/face-enrollment" && !hasFaceProject) {
+                    return false;
+                }
+                // Permission check — also enforce roles list when defined
                 if (item.permission) {
+                    if (item.roles && item.roles.length > 0 && !item.roles.includes(role as never)) {
+                        return false;
+                    }
                     return hasPermission(role, item.permission);
                 }
                 return item.roles.includes(role as never);
@@ -189,32 +211,31 @@ export function Sidebar() {
         <>
             {/* Logo */}
             <div className={cn("flex h-16 items-center px-4", showLabel || isMobile ? "justify-between" : "justify-center")}>
-                <Link href={`${rolePrefix}/dashboard`} className="flex items-center gap-2.5 min-w-0">
+                <Link href={`${rolePrefix}/dashboard`} className="flex items-center gap-2.5">
                     {logoUrl ? (
                         <img
                             src={logoUrl}
                             alt={companyName}
-                            className="sidebar-logo max-h-[36px] w-auto max-w-[140px] object-contain transition-all duration-300"
-                            style={{ marginLeft: showLabel ? "4px" : "0" }}
+                            className="sidebar-logo h-9 max-w-[140px] object-contain transition-all duration-300"
                         />
                     ) : (
                         <>
                             <Image
                                 src="/logo.png"
                                 alt={companyName}
-                                width={showLabel || isMobile ? 130 : 36}
+                                width={showLabel ? 140 : 36}
                                 height={36}
                                 className="sidebar-logo transition-all duration-300 dark:hidden"
-                                style={{ width: "auto", height: "auto", maxHeight: 36, maxWidth: showLabel || isMobile ? 130 : 36, marginLeft: showLabel ? "4px" : "0" }}
+                                style={{ width: "auto", height: "auto", maxHeight: 36 }}
                                 priority
                             />
                             <Image
                                 src="/darklogo.png"
                                 alt={companyName}
-                                width={showLabel || isMobile ? 130 : 36}
+                                width={showLabel ? 140 : 36}
                                 height={36}
                                 className="sidebar-logo transition-all duration-300 hidden dark:block"
-                                style={{ width: "auto", height: "auto", maxHeight: 36, maxWidth: showLabel || isMobile ? 130 : 36, marginLeft: showLabel ? "4px" : "0" }}
+                                style={{ width: "auto", height: "auto", maxHeight: 36 }}
                                 priority
                             />
                         </>
@@ -235,6 +256,7 @@ export function Sidebar() {
             </div>
 
             {/* Navigation */}
+            <TooltipProvider delayDuration={600} disableHoverableContent>
             <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto thin-scrollbar">
                 {filtered.systemItems.map((item) => {
                     const Icon = iconMap[item.icon];
@@ -245,35 +267,46 @@ export function Sidebar() {
                         (other) => other.href !== item.href && (pathname === `${rolePrefix}${other.href}` || pathname.startsWith(`${rolePrefix}${other.href}/`)) && other.href.startsWith(item.href)
                     );
                     const isActive = exactMatch || (prefixMatch && !moreSpecificExists);
+                    const collapsed = !showLabel && !isMobile;
                     return (
-                        <Tooltip key={item.href} delayDuration={0}>
+                        <Tooltip key={item.href}>
                             <TooltipTrigger asChild>
                                 <Link
                                     href={fullHref}
                                     className={cn(
-                                        "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                                        !showLabel && "justify-center",
+                                        "group relative flex items-center rounded-lg text-sm font-medium transition-all duration-200",
+                                        collapsed
+                                            ? "h-10 w-10 mx-auto justify-center"
+                                            : "gap-3 px-3 py-2.5",
                                         isActive
                                             ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
                                             : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                                     )}
                                 >
                                     {Icon && <Icon className="h-5 w-5 shrink-0" />}
-                                    {showLabel && <span className="truncate">{item.label}</span>}
-                                    {showLabel && item.href === "/messages" && totalUnreadMsgs > 0 && (
+                                    {!collapsed && <span className="truncate">{item.label}</span>}
+                                    {/* Badge counts — expanded mode */}
+                                    {!collapsed && item.href === "/messages" && totalUnreadMsgs > 0 && (
                                         <span className="ml-auto text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 rounded-full px-2 py-0.5 min-w-[20px] text-center border border-blue-200/50 dark:border-blue-800/30 shadow-sm leading-none">
                                             {totalUnreadMsgs}
                                         </span>
                                     )}
-                                    {showLabel && item.href === "/notifications" && totalUnreadNotifications > 0 && (
+                                    {!collapsed && item.href === "/notifications" && totalUnreadNotifications > 0 && (
                                         <span className="ml-auto text-[10px] font-semibold bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400 rounded-full px-2 py-0.5 min-w-[20px] text-center border border-rose-200/50 dark:border-rose-800/30 shadow-sm leading-none">
                                             {totalUnreadNotifications}
                                         </span>
                                     )}
+                                    {/* Dot indicators — collapsed mode */}
+                                    {collapsed && item.href === "/messages" && totalUnreadMsgs > 0 && (
+                                        <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-blue-500 ring-1 ring-background" />
+                                    )}
+                                    {collapsed && item.href === "/notifications" && totalUnreadNotifications > 0 && (
+                                        <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-rose-500 ring-1 ring-background" />
+                                    )}
                                 </Link>
                             </TooltipTrigger>
-                            {!showLabel && (
-                                <TooltipContent side="right">{item.label}</TooltipContent>
+                            {collapsed && (
+                                <TooltipContent side="right" sideOffset={8}>{item.label}</TooltipContent>
                             )}
                         </Tooltip>
                     );
@@ -291,25 +324,28 @@ export function Sidebar() {
                             const Icon = iconMap[item.icon] || Puzzle;
                             const fullCustomHref = `${rolePrefix}${item.href}`;
                             const isActive = pathname === fullCustomHref;
+                            const collapsed = !showLabel && !isMobile;
                             return (
-                                <Tooltip key={item.href} delayDuration={0}>
+                                <Tooltip key={item.href}>
                                     <TooltipTrigger asChild>
                                         <Link
                                             href={fullCustomHref}
                                             className={cn(
-                                                "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                                                !showLabel && "justify-center",
+                                                "group relative flex items-center rounded-lg text-sm font-medium transition-all duration-200",
+                                                collapsed
+                                                    ? "h-10 w-10 mx-auto justify-center"
+                                                    : "gap-3 px-3 py-2.5",
                                                 isActive
                                                     ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
                                                     : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                                             )}
                                         >
                                             <Icon className="h-5 w-5 shrink-0" />
-                                            {showLabel && <span className="truncate">{item.label}</span>}
+                                            {!collapsed && <span className="truncate">{item.label}</span>}
                                         </Link>
                                     </TooltipTrigger>
-                                    {!showLabel && (
-                                        <TooltipContent side="right">{item.label}</TooltipContent>
+                                    {collapsed && (
+                                        <TooltipContent side="right" sideOffset={8}>{item.label}</TooltipContent>
                                     )}
                                 </Tooltip>
                             );
@@ -317,10 +353,12 @@ export function Sidebar() {
                     </>
                 )}
             </nav>
+            </TooltipProvider>
 
             {/* Sign Out */}
             <div className="border-t border-sidebar-border p-3">
-                <Tooltip delayDuration={0}>
+                <TooltipProvider delayDuration={600} disableHoverableContent>
+                <Tooltip>
                     <TooltipTrigger asChild>
                         <button
                             onClick={async () => {
@@ -330,17 +368,20 @@ export function Sidebar() {
                                 window.location.href = "/login";
                             }}
                             className={cn(
-                                "group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                                !showLabel && "justify-center",
+                                "group flex w-full items-center rounded-lg text-sm font-medium transition-all duration-200",
+                                !showLabel && !isMobile
+                                    ? "h-10 w-10 mx-auto justify-center"
+                                    : "gap-3 px-3 py-2.5",
                                 "text-sidebar-foreground/75 hover:bg-red-500/15 hover:text-red-500"
                             )}
                         >
                             <LogOut className="h-5 w-5 shrink-0" />
-                            {showLabel && <span className="truncate">Sign Out</span>}
+                            {(showLabel || isMobile) && <span className="truncate">Sign Out</span>}
                         </button>
                     </TooltipTrigger>
-                    {!showLabel && <TooltipContent side="right">Sign Out</TooltipContent>}
+                    {!showLabel && !isMobile && <TooltipContent side="right" sideOffset={8}>Sign Out</TooltipContent>}
                 </Tooltip>
+                </TooltipProvider>
             </div>
 
             {/* Collapse toggle — desktop only */}
@@ -366,7 +407,7 @@ export function Sidebar() {
             {/* Desktop sidebar — hidden below lg */}
             <aside
                 className={cn(
-                    "fixed left-0 top-0 z-40 hidden lg:flex h-screen flex-col border-r border-border bg-card transition-all duration-300",
+                    "fixed left-0 top-0 z-40 hidden lg:flex h-screen flex-col border-r border-border bg-card overflow-hidden transition-all duration-300",
                     sidebarOpen ? "w-64" : "w-[72px]",
                     sidebarVariant === "colored" && "sidebar-colored bg-primary text-primary-foreground border-primary/20"
                 )}
@@ -395,3 +436,6 @@ export function Sidebar() {
         </>
     );
 }
+
+// Memoize to prevent unnecessary re-renders when parent (AppShell) re-renders
+export const Sidebar = memo(SidebarComponent);

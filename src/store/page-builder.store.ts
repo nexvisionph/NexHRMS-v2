@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { CustomPage, WidgetConfig } from "@/types";
 
@@ -143,6 +144,7 @@ export const usePageBuilderStore = create<PageBuilderState>()(
         {
             name: "nexhrms-pages",
             version: 1,
+            storage: safePersistStorage,
         }
     )
 );

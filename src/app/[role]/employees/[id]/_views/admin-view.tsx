@@ -10,7 +10,7 @@ import { usePayrollStore } from "@/store/payroll.store";
 import { useLoansStore } from "@/store/loans.store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -102,11 +102,11 @@ export default function AdminProfileView() {
         setEditEmail(employee.email);
         setEditPhone(employee.phone || "");
         setEditRole(employee.role);
-        setEditJobTitle(employee.jobTitle || "");
+        setEditJobTitle(employee.jobTitle || "__none__");
         setEditDept(employee.department);
         setEditWorkType(employee.workType);
         setEditSalary(String(employee.salary));
-        setEditLocation(employee.location || "");
+        setEditLocation(employee.location || "__none__");
         setEditPayFreq(employee.payFrequency || "company");
         setEditOpen(true);
     };
@@ -130,8 +130,11 @@ export default function AdminProfileView() {
         
         updateEmployee(employee.id, {
             name: editName, email: editEmail, phone: formattedPhone,
-            role: editRole, jobTitle: editJobTitle, department: editDept, workType: editWorkType,
-            salary: Number(editSalary) || employee.salary, location: editLocation,
+            role: editRole,
+            jobTitle: editJobTitle === "__none__" ? undefined : editJobTitle,
+            department: editDept, workType: editWorkType,
+            salary: Number(editSalary) || employee.salary,
+            location: editLocation === "__none__" ? "" : editLocation,
             payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
         });
         useAuditStore.getState().log({ entityType: "employee", entityId: employee.id, action: "adjustment_applied", performedBy: currentUser.id, reason: "Profile updated" });
@@ -180,6 +183,9 @@ export default function AdminProfileView() {
                 <CardContent className="p-6">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                         <Avatar className="h-20 w-20">
+                            {employee.avatarUrl && (
+                                <AvatarImage src={employee.avatarUrl} alt={employee.name} />
+                            )}
                             <AvatarFallback className="text-xl bg-primary/10 text-primary font-bold">{getInitials(employee.name)}</AvatarFallback>
                         </Avatar>
                         <div className="flex-1">
@@ -501,7 +507,7 @@ export default function AdminProfileView() {
                                 <Select value={editRole} onValueChange={setEditRole}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{SYSTEM_ROLES.map((r) => <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>)}</SelectContent></Select>
                             </div>
                             <div><label className="text-sm font-medium">Job Title</label>
-                                <Select value={editJobTitle} onValueChange={setEditJobTitle}><SelectTrigger className="mt-1"><SelectValue placeholder="Select title" /></SelectTrigger><SelectContent><SelectItem value="">— None —</SelectItem>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
+                                <Select value={editJobTitle} onValueChange={setEditJobTitle}><SelectTrigger className="mt-1"><SelectValue placeholder="Select title" /></SelectTrigger><SelectContent><SelectItem value="__none__">— None —</SelectItem>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
@@ -511,11 +517,11 @@ export default function AdminProfileView() {
                         </div>
                         <div className="grid grid-cols-3 gap-3">
                             <div><label className="text-sm font-medium">Work Type</label>
-                                <Select value={editWorkType} onValueChange={(v) => setEditWorkType(v as WorkType)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">WFO</SelectItem><SelectItem value="WFH">WFH</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem></SelectContent></Select>
+                                <Select value={editWorkType} onValueChange={(v) => setEditWorkType(v as WorkType)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">WFO</SelectItem><SelectItem value="WFH">WFH</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Onsite</SelectItem></SelectContent></Select>
                             </div>
                             <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="number" value={editSalary} onChange={(e) => setEditSalary(e.target.value)} className="mt-1" /></div>
                             <div><label className="text-sm font-medium">Location</label>
-                                <Select value={editLocation || ""} onValueChange={setEditLocation}><SelectTrigger className="mt-1"><SelectValue placeholder="Select location" /></SelectTrigger><SelectContent><SelectItem value="">— Not Specified —</SelectItem>{LOCATIONS.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select>
+                                <Select value={editLocation || "__none__"} onValueChange={setEditLocation}><SelectTrigger className="mt-1"><SelectValue placeholder="Select location" /></SelectTrigger><SelectContent><SelectItem value="__none__">— Not Specified —</SelectItem>{LOCATIONS.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">

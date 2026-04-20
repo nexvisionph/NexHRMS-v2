@@ -255,3 +255,106 @@ describe("13th Month Pay Calculation", () => {
     expect(thirteenthMonth).toBe(15000);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Payroll Store Tests — Duplicate Prevention
+// ═══════════════════════════════════════════════════════════════
+
+describe("Payroll Store — Duplicate Prevention", () => {
+  // Simulate the duplicate detection logic from payroll.store.ts
+  const detectDuplicate = (
+    payslips: Array<{ employeeId: string; periodStart: string; periodEnd: string; payFrequency: string }>,
+    newPayslip: { employeeId: string; periodStart: string; periodEnd: string; payFrequency: string }
+  ) => {
+    return payslips.some(
+      (p) =>
+        p.employeeId === newPayslip.employeeId &&
+        p.periodStart === newPayslip.periodStart &&
+        p.periodEnd === newPayslip.periodEnd &&
+        p.payFrequency === newPayslip.payFrequency
+    );
+  };
+
+  it("should detect duplicate payslip for same employee + period", () => {
+    const existing = [
+      { employeeId: "EMP-001", periodStart: "2026-04-01", periodEnd: "2026-04-15", payFrequency: "semi_monthly" },
+    ];
+    const duplicate = { employeeId: "EMP-001", periodStart: "2026-04-01", periodEnd: "2026-04-15", payFrequency: "semi_monthly" };
+
+    expect(detectDuplicate(existing, duplicate)).toBe(true);
+  });
+
+  it("should allow payslip for same employee in different period", () => {
+    const existing = [
+      { employeeId: "EMP-001", periodStart: "2026-04-01", periodEnd: "2026-04-15", payFrequency: "semi_monthly" },
+    ];
+    const newPayslip = { employeeId: "EMP-001", periodStart: "2026-04-16", periodEnd: "2026-04-30", payFrequency: "semi_monthly" };
+
+    expect(detectDuplicate(existing, newPayslip)).toBe(false);
+  });
+
+  it("should allow payslip for different employee in same period", () => {
+    const existing = [
+      { employeeId: "EMP-001", periodStart: "2026-04-01", periodEnd: "2026-04-15", payFrequency: "semi_monthly" },
+    ];
+    const newPayslip = { employeeId: "EMP-002", periodStart: "2026-04-01", periodEnd: "2026-04-15", payFrequency: "semi_monthly" };
+
+    expect(detectDuplicate(existing, newPayslip)).toBe(false);
+  });
+
+  it("should distinguish between different pay frequencies for same period", () => {
+    const existing = [
+      { employeeId: "EMP-001", periodStart: "2026-04-01", periodEnd: "2026-04-30", payFrequency: "monthly" },
+    ];
+    // Semi-monthly employee gets different payslip even if dates overlap
+    const newPayslip = { employeeId: "EMP-001", periodStart: "2026-04-01", periodEnd: "2026-04-15", payFrequency: "semi_monthly" };
+
+    expect(detectDuplicate(existing, newPayslip)).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 13th Month Duplicate Prevention
+// ═══════════════════════════════════════════════════════════════
+
+describe("13th Month Pay — Duplicate Prevention", () => {
+  const has13thMonthForYear = (
+    payslips: Array<{ employeeId: string; periodStart: string; periodEnd: string; notes?: string }>,
+    employeeId: string,
+    year: number
+  ) => {
+    const yearStart = `${year}-01-01`;
+    const yearEnd = `${year}-12-31`;
+    return payslips.some(
+      (p) =>
+        p.employeeId === employeeId &&
+        p.periodStart === yearStart &&
+        p.periodEnd === yearEnd &&
+        p.notes?.includes("13th Month Pay")
+    );
+  };
+
+  it("should detect existing 13th month for same employee + year", () => {
+    const payslips = [
+      { employeeId: "EMP-001", periodStart: "2026-01-01", periodEnd: "2026-12-31", notes: "13th Month Pay 2026" },
+    ];
+
+    expect(has13thMonthForYear(payslips, "EMP-001", 2026)).toBe(true);
+  });
+
+  it("should allow 13th month for different year", () => {
+    const payslips = [
+      { employeeId: "EMP-001", periodStart: "2025-01-01", periodEnd: "2025-12-31", notes: "13th Month Pay 2025" },
+    ];
+
+    expect(has13thMonthForYear(payslips, "EMP-001", 2026)).toBe(false);
+  });
+
+  it("should allow 13th month for different employee same year", () => {
+    const payslips = [
+      { employeeId: "EMP-001", periodStart: "2026-01-01", periodEnd: "2026-12-31", notes: "13th Month Pay 2026" },
+    ];
+
+    expect(has13thMonthForYear(payslips, "EMP-002", 2026)).toBe(false);
+  });
+});

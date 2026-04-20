@@ -1,6 +1,33 @@
-import { useNotificationsStore } from "@/store/notifications.store";
+import { useNotificationsStore, isNotificationAllowed, isPushAllowed } from "@/store/notifications.store";
+import { useEmployeesStore } from "@/store/employees.store";
 import { toast } from "sonner";
 import type { NotificationType, NotificationTrigger } from "@/types";
+
+/** Map notification type to its default navigation link (without role prefix) */
+const TYPE_LINK_MAP: Record<string, string> = {
+    payslip_published: "/payroll",
+    payslip_signed: "/payroll",
+    payslip_unsigned_reminder: "/payroll",
+    payment_confirmed: "/payroll",
+    leave_submitted: "/leave",
+    leave_approved: "/leave",
+    leave_rejected: "/leave",
+    attendance_missing: "/attendance",
+    geofence_violation: "/attendance",
+    location_disabled: "/attendance",
+    loan_reminder: "/loans",
+    overtime_submitted: "/attendance",
+    birthday: "/dashboard",
+    contract_expiry: "/employees/manage",
+    daily_summary: "/dashboard",
+    assignment: "/projects",
+    reassignment: "/projects",
+    absence: "/attendance",
+    task_assigned: "/tasks",
+    task_submitted: "/tasks",
+    task_verified: "/tasks",
+    task_rejected: "/tasks",
+};
 
 interface SendNotificationParams {
     type: NotificationType;
@@ -18,13 +45,63 @@ interface SendNotificationParams {
 /**
  * Mock email notification sender.
  * Logs to notification store and shows a toast.
+ * Respects per-employee category opt-outs and push prefs.
  */
 export function sendNotification(params: SendNotificationParams): void {
     const { employeeId, type, subject, body, channel = "email", link, employeeName, employeeEmail, employeePhone } = params;
 
-    // Save to notification store
-    const addLog = useNotificationsStore.getState().addLog;
-    addLog({ employeeId, type, subject, body, channel, link, recipientEmail: employeeEmail, recipientPhone: employeePhone });
+    // Check per-employee opt-out for this notification category
+    if (!isNotificationAllowed(employeeId, type)) return;
+
+    // Auto-generate link based on notification type if not explicitly provided
+    const resolvedLink = link || TYPE_LINK_MAP[type] || "/notifications";
+
+    // Generate unique notification ID upfront so we can use it for both log and push tag
+    const notificationId = `NOTIF-${Math.random().toString(36).substring(2, 10)}`;
+
+    // Save to notification store with our pre-generated ID
+    const state = useNotificationsStore.getState();
+    useNotificationsStore.setState({
+        logs: [
+            {
+                id: notificationId,
+                employeeId,
+                type,
+                subject,
+                body,
+                channel,
+                link: resolvedLink,
+                recipientEmail: employeeEmail,
+                recipientPhone: employeePhone,
+                sentAt: new Date().toISOString(),
+                status: "simulated" as const,
+            },
+            ...state.logs,
+        ].slice(0, 500),
+    });
+
+    // Fire push notification only if the employee has push enabled
+    if (isPushAllowed(employeeId)) {
+        let pushUrl = resolvedLink;
+        try {
+            const emp = useEmployeesStore.getState().employees.find((e) => e.id === employeeId);
+            if (emp?.role) {
+                pushUrl = `/${emp.role}${resolvedLink}`;
+            }
+        } catch { /* best-effort */ }
+
+        fetch("/api/push/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                employeeId,
+                title: subject,
+                body,
+                url: pushUrl,
+                tag: notificationId,
+            }),
+        }).catch(() => { /* push is best-effort */ });
+    }
 
     // Show toast simulating dispatch
     const toLabel = employeeName ?? employeeId;
@@ -102,11 +179,20 @@ export function notifyGeofenceViolation(params: {
     distance: number;
     time: string;
 }): void {
-    dispatchNotification("geofence_violation", {
-        name: params.employeeName,
-        time: params.time,
-        distance: String(params.distance),
-    }, params.employeeId, params.employeeEmail);
+    // Auto-resolve admin recipients (rule says recipientRoles: ["admin"])
+    const employees = useEmployeesStore.getState().employees;
+    const admins = employees.filter(
+        (e) => e.role === "admin" && e.status === "active"
+    );
+    const vars = { name: params.employeeName, time: params.time, distance: String(params.distance) };
+    if (admins.length > 0) {
+        admins.forEach((admin) => {
+            dispatchNotification("geofence_violation", vars, admin.id, admin.email ?? undefined);
+        });
+    } else {
+        // Fallback: send to the caller-provided employee ID
+        dispatchNotification("geofence_violation", vars, params.employeeId, params.employeeEmail);
+    }
 }
 
 export function notifyPayslipPublished(params: {
@@ -129,10 +215,17 @@ export function notifyPayslipSigned(params: {
     employeeName: string;
     period: string;
 }): void {
-    dispatchNotification("payslip_signed", {
-        name: params.employeeName,
-        period: params.period,
-    }, params.employeeId);
+    // Notify admin/finance users only (per rule NR-14 recipientRoles: ["admin", "finance"])
+    const employees = useEmployeesStore.getState().employees;
+    const adminsAndFinance = employees.filter(
+        (e) => (e.role === "admin" || e.role === "finance") && e.status === "active" && e.id !== params.employeeId
+    );
+    adminsAndFinance.forEach((recipient) => {
+        dispatchNotification("payslip_signed", {
+            name: params.employeeName,
+            period: params.period,
+        }, recipient.id, recipient.email ?? undefined);
+    });
 }
 
 export function notifyPaymentConfirmed(params: {
@@ -154,8 +247,13 @@ export function notifyLocationDisabled(params: {
     employeeName: string;
     time: string;
 }): void {
-    dispatchNotification("location_disabled", {
-        name: params.employeeName,
-        time: params.time,
-    }, params.employeeId);
+    // Notify admin users only (per rule NR-13 recipientRoles: ["admin"])
+    const employees = useEmployeesStore.getState().employees;
+    const admins = employees.filter(
+        (e) => e.role === "admin" && e.status === "active" && e.id !== params.employeeId
+    );
+    const vars = { name: params.employeeName, time: params.time };
+    admins.forEach((admin) => {
+        dispatchNotification("location_disabled", vars, admin.id, admin.email ?? undefined);
+    });
 }

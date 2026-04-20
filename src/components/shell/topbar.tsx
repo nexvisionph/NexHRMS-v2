@@ -22,7 +22,7 @@ import {
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -45,7 +45,8 @@ import {
     CommandItem,
     CommandList,
 } from "@/components/ui/command";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useAppearanceStore } from "@/store/appearance.store";
 
 export function Topbar() {
@@ -54,22 +55,25 @@ export function Topbar() {
     const employees = useEmployeesStore((s) => s.employees);
     const router = useRouter();
     const [cmdOpen, setCmdOpen] = useState(false);
-    const getUnreadCountForEmployee = useNotificationsStore((s) => s.getUnreadCountForEmployee);
-    const getUnreadNotificationsForEmployee = useNotificationsStore((s) => s.getUnreadNotificationsForEmployee);
+    const notifLogs = useNotificationsStore((s) => s.logs);
     const markAsRead = useNotificationsStore((s) => s.markAsRead);
+    const markAllAsRead = useNotificationsStore((s) => s.markAllAsRead);
     const companyName = useAppearanceStore((s) => s.companyName);
     const showCompanyNameInTopbar = useAppearanceStore((s) => s.showCompanyNameInTopbar);
     const accentBadgeText = useAppearanceStore((s) => s.accentBadgeText);
-    const markAllAsRead = useNotificationsStore((s) => s.markAllAsRead);
     const rolePrefix = `/${currentUser.role}`;
 
     // Get current employee ID for notification count
-    const currentEmployeeId = employees.find(
+    const currentEmployee = employees.find(
         (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name
-    )?.id;
-    const notifCount = currentEmployeeId ? getUnreadCountForEmployee(currentEmployeeId) : 0;
-    const recentNotifications = currentEmployeeId 
-        ? getUnreadNotificationsForEmployee(currentEmployeeId).slice(0, 5) 
+    );
+    const currentEmployeeId = currentEmployee?.id;
+    const currentAvatarUrl = currentEmployee?.avatarUrl;
+    const notifCount = currentEmployeeId
+        ? notifLogs.filter((l) => l.employeeId === currentEmployeeId && !l.read).length
+        : 0;
+    const recentNotifications = currentEmployeeId
+        ? notifLogs.filter((l) => l.employeeId === currentEmployeeId && !l.read).slice(0, 5)
         : [];
 
     const handleNotificationItemClick = (notificationId: string, link?: string) => {
@@ -93,6 +97,37 @@ export function Topbar() {
         document.addEventListener("keydown", down);
         return () => document.removeEventListener("keydown", down);
     }, []);
+
+    // Show an in-app toast when a new notification arrives for the current user
+    const prevLogCountRef = useRef<number | null>(null);
+    const prevEmployeeIdRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        // Reset baseline whenever the resolved employee ID changes (e.g. role switch)
+        if (prevEmployeeIdRef.current !== currentEmployeeId) {
+            prevEmployeeIdRef.current = currentEmployeeId;
+            prevLogCountRef.current = null;
+        }
+        if (!currentEmployeeId) return;
+        const myLogs = notifLogs.filter((l) => l.employeeId === currentEmployeeId);
+        if (prevLogCountRef.current === null) {
+            // First render — set baseline without toasting existing notifications
+            prevLogCountRef.current = myLogs.length;
+            return;
+        }
+        if (myLogs.length > prevLogCountRef.current) {
+            // New notification arrived — show toast for the most recent one
+            const newest = myLogs[0];
+            if (newest) {
+                toast(newest.subject, {
+                    description: newest.body,
+                    ...(newest.link ? {
+                        action: { label: "View", onClick: () => router.push(`${rolePrefix}${newest.link}`) },
+                    } : {}),
+                });
+            }
+        }
+        prevLogCountRef.current = myLogs.length;
+    }, [notifLogs, currentEmployeeId, rolePrefix, router]);
 
     const roleColors: Record<Role, string> = {
         admin: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
@@ -219,7 +254,7 @@ export function Topbar() {
                                             <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
                                             <div className="flex-1 min-w-0">
                                                 <div className="font-medium text-sm line-clamp-1">{notif.subject}</div>
-                                                <div className="text-xs text-muted-foreground line-clamp-2">{notif.body}</div>
+                                                <div className="text-xs text-muted-foreground line-clamp-2 break-all">{notif.body}</div>
                                                 <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70 mt-0.5">
                                                     <Clock className="h-2.5 w-2.5" />
                                                     {formatRelativeTime(notif.sentAt)}
@@ -280,6 +315,9 @@ export function Topbar() {
                         <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="gap-2 px-2">
                                 <Avatar className="h-8 w-8">
+                                    {currentAvatarUrl && (
+                                        <AvatarImage src={currentAvatarUrl} alt={currentUser.name} />
+                                    )}
                                     <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                                         {getInitials(currentUser.name)}
                                     </AvatarFallback>

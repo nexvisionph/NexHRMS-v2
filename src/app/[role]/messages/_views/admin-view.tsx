@@ -24,7 +24,7 @@ import { getInitials, formatDateTime, formatDate } from "@/lib/format";
 import { toast } from "sonner";
 import {
     MessageSquare, Send, Hash, Megaphone, Mail, Smartphone,
-    Globe, Trash2, Archive,
+    Globe, Trash2, Archive, ArchiveRestore, ChevronDown, ChevronRight,
 } from "lucide-react";
 import type { MessageChannel, AnnouncementScope } from "@/types";
 
@@ -45,7 +45,7 @@ const CHANNEL_LABELS: Record<MessageChannel, string> = {
 export default function AdminMessagesView() {
     const {
         announcements, channels, messages,
-        sendAnnouncement, createChannel, deleteChannel, archiveChannel,
+        sendAnnouncement, createChannel, deleteChannel, archiveChannel, unarchiveChannel,
         sendMessage, getChannelMessages, getUnreadCount, deleteAnnouncement,
         markMessageRead,
     } = useMessagingStore();
@@ -70,6 +70,7 @@ export default function AdminMessagesView() {
 
     // ── Channel chat state ───────────────────────────────────
     const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+    const [showArchived, setShowArchived] = useState(false);
     const [chatMessage, setChatMessage] = useState("");
     const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -146,7 +147,7 @@ export default function AdminMessagesView() {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-3 h-full flex flex-col">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
@@ -283,8 +284,8 @@ export default function AdminMessagesView() {
                 </TabsList>
 
                 {/* ── Channels Tab ────────────────────────────── */}
-                <TabsContent value="channels" className="mt-4">
-                    <div className="grid lg:grid-cols-[280px_1fr] gap-4" style={{ height: "calc(100vh - 300px)", minHeight: "500px", maxHeight: "700px" }}>
+                <TabsContent value="channels" className="mt-2 flex-1 min-h-0">
+                    <div className="grid lg:grid-cols-[280px_1fr] gap-4 h-[calc(100vh-200px)] min-h-[400px]">
                         {/* Channel list */}
                         <Card className="border border-border/50 h-full">
                             <CardContent className="p-0 h-full">
@@ -293,10 +294,10 @@ export default function AdminMessagesView() {
                                         {channels.filter((c) => !c.isArchived).map((ch) => {
                                             const unread = getUnreadCount(ch.id, effectiveId);
                                             return (
-                                                <button
+                                                <div
                                                     key={ch.id}
                                                     onClick={() => setSelectedChannelId(ch.id)}
-                                                    className={`w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                                                    className={`group w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-left transition-colors cursor-pointer ${
                                                         selectedChannelId === ch.id
                                                             ? "bg-primary/10 text-primary"
                                                             : "hover:bg-muted/50"
@@ -305,54 +306,105 @@ export default function AdminMessagesView() {
                                                     <Hash className="h-4 w-4 shrink-0 text-muted-foreground" />
                                                     <span className="text-sm font-medium truncate flex-1">{ch.name.replace("#", "")}</span>
                                                     {unread > 0 && (
-                                                        <Badge variant="default" className="text-[10px] h-5 min-w-5 justify-center">{unread}</Badge>
+                                                        <Badge variant="default" className="text-[10px] h-5 min-w-5 justify-center group-hover:hidden">{unread}</Badge>
                                                     )}
-                                                </button>
+                                                    <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
+                                                        <button
+                                                            title="Archive"
+                                                            onClick={(e) => { e.stopPropagation(); archiveChannel(ch.id); if (selectedChannelId === ch.id) setSelectedChannelId(null); toast.success("Channel archived"); }}
+                                                            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                                                        >
+                                                            <Archive className="h-3.5 w-3.5" />
+                                                        </button>
+                                                        <button
+                                                            title="Delete"
+                                                            onClick={(e) => { e.stopPropagation(); deleteChannel(ch.id); if (selectedChannelId === ch.id) setSelectedChannelId(null); toast.success("Channel deleted"); }}
+                                                            className="p-1 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-600 transition-colors"
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             );
                                         })}
+
+                                        {/* Archived channels section */}
+                                        {channels.some((c) => c.isArchived) && (
+                                            <div className="pt-2">
+                                                <button
+                                                    onClick={() => setShowArchived((v) => !v)}
+                                                    className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-muted/50"
+                                                >
+                                                    {showArchived ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                                    <Archive className="h-3 w-3" />
+                                                    Archived ({channels.filter((c) => c.isArchived).length})
+                                                </button>
+                                                {showArchived && channels.filter((c) => c.isArchived).map((ch) => (
+                                                    <div
+                                                        key={ch.id}
+                                                        className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left opacity-60"
+                                                    >
+                                                        <Hash className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                                        <span className="text-sm truncate flex-1 line-through text-muted-foreground">{ch.name.replace("#", "")}</span>
+                                                        <button
+                                                            title="Unarchive"
+                                                            onClick={() => { unarchiveChannel(ch.id); toast.success(`"${ch.name}" unarchived`); }}
+                                                            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-100"
+                                                        >
+                                                            <ArchiveRestore className="h-3.5 w-3.5" />
+                                                        </button>
+                                                        <button
+                                                            title="Delete"
+                                                            onClick={() => { deleteChannel(ch.id); toast.success("Channel deleted"); }}
+                                                            className="p-1 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-600 transition-colors opacity-100"
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </ScrollArea>
                             </CardContent>
                         </Card>
 
                         {/* Chat area */}
-                        <Card className="border border-border/50 flex flex-col">
+                        <Card className="border border-border/50 flex flex-col h-full min-h-0">
                             {selectedChannel ? (
                                 <>
-                                    <CardHeader className="pb-2 border-b flex-row items-center justify-between space-y-0">
-                                        <div>
-                                            <CardTitle className="text-base">{selectedChannel.name}</CardTitle>
-                                            <p className="text-xs text-muted-foreground">{selectedChannel.memberEmployeeIds.length} members</p>
-                                        </div>
-                                        <div className="flex gap-1">
-                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { archiveChannel(selectedChannel.id); setSelectedChannelId(null); toast.success("Channel archived"); }}>
-                                                <Archive className="h-3.5 w-3.5" />
-                                            </Button>
-                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-500/10" onClick={() => { deleteChannel(selectedChannel.id); setSelectedChannelId(null); toast.success("Channel deleted"); }}>
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                            </Button>
+                                    <CardHeader className="py-2 px-4 border-b shrink-0 space-y-0">
+                                        <div className="flex items-center gap-2">
+                                            <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
+                                            <div>
+                                                <CardTitle className="text-sm font-semibold leading-none">{selectedChannel.name.replace("#", "")}</CardTitle>
+                                                <p className="text-xs text-muted-foreground mt-0.5">{selectedChannel.memberEmployeeIds.length} members</p>
+                                            </div>
                                         </div>
                                     </CardHeader>
-                                    <CardContent className="flex-1 p-0 flex flex-col overflow-hidden">
-                                        <ScrollArea className="flex-1 p-4">
+                                    <CardContent className="flex-1 p-0 flex flex-col overflow-hidden min-h-0">
+                                        <ScrollArea className="flex-1 min-h-0 p-4">
                                             <div className="space-y-3">
                                                 {channelMsgs.map((msg) => {
                                                     const isMine = msg.employeeId === effectiveId;
                                                     return (
-                                                        <div key={msg.id} className={`flex gap-2.5 ${isMine ? "flex-row-reverse" : ""}`}>
+                                                        <div key={msg.id} className={`flex gap-2.5 w-full ${isMine ? "flex-row-reverse" : ""}`}>
                                                             <Avatar className="h-7 w-7 shrink-0">
                                                                 <AvatarFallback className="text-[9px] bg-muted">{getInitials(getEmpName(msg.employeeId))}</AvatarFallback>
                                                             </Avatar>
-                                                            <div className={`max-w-[70%] ${isMine ? "text-right" : ""}`}>
-                                                                <div className="flex items-center gap-2 mb-0.5">
-                                                                    {!isMine && <span className="text-xs font-medium">{getEmpName(msg.employeeId)}</span>}
-                                                                    <span className="text-[10px] text-muted-foreground">{formatDateTime(msg.createdAt)}</span>
+                                                            <div className={`max-w-[70%] min-w-0 overflow-hidden ${isMine ? "text-right" : ""}`}>
+                                                                <div className={`flex items-center gap-2 mb-0.5 ${isMine ? "justify-end" : ""}`}>
+                                                                    {!isMine && <span className="text-xs font-medium truncate">{getEmpName(msg.employeeId)}</span>}
+                                                                    <span className="text-[10px] text-muted-foreground shrink-0">{formatDateTime(msg.createdAt)}</span>
                                                                 </div>
-                                                                <div className={`inline-block rounded-lg px-3 py-2 text-sm ${
-                                                                    isMine
-                                                                        ? "bg-primary text-primary-foreground"
-                                                                        : "bg-muted"
-                                                                }`}>
+                                                                <div 
+                                                                    className={`rounded-lg px-3 py-2 text-sm text-left inline-block max-w-full ${
+                                                                        isMine
+                                                                            ? "bg-primary text-primary-foreground"
+                                                                            : "bg-muted"
+                                                                    }`}
+                                                                    style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}
+                                                                >
                                                                     {msg.message}
                                                                 </div>
                                                             </div>
@@ -362,14 +414,15 @@ export default function AdminMessagesView() {
                                                 <div ref={chatEndRef} />
                                             </div>
                                         </ScrollArea>
-                                        <div className="p-3 border-t flex gap-2">
+                                        <div className="p-3 border-t flex items-center gap-2">
                                             <Input
                                                 value={chatMessage}
                                                 onChange={(e) => setChatMessage(e.target.value)}
                                                 placeholder="Type a message..."
+                                                className="flex-1 h-9"
                                                 onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendChat()}
                                             />
-                                            <Button size="sm" onClick={handleSendChat} disabled={!chatMessage.trim()}>
+                                            <Button size="icon" className="h-9 w-9 shrink-0" onClick={handleSendChat} disabled={!chatMessage.trim()}>
                                                 <Send className="h-4 w-4" />
                                             </Button>
                                         </div>

@@ -17,9 +17,10 @@ import { Switch } from "@/components/ui/switch";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Sun, Moon, Monitor, Building2, Shield, Bell, Palette, ClipboardList, Pencil, Plus, Clock3, ChevronRight, Wallet, CalendarDays, Lock, Eye, EyeOff, KeyRound, RotateCcw, TriangleAlert, Tablet, MapPin, MessageSquare, ListTodo, Settings2, Users, CreditCard, Megaphone, Wrench, Trash2 } from "lucide-react";
+import { Sun, Moon, Monitor, Building2, Shield, Bell, Palette, ClipboardList, Pencil, Plus, Clock3, ChevronRight, Wallet, CalendarDays, Lock, Eye, EyeOff, KeyRound, RotateCcw, TriangleAlert, Tablet, MapPin, MessageSquare, ListTodo, Settings2, Users, CreditCard, Megaphone, Wrench, Trash2, Smartphone } from "lucide-react";
 import type { Role } from "@/types";
 import { toast } from "sonner";
+import { PushNotificationPrompt } from "@/components/push-notification-prompt";
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -50,11 +51,11 @@ const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
    Tab-based layout: General | Payroll & Time | Communication | System
    ═══════════════════════════════════════════════════════════════ */
 
-interface OrgSettings { companyName: string; industry: string; emailAbsenceAlerts: boolean; emailLeaveUpdates: boolean; emailPayrollAlerts: boolean; }
-const defaultOrgSettings: OrgSettings = { companyName: "NexHRMS", industry: "technology", emailAbsenceAlerts: true, emailLeaveUpdates: true, emailPayrollAlerts: true };
+interface OrgSettings { emailAbsenceAlerts: boolean; emailLeaveUpdates: boolean; emailPayrollAlerts: boolean; }
+const defaultOrgSettings: OrgSettings = { emailAbsenceAlerts: true, emailLeaveUpdates: true, emailPayrollAlerts: true };
 function readOrgSettings() {
     if (typeof window === "undefined") return defaultOrgSettings;
-    try { const s = localStorage.getItem("nexhrms-org-settings"); if (s) return { ...defaultOrgSettings, ...JSON.parse(s) }; } catch { /* ignore */ }
+    try { const s = localStorage.getItem("sdsi-org-settings"); if (s) return { ...defaultOrgSettings, ...JSON.parse(s) }; } catch { /* ignore */ }
     return defaultOrgSettings;
 }
 
@@ -63,7 +64,7 @@ function useOrgSettings() {
     const update = (patch: Partial<OrgSettings>) => {
         setSettings((prev: OrgSettings) => {
             const next = { ...prev, ...patch };
-            localStorage.setItem("nexhrms-org-settings", JSON.stringify(next));
+            localStorage.setItem("sdsi-org-settings", JSON.stringify(next));
             return next;
         });
     };
@@ -207,38 +208,6 @@ export default function AdminSettingsView() {
     /* ── 1. GENERAL ───────────────────────────────── */
     const GeneralTab = () => (
         <div className="space-y-6">
-            {/* Company Information */}
-            <Card>
-                <CardHeader className="pb-3">
-                    <div className="flex items-center gap-2">
-                        <Building2 className="h-5 w-5 text-primary" />
-                        <div>
-                            <CardTitle className="text-base">Company Information</CardTitle>
-                            <p className="text-xs text-muted-foreground mt-0.5">Basic details about your organization</p>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div>
-                        <label className="text-sm font-medium">Company Name</label>
-                        <Input value={settings.companyName} onChange={(e) => update({ companyName: e.target.value })} className="mt-1.5" />
-                    </div>
-                    <div>
-                        <label className="text-sm font-medium">Industry</label>
-                        <Select value={settings.industry} onValueChange={(v) => update({ industry: v })}>
-                            <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="technology">Technology</SelectItem>
-                                <SelectItem value="healthcare">Healthcare</SelectItem>
-                                <SelectItem value="finance">Finance</SelectItem>
-                                <SelectItem value="education">Education</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <Button onClick={() => toast.success("Organization settings saved")} size="sm">Save Changes</Button>
-                </CardContent>
-            </Card>
-
             {/* Appearance — Theme Toggle */}
             <Card>
                 <CardHeader className="pb-3">
@@ -593,6 +562,25 @@ export default function AdminSettingsView() {
                             Configure detailed permissions →
                         </Link>
                     </div>
+                </CardContent>
+            </Card>
+
+            {/* Push Notifications */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                        <Smartphone className="h-5 w-5 text-primary" />
+                        <div>
+                            <CardTitle className="text-base">Push Notifications</CardTitle>
+                            <p className="text-xs text-muted-foreground mt-0.5">Receive instant alerts even when the app is closed</p>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <PushNotificationPrompt variant="inline" className="w-full justify-start" />
+                    <p className="text-xs text-muted-foreground mt-2">
+                        Enable push notifications to get real-time alerts for attendance, payroll, and system events.
+                    </p>
                 </CardContent>
             </Card>
 

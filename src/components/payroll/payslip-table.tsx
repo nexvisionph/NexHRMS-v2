@@ -16,7 +16,8 @@ import {
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Eye, CheckCircle, CreditCard, Search, FileText } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Eye, CheckCircle, CreditCard, Search, FileText, Upload, Image } from "lucide-react";
 import { PayslipDetail } from "./payslip-detail";
 import { PayslipSignatureViewer } from "./payslip-signature-viewer";
 import { toast } from "sonner";
@@ -27,10 +28,12 @@ const statusConfig: Record<string, { label: string; color: string }> = {
     signed: { label: "Signed", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
 };
 
+type PaymentMethod = "bank_transfer" | "gcash" | "cash" | "check";
+
 interface PayslipTableProps {
     payslips: Payslip[];
     getEmpName: (id: string) => string;
-    onMarkPaid?: (id: string, method: string, reference: string) => void;
+    onMarkPaid?: (id: string, method: PaymentMethod, reference: string, cashAmount?: number, paymentProofUrl?: string) => void;
     isAdmin?: boolean;
 }
 
@@ -41,8 +44,12 @@ export function PayslipTable({ payslips, getEmpName, onMarkPaid, isAdmin }: Pays
     const [detailId, setDetailId] = useState<string | null>(null);
     const [sigViewId, setSigViewId] = useState<string | null>(null);
     const [markPaidId, setMarkPaidId] = useState<string | null>(null);
-    const [payMethod, setPayMethod] = useState("bank_transfer");
+    const [payMethod, setPayMethod] = useState<"bank_transfer" | "gcash" | "cash" | "check">("bank_transfer");
     const [payRef, setPayRef] = useState("");
+    const [cashAmount, setCashAmount] = useState<number | undefined>(undefined);
+    const [proofFile, setProofFile] = useState<File | null>(null);
+    const [proofPreview, setProofPreview] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     const filtered = useMemo(() => {
         return payslips.filter((p) => {
@@ -61,15 +68,81 @@ export function PayslipTable({ payslips, getEmpName, onMarkPaid, isAdmin }: Pays
 
     const detailPayslip = payslips.find((p) => p.id === detailId);
     const sigViewPayslip = payslips.find((p) => p.id === sigViewId);
+    const markPaidPayslip = payslips.find((p) => p.id === markPaidId);
 
-    const handleConfirmPaid = () => {
-        if (!markPaidId || !payRef) {
-            toast.error("Please enter a bank reference");
-            return;
+    // Handle file selection for proof of payment
+    const handleProofFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setProofFile(file);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setProofPreview(reader.result as string);
+            };
+            reader.readAsDataURL(file);
         }
-        onMarkPaid?.(markPaidId, payMethod, payRef);
+    };
+
+    const resetPaymentDialog = () => {
         setMarkPaidId(null);
         setPayRef("");
+        setCashAmount(undefined);
+        setProofFile(null);
+        setProofPreview(null);
+        setPayMethod("bank_transfer");
+    };
+
+    const handleConfirmPaid = async () => {
+        if (!markPaidId) return;
+
+        // Validation based on payment method
+        if (payMethod === "cash") {
+            // Cash: amount is optional (defaults to net pay)
+        } else {
+            // Bank/GCash/Check require reference
+            if (!payRef.trim()) {
+                toast.error(payMethod === "bank_transfer" ? "Please enter a bank reference number" : 
+                           payMethod === "gcash" ? "Please enter a GCash reference ID" : 
+                           "Please enter a check number");
+                return;
+            }
+        }
+
+        let proofUrl: string | undefined;
+
+        // Upload proof image if provided
+        if (proofFile) {
+            setIsUploading(true);
+            try {
+                const formData = new FormData();
+                formData.append("file", proofFile);
+                formData.append("bucket", "payment-proofs");
+                formData.append("folder", markPaidId);
+
+                const response = await fetch("/api/upload", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    proofUrl = data.url;
+                } else {
+                    toast.error("Failed to upload proof of payment");
+                    setIsUploading(false);
+                    return;
+                }
+            } catch {
+                toast.error("Failed to upload proof of payment");
+                setIsUploading(false);
+                return;
+            }
+            setIsUploading(false);
+        }
+
+        const finalCashAmount = payMethod === "cash" ? (cashAmount ?? markPaidPayslip?.netPay) : undefined;
+        onMarkPaid?.(markPaidId, payMethod, payRef, finalCashAmount, proofUrl);
+        resetPaymentDialog();
         toast.success("Payment confirmed");
     };
 
@@ -94,7 +167,6 @@ export function PayslipTable({ payslips, getEmpName, onMarkPaid, isAdmin }: Pays
                         <SelectItem value="all">All Statuses</SelectItem>
                         <SelectItem value="draft">Draft</SelectItem>
                         <SelectItem value="published">Published</SelectItem>
-                        <SelectItem value="signed">Signed</SelectItem>
                     </SelectContent>
                 </Select>
                 <Select value={signedFilter} onValueChange={setSignedFilter}>
@@ -222,8 +294,8 @@ export function PayslipTable({ payslips, getEmpName, onMarkPaid, isAdmin }: Pays
             )}
 
             {/* Mark as Paid dialog */}
-            <Dialog open={!!markPaidId} onOpenChange={() => setMarkPaidId(null)}>
-                <DialogContent className="sm:max-w-sm">
+            <Dialog open={!!markPaidId} onOpenChange={() => resetPaymentDialog()}>
+                <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <CreditCard className="h-4 w-4" />
@@ -231,33 +303,126 @@ export function PayslipTable({ payslips, getEmpName, onMarkPaid, isAdmin }: Pays
                         </DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
+                        {/* Payment Method */}
                         <div>
-                            <label className="text-xs font-medium text-muted-foreground">Payment Method</label>
-                            <Select value={payMethod} onValueChange={setPayMethod}>
-                                <SelectTrigger className="mt-1 h-8 text-xs">
+                            <Label className="text-xs font-medium text-muted-foreground">Payment Method</Label>
+                            <Select value={payMethod} onValueChange={(v) => setPayMethod(v as typeof payMethod)}>
+                                <SelectTrigger className="mt-1 h-9">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                                    <SelectItem value="gcash">GCash</SelectItem>
                                     <SelectItem value="cash">Cash</SelectItem>
                                     <SelectItem value="check">Check</SelectItem>
-                                    <SelectItem value="gcash">GCash</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
+
+                        {/* Dynamic fields based on payment method */}
+                        {payMethod === "bank_transfer" && (
+                            <div>
+                                <Label className="text-xs font-medium text-muted-foreground">Bank Reference Number</Label>
+                                <Input
+                                    value={payRef}
+                                    onChange={(e) => setPayRef(e.target.value)}
+                                    placeholder="e.g. BPI-202401150001"
+                                    className="mt-1 h-9"
+                                />
+                            </div>
+                        )}
+
+                        {payMethod === "gcash" && (
+                            <div>
+                                <Label className="text-xs font-medium text-muted-foreground">GCash Reference ID</Label>
+                                <Input
+                                    value={payRef}
+                                    onChange={(e) => setPayRef(e.target.value)}
+                                    placeholder="e.g. 1234567890123"
+                                    className="mt-1 h-9"
+                                />
+                            </div>
+                        )}
+
+                        {payMethod === "check" && (
+                            <div>
+                                <Label className="text-xs font-medium text-muted-foreground">Check Number</Label>
+                                <Input
+                                    value={payRef}
+                                    onChange={(e) => setPayRef(e.target.value)}
+                                    placeholder="e.g. CHK-00012345"
+                                    className="mt-1 h-9"
+                                />
+                            </div>
+                        )}
+
+                        {payMethod === "cash" && (
+                            <div>
+                                <Label className="text-xs font-medium text-muted-foreground">
+                                    Cash Amount <span className="text-muted-foreground/60">(defaults to net pay: {formatCurrency(markPaidPayslip?.netPay ?? 0)})</span>
+                                </Label>
+                                <Input
+                                    type="number"
+                                    value={cashAmount ?? ""}
+                                    onChange={(e) => setCashAmount(e.target.value ? Number(e.target.value) : undefined)}
+                                    placeholder={`${markPaidPayslip?.netPay ?? 0}`}
+                                    className="mt-1 h-9"
+                                />
+                            </div>
+                        )}
+
+                        {/* Proof of Payment (optional) */}
                         <div>
-                            <label className="text-xs font-medium text-muted-foreground">Reference ID</label>
-                            <Input
-                                value={payRef}
-                                onChange={(e) => setPayRef(e.target.value)}
-                                placeholder="e.g. TXN-123456"
-                                className="mt-1 h-8 text-xs"
-                            />
+                            <Label className="text-xs font-medium text-muted-foreground">
+                                Proof of Payment <span className="text-muted-foreground/60">(optional)</span>
+                            </Label>
+                            <div className="mt-1">
+                                {proofPreview ? (
+                                    <div className="relative border rounded-md overflow-hidden">
+                                        <img 
+                                            src={proofPreview} 
+                                            alt="Payment proof preview" 
+                                            className="w-full h-32 object-cover"
+                                        />
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            className="absolute top-2 right-2 h-7 text-xs"
+                                            onClick={() => {
+                                                setProofFile(null);
+                                                setProofPreview(null);
+                                            }}
+                                        >
+                                            Remove
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                                        <div className="flex flex-col items-center justify-center pt-2 pb-3">
+                                            <Upload className="h-6 w-6 text-muted-foreground mb-1" />
+                                            <p className="text-xs text-muted-foreground">Click to upload image</p>
+                                        </div>
+                                        <input
+                                            type="file"
+                                            className="hidden"
+                                            accept="image/*"
+                                            onChange={handleProofFileChange}
+                                        />
+                                    </label>
+                                )}
+                            </div>
                         </div>
-                        <div className="flex gap-2 justify-end">
-                            <Button variant="outline" size="sm" onClick={() => setMarkPaidId(null)}>Cancel</Button>
-                            <Button size="sm" onClick={handleConfirmPaid} className="gap-1.5">
-                                <CheckCircle className="h-4 w-4" /> Confirm
+
+                        <div className="flex gap-2 justify-end pt-2">
+                            <Button variant="outline" size="sm" onClick={() => resetPaymentDialog()} disabled={isUploading}>
+                                Cancel
+                            </Button>
+                            <Button size="sm" onClick={handleConfirmPaid} className="gap-1.5" disabled={isUploading}>
+                                {isUploading ? (
+                                    <>Uploading...</>
+                                ) : (
+                                    <><CheckCircle className="h-4 w-4" /> Confirm</>
+                                )}
                             </Button>
                         </div>
                     </div>

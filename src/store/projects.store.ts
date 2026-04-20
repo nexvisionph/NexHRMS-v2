@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { Project } from "@/types";
 import { SEED_PROJECTS } from "@/data/seed";
@@ -68,6 +69,7 @@ export const useProjectsStore = create<ProjectsState>()(
         {
             name: "nexhrms-projects",
             version: 3,
+            storage: safePersistStorage,
             migrate: () => ({ projects: SEED_PROJECTS }),
         }
     )

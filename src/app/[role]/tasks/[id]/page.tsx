@@ -225,7 +225,7 @@ export default function TaskDetailPage() {
             targetTaskId: task.id,
             sentBy: myEmployeeId,
         });
-        toast.success("Announcement sent to task assignees");
+        toast.success(`Announcement sent to ${task.assignedTo.length} assignee${task.assignedTo.length !== 1 ? "s" : ""}`);
         setNotifySubject(""); setNotifyBody(""); setNotifyOpen(false);
     };
 
@@ -258,29 +258,29 @@ export default function TaskDetailPage() {
     const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && !["verified", "cancelled"].includes(task.status);
 
     return (
-        <div className="space-y-6 max-w-4xl">
+        <div className="space-y-4 sm:space-y-6 pb-6">
             {/* Back link */}
             <Button variant="ghost" size="sm" className="gap-1.5 -ml-2" asChild>
                 <Link href={roleHref("/tasks")}><ArrowLeft className="h-4 w-4" /> Tasks</Link>
             </Button>
 
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-2xl font-bold tracking-tight">{task.title}</h1>
+            <div className="flex flex-col gap-3 sm:gap-4">
+                {/* Title + badges row */}
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 min-w-0">
+                    <div className="space-y-1.5 min-w-0 flex-1">
+                        <h1 className="text-xl sm:text-2xl font-bold tracking-tight break-words leading-snug">{task.title}</h1>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="secondary" className={`text-xs ${sc.color}`}>{sc.label}</Badge>
+                            <Badge variant="secondary" className={`text-xs ${pc.color}`}>{pc.label}</Badge>
+                            {task.completionRequired && <Badge variant="outline" className="text-xs gap-1"><Camera className="h-3 w-3" /> Proof Required</Badge>}
+                            {task.tags?.map((tag) => <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>)}
+                        </div>
+                        <p className="text-xs text-muted-foreground font-mono">{task.id} · {group?.name}</p>
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="secondary" className={`text-xs ${sc.color}`}>{sc.label}</Badge>
-                        <Badge variant="secondary" className={`text-xs ${pc.color}`}>{pc.label}</Badge>
-                        {task.completionRequired && <Badge variant="outline" className="text-xs gap-1"><Camera className="h-3 w-3" /> Proof Required</Badge>}
-                        {task.tags?.map((tag) => <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>)}
-                    </div>
-                    <p className="text-xs text-muted-foreground font-mono">{task.id} · {group?.name}</p>
-                </div>
 
-                {/* Action buttons */}
-                <div className="flex gap-2 shrink-0 flex-wrap">
+                    {/* Action buttons */}
+                    <div className="flex gap-2 flex-wrap shrink-0 sm:justify-end items-start">
                     {canAnnounce && task.assignedTo.length > 0 && (
                         <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>
                             <DialogTrigger asChild>
@@ -392,11 +392,13 @@ export default function TaskDetailPage() {
                         </>
                     )}
                 </div>
+                </div>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-3">
+            {/* Two-column layout: main content + sticky sidebar */}
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_320px]">
                 {/* Main content */}
-                <div className="lg:col-span-2 space-y-6">
+                <div className="space-y-5 min-w-0">
                     {/* Description */}
                     {task.description && (
                         <Card className="border border-border/50">
@@ -514,8 +516,8 @@ export default function TaskDetailPage() {
                     </Card>
                 </div>
 
-                {/* Sidebar */}
-                <div className="space-y-4">
+                {/* Sidebar — sticky on lg+ so it stays visible while scrolling */}
+                <div className="space-y-4 lg:sticky lg:top-6 lg:self-start">
                     <Card className="border border-border/50">
                         <CardHeader className="pb-2"><CardTitle className="text-sm">Details</CardTitle></CardHeader>
                         <CardContent className="space-y-3 text-sm">

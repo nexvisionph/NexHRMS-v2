@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type {
     SiteSurveyPhoto,
@@ -44,8 +45,10 @@ interface LocationState {
     photos: SiteSurveyPhoto[];
     breaks: BreakRecord[];
     pings: LocationPing[];
+    hasFetchedConfig: boolean;
 
     // Config
+    fetchConfig: () => Promise<void>;
     updateConfig: (patch: Partial<LocationTrackingConfig>) => void;
     resetConfig: () => void;
 
@@ -76,12 +79,44 @@ export const useLocationStore = create<LocationState>()(
             photos: [],
             breaks: [],
             pings: [],
+            hasFetchedConfig: false,
 
             // ─── Config ────────────────────────────────
-            updateConfig: (patch) =>
-                set((s) => ({ config: { ...s.config, ...patch } })),
+            fetchConfig: async () => {
+                try {
+                    const res = await fetch("/api/settings/location");
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data) {
+                            set({ config: { ...DEFAULT_CONFIG, ...data }, hasFetchedConfig: true });
+                        } else {
+                            set({ hasFetchedConfig: true });
+                        }
+                    }
+                } catch {
+                    // Offline — keep local state
+                }
+            },
 
-            resetConfig: () => set({ config: { ...DEFAULT_CONFIG } }),
+            updateConfig: (patch) => {
+                set((s) => ({ config: { ...s.config, ...patch } }));
+                // Fire-and-forget DB sync
+                fetch("/api/settings/location", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(patch),
+                }).catch(() => {});
+            },
+
+            resetConfig: () => {
+                set({ config: { ...DEFAULT_CONFIG } });
+                // Sync defaults to DB
+                fetch("/api/settings/location", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(DEFAULT_CONFIG),
+                }).catch(() => {});
+            },
 
             // ─── Photos ────────────────────────────────
             addPhoto: (data) => {
@@ -179,14 +214,21 @@ export const useLocationStore = create<LocationState>()(
                     return { pings: s.pings.filter((p) => p.timestamp >= cutoffStr) };
                 }),
 
-            resetToSeed: () =>
+            resetToSeed: () => {
                 set({
                     config: { ...DEFAULT_CONFIG },
                     photos: [],
                     breaks: [],
                     pings: [],
-                }),
+                });
+                // Sync defaults to DB
+                fetch("/api/settings/location", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(DEFAULT_CONFIG),
+                }).catch(() => {});
+            },
         }),
-        { name: "nexhrms-location", version: 1 }
+        { name: "nexhrms-location", version: 1, storage: safePersistStorage }
     )
 );

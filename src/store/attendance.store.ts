@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type {
     AttendanceLog, AttendanceFlag, AttendanceEvent, AttendanceEvidence,
@@ -9,6 +10,8 @@ import type {
 } from "@/types";
 import { SEED_ATTENDANCE } from "@/data/seed";
 import { DEFAULT_HOLIDAYS } from "@/lib/constants";
+import { useNotificationsStore } from "@/store/notifications.store";
+import { useEmployeesStore } from "@/store/employees.store";
 
 interface AttendanceState {
     // ─── Append-only event ledger (§2A) ───────────────
@@ -22,7 +25,7 @@ interface AttendanceState {
     employeeShifts: Record<string, string>;
 
     // ─── Event ledger (append-only — no edit/delete) ──
-    appendEvent: (data: Omit<AttendanceEvent, "id" | "createdAt">) => void;
+    appendEvent: (data: Omit<AttendanceEvent, "id" | "createdAt"> & { id?: string }) => string;
     recordEvidence: (data: Omit<AttendanceEvidence, "id">) => void;
     getEventsForEmployee: (employeeId: string) => AttendanceEvent[];
     getEventsForDate: (date: string) => AttendanceEvent[];
@@ -33,6 +36,9 @@ interface AttendanceState {
     /** Auto-mark absent for employees who didn't check in after their shift ends (skips holidays) */
     autoMarkAbsentAfterShift: (date: string, employees: Array<{ id: string; workDays?: string[]; shiftId?: string }>) => number;
     resolveException: (exceptionId: string, resolvedBy: string, notes?: string) => void;
+    updateException: (exceptionId: string, updates: { flag?: AttendanceFlag; notes?: string }) => void;
+    deleteException: (exceptionId: string) => void;
+    reopenException: (exceptionId: string) => void;
     getExceptions: (filters?: { employeeId?: string; date?: string; resolved?: boolean }) => AttendanceException[];
 
     // ─── Legacy log operations (derived view) ─────────
@@ -95,17 +101,20 @@ export const useAttendanceStore = create<AttendanceState>()(
             holidays: DEFAULT_HOLIDAYS.map((h, i) => ({ ...h, id: `HOL-${i + 1}` })),
 
             // ─── Append-only event ledger ─────────────────────────────
-            appendEvent: (data) =>
+            appendEvent: (data) => {
+                const eventId = data.id ?? `EVT-${nanoid(8)}`;
                 set((s) => ({
                     events: [
                         ...s.events,
                         {
                             ...data,
-                            id: `EVT-${nanoid(8)}`,
+                            id: eventId,
                             createdAt: new Date().toISOString(),
                         },
                     ],
-                })),
+                }));
+                return eventId;
+            },
 
             recordEvidence: (data) =>
                 set((s) => ({
@@ -231,17 +240,120 @@ export const useAttendanceStore = create<AttendanceState>()(
                         })),
                     ],
                 }));
+
+                // ─── Notify admins/HR for each absence + audit log ────
+                try {
+                    const allEmployees = useEmployeesStore.getState().employees;
+                    const notifStore = useNotificationsStore.getState();
+                    const adminHrEmployees = allEmployees.filter((e) => e.role === "admin" || e.role === "hr");
+                    const { useAuditStore } = require("@/store/audit.store");
+
+                    for (const empId of toMarkAbsent) {
+                        const emp = allEmployees.find((e) => e.id === empId);
+                        const empName = emp?.name || empId;
+
+                        // Notify each admin/HR
+                        for (const admin of adminHrEmployees) {
+                            notifStore.dispatch(
+                                "absence",
+                                { name: empName, date },
+                                admin.id,
+                                admin.email,
+                                undefined,
+                                "/attendance"
+                            );
+                        }
+
+                        // Notify the absent employee too
+                        if (emp) {
+                            notifStore.addLog({
+                                employeeId: emp.id,
+                                type: "absence",
+                                channel: "in_app",
+                                subject: `Marked Absent: ${date}`,
+                                body: `You have been marked absent for ${date}.`,
+                                link: "/attendance",
+                            });
+                        }
+
+                        // Audit log
+                        useAuditStore.getState().log({
+                            entityType: "attendance",
+                            entityId: empId,
+                            action: "bulk_mark_absent",
+                            performedBy: "SYSTEM",
+                            reason: `Auto-marked absent for ${date}`,
+                            afterSnapshot: { date, status: "absent" },
+                        });
+                    }
+                } catch { /* notification/audit is best-effort */ }
+
                 return toMarkAbsent.length;
             },
 
-            resolveException: (exceptionId, resolvedBy, notes) =>
+            resolveException: (exceptionId, resolvedBy, notes) => {
+                // Update local state immediately
                 set((s) => ({
                     exceptions: s.exceptions.map((ex) =>
                         ex.id === exceptionId
                             ? { ...ex, resolvedAt: new Date().toISOString(), resolvedBy, notes: notes || ex.notes }
                             : ex
                     ),
-                })),
+                }));
+                // Sync to DB (fire-and-forget)
+                fetch("/api/attendance/exceptions", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: exceptionId, action: "resolve", resolvedBy, notes }),
+                }).catch((err) => console.warn("[attendance] Exception resolve sync failed:", err));
+            },
+
+            updateException: (exceptionId, updates) => {
+                // Update local state immediately
+                set((s) => ({
+                    exceptions: s.exceptions.map((ex) =>
+                        ex.id === exceptionId
+                            ? { ...ex, ...updates }
+                            : ex
+                    ),
+                }));
+                // Sync to DB (fire-and-forget)
+                fetch("/api/attendance/exceptions", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: exceptionId, action: "update", ...updates }),
+                }).catch((err) => console.warn("[attendance] Exception update sync failed:", err));
+            },
+
+            deleteException: (exceptionId) => {
+                // Remove from local state immediately
+                set((s) => ({
+                    exceptions: s.exceptions.filter((ex) => ex.id !== exceptionId),
+                }));
+                // Sync to DB (fire-and-forget)
+                fetch("/api/attendance/exceptions", {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: exceptionId }),
+                }).catch((err) => console.warn("[attendance] Exception delete sync failed:", err));
+            },
+
+            reopenException: (exceptionId) => {
+                // Update local state immediately (clear resolution)
+                set((s) => ({
+                    exceptions: s.exceptions.map((ex) =>
+                        ex.id === exceptionId
+                            ? { ...ex, resolvedAt: undefined, resolvedBy: undefined }
+                            : ex
+                    ),
+                }));
+                // Sync to DB (fire-and-forget)
+                fetch("/api/attendance/exceptions", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: exceptionId, action: "reopen" }),
+                }).catch((err) => console.warn("[attendance] Exception reopen sync failed:", err));
+            },
 
             getExceptions: (filters) => {
                 let result = get().exceptions;
@@ -373,6 +485,50 @@ export const useAttendanceStore = create<AttendanceState>()(
                         ],
                     }));
                 }
+
+                // ─── Notify admins/HR + employee + audit log ──────────
+                try {
+                    const allEmployees = useEmployeesStore.getState().employees;
+                    const notifStore = useNotificationsStore.getState();
+                    const adminHrEmployees = allEmployees.filter((e) => e.role === "admin" || e.role === "hr");
+                    const emp = allEmployees.find((e) => e.id === employeeId);
+                    const empName = emp?.name || employeeId;
+                    const { useAuditStore } = require("@/store/audit.store");
+
+                    // Notify each admin/HR
+                    for (const admin of adminHrEmployees) {
+                        notifStore.dispatch(
+                            "absence",
+                            { name: empName, date },
+                            admin.id,
+                            admin.email,
+                            undefined,
+                            "/attendance"
+                        );
+                    }
+
+                    // Notify the absent employee
+                    if (emp) {
+                        notifStore.addLog({
+                            employeeId: emp.id,
+                            type: "absence",
+                            channel: "in_app",
+                            subject: `Marked Absent: ${date}`,
+                            body: `You have been marked absent for ${date}.`,
+                            link: "/attendance",
+                        });
+                    }
+
+                    // Audit log
+                    useAuditStore.getState().log({
+                        entityType: "attendance",
+                        entityId: employeeId,
+                        action: "mark_absent",
+                        performedBy: "SYSTEM",
+                        reason: `Marked absent for ${date}`,
+                        afterSnapshot: { date, status: "absent", employeeName: empName },
+                    });
+                } catch { /* notification/audit is best-effort */ }
             },
 
             getEmployeeLogs: (employeeId) =>
@@ -445,34 +601,79 @@ export const useAttendanceStore = create<AttendanceState>()(
                 }),
 
             // ─── Overtime ─────────────────────────────────────────────
-            submitOvertimeRequest: (data) =>
+            submitOvertimeRequest: (data) => {
+                const id = `OT-${nanoid(8)}`;
                 set((s) => ({
                     overtimeRequests: [
                         ...s.overtimeRequests,
                         {
                             ...data,
-                            id: `OT-${nanoid(8)}`,
+                            id,
                             status: "pending" as const,
                             requestedAt: new Date().toISOString(),
                         },
                     ],
-                })),
-            approveOvertime: (requestId, approverId) =>
+                }));
+                // Notify admin and supervisor employees
+                const employees = useEmployeesStore.getState().employees;
+                const requester = employees.find((e) => e.id === data.employeeId);
+                const requesterName = requester?.name ?? data.employeeId;
+                const approvers = employees.filter(
+                    (e) => (e.role === "admin" || e.role === "supervisor" || e.role === "hr") && e.status === "active" && e.id !== data.employeeId
+                );
+                approvers.forEach((approver) => {
+                    useNotificationsStore.getState().dispatch(
+                        "overtime_submitted",
+                        { name: requesterName, date: data.date ?? "" },
+                        approver.id,
+                        approver.email ?? undefined,
+                        undefined,
+                        "/attendance"
+                    );
+                });
+            },
+            approveOvertime: (requestId, approverId) => {
+                const otReq = get().overtimeRequests.find((r) => r.id === requestId);
                 set((s) => ({
                     overtimeRequests: s.overtimeRequests.map((r) =>
                         r.id === requestId
                             ? { ...r, status: "approved" as const, reviewedBy: approverId, reviewedAt: new Date().toISOString() }
                             : r
                     ),
-                })),
-            rejectOvertime: (requestId, approverId, reason) =>
+                }));
+                // Notify the requesting employee
+                if (otReq) {
+                    useNotificationsStore.getState().addLog({
+                        employeeId: otReq.employeeId,
+                        type: "overtime_submitted",
+                        channel: "in_app",
+                        subject: "Overtime Approved",
+                        body: `Your overtime request for ${otReq.date} (${otReq.hoursRequested}h) has been approved.`,
+                        link: "/attendance",
+                    });
+                }
+            },
+            rejectOvertime: (requestId, approverId, reason) => {
+                const otReq = get().overtimeRequests.find((r) => r.id === requestId);
                 set((s) => ({
                     overtimeRequests: s.overtimeRequests.map((r) =>
                         r.id === requestId
                             ? { ...r, status: "rejected" as const, reviewedBy: approverId, reviewedAt: new Date().toISOString(), rejectionReason: reason }
                             : r
                     ),
-                })),
+                }));
+                // Notify the requesting employee
+                if (otReq) {
+                    useNotificationsStore.getState().addLog({
+                        employeeId: otReq.employeeId,
+                        type: "overtime_submitted",
+                        channel: "in_app",
+                        subject: "Overtime Rejected",
+                        body: `Your overtime request for ${otReq.date} (${otReq.hoursRequested}h) was rejected${reason ? `: ${reason}` : "."}`,
+                        link: "/attendance",
+                    });
+                }
+            },
 
             // ─── Shifts ───────────────────────────────────────────────
             createShift: (shift) => {
@@ -584,6 +785,7 @@ export const useAttendanceStore = create<AttendanceState>()(
         {
             name: "nexhrms-attendance",
             version: 5,
+            storage: safePersistStorage,
             migrate: (persistedState: unknown, version: number) => {
                 const state = (persistedState ?? {}) as Record<string, unknown>;
                 if (version < 4) {

@@ -12,19 +12,14 @@ export async function signIn(email: string, password: string) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { ok: false as const, error: error.message };
 
-  // Fetch profile + employee data to hydrate client store
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", data.user.id)
-    .single();
+  // Fetch profile + employee data in parallel to hydrate client store
+  const [profileResult, employeeResult] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", data.user.id).single(),
+    supabase.from("employees").select("*").eq("profile_id", data.user.id).maybeSingle(),
+  ]);
 
-  // Try to find employee by profile_id first
-  let { data: employee } = await supabase
-    .from("employees")
-    .select("*")
-    .eq("profile_id", data.user.id)
-    .single();
+  const profile = profileResult.data;
+  let employee = employeeResult.data;
 
   // If not found by profile_id, try by email and link the profile_id
   if (!employee && data.user.email) {
@@ -45,6 +40,15 @@ export async function signIn(email: string, password: string) {
     } else if (empByEmail) {
       employee = empByEmail;
     }
+  }
+
+  // Block deactivated or resigned employees before granting a session
+  if (employee && (employee.status === "inactive" || employee.status === "resigned")) {
+    await supabase.auth.signOut();
+    return {
+      ok: false as const,
+      error: "deactivated",
+    };
   }
 
   return {

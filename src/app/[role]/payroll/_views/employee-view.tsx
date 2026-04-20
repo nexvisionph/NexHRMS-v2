@@ -18,7 +18,7 @@ import { CheckCircle, Eye, PenTool, Sparkles, Printer, AlertCircle, FileSignatur
 import { toast } from "sonner";
 import { SignaturePad } from "@/components/ui/signature-pad";
 import { PrintablePayslip } from "@/components/payroll/printable-payslip";
-import { dispatchNotification } from "@/lib/notifications";
+import { dispatchNotification, notifyPayslipSigned } from "@/lib/notifications";
 import { formatCurrency } from "@/lib/format";
 import { keysToCamel } from "@/lib/db-utils";
 
@@ -90,10 +90,11 @@ export default function EmployeePayrollView() {
                 const camelPayslip = keysToCamel(data.payslip) as { id: string };
                 updatePayslipFromServer(camelPayslip);
             }
-            dispatchNotification("payslip_signed", {
-                name: myEmployee.name,
+            notifyPayslipSigned({
+                employeeId: myEmployee.id,
+                employeeName: myEmployee.name,
                 period: (() => { const ps = payslips.find(p => p.id === payslipId); return ps ? `${ps.periodStart} — ${ps.periodEnd}` : ""; })(),
-            }, myEmployee.id);
+            });
             toast.success("Payslip signed successfully!");
             setSignSlip(null);
         } catch (err) {
@@ -287,6 +288,7 @@ export default function EmployeePayrollView() {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead className="text-xs">Period</TableHead>
+                                            <TableHead className="text-xs">Date Issued</TableHead>
                                             <TableHead className="text-xs">Gross</TableHead>
                                             <TableHead className="text-xs">Deductions</TableHead>
                                             <TableHead className="text-xs">Net Pay</TableHead>
@@ -298,7 +300,7 @@ export default function EmployeePayrollView() {
                                     <TableBody>
                                         {myPayslips.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">
+                                                <TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">
                                                     No payslips available yet. Payslips will appear here once issued by payroll.
                                                 </TableCell>
                                             </TableRow>
@@ -309,6 +311,7 @@ export default function EmployeePayrollView() {
                                             return (
                                                 <TableRow key={ps.id}>
                                                     <TableCell className="text-xs text-muted-foreground">{ps.periodStart} – {ps.periodEnd}</TableCell>
+                                                    <TableCell className="text-xs text-muted-foreground">{new Date(ps.issuedAt).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}</TableCell>
                                                     <TableCell className="text-xs">{formatCurrency(ps.grossPay || 0)}</TableCell>
                                                     <TableCell className="text-xs text-red-500">−{formatCurrency(totalDed)}</TableCell>
                                                     <TableCell className="text-sm font-medium">{formatCurrency(ps.netPay)}</TableCell>

@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { JobTitle } from "@/types";
 import { ROLES, DEPARTMENTS } from "@/lib/constants";
@@ -120,6 +121,7 @@ export const useJobTitlesStore = create<JobTitlesState>()(
         {
             name: "hrms-job-titles",
             version: 1,
+            storage: safePersistStorage,
         }
     )
 );

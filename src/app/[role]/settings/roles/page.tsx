@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/auth.store";
 import { useRolesStore, PERMISSION_GROUPS, ALL_PERMISSIONS } from "@/store/roles.store";
 import type { CustomRole, Permission } from "@/types";
@@ -24,9 +24,15 @@ export default function RolesPage() {
     const {
         roles, createRole, updateRole, deleteRole, duplicateRole,
         setPermissions, exportConfig, importConfig, resetToDefaults,
+        fetchRoles, hasFetchedFromDb,
     } = useRolesStore();
 
     const canManage = role === "admin";
+
+    // Fetch roles from DB on mount
+    useEffect(() => {
+        if (!hasFetchedFromDb) fetchRoles();
+    }, [hasFetchedFromDb, fetchRoles]);
 
     // Create dialog
     const [createOpen, setCreateOpen] = useState(false);
@@ -118,7 +124,7 @@ export default function RolesPage() {
         const blob = new Blob([exportConfig()], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = url; a.download = "nexhrms-roles-config.json"; a.click();
+        a.href = url; a.download = "sdsi-roles-config.json"; a.click();
         URL.revokeObjectURL(url);
         toast.success("Configuration exported");
     };

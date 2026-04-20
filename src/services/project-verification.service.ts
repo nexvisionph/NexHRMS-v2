@@ -4,7 +4,7 @@
  * Project Verification Service
  * 
  * Manages verification method settings per project.
- * Admins can select: face_only, qr_only, face_or_qr, or manual_only.
+ * Admins can select: face_only, qr_only, or manual_only.
  */
 
 import { createServerSupabaseClient, createAdminSupabaseClient } from "./supabase-server";
@@ -233,7 +233,7 @@ export async function getEmployeeVerificationRequirement(
 
     // Use first project's verification method (or most restrictive)
     const project = projects[0];
-    const method = (project.verification_method as VerificationMethod) || "face_or_qr";
+    const method = (project.verification_method as VerificationMethod) || "face_only";
 
     return {
       requiredMethod: method,

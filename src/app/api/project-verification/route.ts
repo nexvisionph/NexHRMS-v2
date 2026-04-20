@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
  * 
  * Request: { 
  *   projectId: string,
- *   method: "face_only" | "qr_only" | "face_or_qr" | "manual_only",
+ *   method: "face_only" | "qr_only" | "manual_only",
  *   options?: {
  *     requireGeofence?: boolean,
  *     geofenceRadiusMeters?: number,

@@ -1,9 +1,17 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { LeaveRequest, LeaveStatus, LeavePolicy, LeaveBalance, LeaveType, LeaveDuration } from "@/types";
 import { SEED_LEAVES } from "@/data/seed";
+import { useEmployeesStore } from "@/store/employees.store";
+import { useNotificationsStore } from "@/store/notifications.store";
+
+const LEAVE_TYPE_LABELS: Record<string, string> = {
+    VL: "Vacation", SL: "Sick", EL: "Emergency", OTHER: "Other",
+    ML: "Maternity", PL: "Paternity", SPL: "Solo Parent",
+};
 
 /**
  * Calculate the number of leave days based on date range and duration type.
@@ -128,72 +136,119 @@ export const useLeaveStore = create<LeaveState>()(
                     // Insufficient balance — still create but it will be noted
                 }
 
+                const leaveId = `LV-${nanoid(8)}`;
                 set((s) => ({
                     requests: [
                         ...s.requests,
                         {
                             ...req,
-                            duration: req.duration || "full_day", // Default to full_day for backward compatibility
-                            id: `LV-${nanoid(8)}`,
+                            duration: req.duration || "full_day",
+                            id: leaveId,
                             status: "pending",
                         },
                     ],
                 }));
+
+                // Notify admin/HR about the new leave request
+                try {
+                    const employees = useEmployeesStore.getState().employees;
+                    const requester = employees.find((e) => e.id === req.employeeId);
+                    const requesterName = requester?.name ?? req.employeeId;
+                    const adminsAndHR = employees.filter(
+                        (e) => (e.role === "admin" || e.role === "hr") && e.status === "active" && e.id !== req.employeeId
+                    );
+                    adminsAndHR.forEach((recipient) => {
+                        useNotificationsStore.getState().dispatch(
+                            "leave_submitted",
+                            {
+                                name: requesterName,
+                                leaveType: req.type,
+                                dates: `${req.startDate} – ${req.endDate}`,
+                            },
+                            recipient.id,
+                            recipient.email ?? undefined,
+                        );
+                    });
+                } catch { /* best-effort */ }
             },
 
-            updateStatus: (id, status, reviewedBy) =>
-                set((s) => {
-                    const req = s.requests.find((r) => r.id === id);
-                    if (!req) return {};
-                    const updatedRequests = s.requests.map((r) =>
-                        r.id === id
-                            ? { ...r, status, reviewedBy, reviewedAt: new Date().toISOString().split("T")[0] }
-                            : r
+            updateStatus: (id, status, reviewedBy) => {
+                const s = get();
+                const req = s.requests.find((r) => r.id === id);
+                if (!req) return;
+
+                const updatedRequests = s.requests.map((r) =>
+                    r.id === id
+                        ? { ...r, status, reviewedBy, reviewedAt: new Date().toISOString().split("T")[0] }
+                        : r
+                );
+
+                const year = new Date(req.startDate).getFullYear();
+                const days = calculateLeaveDays(req.startDate, req.endDate, req.duration, req.hours);
+
+                let actualStatus = status;
+
+                // If approving, deduct from balance (prevent negative unless allowed by policy)
+                if (status === "approved" && req.status !== "approved") {
+                    const bal = s.balances.find(
+                        (b) => b.employeeId === req.employeeId && b.leaveType === req.type && b.year === year
                     );
-
-                    const year = new Date(req.startDate).getFullYear();
-                    const days = calculateLeaveDays(req.startDate, req.endDate, req.duration, req.hours);
-
-                    // If approving, deduct from balance (prevent negative unless allowed by policy)
-                    if (status === "approved" && req.status !== "approved") {
-                        const bal = s.balances.find(
-                            (b) => b.employeeId === req.employeeId && b.leaveType === req.type && b.year === year
-                        );
-                        const policy = s.policies.find((p) => p.leaveType === req.type);
-                        if (bal && bal.remaining < days && !policy?.negativeLeaveAllowed) {
-                            // Insufficient balance — reject instead of approving
-                            return {
-                                requests: s.requests.map((r) =>
-                                    r.id === id
-                                        ? { ...r, status: "rejected" as const, reviewedBy, reviewedAt: new Date().toISOString().split("T")[0] }
-                                        : r
-                                ),
-                            };
-                        }
-                        return {
+                    const policy = s.policies.find((p) => p.leaveType === req.type);
+                    if (bal && bal.remaining < days && !policy?.negativeLeaveAllowed) {
+                        // Insufficient balance — reject instead of approving
+                        actualStatus = "rejected";
+                        set({
+                            requests: s.requests.map((r) =>
+                                r.id === id
+                                    ? { ...r, status: "rejected" as const, reviewedBy, reviewedAt: new Date().toISOString().split("T")[0] }
+                                    : r
+                            ),
+                        });
+                    } else {
+                        set({
                             requests: updatedRequests,
                             balances: s.balances.map((b) =>
                                 b.employeeId === req.employeeId && b.leaveType === req.type && b.year === year
                                     ? { ...b, used: b.used + days, remaining: b.remaining - days }
                                     : b
                             ),
-                        };
+                        });
                     }
-
+                } else if (status === "rejected" && req.status === "approved") {
                     // If rejecting a previously approved leave, credit the balance back
-                    if (status === "rejected" && req.status === "approved") {
-                        return {
-                            requests: updatedRequests,
-                            balances: s.balances.map((b) =>
-                                b.employeeId === req.employeeId && b.leaveType === req.type && b.year === year
-                                    ? { ...b, used: Math.max(0, b.used - days), remaining: b.remaining + days }
-                                    : b
-                            ),
-                        };
-                    }
+                    set({
+                        requests: updatedRequests,
+                        balances: s.balances.map((b) =>
+                            b.employeeId === req.employeeId && b.leaveType === req.type && b.year === year
+                                ? { ...b, used: Math.max(0, b.used - days), remaining: b.remaining + days }
+                                : b
+                        ),
+                    });
+                } else {
+                    set({ requests: updatedRequests });
+                }
 
-                    return { requests: updatedRequests };
-                }),
+                // Notify the employee about their leave approval/rejection
+                try {
+                    const employees = useEmployeesStore.getState().employees;
+                    const requester = employees.find((e) => e.id === req.employeeId);
+                    const requesterName = requester?.name ?? req.employeeId;
+                    const trigger = actualStatus === "approved" ? "leave_approved" : "leave_rejected";
+                    if (actualStatus === "approved" || actualStatus === "rejected") {
+                        useNotificationsStore.getState().dispatch(
+                            trigger,
+                            {
+                                name: requesterName,
+                                leaveType: LEAVE_TYPE_LABELS[req.type] ?? req.type,
+                                dates: `${req.startDate} – ${req.endDate}`,
+                                status: actualStatus,
+                            },
+                            req.employeeId,
+                            requester?.email ?? undefined,
+                        );
+                    }
+                } catch { /* best-effort */ }
+            },
 
             getByEmployee: (employeeId) =>
                 get().requests.filter((r) => r.employeeId === employeeId),
@@ -279,6 +334,7 @@ export const useLeaveStore = create<LeaveState>()(
         {
             name: "nexhrms-leave",
             version: 3,
+            storage: safePersistStorage,
             migrate: () => ({ requests: SEED_LEAVES, balances: [] }),
         }
     )

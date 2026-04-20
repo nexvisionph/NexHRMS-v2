@@ -393,9 +393,8 @@ describe("Deduction Computation", () => {
       const phDeductions = computeAllPHDeductions(employee.monthly_basic);
       const customResult = computeEmployeeDeductions(employee, customTemplates);
 
-      const phTotal = phDeductions.sss + phDeductions.philHealth + phDeductions.pagIBIG;
-      const totalDeductions = phTotal + customResult.deductions;
-      expect(totalDeductions).toBe(phTotal + 300);
+      const totalDeductions = phDeductions.totalDeductions + customResult.deductions;
+      expect(totalDeductions).toBe(phDeductions.totalDeductions + 300);
     });
   });
 });

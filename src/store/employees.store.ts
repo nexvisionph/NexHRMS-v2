@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { Employee, EmployeeStatus, WorkType, SalaryChangeRequest, SalaryHistoryEntry, EmployeeDocument } from "@/types";
 import { SEED_EMPLOYEES } from "@/data/seed";
@@ -246,6 +247,7 @@ export const useEmployeesStore = create<EmployeesState>()(
         {
             name: "nexhrms-employees",
             version: 12,
+            storage: safePersistStorage,
             migrate: (persisted, fromVersion) => {
                 const state = persisted as Partial<EmployeesState> & { employees?: Employee[] };
                 if (fromVersion < 7) {

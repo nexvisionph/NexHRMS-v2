@@ -77,10 +77,9 @@ export default function FaceEnrollmentPage() {
             router.replace(`/admin`);
             return;
         }
-        // Redirect only if employee is assigned to a project that explicitly
-        // uses a non-face verification method (qr_only or manual_only).
-        // Allow enrollment for face_only, face_or_qr, or no project (face is default).
-        if (myProject && (myProject.verificationMethod === "qr_only" || myProject.verificationMethod === "manual_only")) {
+        // Only allow face enrollment for employees whose project uses face verification.
+        // Redirect to attendance if no project assigned or project uses non-face method.
+        if (!myProject || myProject.verificationMethod !== "face_only") {
             router.replace(`/${currentUser.role}/attendance`);
         }
     }, [currentUser.role, router, myProject]);
@@ -213,6 +212,25 @@ export default function FaceEnrollmentPage() {
 
     // ── Live face tracking loop ──
     // Runs continuously while camera is active, providing real-time guidance
+    // Includes brightness estimation for lighting feedback
+    const estimateBrightness = useCallback((video: HTMLVideoElement): number => {
+        const canvas = canvasRef.current;
+        if (!canvas) return 128;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) return 128;
+        // Use a small sample for speed (80x60)
+        const sw = 80, sh = 60;
+        canvas.width = sw;
+        canvas.height = sh;
+        ctx.drawImage(video, 0, 0, sw, sh);
+        const data = ctx.getImageData(0, 0, sw, sh).data;
+        let sum = 0;
+        for (let i = 0; i < data.length; i += 16) { // sample every 4th pixel
+            sum += (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+        }
+        return sum / (data.length / 16);
+    }, []);
+
     useEffect(() => {
         if (state !== "camera" || !videoReady || !videoRef.current) {
             trackingRef.current = false;
@@ -267,9 +285,20 @@ export default function FaceEnrollmentPage() {
                         stableCountRef.current = 0;
                     } else if (result.score < 0.55) {
                         setGuidanceMsg("Face unclear — improve lighting");
-                        setGuidanceColor("amber");
+                        setGuidanceColor("red");
                         stableCountRef.current = 0;
                     } else {
+                        // Check brightness level for lighting guidance
+                        const brightness = estimateBrightness(videoRef.current!);
+                        if (brightness < 50) {
+                            setGuidanceMsg("Too dark — move to a brighter area or turn on a light");
+                            setGuidanceColor("red");
+                            stableCountRef.current = 0;
+                        } else if (brightness > 220) {
+                            setGuidanceMsg("Too bright — avoid direct light on your face");
+                            setGuidanceColor("amber");
+                            stableCountRef.current = 0;
+                        } else {
                         // Check face size relative to video dimensions
                         const videoW = videoRef.current?.videoWidth || 640;
                         const faceRatio = result.box.width / videoW;
@@ -315,9 +344,9 @@ export default function FaceEnrollmentPage() {
                                 }
                             }
                         }
+                        }
                     }
                 } catch {
-                    // Tracking error — non-critical, skip frame
                 }
             }
 
@@ -333,7 +362,7 @@ export default function FaceEnrollmentPage() {
             trackingRef.current = false;
             cancelAnimationFrame(rafId);
         };
-    }, [state, videoReady, step]);
+    }, [state, videoReady, step, estimateBrightness]);
 
     const captureAndDetect = useCallback(async () => {
         setState("detecting");
@@ -472,15 +501,21 @@ export default function FaceEnrollmentPage() {
         setErrorHint("");
         console.log(`[face-enroll] Starting enrollment: employeeId=${employeeId} angles=${descriptors.length} hasPreview=${previews.length > 0}`);
         try {
-            const avgEmbedding = averageDescriptors(descriptors);
-            if (avgEmbedding.length !== 128) {
+            // Use the FRONT-FACE descriptor (step 0) as the primary enrollment embedding.
+            // Multi-angle capture serves as quality assurance, but the stored embedding
+            // should match the front-facing pose used during kiosk verification/matching.
+            // Averaging front+left+right creates a centroid that's too distant from any
+            // single-angle probe, causing false rejections at kiosk thresholds.
+            const frontFaceDescriptor = descriptors[0];
+            if (!frontFaceDescriptor || frontFaceDescriptor.length !== 128) {
                 setError("Failed to compute face embedding.");
                 setState("error");
                 return;
             }
 
+            const avgEmbedding = frontFaceDescriptor;
             const embNorm = Math.sqrt(avgEmbedding.reduce((s, v) => s + v * v, 0));
-            console.log(`[face-enroll] Final enrollment embedding: norm=${embNorm.toFixed(4)}, angles=${descriptors.length}`);
+            console.log(`[face-enroll] Final enrollment embedding (front-face): norm=${embNorm.toFixed(4)}, totalAngles=${descriptors.length}`);
 
             const res = await fetch("/api/face-recognition/enroll?action=enroll", {
                 method: "POST",
@@ -560,11 +595,11 @@ export default function FaceEnrollmentPage() {
 
     const currentStepData = STEPS[step];
 
-    // Don't render for admin users or non-face-project employees (redirect is in progress)
+    // Don't render for admin users or employees not on face projects (redirect is in progress)
     if (currentUser.role === "admin") {
         return null;
     }
-    if (myProject && myProject.verificationMethod !== "face_only") {
+    if (!myProject || myProject.verificationMethod !== "face_only") {
         return null;
     }
 
@@ -688,7 +723,7 @@ export default function FaceEnrollmentPage() {
                     <CardContent className="p-0">
                         <canvas ref={canvasRef} className="hidden" />
                         {/* Responsive camera: portrait on mobile, landscape on desktop */}
-                        <div className="relative w-full bg-black aspect-[3/4] sm:aspect-[4/3] max-h-[55vh] sm:max-h-[380px]">
+                        <div className="relative w-full bg-black aspect-[3/4] sm:aspect-[4/3]">
                             <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" style={{ transform: "scaleX(-1)" }} />
 
                             {/* Face oval guide — color changes based on tracking */}

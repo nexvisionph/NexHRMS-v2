@@ -1,21 +1,20 @@
 ﻿"use client";
 
+import { lazy } from "react";
 import { RoleViewDispatcher } from "@/components/ui/role-dispatcher";
-import EmployeeView from "./_views/employee-view";
-import AdminView from "./_views/admin-view";
 
-/* Thin wrappers so each role gets a unique component */
-const HrView = () => <AdminView mode="hr" />;
-const SupervisorView = () => <AdminView mode="supervisor" />;
+/* Lazy-load views — only the active role's view is downloaded */
+const AdminView = lazy(() => import("./_views/admin-view"));
+const EmployeeView = lazy(() => import("./_views/employee-view"));
 
 export default function AttendancePage() {
     return (
         <RoleViewDispatcher
             views={{
                 admin: () => <AdminView mode="admin" />,
-                hr: HrView,
-                supervisor: SupervisorView,
-                employee: EmployeeView,
+                hr: () => <AdminView mode="hr" />,
+                supervisor: () => <AdminView mode="supervisor" />,
+                employee: () => <EmployeeView />,
             }}
         />
     );

@@ -42,15 +42,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Slider } from "@/components/ui/slider";
 import { nanoid } from "nanoid";
-import { Search, SlidersHorizontal, Eye, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, UserMinus, Pencil, Mail, MapPin, Phone, Cake, DollarSign, RefreshCw, KeyRound, ShieldCheck, Briefcase, User, FolderKanban, Users, Tag, Crown, Building2, Receipt, Calculator } from "lucide-react";
+import { Search, SlidersHorizontal, Eye, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, UserMinus, Pencil, Mail, MapPin, Phone, Cake, DollarSign, RefreshCw, KeyRound, ShieldCheck, Briefcase, User, FolderKanban, Users, Tag, Crown, Building2, Receipt, Calculator, XCircle } from "lucide-react";
 import { getInitials, formatCurrency, formatDate, validatePhone } from "@/lib/format";
 import Link from "next/link";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
+import { sendNotification } from "@/lib/notifications";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Employee, WorkType, PayFrequency, Role, JobTitle, Department, DeductionType, DeductionOverrideMode, DeductionTemplate } from "@/types";
+import type { Employee, WorkType, PayFrequency, Role, JobTitle, Department, DeductionType, DeductionOverrideMode } from "@/types";
 
 const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
@@ -75,7 +76,7 @@ export default function AdminEmployeesView() {
     const demoAccounts = useAuthStore((s) => s.accounts);
     const demoAdminSetPassword = useAuthStore((s) => s.adminSetPassword);
     const demoDeleteAccount = useAuthStore((s) => s.deleteAccount);
-    const { computeFinalPay, paySchedule, deductionOverrides, setDeductionOverride, removeDeductionOverride, getEmployeeOverrides } = usePayrollStore();
+    const { computeFinalPay, paySchedule, setDeductionOverride, removeDeductionOverride, getEmployeeOverrides } = usePayrollStore();
     const { templates: deductionTemplates, assignments: deductionAssignments, fetchTemplates: fetchDeductionTemplates, fetchAssignments: fetchDeductionAssignments, assignToEmployee: assignDeductionToEmployee, unassignFromEmployee: unassignDeductionFromEmployee } = useDeductionsStore();
     const { getActiveByEmployee } = useLoansStore();
     const { getEmployeeBalances } = useLeaveStore();
@@ -164,18 +165,22 @@ export default function AdminEmployeesView() {
         if (!jtNewName.trim()) { toast.error("Job title name is required."); return; }
         const existing = jobTitles.find((jt) => jt.name.toLowerCase() === jtNewName.trim().toLowerCase());
         if (existing) { toast.error("A job title with this name already exists."); return; }
-        addJobTitle({
-            name: jtNewName.trim(),
-            description: jtNewDesc.trim() || undefined,
-            department: jtNewDept || undefined,
-            isActive: true,
-            isLead: jtNewIsLead,
-            color: jtNewColor,
-            createdBy: currentUser.id,
-        });
-        toast.success(`Job title "${jtNewName.trim()}" created!`);
-        setJtAddOpen(false);
-        setJtNewName(""); setJtNewDesc(""); setJtNewDept(""); setJtNewIsLead(false); setJtNewColor("#6366f1");
+        try {
+            addJobTitle({
+                name: jtNewName.trim(),
+                description: jtNewDesc.trim() || undefined,
+                department: jtNewDept || undefined,
+                isActive: true,
+                isLead: jtNewIsLead,
+                color: jtNewColor,
+                createdBy: currentUser.id,
+            });
+            toast.success(`Job title "${jtNewName.trim()}" created!`);
+            setJtAddOpen(false);
+            setJtNewName(""); setJtNewDesc(""); setJtNewDept(""); setJtNewIsLead(false); setJtNewColor("#6366f1");
+        } catch (err) {
+            toast.error(`Failed to create job title: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
     };
 
     const openEditJt = (jt: JobTitle) => {
@@ -193,21 +198,29 @@ export default function AdminEmployeesView() {
         if (!jtEditName.trim()) { toast.error("Job title name is required."); return; }
         const existing = jobTitles.find((jt) => jt.id !== editingJt.id && jt.name.toLowerCase() === jtEditName.trim().toLowerCase());
         if (existing) { toast.error("A job title with this name already exists."); return; }
-        updateJobTitle(editingJt.id, {
-            name: jtEditName.trim(),
-            description: jtEditDesc.trim() || undefined,
-            department: jtEditDept || undefined,
-            isLead: jtEditIsLead,
-            color: jtEditColor,
-        });
-        toast.success(`Job title "${jtEditName.trim()}" updated!`);
-        setJtEditOpen(false);
-        setEditingJt(null);
+        try {
+            updateJobTitle(editingJt.id, {
+                name: jtEditName.trim(),
+                description: jtEditDesc.trim() || undefined,
+                department: jtEditDept || undefined,
+                isLead: jtEditIsLead,
+                color: jtEditColor,
+            });
+            toast.success(`Job title "${jtEditName.trim()}" updated!`);
+            setJtEditOpen(false);
+            setEditingJt(null);
+        } catch (err) {
+            toast.error(`Failed to update job title: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
     };
 
     const handleDeleteJt = (jt: JobTitle) => {
-        deleteJobTitle(jt.id);
-        toast.success(`Job title "${jt.name}" deleted.`);
+        try {
+            deleteJobTitle(jt.id);
+            toast.success(`Job title "${jt.name}" deleted.`);
+        } catch (err) {
+            toast.error(`Failed to delete job title: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
     };
 
     // ─── Departments Tab State ───
@@ -239,17 +252,21 @@ export default function AdminEmployeesView() {
         if (!deptNewName.trim()) { toast.error("Department name is required."); return; }
         const existing = departments.find((d) => d.name.toLowerCase() === deptNewName.trim().toLowerCase());
         if (existing) { toast.error("A department with this name already exists."); return; }
-        addDepartment({
-            name: deptNewName.trim(),
-            description: deptNewDesc.trim() || undefined,
-            headId: deptNewHead !== "none" ? deptNewHead : undefined,
-            color: deptNewColor,
-            isActive: true,
-            createdBy: currentUser.id,
-        });
-        toast.success(`Department "${deptNewName.trim()}" created!`);
-        setDeptAddOpen(false);
-        setDeptNewName(""); setDeptNewDesc(""); setDeptNewHead("none"); setDeptNewColor("#6366f1");
+        try {
+            addDepartment({
+                name: deptNewName.trim(),
+                description: deptNewDesc.trim() || undefined,
+                headId: deptNewHead !== "none" ? deptNewHead : undefined,
+                color: deptNewColor,
+                isActive: true,
+                createdBy: currentUser.id,
+            });
+            toast.success(`Department "${deptNewName.trim()}" created!`);
+            setDeptAddOpen(false);
+            setDeptNewName(""); setDeptNewDesc(""); setDeptNewHead("none"); setDeptNewColor("#6366f1");
+        } catch (err) {
+            toast.error(`Failed to create department: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
     };
 
     const openEditDept = (d: Department) => {
@@ -266,20 +283,28 @@ export default function AdminEmployeesView() {
         if (!deptEditName.trim()) { toast.error("Department name is required."); return; }
         const existing = departments.find((d) => d.id !== editingDept.id && d.name.toLowerCase() === deptEditName.trim().toLowerCase());
         if (existing) { toast.error("A department with this name already exists."); return; }
-        updateDepartment(editingDept.id, {
-            name: deptEditName.trim(),
-            description: deptEditDesc.trim() || undefined,
-            headId: deptEditHead !== "none" ? deptEditHead : undefined,
-            color: deptEditColor,
-        });
-        toast.success(`Department "${deptEditName.trim()}" updated!`);
-        setDeptEditOpen(false);
-        setEditingDept(null);
+        try {
+            updateDepartment(editingDept.id, {
+                name: deptEditName.trim(),
+                description: deptEditDesc.trim() || undefined,
+                headId: deptEditHead !== "none" ? deptEditHead : undefined,
+                color: deptEditColor,
+            });
+            toast.success(`Department "${deptEditName.trim()}" updated!`);
+            setDeptEditOpen(false);
+            setEditingDept(null);
+        } catch (err) {
+            toast.error(`Failed to update department: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
     };
 
     const handleDeleteDept = (d: Department) => {
-        deleteDepartment(d.id);
-        toast.success(`Department "${d.name}" deleted.`);
+        try {
+            deleteDepartment(d.id);
+            toast.success(`Department "${d.name}" deleted.`);
+        } catch (err) {
+            toast.error(`Failed to delete department: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
     };
 
     // Helper to get department head name
@@ -437,6 +462,7 @@ export default function AdminEmployeesView() {
         if (!salaryDialogEmpId) return;
         const val = Number(salaryInput);
         if (!val || val <= 0) { toast.error("Please enter a valid monthly salary."); return; }
+        try {
         if (isHR) {
             proposeSalaryChange({ employeeId: salaryDialogEmpId, proposedBy: currentUser.id, proposedSalary: val, effectiveDate: new Date().toISOString().slice(0, 10), reason: salaryReason || "Salary adjustment" });
             useAuditStore.getState().log({ entityType: "employee", entityId: salaryDialogEmpId, action: "salary_proposed", performedBy: currentUser.id, afterSnapshot: { salary: val } });
@@ -447,6 +473,9 @@ export default function AdminEmployeesView() {
             toast.success(`Salary updated for ${salaryDialogEmp?.name ?? "employee"}`);
         }
         setSalaryDialogEmpId(null); setSalaryInput(""); setSalaryReason("");
+        } catch (err) {
+            toast.error(`Failed to save salary: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
     };
 
     const filtered = useMemo(() => {
@@ -454,9 +483,10 @@ export default function AdminEmployeesView() {
             const matchSearch = !searchQuery || e.name.toLowerCase().includes(searchQuery.toLowerCase()) || e.email.toLowerCase().includes(searchQuery.toLowerCase()) || e.id.toLowerCase().includes(searchQuery.toLowerCase());
             const matchStatus = statusFilter === "all" || e.status === statusFilter;
             const matchWork = workTypeFilter === "all" || e.workType === workTypeFilter;
+            const matchRole = roleFilter === "all" || e.role === roleFilter;
             const matchDept = departmentFilter === "all" || e.department === departmentFilter;
             const matchSalary = e.salary >= salaryRange[0] && e.salary <= salaryRange[1];
-            return matchSearch && matchStatus && matchWork && matchDept && matchSalary;
+            return matchSearch && matchStatus && matchWork && matchRole && matchDept && matchSalary;
         });
         result.sort((a, b) => {
             const aVal = a[sortKey]; const bVal = b[sortKey];
@@ -465,7 +495,7 @@ export default function AdminEmployeesView() {
             return sortDir === "asc" ? cmp : -cmp;
         });
         return result;
-    }, [employees, searchQuery, statusFilter, workTypeFilter, departmentFilter, salaryRange, sortKey, sortDir]);
+    }, [employees, searchQuery, statusFilter, workTypeFilter, roleFilter, departmentFilter, salaryRange, sortKey, sortDir]);
 
     const totalPages = Math.ceil(filtered.length / pageSize);
     const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -481,9 +511,14 @@ export default function AdminEmployeesView() {
 
     const handleAddEmployee = async () => {
         if (!canManage) { toast.error("You don't have permission to add employees"); return; }
-        if (!newName || !newEmail || !newJobTitle || !newDept) { toast.error("Please fill all required fields"); return; }
+        if (!newName.trim()) { toast.error("Employee name is required"); return; }
+        if (!newEmail.trim()) { toast.error("Email address is required"); return; }
+        if (!newJobTitle || !newDept) { toast.error("Please fill all required fields (job title, department)"); return; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) { toast.error("Please enter a valid email address"); return; }
         if (!newPassword || newPassword.length < 8) { toast.error("Password is required and must be at least 8 characters"); return; }
-        if (employees.some((e) => e.email.toLowerCase() === newEmail.toLowerCase())) { toast.error("An employee with this email already exists"); return; }
+        if (employees.some((e) => e.email.toLowerCase() === newEmail.trim().toLowerCase())) { toast.error("An employee with this email already exists"); return; }
+        const salaryVal = Number(newSalary);
+        if (newSalary && (isNaN(salaryVal) || salaryVal < 0)) { toast.error("Salary must be a non-negative number"); return; }
         
         // Validate phone number format if provided
         if (newPhone) {
@@ -501,8 +536,8 @@ export default function AdminEmployeesView() {
         const formattedPhone = newPhone ? validatePhone(newPhone).formatted : undefined;
         
         const addResult = addEmployee({
-            id, name: newName, email: newEmail, role: newSystemRole, jobTitle: newJobTitle, department: newDept, workType: newWorkType,
-            salary: Number(newSalary) || 0, joinDate: new Date().toISOString().split("T")[0], productivity: 0,
+            id, name: newName.trim(), email: newEmail.trim(), role: newSystemRole, jobTitle: newJobTitle, department: newDept, workType: newWorkType,
+            salary: salaryVal || 0, joinDate: new Date().toISOString().split("T")[0], productivity: 0,
             status: "active", location: "", phone: formattedPhone,
             workDays: newWorkDays.length ? newWorkDays : undefined,
             birthday: newBirthday || undefined,
@@ -642,8 +677,13 @@ export default function AdminEmployeesView() {
 
     const handleSaveEdit = () => {
         if (!canManage || !editingEmp) { toast.error("You don't have permission to edit employees"); return; }
-        if (!editName || !editEmail || !editDept) { toast.error("Please fill all required fields"); return; }
-        if (employees.some((e) => e.id !== editingEmp.id && e.email.toLowerCase() === editEmail.toLowerCase())) { toast.error("An employee with this email already exists"); return; }
+        if (!editName.trim()) { toast.error("Employee name is required"); return; }
+        if (!editEmail.trim()) { toast.error("Email address is required"); return; }
+        if (!editDept) { toast.error("Department is required"); return; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmail.trim())) { toast.error("Please enter a valid email address"); return; }
+        if (employees.some((e) => e.id !== editingEmp.id && e.email.toLowerCase() === editEmail.trim().toLowerCase())) { toast.error("An employee with this email already exists"); return; }
+        const editSalaryNum = Number(editSalary);
+        if (editSalary && (isNaN(editSalaryNum) || editSalaryNum < 0)) { toast.error("Salary must be a non-negative number"); return; }
         
         // Validate phone if provided
         let formattedPhone: string | undefined;
@@ -656,9 +696,10 @@ export default function AdminEmployeesView() {
             formattedPhone = phoneResult.formatted;
         }
         
+        try {
         updateEmployee(editingEmp.id, {
-            name: editName, email: editEmail, role: editRole, jobTitle: editJobTitle, department: editDept, workType: editWorkType,
-            salary: Number(editSalary) || 0, phone: formattedPhone,
+            name: editName.trim(), email: editEmail.trim(), role: editRole, jobTitle: editJobTitle, department: editDept, workType: editWorkType,
+            salary: editSalaryNum || 0, phone: formattedPhone,
             productivity: Number(editProductivity) || 80, payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
             birthday: editBirthday || undefined,
             teamLeader: editTeamLeader !== "none" ? editTeamLeader : undefined,
@@ -672,7 +713,21 @@ export default function AdminEmployeesView() {
         else unassignShift(editingEmp.id);
         const currentProject = getProjectForEmployee(editingEmp.id);
         if (currentProject && currentProject.id !== editProjectId) removeFromProject(currentProject.id, editingEmp.id);
-        if (editProjectId && editProjectId !== "none" && (!currentProject || currentProject.id !== editProjectId)) assignToProject(editProjectId, editingEmp.id);
+        if (editProjectId && editProjectId !== "none" && (!currentProject || currentProject.id !== editProjectId)) {
+            assignToProject(editProjectId, editingEmp.id);
+            // Send notification for new project assignment
+            const newProject = projects.find(p => p.id === editProjectId);
+            if (newProject) {
+                sendNotification({
+                    type: "assignment",
+                    employeeId: editingEmp.id,
+                    employeeName: editName,
+                    employeeEmail: editEmail,
+                    subject: `New Project Assignment: ${newProject.name}`,
+                    body: `Hi ${editName}, you have been assigned to "${newProject.name}". Please report to the project site. Contact HR for details.`,
+                });
+            }
+        }
         else if (editProjectId === "none" && currentProject) removeFromProject(currentProject.id, editingEmp.id);
 
         // Update deduction template assignments
@@ -713,6 +768,9 @@ export default function AdminEmployeesView() {
         toast.success(`${editName} updated successfully!`);
         useAuditStore.getState().log({ entityType: "employee", entityId: editingEmp.id, action: "adjustment_applied", performedBy: currentUser.id, reason: "Profile updated" });
         setEditOpen(false); setEditingEmp(null);
+        } catch (err) {
+            toast.error(`Failed to update employee: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
     };
 
     return (
@@ -1228,6 +1286,19 @@ export default function AdminEmployeesView() {
                                 </div>
 
                                 <Button onClick={handleSaveEdit} className="w-full">Save Changes</Button>
+                                {editingEmp?.profileId && (
+                                    <Button variant="outline" className="w-full" onClick={() => {
+                                        const acc = accounts.find((a) => a.id === editingEmp.profileId);
+                                        if (acc) {
+                                            setResetPwUserId(acc.id);
+                                            setResetPwValue("");
+                                        } else {
+                                            toast.error("No linked user account found for this employee.");
+                                        }
+                                    }}>
+                                        <KeyRound className="w-4 h-4 mr-1.5" /> Reset Password
+                                    </Button>
+                                )}
                             </div>
                         </DialogContent>
                     </Dialog>
@@ -1252,6 +1323,32 @@ export default function AdminEmployeesView() {
                                     <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="Role" /></SelectTrigger>
                                     <SelectContent><SelectItem value="all">All Roles</SelectItem><SelectItem value="admin">Admin</SelectItem><SelectItem value="hr">HR</SelectItem><SelectItem value="finance">Finance</SelectItem><SelectItem value="payroll_admin">Payroll Admin</SelectItem><SelectItem value="supervisor">Supervisor</SelectItem><SelectItem value="employee">Employee</SelectItem><SelectItem value="auditor">Auditor</SelectItem></SelectContent>
                                 </Select>
+                                <Select value={departmentFilter} onValueChange={(v) => { setDepartmentFilter(v); setPage(1); }}>
+                                    <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="All Departments" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Departments</SelectItem>
+                                        {departments.filter((d) => d.isActive).map((d) => (
+                                            <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {(searchQuery || statusFilter !== "all" || workTypeFilter !== "all" || roleFilter !== "all" || departmentFilter !== "all") && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                            setSearchQuery("");
+                                            setStatusFilter("all");
+                                            setWorkTypeFilter("all");
+                                            setRoleFilter("all");
+                                            setDepartmentFilter("all");
+                                            setPage(1);
+                                        }}
+                                        className="h-9 text-xs gap-1"
+                                    >
+                                        <XCircle className="h-3 w-3" /> Clear
+                                    </Button>
+                                )}
                                 <Sheet>
                                     <SheetTrigger asChild>
                                         <Button variant="outline" size="sm" className="gap-1.5 relative">
@@ -1479,6 +1576,13 @@ export default function AdminEmployeesView() {
                                                         <div className="flex items-center gap-1">
                                                             <Link href={rh(`/employees/${emp.id}`)}><Button variant="ghost" size="icon" className="h-7 w-7"><Eye className="h-3.5 w-3.5" /></Button></Link>
                                                             <Button variant="ghost" size="icon" className="h-7 w-7" disabled={!canManage} onClick={() => handleOpenEdit(emp)} title="Edit"><Pencil className="h-3.5 w-3.5" /></Button>
+                                                            {canManage && emp.profileId && (
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7" title="Reset password" onClick={() => {
+                                                                    const acc = accounts.find((a) => a.id === emp.profileId);
+                                                                    if (acc) { setResetPwUserId(acc.id); setResetPwValue(""); }
+                                                                    else toast.error("No linked account found");
+                                                                }}><KeyRound className="h-3.5 w-3.5" /></Button>
+                                                            )}
                                                             <Button variant="ghost" size="sm" className="h-7 text-[10px]" disabled={!canManage} onClick={() => { if (!canManage) return; toggleStatus(emp.id); useAuditStore.getState().log({ entityType: "employee", entityId: emp.id, action: emp.status === "active" ? "employee_resigned" : "adjustment_applied", performedBy: currentUser.id, reason: emp.status === "active" ? "Deactivated" : "Activated" }); toast.success(`${emp.name} ${emp.status === "active" ? "deactivated" : "activated"}`); }}>
                                                                 {emp.status === "active" ? "Deactivate" : emp.status === "inactive" ? "Activate" : emp.status}
                                                             </Button>
@@ -1646,9 +1750,19 @@ export default function AdminEmployeesView() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                {(acctSearch || acctRoleFilter !== "all") && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => { setAcctSearch(""); setAcctRoleFilter("all"); }}
+                                        className="h-9 text-xs gap-1"
+                                    >
+                                        <XCircle className="h-3 w-3" /> Clear
+                                    </Button>
+                                )}
                                 {!USE_DEMO_MODE && (
-                                    <Button variant="outline" size="sm" className="gap-1.5" onClick={refreshAccounts} disabled={accountsLoading}>
-                                        <RefreshCw className={`h-3.5 w-3.5 ${accountsLoading ? "animate-spin" : ""}`} /> Refresh
+                                    <Button variant="outline" size="sm" className="gap-1.5 group" onClick={refreshAccounts} disabled={accountsLoading}>
+                                        <RefreshCw className={`h-3.5 w-3.5 transition-transform duration-500 ${accountsLoading ? "animate-spin" : "group-hover:rotate-180"}`} /> Refresh
                                     </Button>
                                 )}
                             </div>
@@ -1859,6 +1973,16 @@ export default function AdminEmployeesView() {
                                         <SelectItem value="inactive">Inactive</SelectItem>
                                     </SelectContent>
                                 </Select>
+                                {(jtSearch || jtDeptFilter !== "all" || jtStatusFilter !== "all") && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => { setJtSearch(""); setJtDeptFilter("all"); setJtStatusFilter("all"); }}
+                                        className="h-9 text-xs gap-1"
+                                    >
+                                        <XCircle className="h-3 w-3" /> Clear
+                                    </Button>
+                                )}
                             </div>
                         </CardContent>
                     </Card>

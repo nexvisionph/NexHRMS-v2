@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { CustomRole, Permission, WidgetConfig } from "@/types";
 
@@ -323,6 +324,11 @@ function buildSystemRoles(): CustomRole[] {
 // ─── Store Interface ─────────────────────────────────────────
 interface RolesState {
     roles: CustomRole[];
+    isLoading: boolean;
+    hasFetchedFromDb: boolean;
+    // DB sync
+    fetchRoles: () => Promise<void>;
+    syncRoleToDb: (role: CustomRole) => Promise<void>;
     // CRUD
     createRole: (data: Omit<CustomRole, "id" | "createdAt" | "isSystem">) => string;
     updateRole: (id: string, patch: Partial<Omit<CustomRole, "id" | "isSystem">>) => void;
@@ -352,6 +358,73 @@ export const useRolesStore = create<RolesState>()(
     persist(
         (set, get) => ({
             roles: buildSystemRoles(),
+            isLoading: false,
+            hasFetchedFromDb: false,
+
+            fetchRoles: async () => {
+                set({ isLoading: true });
+                try {
+                    const res = await fetch("/api/roles");
+                    if (res.ok) {
+                        const dbRoles: CustomRole[] = await res.json();
+                        if (dbRoles.length > 0) {
+                            // Merge: DB roles take precedence, but keep local system roles as fallback
+                            const systemDefaults = buildSystemRoles();
+                            const dbSlugs = new Set(dbRoles.map((r) => r.slug));
+                            // Keep any system defaults that weren't in DB (shouldn't happen, but safe)
+                            const missing = systemDefaults.filter((s) => !dbSlugs.has(s.slug));
+                            set({ roles: [...dbRoles, ...missing], hasFetchedFromDb: true });
+                        } else {
+                            // DB is empty — seed system roles to DB
+                            const systemRoles = buildSystemRoles();
+                            for (const role of systemRoles) {
+                                await get().syncRoleToDb(role);
+                            }
+                            set({ hasFetchedFromDb: true });
+                        }
+                    }
+                } catch {
+                    // Offline / error — keep local state
+                } finally {
+                    set({ isLoading: false });
+                }
+            },
+
+            syncRoleToDb: async (role: CustomRole) => {
+                try {
+                    // Try PUT (update) first, if role exists
+                    const res = await fetch("/api/roles", {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            id: role.id,
+                            name: role.name,
+                            color: role.color,
+                            icon: role.icon,
+                            permissions: role.permissions,
+                            dashboardLayout: role.dashboardLayout,
+                        }),
+                    });
+                    if (res.status === 500) {
+                        // Role doesn't exist in DB yet — create it
+                        await fetch("/api/roles", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                id: role.id,
+                                name: role.name,
+                                slug: role.slug,
+                                color: role.color,
+                                icon: role.icon,
+                                permissions: role.permissions,
+                                dashboardLayout: role.dashboardLayout,
+                            }),
+                        });
+                    }
+                } catch {
+                    // Offline — changes remain in local state
+                }
+            },
 
             createRole: (data) => {
                 const id = `role-${nanoid(8)}`;
@@ -362,6 +435,8 @@ export const useRolesStore = create<RolesState>()(
                     createdAt: new Date().toISOString(),
                 };
                 set((s) => ({ roles: [...s.roles, newRole] }));
+                // Fire-and-forget DB sync
+                get().syncRoleToDb(newRole);
                 return id;
             },
 
@@ -371,12 +446,17 @@ export const useRolesStore = create<RolesState>()(
                         r.id === id ? { ...r, ...patch } : r
                     ),
                 }));
+                // Fire-and-forget DB sync
+                const updated = get().roles.find((r) => r.id === id);
+                if (updated) get().syncRoleToDb(updated);
             },
 
             deleteRole: (id) => {
                 const role = get().roles.find((r) => r.id === id);
                 if (!role || role.isSystem) return false;
                 set((s) => ({ roles: s.roles.filter((r) => r.id !== id) }));
+                // Fire-and-forget DB delete
+                fetch(`/api/roles?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
                 return true;
             },
 
@@ -393,6 +473,8 @@ export const useRolesStore = create<RolesState>()(
                     createdAt: new Date().toISOString(),
                 };
                 set((s) => ({ roles: [...s.roles, dup] }));
+                // Fire-and-forget DB sync
+                get().syncRoleToDb(dup);
                 return newId;
             },
 
@@ -402,6 +484,9 @@ export const useRolesStore = create<RolesState>()(
                         r.id === roleId ? { ...r, permissions: perms } : r
                     ),
                 }));
+                // Fire-and-forget DB sync
+                const updated = get().roles.find((r) => r.id === roleId);
+                if (updated) get().syncRoleToDb(updated);
             },
 
             addPermission: (roleId, perm) => {
@@ -412,6 +497,9 @@ export const useRolesStore = create<RolesState>()(
                             : r
                     ),
                 }));
+                // Fire-and-forget DB sync
+                const updated = get().roles.find((r) => r.id === roleId);
+                if (updated) get().syncRoleToDb(updated);
             },
 
             removePermission: (roleId, perm) => {
@@ -422,6 +510,9 @@ export const useRolesStore = create<RolesState>()(
                             : r
                     ),
                 }));
+                // Fire-and-forget DB sync
+                const updated = get().roles.find((r) => r.id === roleId);
+                if (updated) get().syncRoleToDb(updated);
             },
 
             saveDashboardLayout: (roleId, widgets) => {
@@ -432,6 +523,9 @@ export const useRolesStore = create<RolesState>()(
                             : r
                     ),
                 }));
+                // Fire-and-forget DB sync
+                const updated = get().roles.find((r) => r.id === roleId);
+                if (updated) get().syncRoleToDb(updated);
             },
 
             getDashboardLayout: (roleSlug) => {
@@ -502,6 +596,8 @@ export const useRolesStore = create<RolesState>()(
                         }
                         if (newRoles.length > 0) {
                             set((s) => ({ roles: [...s.roles, ...newRoles] }));
+                            // Fire-and-forget DB sync for imported roles
+                            for (const r of newRoles) { get().syncRoleToDb(r); }
                         }
                     }
 
@@ -517,6 +613,9 @@ export const useRolesStore = create<RolesState>()(
                                             : r
                                     ),
                                 }));
+                                // Fire-and-forget DB sync
+                                const updated = get().roles.find((r) => r.id === sysRole.id);
+                                if (updated) get().syncRoleToDb(updated);
                                 imported++;
                             }
                         }
@@ -528,12 +627,20 @@ export const useRolesStore = create<RolesState>()(
                 }
             },
 
-            resetToDefaults: () => set({ roles: buildSystemRoles() }),
+            resetToDefaults: () => {
+                const defaults = buildSystemRoles();
+                set({ roles: defaults });
+                // Fire-and-forget: resync all system roles to DB
+                for (const role of defaults) {
+                    get().syncRoleToDb(role);
+                }
+            },
         }),
         {
             name: "nexhrms-roles",
-            version: 2,
-            migrate: () => ({ roles: buildSystemRoles() }),
+            version: 3,
+            storage: safePersistStorage,
+            migrate: () => ({ roles: buildSystemRoles(), isLoading: false, hasFetchedFromDb: false }),
         }
     )
 );

@@ -22,7 +22,7 @@ import dynamic from "next/dynamic";
 import { getInitials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { sendNotification } from "@/lib/notifications";
-import { FolderKanban, Plus, MapPin, UserPlus, Trash2, ScanFace, QrCode, UserCheck, Pencil } from "lucide-react";
+import { FolderKanban, Plus, MapPin, UserPlus, Trash2, ScanFace, QrCode, UserCheck, Pencil, Search } from "lucide-react";
 import type { Project, VerificationMethod } from "@/types";
 
 const MapSelector = dynamic(
@@ -47,10 +47,12 @@ export default function AdminProjectsView() {
     const [assignOpen, setAssignOpen] = useState(false);
     const [assignProjectId, setAssignProjectId] = useState<string | null>(null);
     const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
+    const [assignSearch, setAssignSearch] = useState("");
 
     // ── Edit project state ──────────────────────────────────────
     const [editOpen, setEditOpen] = useState(false);
     const [editProject, setEditProject] = useState<Project | null>(null);
+    const [saving, setSaving] = useState(false);
     const [editName, setEditName] = useState("");
     const [editDescription, setEditDescription] = useState("");
     const [editLat, setEditLat] = useState("");
@@ -86,15 +88,22 @@ export default function AdminProjectsView() {
             toast.error("A project with this name already exists");
             return;
         }
-        updateProject(editProject.id, {
-            name: editName.trim(),
-            description: editDescription.trim(),
-            location: { lat: latNum, lng: lngNum, radius: radiusNum, address: editLocationAddress.trim() || undefined },
-            verificationMethod: editVerificationMethod,
-        });
-        toast.success(`Project "${editName}" updated!`);
-        setEditOpen(false);
-        setEditProject(null);
+        setSaving(true);
+        try {
+            updateProject(editProject.id, {
+                name: editName.trim(),
+                description: editDescription.trim(),
+                location: { lat: latNum, lng: lngNum, radius: radiusNum, address: editLocationAddress.trim() || undefined },
+                verificationMethod: editVerificationMethod,
+            });
+            toast.success(`Project "${editName}" updated!`);
+            setEditOpen(false);
+            setEditProject(null);
+        } catch (err) {
+            toast.error(`Failed to update project: ${err instanceof Error ? err.message : "Unknown error"}`);
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleAddProject = () => {
@@ -111,16 +120,24 @@ export default function AdminProjectsView() {
             toast.error("A project with this name already exists");
             return;
         }
-        addProject({ name: name.trim(), description: description.trim(), location: { lat: latNum, lng: lngNum, radius: radiusNum, address: locationAddress.trim() || undefined }, assignedEmployeeIds: [], verificationMethod });
-        toast.success(`Project "${name}" created!`);
-        setName(""); setDescription(""); setLat(""); setLng(""); setRadius("100"); setLocationAddress(""); setVerificationMethod("face_only");
-        setAddOpen(false);
+        setSaving(true);
+        try {
+            addProject({ name: name.trim(), description: description.trim(), location: { lat: latNum, lng: lngNum, radius: radiusNum, address: locationAddress.trim() || undefined }, assignedEmployeeIds: [], verificationMethod });
+            toast.success(`Project "${name}" created!`);
+            setName(""); setDescription(""); setLat(""); setLng(""); setRadius("100"); setLocationAddress(""); setVerificationMethod("face_only");
+            setAddOpen(false);
+        } catch (err) {
+            toast.error(`Failed to create project: ${err instanceof Error ? err.message : "Unknown error"}`);
+        } finally {
+            setSaving(false);
+        }
     };
 
     const openAssignDialog = (projectId: string) => {
         const project = projects.find((p) => p.id === projectId);
         setAssignProjectId(projectId);
         setSelectedEmpIds(project?.assignedEmployeeIds || []);
+        setAssignSearch("");
         setAssignOpen(true);
     };
 
@@ -128,6 +145,7 @@ export default function AdminProjectsView() {
         if (!assignProjectId) return;
         const project = projects.find((p) => p.id === assignProjectId);
         if (!project) return;
+        try {
         const currentIds = project.assignedEmployeeIds;
         const toAdd = selectedEmpIds.filter((id) => !currentIds.includes(id));
         const toRemove = currentIds.filter((id) => !selectedEmpIds.includes(id));
@@ -149,6 +167,9 @@ export default function AdminProjectsView() {
             toast.success("Assignments updated!");
         }
         setAssignOpen(false);
+        } catch (err) {
+            toast.error(`Failed to update assignments: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
     };
 
     const toggleEmpSelection = (empId: string) => {
@@ -201,7 +222,7 @@ export default function AdminProjectsView() {
                                 </Select>
                                 <p className="text-xs text-muted-foreground mt-1">How employees check in for this project</p>
                             </div>
-                            <Button onClick={handleAddProject} className="w-full">Create Project</Button>
+                            <Button onClick={handleAddProject} className="w-full" disabled={saving}>{saving ? "Creating…" : "Create Project"}</Button>
                         </div>
                     </DialogContent>
                 </Dialog>
@@ -288,7 +309,7 @@ export default function AdminProjectsView() {
                                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(project)}>
                                                     <Pencil className="h-3.5 w-3.5" />
                                                 </Button>
-                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-500/10" onClick={() => { deleteProject(project.id); toast.success("Project deleted"); }}>
+                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-500/10" onClick={() => { try { deleteProject(project.id); toast.success("Project deleted"); } catch (err) { toast.error(`Failed to delete project: ${err instanceof Error ? err.message : "Unknown error"}`); } }}>
                                                     <Trash2 className="h-3.5 w-3.5" />
                                                 </Button>
                                             </div>
@@ -305,8 +326,22 @@ export default function AdminProjectsView() {
                 <DialogContent className="max-w-lg">
                     <DialogHeader><DialogTitle>Assign Employees to Project</DialogTitle></DialogHeader>
                     <p className="text-xs text-muted-foreground -mt-1">Each employee can only be assigned to one project at a time.</p>
-                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1 pt-1">
-                        {employees.filter((e) => e.status === "active").map((emp) => {
+                    <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                        <Input
+                            placeholder="Search employees..."
+                            value={assignSearch}
+                            onChange={(e) => setAssignSearch(e.target.value)}
+                            className="pl-8 h-8 text-sm"
+                        />
+                    </div>
+                    <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                        {employees.filter((e) => e.status === "active" && (
+                            assignSearch.trim() === "" ||
+                            e.name.toLowerCase().includes(assignSearch.toLowerCase()) ||
+                            e.department?.toLowerCase().includes(assignSearch.toLowerCase()) ||
+                            e.role?.toLowerCase().includes(assignSearch.toLowerCase())
+                        )).map((emp) => {
                             const currentProj = getEmpCurrentProject(emp.id);
                             const isSelected = selectedEmpIds.includes(emp.id);
                             return (
@@ -325,6 +360,14 @@ export default function AdminProjectsView() {
                                 </div>
                             );
                         })}
+                        {employees.filter((e) => e.status === "active" && (
+                            assignSearch.trim() === "" ||
+                            e.name.toLowerCase().includes(assignSearch.toLowerCase()) ||
+                            e.department?.toLowerCase().includes(assignSearch.toLowerCase()) ||
+                            e.role?.toLowerCase().includes(assignSearch.toLowerCase())
+                        )).length === 0 && (
+                            <p className="text-sm text-muted-foreground text-center py-6">No employees match &quot;{assignSearch}&quot;</p>
+                        )}
                     </div>
                     <Button onClick={handleAssignSave} className="w-full mt-2">Save Assignments ({selectedEmpIds.length} selected)</Button>
                 </DialogContent>
@@ -370,7 +413,7 @@ export default function AdminProjectsView() {
                         </div>
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={() => setEditOpen(false)} className="flex-1">Cancel</Button>
-                            <Button onClick={handleEditSave} className="flex-1">Save Changes</Button>
+                            <Button onClick={handleEditSave} className="flex-1" disabled={saving}>{saving ? "Saving…" : "Save Changes"}</Button>
                         </div>
                     </div>
                 </DialogContent>
@@ -382,8 +425,8 @@ export default function AdminProjectsView() {
 // ─── Inline verification method badge with quick-change dropdown ──────────
 const VERIFICATION_META: Record<VerificationMethod, { label: string; icon: React.ElementType; color: string }> = {
     face_only: { label: "Face Only", icon: ScanFace, color: "bg-violet-500/15 text-violet-700 dark:text-violet-400" },
-    face_or_qr: { label: "Face or QR", icon: ScanFace, color: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400" },
     qr_only: { label: "QR Only", icon: QrCode, color: "bg-blue-500/15 text-blue-700 dark:text-blue-400" },
+    face_or_qr: { label: "Face or QR", icon: QrCode, color: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400" },
     manual_only: { label: "Manual", icon: UserCheck, color: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
 };
 
@@ -398,7 +441,6 @@ function VerificationBadge({ method, onUpdate }: { method: VerificationMethod; o
             </SelectTrigger>
             <SelectContent>
                 <SelectItem value="face_only"><span className="flex items-center gap-1.5"><ScanFace className="h-3 w-3" /> Face Only</span></SelectItem>
-                <SelectItem value="face_or_qr"><span className="flex items-center gap-1.5"><ScanFace className="h-3 w-3" /> Face or QR</span></SelectItem>
                 <SelectItem value="qr_only"><span className="flex items-center gap-1.5"><QrCode className="h-3 w-3" /> QR Only</span></SelectItem>
                 <SelectItem value="manual_only"><span className="flex items-center gap-1.5"><UserCheck className="h-3 w-3" /> Manual</span></SelectItem>
             </SelectContent>

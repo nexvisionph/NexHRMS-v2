@@ -61,13 +61,13 @@ export async function POST(req: Request) {
     }
 
     // Verify caller is an admin
-    const { data: profile } = await supabase
-        .from("profiles")
+    const { data: emp } = await supabase
+        .from("employees")
         .select("role")
-        .eq("id", user.id)
+        .eq("profile_id", user.id)
         .single();
 
-    if (profile?.role !== "admin") {
+    if (emp?.role !== "admin") {
         return NextResponse.json({ error: "Admin access required" }, { status: 403 });
     }
 

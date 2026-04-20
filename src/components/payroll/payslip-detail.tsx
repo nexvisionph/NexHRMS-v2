@@ -11,7 +11,14 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { SignaturePad } from "@/components/ui/signature-pad";
-import { FileText, PenTool, CheckCircle } from "lucide-react";
+import { FileText, PenTool, CheckCircle, Image } from "lucide-react";
+
+const paymentMethodLabels: Record<string, string> = {
+    bank_transfer: "Bank Transfer",
+    gcash: "GCash",
+    cash: "Cash",
+    check: "Check",
+};
 
 const statusConfig: Record<string, { label: string; color: string }> = {
     draft: { label: "Draft", color: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
@@ -110,12 +117,45 @@ export function PayslipDetail({ payslip, employeeName, onSign, onAcknowledge, op
 
                     {/* Payment confirmation */}
                     {payslip.paidAt && (
-                        <div className="border-t pt-3 space-y-1">
+                        <div className="border-t pt-3 space-y-2">
                             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Payment</p>
                             <p className="text-sm">Confirmed: {new Date(payslip.paidAt).toLocaleDateString()}</p>
-                            {payslip.paymentMethod && <p className="text-xs text-muted-foreground">Method: {payslip.paymentMethod}</p>}
-                            {payslip.bankReferenceId && <p className="text-xs text-muted-foreground">Ref: {payslip.bankReferenceId}</p>}
-                            {payslip.paidConfirmedBy && <p className="text-xs text-muted-foreground">By: {payslip.paidConfirmedBy}</p>}
+                            {payslip.paymentMethod && (
+                                <p className="text-xs text-muted-foreground">
+                                    Method: {paymentMethodLabels[payslip.paymentMethod] || payslip.paymentMethod}
+                                </p>
+                            )}
+                            {payslip.bankReferenceId && (
+                                <p className="text-xs text-muted-foreground">
+                                    {payslip.paymentMethod === "gcash" ? "GCash ID" : 
+                                     payslip.paymentMethod === "check" ? "Check No" : "Ref"}: {payslip.bankReferenceId}
+                                </p>
+                            )}
+                            {payslip.paymentMethod === "cash" && payslip.cashAmount && (
+                                <p className="text-xs text-muted-foreground">
+                                    Amount: {formatCurrency(payslip.cashAmount)}
+                                </p>
+                            )}
+                            {payslip.paidConfirmedBy && (
+                                <p className="text-xs text-muted-foreground">By: {payslip.paidConfirmedBy}</p>
+                            )}
+                            {payslip.paymentProofUrl && (
+                                <div className="mt-2">
+                                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1 mb-1">
+                                        <Image className="h-3 w-3" /> Proof of Payment
+                                    </p>
+                                    <div className="border rounded-lg overflow-hidden">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img 
+                                            src={payslip.paymentProofUrl} 
+                                            alt="Payment proof" 
+                                            className="w-full max-h-48 object-contain bg-muted/30 cursor-pointer hover:opacity-90 transition-opacity"
+                                            onClick={() => window.open(payslip.paymentProofUrl, "_blank")}
+                                        />
+                                    </div>
+                                    <p className="text-xs text-muted-foreground/60 mt-1">Click image to view full size</p>
+                                </div>
+                            )}
                         </div>
                     )}
 

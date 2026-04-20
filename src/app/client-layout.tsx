@@ -5,6 +5,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
+import { useEmployeesStore } from "@/store/employees.store";
 import { useEffect, useState } from "react";
 import { createClient, clearAuthStorage, resetClient, safeGetSession, installAuthErrorSuppression } from "@/services/supabase-browser";
 import { hydrateAllStores, startWriteThrough, startRealtime, stopRealtime, stopWriteThrough } from "@/services/sync.service";
@@ -149,6 +150,8 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
     const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const employees = useEmployeesStore((s) => s.employees);
     const [mounted, setMounted] = useState(false);
 
     // Install global auth error suppression on mount (once)
@@ -159,11 +162,31 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         if (!mounted) return;
-        if (!isAuthenticated && pathname !== "/login") {
+        if (!isAuthenticated && pathname !== "/login" && pathname !== "/deactivated") {
             // Hard navigation so the middleware re-evaluates cookies cleanly
             window.location.href = "/login";
         }
     }, [mounted, isAuthenticated, pathname]);
+
+    // Guard: kick out deactivated/resigned employees that are already authenticated
+    // (covers mid-session deactivation and page-refresh with a deactivated account)
+    useEffect(() => {
+        if (!isAuthenticated || !mounted || employees.length === 0) return;
+        if (pathname === "/deactivated" || pathname === "/login") return;
+        const myEmployee = employees.find(
+            (e) =>
+                e.profileId === currentUser?.id ||
+                e.email?.toLowerCase() === currentUser?.email?.toLowerCase()
+        );
+        if (myEmployee && (myEmployee.status === "inactive" || myEmployee.status === "resigned")) {
+            clearAuthStorage();
+            resetClient();
+            stopRealtime();
+            stopWriteThrough();
+            useAuthStore.getState().logout();
+            window.location.href = "/deactivated";
+        }
+    }, [isAuthenticated, mounted, employees, currentUser, pathname]);
 
     // Sync stores with Supabase when authenticated (handles page refresh).
     // Also listens for Supabase auth events to handle invalid/expired tokens.
@@ -201,10 +224,10 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                 handleInvalidSession();
                 return;
             }
-            // Session is valid, hydrate stores
-            hydrateAllStores().then(() => {
+            // Session is valid, hydrate stores (skip redundant session check)
+            hydrateAllStores({ skipSessionCheck: true }).then(() => {
                 startWriteThrough();
-                startRealtime();
+                startRealtime();  // non-blocking — both fire immediately after hydration
             });
         });
 
@@ -217,13 +240,14 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     const isLoginPage = pathname === "/login";
     const isRoot      = pathname === "/";
     const isKiosk     = pathname === "/kiosk" || pathname.startsWith("/kiosk/");
-    const skipShell   = isLoginPage || isRoot || isKiosk;
+    const isDeactivated = pathname === "/deactivated";
+    const skipShell   = isLoginPage || isRoot || isKiosk || isDeactivated;
 
     // Show spinner until React has mounted on the client (prevents hydration mismatch)
     if (!mounted) return <AppLoadingScreen />;
 
     // Show spinner while the unauthenticated redirect is in-flight
-    if (!isAuthenticated && !isLoginPage) return <AppLoadingScreen />;
+    if (!isAuthenticated && !isLoginPage && !isDeactivated) return <AppLoadingScreen />;
 
     return (
         <TooltipProvider>

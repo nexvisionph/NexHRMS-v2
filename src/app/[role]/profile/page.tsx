@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useAttendanceStore } from "@/store/attendance.store";
@@ -8,9 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getInitials, formatCurrency, formatDate } from "@/lib/format";
-import { Mail, MapPin, Phone, Briefcase, Calendar, DollarSign, Heart, Home, Save, X } from "lucide-react";
+import {
+    Mail, MapPin, Phone, Briefcase, Calendar, DollarSign,
+    Heart, Home, Save, X, Camera, Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 
@@ -18,7 +21,7 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
     return (
         <div className="flex items-center justify-between py-2 border-b last:border-0">
             <span className="flex items-center gap-2 text-sm text-muted-foreground">{icon}{label}</span>
-            <span className="text-sm font-medium">{value}</span>
+            <span className="text-sm font-medium text-right max-w-[60%] break-words">{value}</span>
         </div>
     );
 }
@@ -32,10 +35,77 @@ export default function ProfilePage() {
     const employee = employees.find((e) => e.email?.toLowerCase() === currentUser.email?.toLowerCase());
 
     const [editing, setEditing] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [uploadingAvatar, setUploadingAvatar] = useState(false);
     const [phone, setPhone] = useState(employee?.phone || "");
     const [birthday, setBirthday] = useState(employee?.birthday || "");
     const [emergencyContact, setEmergencyContact] = useState(employee?.emergencyContact || "");
     const [address, setAddress] = useState(employee?.address || "");
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Keep form fields in sync when employee data changes externally
+    useEffect(() => {
+        if (employee && !editing) {
+            setPhone(employee.phone || "");
+            setBirthday(employee.birthday || "");
+            setEmergencyContact(employee.emergencyContact || "");
+            setAddress(employee.address || "");
+        }
+    }, [employee, editing]);
+
+    const handleAvatarUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !employee) return;
+
+        // Validate client-side
+        const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+        if (!allowedTypes.includes(file.type)) {
+            toast.error("Invalid file type. Only JPEG, PNG, GIF, or WebP are allowed.");
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error("File too large. Maximum size is 5MB.");
+            return;
+        }
+
+        setUploadingAvatar(true);
+        try {
+            // Upload to Supabase Storage
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("bucket", "avatars");
+            formData.append("folder", employee.id);
+
+            const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
+            const uploadData = await uploadRes.json();
+
+            if (!uploadRes.ok) {
+                throw new Error(uploadData.error || "Upload failed");
+            }
+
+            // Save avatar_url to employee profile via API
+            const patchRes = await fetch("/api/settings/profile", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ avatar_url: uploadData.url }),
+            });
+
+            if (!patchRes.ok) {
+                const patchData = await patchRes.json();
+                throw new Error(patchData.error || "Failed to save avatar");
+            }
+
+            // Update local store
+            updateEmployee(employee.id, { avatarUrl: uploadData.url });
+            toast.success("Profile picture updated!");
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Failed to upload avatar");
+        } finally {
+            setUploadingAvatar(false);
+            // Reset file input so re-selecting the same file triggers onChange
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+    }, [employee, updateEmployee]);
 
     if (!employee) {
         return (
@@ -65,22 +135,51 @@ export default function ProfilePage() {
         setEditing(false);
     };
 
-    const handleSave = () => {
-        updateEmployee(employee.id, {
-            phone: phone || undefined,
-            birthday: birthday || undefined,
-            emergencyContact: emergencyContact || undefined,
-            address: address || undefined,
-        });
-        useAuditStore.getState().log({
-            entityType: "employee",
-            entityId: employee.id,
-            action: "adjustment_applied",
-            performedBy: currentUser.id,
-            reason: "Self-service profile update",
-        });
-        toast.success("Profile updated successfully!");
-        setEditing(false);
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            // Save to DB via API
+            const patchPayload: Record<string, string | null> = {
+                phone: phone || null,
+                birthday: birthday || null,
+                emergency_contact: emergencyContact || null,
+                address: address || null,
+            };
+
+            const res = await fetch("/api/settings/profile", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(patchPayload),
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || "Failed to update profile");
+            }
+
+            // Update local Zustand store
+            updateEmployee(employee.id, {
+                phone: phone || undefined,
+                birthday: birthday || undefined,
+                emergencyContact: emergencyContact || undefined,
+                address: address || undefined,
+            });
+
+            useAuditStore.getState().log({
+                entityType: "employee",
+                entityId: employee.id,
+                action: "adjustment_applied",
+                performedBy: currentUser.id,
+                reason: "Self-service profile update",
+            });
+
+            toast.success("Profile updated successfully!");
+            setEditing(false);
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Failed to update profile");
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -94,11 +193,39 @@ export default function ProfilePage() {
             <Card className="border border-border/50">
                 <CardContent className="p-6">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                        <Avatar className="h-20 w-20">
-                            <AvatarFallback className="text-xl bg-primary/10 text-primary font-bold">
-                                {getInitials(employee.name)}
-                            </AvatarFallback>
-                        </Avatar>
+                        {/* Avatar with upload overlay */}
+                        <div className="relative group">
+                            <Avatar className="h-20 w-20">
+                                {employee.avatarUrl && (
+                                    <AvatarImage src={employee.avatarUrl} alt={employee.name} />
+                                )}
+                                <AvatarFallback className="text-xl bg-primary/10 text-primary font-bold">
+                                    {getInitials(employee.name)}
+                                </AvatarFallback>
+                            </Avatar>
+                            {/* Upload overlay */}
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={uploadingAvatar}
+                                className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer disabled:cursor-not-allowed"
+                                aria-label="Upload profile picture"
+                            >
+                                {uploadingAvatar ? (
+                                    <Loader2 className="h-5 w-5 text-white animate-spin" />
+                                ) : (
+                                    <Camera className="h-5 w-5 text-white" />
+                                )}
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/jpeg,image/png,image/gif,image/webp"
+                                className="hidden"
+                                onChange={handleAvatarUpload}
+                            />
+                        </div>
+
                         <div className="flex-1">
                             <div className="flex items-center gap-3 flex-wrap">
                                 <h2 className="text-2xl font-bold">{employee.name}</h2>
@@ -107,7 +234,9 @@ export default function ProfilePage() {
                                 </Badge>
                                 <Badge variant="outline">{employee.workType}</Badge>
                             </div>
-                            <p className="text-muted-foreground mt-1">{employee.role} · {employee.department}</p>
+                            <p className="text-muted-foreground mt-1">
+                                {employee.jobTitle || employee.role} · {employee.department}
+                            </p>
                             <div className="flex flex-wrap gap-4 mt-3 text-sm text-muted-foreground">
                                 <span className="flex items-center gap-1.5"><Mail className="h-4 w-4" />{employee.email}</span>
                                 {employee.phone && <span className="flex items-center gap-1.5"><Phone className="h-4 w-4" />{employee.phone}</span>}
@@ -149,8 +278,13 @@ export default function ProfilePage() {
                                     <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Home address" className="mt-1 h-8 text-sm" />
                                 </div>
                                 <div className="flex gap-2 pt-2">
-                                    <Button onClick={handleSave} size="sm" className="gap-1.5"><Save className="h-3.5 w-3.5" /> Save</Button>
-                                    <Button onClick={handleCancel} size="sm" variant="outline" className="gap-1.5"><X className="h-3.5 w-3.5" /> Cancel</Button>
+                                    <Button onClick={handleSave} size="sm" className="gap-1.5" disabled={saving}>
+                                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                                        {saving ? "Saving..." : "Save"}
+                                    </Button>
+                                    <Button onClick={handleCancel} size="sm" variant="outline" className="gap-1.5" disabled={saving}>
+                                        <X className="h-3.5 w-3.5" /> Cancel
+                                    </Button>
                                 </div>
                             </div>
                         ) : (
@@ -172,6 +306,9 @@ export default function ProfilePage() {
                     <CardContent className="space-y-0.5">
                         <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Department" value={employee.department} />
                         <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Role" value={employee.role} />
+                        {employee.jobTitle && (
+                            <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Job Title" value={employee.jobTitle} />
+                        )}
                         <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Work Type" value={employee.workType} />
                         <InfoRow icon={<Calendar className="h-4 w-4" />} label="Join Date" value={formatDate(employee.joinDate)} />
                         <InfoRow icon={<DollarSign className="h-4 w-4" />} label="Monthly Salary" value={`${formatCurrency(employee.salary)}/mo`} />

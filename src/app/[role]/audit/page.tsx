@@ -19,6 +19,7 @@ import {
 import { FileSearch, Eye, Shield, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AuditLogEntry } from "@/types";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 const ACTION_COLORS: Record<string, string> = {
     salary_proposal: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
@@ -118,15 +119,17 @@ export default function AuditPage() {
             <Card className="border border-border/50">
                 <CardContent className="p-4">
                     <div className="flex flex-wrap items-center gap-3">
-                        <Select value={actionFilter} onValueChange={setActionFilter}>
-                            <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Filter by action" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Actions</SelectItem>
-                                {uniqueActions.map((a) => (
-                                    <SelectItem key={a} value={a}>{a.replace(/_/g, " ")}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect
+                            value={actionFilter}
+                            onValueChange={setActionFilter}
+                            options={[
+                                { value: "all", label: "All Actions" },
+                                ...uniqueActions.map((a) => ({ value: a, label: a.replace(/_/g, " ") })),
+                            ]}
+                            placeholder="Filter by action"
+                            searchPlaceholder="Search actions..."
+                            className="w-full sm:w-[200px]"
+                        />
                         <Input
                             placeholder="Filter by entity..."
                             value={entityFilter}

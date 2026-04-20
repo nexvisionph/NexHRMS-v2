@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import type { DeductionTemplate, EmployeeDeductionAssignment, DeductionTemplateType, DeductionCalculationMode, DeductionCondition } from "@/types";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -358,6 +359,7 @@ export const useDeductionsStore = create<DeductionsState>()(
         {
             name: "nexhrms-deductions",
             version: 1,
+            storage: safePersistStorage,
         }
     )
 );

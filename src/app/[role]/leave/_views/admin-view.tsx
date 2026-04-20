@@ -26,9 +26,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Check, X, Palmtree, Stethoscope, AlertTriangle, FileQuestion, FileText, Pencil, Trash2, Baby, Heart, Users } from "lucide-react";
 import { toast } from "sonner";
-import { dispatchNotification } from "@/lib/notifications";
 import { useAuditStore } from "@/store/audit.store";
 import type { LeaveType } from "@/types";
+import { EmployeeCombobox } from "@/components/ui/employee-combobox";
 
 /* ═══════════════════════════════════════════════════════════════
    ADMIN/HR/SUPERVISOR VIEW — Leave Management
@@ -150,7 +150,7 @@ export default function AdminLeaveView() {
         setFormStart(""); setFormEnd(""); setFormReason(""); setFormEmpId("");
     };
 
-    const handleApprove = (id: string, employeeId: string, startDate: string, endDate: string) => {
+    const handleApprove = (id: string, employeeId: string, startDate: string, endDate: string, leaveType: string) => {
         updateStatus(id, "approved", currentUser.id);
         // Sync leave→attendance: mark days as on_leave
         const start = new Date(startDate);
@@ -169,7 +169,7 @@ export default function AdminLeaveView() {
                 }));
             }
         }
-        dispatchNotification("leave_approved", { name: getEmpName(employeeId), startDate, endDate }, employeeId);
+        // Notification is dispatched inside updateStatus (leave.store.ts) — do NOT fire again here.
         useAuditStore.getState().log({ entityType: "leave", entityId: id, action: "leave_approved", performedBy: currentUser.id });
         toast.success("Leave approved & attendance updated");
     };
@@ -188,14 +188,7 @@ export default function AdminLeaveView() {
                     <DialogContent>
                         <DialogHeader><DialogTitle>Submit Leave on Behalf of Employee</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
-                            <Select value={formEmpId} onValueChange={setFormEmpId}>
-                                <SelectTrigger><SelectValue placeholder="Select Employee" /></SelectTrigger>
-                                <SelectContent>
-                                    {employees.filter((e) => e.status === "active" && e.id).map((e) => (
-                                        <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <EmployeeCombobox value={formEmpId} onValueChange={setFormEmpId} required placeholder="Select Employee" className="w-full" />
                             <Select value={formType} onValueChange={(v) => setFormType(v as LeaveType)}>
                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
@@ -313,10 +306,10 @@ export default function AdminLeaveView() {
                                                 <TableCell>
                                                     {req.status === "pending" && (
                                                         <div className="flex items-center gap-1">
-                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10" onClick={() => handleApprove(req.id, req.employeeId, req.startDate, req.endDate)}>
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10" onClick={() => handleApprove(req.id, req.employeeId, req.startDate, req.endDate, req.type)}>
                                                                 <Check className="h-4 w-4" />
                                                             </Button>
-                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10" onClick={() => { updateStatus(req.id, "rejected", currentUser.id); dispatchNotification("leave_rejected", { name: getEmpName(req.employeeId) }, req.employeeId); useAuditStore.getState().log({ entityType: "leave", entityId: req.id, action: "leave_rejected", performedBy: currentUser.id }); toast.success("Leave rejected"); }}>
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10" onClick={() => { updateStatus(req.id, "rejected", currentUser.id); useAuditStore.getState().log({ entityType: "leave", entityId: req.id, action: "leave_rejected", performedBy: currentUser.id }); toast.success("Leave rejected"); }}>
                                                                 <X className="h-4 w-4" />
                                                             </Button>
                                                         </div>

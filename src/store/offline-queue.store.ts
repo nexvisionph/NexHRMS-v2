@@ -9,6 +9,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -171,6 +172,7 @@ export const useOfflineQueueStore = create<OfflineQueueStore>()(
         {
             name: "nexhrms-offline-queue",
             version: 1,
+            storage: safePersistStorage,
         }
     )
 );

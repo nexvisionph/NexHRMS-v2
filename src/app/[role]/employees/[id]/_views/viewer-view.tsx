@@ -11,7 +11,7 @@ import { usePayrollStore } from "@/store/payroll.store";
 import { useLoansStore } from "@/store/loans.store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -88,6 +88,9 @@ export default function ViewerProfileView() {
                 <CardContent className="p-6">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                         <Avatar className="h-20 w-20">
+                            {employee.avatarUrl && (
+                                <AvatarImage src={employee.avatarUrl} alt={employee.name} />
+                            )}
                             <AvatarFallback className="text-xl bg-primary/10 text-primary font-bold">{getInitials(employee.name)}</AvatarFallback>
                         </Avatar>
                         <div className="flex-1">

@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Shield, Download } from "lucide-react";
 import { toast } from "sonner";
 import { format, subMonths } from "date-fns";
@@ -284,7 +285,7 @@ export default function AdminReportsView() {
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                         <div><p className="text-sm font-semibold">Project Manpower</p><p className="text-xs text-muted-foreground">Attendance per project for selected date</p></div>
                         <div className="flex items-center gap-2">
-                            <input type="date" value={manpowerDate} onChange={(e) => setManpowerDate(e.target.value)} className="border rounded-md px-3 py-1.5 text-sm bg-background" />
+                            <Input type="date" value={manpowerDate} onChange={(e) => setManpowerDate(e.target.value)} className="w-[180px]" />
                             {manpowerReport.length > 0 && <Button size="sm" variant="outline" className="gap-1.5 h-7" onClick={() => { exportCSV([["Project", "Assigned", "Present", "On Leave", "Absent", "Coverage %"], ...manpowerReport.map((p) => [p.name, p.assigned, p.present, p.onLeave, p.absent, p.assigned > 0 ? Math.round((p.present / p.assigned) * 100) : 0].map(String))], `manpower-${manpowerDate}.csv`); toast.success("Manpower report downloaded"); }}><Download className="h-3 w-3" /> CSV</Button>}
                         </div>
                     </div>

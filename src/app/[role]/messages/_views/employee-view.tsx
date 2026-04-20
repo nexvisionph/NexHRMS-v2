@@ -206,16 +206,19 @@ export default function EmployeeMessagesView() {
                                                             <Avatar className="h-8 w-8 shrink-0">
                                                                 <AvatarFallback className="text-[9px] bg-muted">{getInitials(getEmpName(msg.employeeId))}</AvatarFallback>
                                                             </Avatar>
-                                                            <div className={`max-w-[75%] sm:max-w-[65%] space-y-0.5 flex flex-col ${isMine ? "items-end" : "items-start"}`}>
+                                                            <div className={`max-w-[75%] sm:max-w-[65%] min-w-0 space-y-0.5 flex flex-col ${isMine ? "items-end" : "items-start"}`}>
                                                                 <div className={`flex items-center gap-1.5 ${isMine ? "flex-row-reverse" : ""}`}>
                                                                     {!isMine && <span className="text-xs font-medium">{getEmpName(msg.employeeId)}</span>}
                                                                     <span className="text-[10px] text-muted-foreground">{formatDateTime(msg.createdAt)}</span>
                                                                 </div>
-                                                                <div className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
-                                                                    isMine
-                                                                        ? "bg-primary text-primary-foreground rounded-tr-sm"
-                                                                        : "bg-muted rounded-tl-sm"
-                                                                }`}>
+                                                                <div 
+                                                                    className={`rounded-lg px-3.5 py-2 text-sm leading-relaxed inline-block max-w-full text-left ${
+                                                                        isMine
+                                                                            ? "bg-primary text-primary-foreground"
+                                                                            : "bg-muted"
+                                                                    }`}
+                                                                    style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}
+                                                                >
                                                                     {msg.message}
                                                                 </div>
                                                             </div>
@@ -227,18 +230,18 @@ export default function EmployeeMessagesView() {
                                         </ScrollArea>
 
                                         {/* Input bar */}
-                                        <div className="p-3 border-t flex gap-2 shrink-0 bg-background">
+                                        <div className="p-3 border-t flex items-center gap-2 shrink-0 bg-background">
                                             <Input
                                                 value={chatMessage}
                                                 onChange={(e) => setChatMessage(e.target.value)}
                                                 placeholder="Type a message..."
-                                                className="text-base"
+                                                className="flex-1 h-9"
                                                 onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
                                             />
                                             <button
                                                 onClick={handleSend}
                                                 disabled={!chatMessage.trim()}
-                                                className="h-10 w-10 shrink-0 rounded-md bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40 hover:bg-primary/90 transition-colors"
+                                                className="h-9 w-9 shrink-0 rounded-md bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40 hover:bg-primary/90 transition-colors"
                                                 aria-label="Send"
                                             >
                                                 <Send className="h-4 w-4" />
@@ -286,7 +289,7 @@ export default function EmployeeMessagesView() {
                                                     <h3 className="text-sm font-semibold">{ann.subject}</h3>
                                                     {!isRead && <Badge variant="default" className="text-[10px] shrink-0">New</Badge>}
                                                 </div>
-                                                <p className="text-sm text-muted-foreground leading-relaxed">{ann.body}</p>
+                                                <p className="text-sm text-muted-foreground leading-relaxed" style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}>{ann.body}</p>
                                             </div>
                                             <Badge variant="outline" className="text-[10px] gap-1 shrink-0 mt-0.5">
                                                 <ChannelIcon className="h-3 w-3" />

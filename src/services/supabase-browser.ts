@@ -21,6 +21,21 @@ function isRefreshTokenError(error: unknown): boolean {
 }
 
 /**
+ * Check if an error is a JWT/token expiry error from Supabase Realtime.
+ */
+export function isJwtExpiredError(error: unknown): boolean {
+  if (!error) return false;
+  const msg = typeof error === "string"
+    ? error
+    : (error as { message?: string })?.message ?? "";
+  return (
+    msg.includes("InvalidJWTToken") ||
+    msg.includes("Token has expired") ||
+    msg.includes("JWT") && msg.includes("expired")
+  );
+}
+
+/**
  * Clear all Supabase auth storage (cookies + localStorage).
  * Call this when encountering an unrecoverable auth error (refresh_token_not_found).
  */
@@ -174,13 +189,20 @@ export function installAuthErrorSuppression() {
         // Suppress this error entirely
         return;
       }
+      if (isJwtExpiredError(arg)) {
+        // JWT expiry from realtime is expected — suppress and let the reconnect logic handle it
+        console.info("[realtime] JWT expired — reconnecting after token refresh");
+        return;
+      }
       // Check string messages
       if (
         typeof arg === "string" &&
         (arg.includes("Refresh Token") || 
          arg.includes("AuthApiError") || 
          arg.includes("refresh_token_not_found") ||
-         arg.includes("Invalid Refresh Token"))
+         arg.includes("Invalid Refresh Token") ||
+         arg.includes("InvalidJWTToken") ||
+         arg.includes("Token has expired"))
       ) {
         return;
       }

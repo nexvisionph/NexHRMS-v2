@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { Payslip, PayrollRun, PayrollAdjustment, PayScheduleConfig, FinalPayComputation, PayrollSignatureConfig, DeductionOverride, DeductionGlobalDefault, DeductionType } from "@/types";
 import { POLICY_VERSIONS } from "@/lib/constants";
@@ -47,10 +48,10 @@ interface PayrollState {
     issuePayslip: (payslip: Omit<Payslip, "id" | "status" | "issuedAt"> & { issuedAt?: string }) => void;
     confirmPayslip: (id: string) => void;
     publishPayslip: (id: string) => void;
-    recordPayment: (id: string, paymentMethod: string, bankReferenceId: string) => void;
+    recordPayment: (id: string, paymentMethod: Payslip["paymentMethod"], bankReferenceId: string) => void;
     signPayslip: (id: string, signatureDataUrl: string) => void;
     acknowledgePayslip: (id: string, employeeId: string) => void;
-    confirmPaidByFinance: (id: string, confirmedBy: string, method: string, reference: string) => void;
+    confirmPaidByFinance: (id: string, confirmedBy: string, method: Payslip["paymentMethod"], reference: string, cashAmount?: number, paymentProofUrl?: string) => void;
     /** Update a payslip with data from server (avoids timestamp mismatch with write-through) */
     updatePayslipFromServer: (payslip: Partial<Payslip> & { id: string }) => void;
     getPayslipsByStatus: (status: Payslip["status"]) => Payslip[];
@@ -152,17 +153,27 @@ export const usePayrollStore = create<PayrollState>()(
 
             // ─── Payslip lifecycle (simplified: draft → published → signed) ───
             issuePayslip: (data) =>
-                set((s) => ({
-                    payslips: [
-                        ...s.payslips,
-                        {
-                            ...data,
-                            id: `PS-${nanoid(8)}`,
-                            status: "draft",
-                            issuedAt: data.issuedAt ?? new Date().toISOString().split("T")[0],
-                        },
-                    ],
-                })),
+                set((s) => {
+                    // Duplicate guard: skip if a payslip already exists for this employee + period
+                    const duplicate = s.payslips.find(
+                        (p) => p.employeeId === data.employeeId
+                            && p.periodStart === data.periodStart
+                            && p.periodEnd === data.periodEnd
+                            && p.payFrequency === data.payFrequency
+                    );
+                    if (duplicate) return {};
+                    return {
+                        payslips: [
+                            ...s.payslips,
+                            {
+                                ...data,
+                                id: `PS-${nanoid(8)}`,
+                                status: "draft",
+                                issuedAt: data.issuedAt ?? new Date().toISOString().split("T")[0],
+                            },
+                        ],
+                    };
+                }),
 
             // DEPRECATED: no-op in simplified flow (kept for backward compat)
             confirmPayslip: (_id) =>
@@ -209,11 +220,20 @@ export const usePayrollStore = create<PayrollState>()(
                 })),
 
             // Payment tracking only (no status change in simplified flow)
-            confirmPaidByFinance: (id, confirmedBy, method, reference) =>
+            confirmPaidByFinance: (id, confirmedBy, method, reference, cashAmount, paymentProofUrl) =>
                 set((s) => ({
                     payslips: s.payslips.map((p) =>
                         p.id === id
-                            ? { ...p, paidAt: new Date().toISOString(), paidConfirmedBy: confirmedBy, paidConfirmedAt: new Date().toISOString(), paymentMethod: method, bankReferenceId: reference }
+                            ? { 
+                                ...p, 
+                                paidAt: new Date().toISOString(), 
+                                paidConfirmedBy: confirmedBy, 
+                                paidConfirmedAt: new Date().toISOString(), 
+                                paymentMethod: method as Payslip["paymentMethod"], 
+                                bankReferenceId: reference,
+                                cashAmount: method === "cash" ? cashAmount : undefined,
+                                paymentProofUrl,
+                              }
                             : p
                     ),
                 })),
@@ -459,7 +479,17 @@ export const usePayrollStore = create<PayrollState>()(
                 set((s) => {
                     const today = new Date().toISOString().split("T")[0];
                     const targetYear = year ?? new Date().getFullYear();
-                    const newSlips: Payslip[] = employees.map((emp) => {
+                    const newSlips: Payslip[] = employees
+                        .filter((emp) => {
+                            // Duplicate guard: skip if 13th month already exists for this employee + year
+                            return !s.payslips.some(
+                                (p) => p.employeeId === emp.id
+                                    && p.periodStart === `${targetYear}-01-01`
+                                    && p.periodEnd === `${targetYear}-12-31`
+                                    && p.notes?.includes("13th Month Pay")
+                            );
+                        })
+                        .map((emp) => {
                         // Determine how many full months the employee worked this year
                         let monthsWorked = 12;
                         if (emp.joinDate) {
@@ -550,6 +580,7 @@ export const usePayrollStore = create<PayrollState>()(
         {
             name: "nexhrms-payroll",
             version: 7,
+            storage: safePersistStorage,
             migrate: () => ({
                 payslips: [],
                 runs: [],

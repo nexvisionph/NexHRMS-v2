@@ -88,6 +88,30 @@ export async function resolveException(id: string, resolvedBy: string, notes?: s
   return { ok: true, data: keysToCamel(data as Record<string, unknown>) as unknown as AttendanceException };
 }
 
+export async function updateException(id: string, updates: { flag?: string; notes?: string; resolvedAt?: string | null; resolvedBy?: string | null }): Promise<ServiceResult<AttendanceException>> {
+  const supabase = await createServerSupabaseClient();
+  const row: Record<string, unknown> = {};
+  if (updates.flag !== undefined) row.flag = updates.flag;
+  if (updates.notes !== undefined) row.notes = updates.notes;
+  if (updates.resolvedAt !== undefined) row.resolved_at = updates.resolvedAt;
+  if (updates.resolvedBy !== undefined) row.resolved_by = updates.resolvedBy;
+  const { data, error } = await supabase
+    .from("attendance_exceptions")
+    .update(row)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: keysToCamel(data as Record<string, unknown>) as unknown as AttendanceException };
+}
+
+export async function deleteException(id: string): Promise<ServiceResult<void>> {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.from("attendance_exceptions").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: undefined };
+}
+
 // ─── Attendance Logs (Daily Summary) ─────────────────────────────
 
 export async function getAttendanceLogs(employeeId?: string, dateFrom?: string, dateTo?: string): Promise<ServiceResult<AttendanceLog[]>> {

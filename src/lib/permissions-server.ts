@@ -36,18 +36,18 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     ],
     supervisor: [
         "page:dashboard", "page:employees", "page:attendance", "page:leave",
-        "page:timesheets", "page:projects", "page:tasks", "page:messages",
+        "page:timesheets", "page:projects", "page:tasks", "page:messages", "page:settings",
         "attendance:view_all", "leave:view_all", "leave:approve", "timesheets:view_all", "timesheets:approve",
         "projects:manage", "tasks:view", "tasks:create", "tasks:assign",
         "employees:view",
     ],
     auditor: [
-        "page:dashboard", "page:audit", "page:reports", "page:employees", "page:loans",
+        "page:dashboard", "page:audit", "page:reports", "page:employees", "page:loans", "page:settings",
         "audit:view", "employees:view", "reports:view", "loans:view_all",
     ],
     employee: [
         "page:dashboard", "page:attendance", "page:leave", "page:payroll",
-        "page:loans", "page:tasks", "page:messages",
+        "page:loans", "page:tasks", "page:messages", "page:settings",
         "payroll:view_own", "loans:view_own", "tasks:view",
     ],
 };

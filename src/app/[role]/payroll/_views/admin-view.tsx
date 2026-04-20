@@ -47,6 +47,7 @@ import { PH_EXEMPTION_REASONS } from "@/types";
 import { useDepartmentsStore } from "@/store/departments.store";
 import { useProjectsStore } from "@/store/projects.store";
 import { ThirteenthMonthModal } from "@/components/payroll/thirteenth-month-modal";
+import { ExportBackupDialog } from "@/components/export-backup-dialog";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -209,7 +210,16 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         const loans = getActiveByEmployee(empId);
         return loans.reduce((sum, l) => sum + l.remainingBalance, 0);
     };
-    const toggleSelectAll = () => { if (allSelected) setSelectedEmployeeIds([]); else setSelectedEmployeeIds(activeEmployees.map((e) => e.id)); };
+    const toggleSelectAll = () => {
+        if (allSelected) setSelectedEmployeeIds([]);
+        else {
+            // Exclude employees who already have payslips for the selected period
+            const eligible = activeEmployees.filter((e) =>
+                !payslips.some((p) => p.employeeId === e.id && p.periodStart === cutoffDates.start && p.periodEnd === cutoffDates.end)
+            );
+            setSelectedEmployeeIds(eligible.map((e) => e.id));
+        }
+    };
     const toggleEmployee = (empId: string) => { setSelectedEmployeeIds((prev) => prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]); };
 
     // Compute whether gov deductions will apply for the currently selected cutoff
@@ -223,14 +233,32 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     const handleIssue = () => {
         const issuanceDateLocked = isRunLocked(formIssuedAt);
         if (issuanceDateLocked) { toast.error("Selected issuance date belongs to a locked run."); return; }
-        if (selectedEmployeeIds.length === 0 || !cutoffDates.start || !cutoffDates.end) { toast.error("Please select at least one employee"); return; }
+        if (selectedEmployeeIds.length === 0 || !cutoffDates.start || !cutoffDates.end) { toast.error("Please select at least one employee and set cutoff dates"); return; }
+        if (cutoffDates.start > cutoffDates.end) { toast.error("Cutoff start date must be before end date"); return; }
+        const allowancesVal = Number(formAllowances) || 0;
+        const otherDedVal = Number(formOtherDeductions) || 0;
+        const otHoursVal = Number(formOTHours) || 0;
+        const nightDiffVal = Number(formNightDiffHours) || 0;
+        if (allowancesVal < 0) { toast.error("Allowances cannot be negative"); return; }
+        if (otherDedVal < 0) { toast.error("Other deductions cannot be negative"); return; }
+        if (otHoursVal < 0) { toast.error("OT hours cannot be negative"); return; }
+        if (nightDiffVal < 0) { toast.error("Night differential hours cannot be negative"); return; }
 
+        try {
         let successCount = 0;
         let totalLoanDeductions = 0;
+        let skippedDuplicates = 0;
 
         selectedEmployeeIds.forEach((empId) => {
             const emp = employees.find((e) => e.id === empId);
             if (!emp) return;
+
+            // Duplicate guard: skip if payslip already exists for this employee + period
+            const existingPayslip = payslips.find(
+                (p) => p.employeeId === empId && p.periodStart === cutoffDates.start && p.periodEnd === cutoffDates.end
+            );
+            if (existingPayslip) { skippedDuplicates++; return; }
+
             const freq = emp.payFrequency || paySchedule.defaultFrequency;
             let grossPay: number;
             if (freq === "semi_monthly") grossPay = Math.round(emp.salary / 2);
@@ -252,10 +280,10 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
             const empLoanDeduction = Math.min(rawLoanDeduction, Math.round(grossPay * 0.30));
             totalLoanDeductions += empLoanDeduction;
 
-            const allowances = Number(formAllowances) || 0;
-            const otherDed = Number(formOtherDeductions) || 0;
-            const otHours = Number(formOTHours) || 0;
-            const nightDiffHours = Number(formNightDiffHours) || 0;
+            const allowances = allowancesVal;
+            const otherDed = otherDedVal;
+            const otHours = otHoursVal;
+            const nightDiffHours = nightDiffVal;
             
             // Apply deduction overrides for each government contribution (Philippine Standard)
             // Priority: per-employee override > global default > auto (standard PH calc)
@@ -360,8 +388,13 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         });
 
         const loanMsg = totalLoanDeductions > 0 ? ` (incl. ${formatCurrency(totalLoanDeductions)} total loan deductions)` : "";
-        toast.success(`Issued ${successCount} payslip${successCount > 1 ? "s" : ""}${loanMsg}`);
+        if (skippedDuplicates > 0) toast.warning(`${skippedDuplicates} employee${skippedDuplicates > 1 ? "s" : ""} already had payslips for this period — skipped.`);
+        if (successCount > 0) toast.success(`Issued ${successCount} payslip${successCount > 1 ? "s" : ""}${loanMsg}`);
+        else if (skippedDuplicates > 0) toast.info("No new payslips issued — all selected employees already have payslips for this period.");
         setOpen(false); setSelectedEmployeeIds([]); setFormAllowances("0"); setFormOtherDeductions("0"); setFormOTHours("0"); setFormNightDiffHours("0"); setFormNotes(""); setFormIssuedAt(format(new Date(), "yyyy-MM-dd"));
+        } catch (err) {
+            toast.error(`Payslip issuance failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
     };
 
     // ─── 13th Month Modal State ─────────────────────────────────
@@ -422,26 +455,36 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         const draftSlips = filteredPayslips.filter((p) => p.status === "draft");
         if (draftSlips.length === 0) { toast.error("No draft payslips to publish"); return; }
         setBatchProcessing(true);
+        try {
         draftSlips.forEach((ps) => {
             publishPayslip(ps.id);
             useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payroll_published", performedBy: currentUser.id });
-            dispatchNotification("payslip_published", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}` }, ps.employeeId);
+            dispatchNotification("payslip_published", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}`, amount: formatCurrency(ps.netPay) }, ps.employeeId);
         });
         toast.success(`Published ${draftSlips.length} payslip${draftSlips.length > 1 ? "s" : ""}`);
-        setBatchProcessing(false);
+        } catch (err) {
+            toast.error(`Failed to publish payslips: ${err instanceof Error ? err.message : "Unknown error"}`);
+        } finally {
+            setBatchProcessing(false);
+        }
     }, [filteredPayslips, publishPayslip, currentUser.id]);
 
     const handleBatchRecordPayment = useCallback(() => {
         const signedSlips = filteredPayslips.filter((p) => p.status === "signed");
         if (signedSlips.length === 0) { toast.error("No signed payslips to record payment for"); return; }
         setBatchProcessing(true);
+        try {
         signedSlips.forEach((ps) => {
             recordPayment(ps.id, "bank_transfer", `BATCH-REF-${Date.now()}-${ps.id}`);
             useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payment_recorded", performedBy: currentUser.id });
-            dispatchNotification("payment_confirmed", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}` }, ps.employeeId);
+            dispatchNotification("payment_confirmed", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}`, amount: formatCurrency(ps.netPay) }, ps.employeeId);
         });
         toast.success(`Recorded payment for ${signedSlips.length} payslip${signedSlips.length > 1 ? "s" : ""}`);
-        setBatchProcessing(false);
+        } catch (err) {
+            toast.error(`Failed to record payments: ${err instanceof Error ? err.message : "Unknown error"}`);
+        } finally {
+            setBatchProcessing(false);
+        }
     }, [filteredPayslips, recordPayment, currentUser.id]);
 
     /** Recompute government + custom deductions on draft payslips using current Tax Settings. */
@@ -450,6 +493,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         const eligible = filteredPayslips.filter((p) => p.status === "draft");
         if (eligible.length === 0) { toast.error("No draft payslips to recompute"); return; }
         setBatchProcessing(true);
+        try {
         let updated = 0;
         eligible.forEach((ps) => {
             const emp = employees.find((e) => e.id === ps.employeeId);
@@ -520,7 +564,11 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
             updated++;
         });
         toast.success(`Recomputed deductions for ${updated} payslip${updated > 1 ? "s" : ""}`);
-        setBatchProcessing(false);
+        } catch (err) {
+            toast.error(`Failed to recompute deductions: ${err instanceof Error ? err.message : "Unknown error"}`);
+        } finally {
+            setBatchProcessing(false);
+        }
     }, [filteredPayslips, employees, getDeductionOverride, getGlobalDefault, updatePayslipFromServer, computeDeductionsForEmployee, deductionTemplates]);
 
     return (
@@ -556,6 +604,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                         <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setThirteenthMonthOpen(true)}>
                             <Gift className="h-4 w-4" /> <span className="hidden sm:inline">13th Month</span>
                         </Button>
+                        <ExportBackupDialog module="payroll" />
                         <Dialog open={open} onOpenChange={setOpen}>
                             <DialogTrigger asChild>
                                 <div className="inline-block" title={isTodayLocked ? "Run is locked" : ""}>
@@ -603,11 +652,15 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                             <CardContent className="p-2 space-y-1">
                                                 {activeEmployees.length === 0 ? (
                                                     <p className="text-sm text-muted-foreground text-center py-4">No active employees</p>
-                                                ) : activeEmployees.map((emp) => (
-                                                    <div key={emp.id} onClick={() => toggleEmployee(emp.id)} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors border border-transparent hover:border-border/50">
-                                                        <Checkbox checked={selectedEmployeeIds.includes(emp.id)} onCheckedChange={() => toggleEmployee(emp.id)} />
+                                                ) : activeEmployees.map((emp) => {
+                                                    const alreadyIssued = !!(cutoffDates.start && cutoffDates.end && payslips.some(
+                                                        (p) => p.employeeId === emp.id && p.periodStart === cutoffDates.start && p.periodEnd === cutoffDates.end
+                                                    ));
+                                                    return (
+                                                    <div key={emp.id} onClick={() => !alreadyIssued && toggleEmployee(emp.id)} className={`flex items-center gap-3 p-2.5 rounded-lg transition-colors border border-transparent ${alreadyIssued ? "opacity-50 cursor-not-allowed bg-muted/30" : "hover:bg-muted/50 cursor-pointer hover:border-border/50"}`}>
+                                                        <Checkbox checked={selectedEmployeeIds.includes(emp.id)} onCheckedChange={() => !alreadyIssued && toggleEmployee(emp.id)} disabled={alreadyIssued} />
                                                         <div className="flex-1 min-w-0">
-                                                            <p className="text-sm font-medium">{emp.name}</p>
+                                                            <p className="text-sm font-medium">{emp.name}{alreadyIssued && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 font-normal">✓ Already issued</span>}</p>
                                                             <p className="text-xs text-muted-foreground">{emp.role} • {emp.department} • {formatCurrency(emp.salary)}/mo</p>
                                                         </div>
                                                         <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded">
@@ -620,7 +673,8 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                             })()}
                                                         </span>
                                                     </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </CardContent>
                                         </Card>
                                     </div>
@@ -829,7 +883,6 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                 <SelectItem value="all">All Statuses</SelectItem>
                                 <SelectItem value="draft">Draft</SelectItem>
                                 <SelectItem value="published">Published</SelectItem>
-                                <SelectItem value="signed">Signed</SelectItem>
                             </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground self-center whitespace-nowrap">{filteredPayslips.length} result{filteredPayslips.length !== 1 ? "s" : ""}</p>
@@ -887,7 +940,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-violet-600" title="Publish" onClick={() => {
                                                                 publishPayslip(ps.id);
                                                                 useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payroll_published", performedBy: currentUser.id });
-                                                                dispatchNotification("payslip_published", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}` }, ps.employeeId);
+                                                                dispatchNotification("payslip_published", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}`, amount: formatCurrency(ps.netPay) }, ps.employeeId);
                                                                 toast.success("Published");
                                                             }}><Send className="h-3.5 w-3.5" /></Button>
                                                         )}
@@ -895,7 +948,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" title="Record Payment" onClick={() => {
                                                                 recordPayment(ps.id, "bank_transfer", `REF-${Date.now()}`);
                                                                 useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payment_recorded", performedBy: currentUser.id });
-                                                                dispatchNotification("payment_confirmed", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}` }, ps.employeeId);
+                                                                dispatchNotification("payment_confirmed", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}`, amount: formatCurrency(ps.netPay) }, ps.employeeId);
                                                                 toast.success("Payment recorded");
                                                             }}><CreditCard className="h-3.5 w-3.5" /></Button>
                                                         )}
@@ -994,8 +1047,8 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                             payslips={payslips}
                             getEmpName={getEmpName}
                             isAdmin={canIssue}
-                            onMarkPaid={(id, method, reference) => {
-                                confirmPaidByFinance(id, currentUser.name, method, reference);
+                            onMarkPaid={(id, method, reference, cashAmount, paymentProofUrl) => {
+                                confirmPaidByFinance(id, currentUser.name, method, reference, cashAmount, paymentProofUrl);
                                 const ps = payslips.find(p => p.id === id);
                                 if (ps) dispatchNotification("payment_confirmed", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}`, method }, ps.employeeId);
                                 toast.success("Payment confirmed");

@@ -57,6 +57,7 @@ async function fetchAll<T>(table: string, options?: {
   select?: string;
   filter?: Record<string, string>;
   order?: { column: string; ascending?: boolean };
+  limit?: number;
 // _attempt is internal — do not pass externally
 }, _attempt = 0): Promise<T[]> {
   let query = supabase().from(table).select(options?.select ?? "*");
@@ -67,6 +68,9 @@ async function fetchAll<T>(table: string, options?: {
   }
   if (options?.order) {
     query = query.order(options.order.column, { ascending: options.order.ascending ?? true });
+  }
+  if (options?.limit) {
+    query = query.limit(options.limit);
   }
   const { data, error } = await query;
   if (error) {
@@ -279,33 +283,8 @@ export const attendanceDb = {
       row.locationLng = log.locationSnapshot.lng;
     }
     delete row.locationSnapshot;
-
-    const dbRow = keysToSnake(row);
-
-    // Prefer ON CONFLICT (employee_id, date) — requires migration 015 to be applied.
-    const { error } = await supabase()
-      .from("attendance_logs")
-      .upsert(dbRow, { onConflict: "employee_id,date" });
-
-    if (!error) return true;
-
-    // 42P10: no unique constraint yet (migration pending) — fall back to PK-based upsert.
-    // This keeps writes functional until the migration is applied.
-    if (error.code === "42P10") {
-      const { error: fallback } = await supabase()
-        .from("attendance_logs")
-        .upsert(dbRow, { onConflict: "id" });
-      if (!fallback) return true;
-      if (fallback.code === "23505") return true;
-      if (isNetworkError(fallback) && isDemoMode) return false;
-      console.error("[db] upsert attendance_logs (fallback):", fallback.message);
-      return false;
-    }
-
-    if (error.code === "23505") return true;
-    if (isNetworkError(error) && isDemoMode) return false;
-    console.error("[db] upsert attendance_logs:", error.message);
-    return false;
+    // attendance_logs has a unique constraint on (employee_id, date) in addition to PK
+    return upsertRow("attendance_logs", row, "employee_id,date");
   },
 
   async insertEvent(event: AttendanceEvent): Promise<boolean> {
@@ -714,8 +693,8 @@ export const payrollDb = {
         .from("payroll_signature_config")
         .select("*")
         .eq("id", "default")
-        .single();
-      if (error) {
+        .maybeSingle();
+      if (error || !data) {
         // PGRST116 = no rows, 406 = table may not exist or RLS blocks access
         // Silently return null for expected failure modes
         return null;
@@ -937,7 +916,7 @@ export const projectsDb = {
 // ─── Audit Logs ─────────────────────────────────────────────────
 
 export const auditDb = {
-  fetchAll: () => fetchAll<AuditLogEntry>("audit_logs", { order: { column: "timestamp", ascending: false } }),
+  fetchAll: () => fetchAll<AuditLogEntry>("audit_logs", { order: { column: "timestamp", ascending: false }, limit: 1000 }),
 
   async insert(entry: AuditLogEntry): Promise<boolean> {
     return insertRow("audit_logs", entry as unknown as Record<string, unknown>);
@@ -1075,7 +1054,7 @@ export const timesheetsDb = {
 // ─── Notifications ──────────────────────────────────────────────
 
 export const notificationsDb = {
-  fetchLogs: () => fetchAll<NotificationLog>("notification_logs", { order: { column: "sent_at", ascending: false } }),
+  fetchLogs: () => fetchAll<NotificationLog>("notification_logs", { order: { column: "sent_at", ascending: false }, limit: 500 }),
   fetchRules: () => fetchAll<NotificationRule>("notification_rules"),
 
   async insertLog(log: NotificationLog): Promise<boolean> {
@@ -1160,7 +1139,7 @@ export async function hasValidSession(): Promise<boolean> {
     }
     
     return !!data.session?.access_token;
-  } catch (err) {
+  } catch (_err) {
     // Network or other error - assume no valid session
     return false;
   }

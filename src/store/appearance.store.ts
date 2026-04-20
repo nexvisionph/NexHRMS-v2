@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 
 // ─── Color Theme Presets ──────────────────────────────────────────────────────
 
@@ -364,6 +365,7 @@ export const useAppearanceStore = create<AppearanceState>()(
     {
       name: "nexhrms-appearance",
       version: 2,
+      storage: safePersistStorage,
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
         if (version < 2) {

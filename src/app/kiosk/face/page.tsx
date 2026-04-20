@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAttendanceStore } from "@/store/attendance.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -15,12 +15,16 @@ import {
     Loader2, RotateCcw, AlertTriangle, Camera, ClipboardList,
 } from "lucide-react";
 
+// Neon theme colors
+const NEON_GREEN = "#39FF14";
+const NEON_GREEN_DIM = "rgba(57, 255, 20, 0.6)";
+
 /**
  * Face Recognition Kiosk Page
  *
  * Uses face-api.js (client-side, WebGL) for real 128-d embedding computation.
  * Sends embedding to server for matching against enrolled employees.
- * Qwen AI liveness check can be layered on top via /api/attendance/verify-face.
+ * Black and neon green SaaS branding.
  */
 
 type ScanState = "loading" | "idle" | "scanning" | "verifying" | "verified" | "failed";
@@ -28,13 +32,11 @@ type ScanState = "loading" | "idle" | "scanning" | "verifying" | "verified" | "f
 export default function FaceKioskPage() {
     const router = useRouter();
     const ks = useKioskStore((s) => s.settings);
-    const { appendEvent, checkIn, checkOut } = useAttendanceStore();
+    const { appendEvent, checkIn, checkOut, recordEvidence, logs: attendanceLogs } = useAttendanceStore();
     const employees = useEmployeesStore((s) => s.employees);
     const companyName = useAppearanceStore((s) => s.companyName);
     const logoUrl = useAppearanceStore((s) => s.logoUrl);
     const getProjectForEmployee = useProjectsStore((s) => s.getProjectForEmployee);
-
-    const isAutoTheme = ks.kioskTheme === "auto";
 
     const [mode, setMode] = useState<"in" | "out">("in");
     const [feedback, setFeedback] = useState<"idle" | "success-in" | "success-out" | "error">("idle");
@@ -70,6 +72,7 @@ export default function FaceKioskPage() {
     const [trackingBox, setTrackingBox] = useState<{ x: number; y: number; w: number; h: number; score: number } | null>(null);
     const [trackingStatus, setTrackingStatus] = useState<"no-face" | "detecting" | "hold-steady" | "scanning" | "matched">("no-face");
     const [autoConfirmCountdown, setAutoConfirmCountdown] = useState<number | null>(null);
+    const [guidanceHint, setGuidanceHint] = useState<string>("Position your face in the oval");
 
     // Clear kiosk log at midnight
     useEffect(() => {
@@ -87,17 +90,55 @@ export default function FaceKioskPage() {
         }
     }, []);
 
-    // PIN verification
+    // Derive today's activity from persisted attendance logs (survives refresh)
+    // Merge with session kiosk log so new entries appear immediately
+    const todayActivity = useMemo(() => {
+        const today = new Date().toISOString().split("T")[0];
+        const todayLogs = attendanceLogs.filter((l) => l.date === today && (l.checkIn || l.checkOut));
+        const storeEntries: Array<{ name: string; type: "in" | "out"; time: string }> = [];
+        for (const log of todayLogs) {
+            const emp = employees.find((e) => e.id === log.employeeId);
+            const name = emp?.name || log.employeeId;
+            if (log.checkOut) {
+                storeEntries.push({ name, type: "out", time: log.checkOut });
+            }
+            if (log.checkIn) {
+                storeEntries.push({ name, type: "in", time: log.checkIn });
+            }
+        }
+        // Merge session entries not already covered by store (for the same session before store syncs)
+        const storeKeys = new Set(storeEntries.map((e) => `${e.name}|${e.type}|${e.time}`));
+        for (const entry of kioskLog) {
+            const key = `${entry.name}|${entry.type}|${entry.time}`;
+            if (!storeKeys.has(key)) storeEntries.push(entry);
+        }
+        // Sort by time descending (most recent first)
+        storeEntries.sort((a, b) => b.time.localeCompare(a.time));
+        return storeEntries;
+    }, [attendanceLogs, employees, kioskLog]);
+
+    // PIN verification — redirect if not verified; also guard against browser back
     useEffect(() => {
         const verified = sessionStorage.getItem("kiosk-pin-verified");
         const verifiedTime = sessionStorage.getItem("kiosk-pin-verified-time");
-        if (!verified || !verifiedTime) { router.push("/kiosk?target=face"); return; }
+        if (!verified || !verifiedTime) { router.replace("/kiosk?target=face"); return; }
         const elapsed = Date.now() - parseInt(verifiedTime);
         if (elapsed > 5 * 60 * 1000) {
             sessionStorage.removeItem("kiosk-pin-verified");
             sessionStorage.removeItem("kiosk-pin-verified-time");
-            router.push("/kiosk?target=face");
+            router.replace("/kiosk?target=face");
+            return;
         }
+        // Push a guard history entry so browser back hits this page again
+        // instead of leaving to the PIN page. On popstate, clear PIN and redirect.
+        window.history.pushState({ kioskGuard: true }, "");
+        const handlePopState = () => {
+            sessionStorage.removeItem("kiosk-pin-verified");
+            sessionStorage.removeItem("kiosk-pin-verified-time");
+            router.replace("/kiosk");
+        };
+        window.addEventListener("popstate", handlePopState);
+        return () => window.removeEventListener("popstate", handlePopState);
     }, [router]);
 
     // Load face-api.js models + start camera
@@ -153,8 +194,8 @@ export default function FaceKioskPage() {
         if (feedback !== "idle") return;
 
         let cancelled = false;
-        const FACE_HOLD_MS = 1200; // hold face steady for 1.2s before triggering scan
-        const SCAN_COOLDOWN_MS = 4000; // cooldown between auto-scans
+        const FACE_HOLD_MS = 1500; // hold face steady for 1.5s before triggering scan
+        const SCAN_COOLDOWN_MS = 5000; // cooldown between auto-scans
 
         async function trackLoop() {
             if (cancelled) return;
@@ -180,6 +221,8 @@ export default function FaceKioskPage() {
                     // Map box to percentage coordinates for overlay
                     const vw = video.videoWidth;
                     const vh = video.videoHeight;
+                    const faceRatio = result.box.width / vw;
+
                     setTrackingBox({
                         x: ((vw - result.box.x - result.box.width) / vw) * 100, // mirror
                         y: (result.box.y / vh) * 100,
@@ -188,28 +231,54 @@ export default function FaceKioskPage() {
                         score: result.score,
                     });
 
-                    const now = Date.now();
-                    if (!faceSeenSinceRef.current) {
-                        faceSeenSinceRef.current = now;
+                    // Check face positioning before allowing auto-scan
+                    const isFaceTooSmall = faceRatio < 0.15;
+                    const isFaceTooLarge = faceRatio > 0.55;
+                    const isFaceFrontFacing = Math.abs(result.yaw) < 0.25; // must look straight
+                    const isFaceWellPositioned = !isFaceTooSmall && !isFaceTooLarge && isFaceFrontFacing && result.score >= 0.75;
+
+                    if (isFaceTooSmall) {
                         setTrackingStatus("detecting");
-                    }
-
-                    const heldFor = now - faceSeenSinceRef.current;
-                    if (heldFor > 400 && heldFor < FACE_HOLD_MS) {
-                        setTrackingStatus("hold-steady");
-                    }
-
-                    // Auto-trigger scan when face held steady long enough
-                    if (heldFor >= FACE_HOLD_MS && now > scanCooldownRef.current) {
-                        setTrackingStatus("scanning");
+                        setGuidanceHint("Move closer to the camera");
                         faceSeenSinceRef.current = null;
-                        scanCooldownRef.current = now + SCAN_COOLDOWN_MS;
-                        handleScanRef.current();
-                        return; // stop loop, handleScan manages state
+                    } else if (isFaceTooLarge) {
+                        setTrackingStatus("detecting");
+                        setGuidanceHint("Move back a little");
+                        faceSeenSinceRef.current = null;
+                    } else if (!isFaceFrontFacing) {
+                        setTrackingStatus("detecting");
+                        setGuidanceHint("Look straight at the camera");
+                        faceSeenSinceRef.current = null;
+                    } else if (result.score < 0.75) {
+                        setTrackingStatus("detecting");
+                        setGuidanceHint("Improve lighting for better detection");
+                        faceSeenSinceRef.current = null;
+                    } else {
+                        setGuidanceHint("Hold steady — recognizing...");
+                        const now = Date.now();
+                        if (!faceSeenSinceRef.current) {
+                            faceSeenSinceRef.current = now;
+                            setTrackingStatus("detecting");
+                        }
+
+                        const heldFor = now - faceSeenSinceRef.current;
+                        if (isFaceWellPositioned && heldFor > 400 && heldFor < FACE_HOLD_MS) {
+                            setTrackingStatus("hold-steady");
+                        }
+
+                        // Auto-trigger scan when face held steady long enough AND well-positioned
+                        if (isFaceWellPositioned && heldFor >= FACE_HOLD_MS && now > scanCooldownRef.current) {
+                            setTrackingStatus("scanning");
+                            faceSeenSinceRef.current = null;
+                            scanCooldownRef.current = now + SCAN_COOLDOWN_MS;
+                            handleScanRef.current();
+                            return; // stop loop, handleScan manages state
+                        }
                     }
                 } else {
                     setTrackingBox(null);
                     setTrackingStatus("no-face");
+                    setGuidanceHint("Position your face in the oval");
                     faceSeenSinceRef.current = null;
                 }
             } catch {
@@ -346,6 +415,7 @@ export default function FaceKioskPage() {
                 setScanState("verified");
                 setTrackingStatus("matched");
                 setTrackingBox(null);
+                setGuidanceHint("");
                 console.log(`[kiosk-face] ✅ MATCH: ${name} (distance=${matchData.distance?.toFixed(4)})`);
                 toast.success(`Matched: ${name} (distance: ${matchData.distance?.toFixed(3)})`);
 
@@ -365,8 +435,13 @@ export default function FaceKioskPage() {
                 }, 1000);
                 autoConfirmTimerRef.current = countdownInterval;
             } else {
-                console.log(`[kiosk-face] ❌ NO MATCH: face not recognized`);
-                toast.error("Face not recognized. Please try again or re-enroll.");
+                const serverError = matchData.error;
+                const errorMsg = serverError
+                    ? `Recognition failed: ${serverError}`
+                    : "Face not recognized. Please ensure you have enrolled your face and try again.";
+                console.log(`[kiosk-face] ❌ NO MATCH: ${serverError || "face not recognized"}`);
+                toast.error(errorMsg);
+                setGuidanceHint("Try again — look straight at the camera");
                 setScanState("idle");
             }
         } catch (err) {
@@ -409,14 +484,55 @@ export default function FaceKioskPage() {
             return;
         }
 
+        // ── Duplicate check-in / check-out guard ──
+        const today = new Date().toISOString().split("T")[0];
+        const todayLog = attendanceLogs.find((l) => l.employeeId === empId && l.date === today);
+        if (mode === "in" && todayLog?.checkIn) {
+            toast.error(`${matchedName} has already checked in today at ${todayLog.checkIn}.`, { duration: 4000 });
+            setScanState("idle");
+            setMatchedName("");
+            setMatchDistance(null);
+            setTrackingStatus("no-face");
+            return;
+        }
+        if (mode === "out" && todayLog?.checkOut) {
+            toast.error(`${matchedName} has already checked out today at ${todayLog.checkOut}.`, { duration: 4000 });
+            setScanState("idle");
+            setMatchedName("");
+            setMatchDistance(null);
+            setTrackingStatus("no-face");
+            return;
+        }
+        if (mode === "out" && !todayLog?.checkIn) {
+            toast.error(`${matchedName} hasn't checked in yet today.`, { duration: 4000 });
+            setScanState("idle");
+            setMatchedName("");
+            setMatchDistance(null);
+            setTrackingStatus("no-face");
+            return;
+        }
+
         if (mode === "in") checkWorkDay(empId);
 
         // Event ledger (append-only audit trail)
-        appendEvent({
+        const eventId = appendEvent({
             employeeId: empId,
             eventType: mode === "in" ? "IN" : "OUT",
             timestampUTC: new Date().toISOString(),
             deviceId,
+        });
+
+        // Record face verification evidence for audit trail
+        recordEvidence({
+            eventId,
+            gpsLat: undefined,
+            gpsLng: undefined,
+            gpsAccuracyMeters: undefined,
+            geofencePass: undefined, // Not currently checking geofence in face kiosk
+            qrTokenId: undefined, // Not applicable for face verification
+            deviceIntegrityResult: undefined,
+            faceVerified: true, // Face was verified before confirm was enabled
+            mockLocationDetected: false,
         });
 
         // Daily log (backward-compatible computed view)
@@ -443,7 +559,7 @@ export default function FaceKioskPage() {
             setMatchDistance(null);
             setScanState("idle");
         }, ks.feedbackDuration);
-    }, [matchedName, mode, employees, getProjectForEmployee, ks, checkIn, checkOut, appendEvent, deviceId, checkWorkDay]);
+    }, [matchedName, mode, employees, getProjectForEmployee, ks, checkIn, checkOut, appendEvent, recordEvidence, deviceId, checkWorkDay, attendanceLogs]);
 
     // Ref so auto-confirm timer can call the latest handleConfirm
     const handleConfirmRef = useRef(handleConfirm);
@@ -464,75 +580,172 @@ export default function FaceKioskPage() {
     const isError = feedback === "error";
     const isSuccess = isSuccessIn || isSuccessOut;
 
-    // Theme-aware classes
-    const bgClass = isSuccess ? (isSuccessIn ? "bg-emerald-950 dark:bg-emerald-950" : "bg-sky-950 dark:bg-sky-950") :
-        isError ? "bg-red-950 dark:bg-red-950" :
-        isAutoTheme ? "bg-background" :
-        ks.kioskTheme === "midnight" ? "bg-slate-950" :
-        ks.kioskTheme === "charcoal" ? "bg-neutral-950" : "bg-zinc-950";
-    const textClass = isAutoTheme && !isSuccess && !isError ? "text-foreground" : "text-white";
-    const textMutedClass = isAutoTheme && !isSuccess && !isError ? "text-muted-foreground" : "text-white/40";
-    const textFaintClass = isAutoTheme && !isSuccess && !isError ? "text-muted-foreground/40" : "text-white/30";
-    const cardClass = isAutoTheme && !isSuccess && !isError ? "bg-card border-border" : "bg-white/[0.04] border-white/10";
-    const toggleBgClass = isAutoTheme && !isSuccess && !isError ? "border-border bg-muted/30" : "border-white/10 bg-white/[0.03]";
-    const toggleInactiveClass = isAutoTheme && !isSuccess && !isError ? "text-muted-foreground hover:text-foreground" : "text-white/30 hover:text-white/60";
-
     return (
-        <div className={cn(
-            "fixed inset-0 flex flex-col transition-colors duration-700 select-none overflow-auto",
-            bgClass
-        )}>
-            {/* Ambient blob */}
+        <div className="fixed inset-0 flex flex-col select-none overflow-auto bg-black transition-colors duration-500">
+            {/* Animated gradient background */}
             <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                <div className="absolute -top-40 -left-40 w-[550px] h-[550px] rounded-full blur-[130px] opacity-20 transition-colors duration-700"
-                    style={{ backgroundColor: isSuccess ? (isSuccessIn ? "#10b981" : "#0ea5e9") : isError ? "#ef4444" : "#3b82f6" }} />
+                {/* Top-left neon blob */}
+                <div 
+                    className="absolute rounded-full blur-[150px] animate-pulse"
+                    style={{
+                        width: "clamp(300px, 40vw, 600px)",
+                        height: "clamp(300px, 40vh, 600px)",
+                        top: "-10%",
+                        left: "-10%",
+                        background: isSuccess 
+                            ? (isSuccessIn ? "rgba(16, 185, 129, 0.3)" : "rgba(14, 165, 233, 0.3)")
+                            : isError ? "rgba(239, 68, 68, 0.3)" : `linear-gradient(135deg, ${NEON_GREEN}40 0%, ${NEON_GREEN}10 100%)`,
+                        animationDuration: "4s",
+                    }}
+                />
+                {/* Bottom-right neon blob */}
+                <div 
+                    className="absolute rounded-full blur-[180px] animate-pulse"
+                    style={{
+                        width: "clamp(350px, 50vw, 700px)",
+                        height: "clamp(350px, 50vh, 700px)",
+                        bottom: "-15%",
+                        right: "-15%",
+                        background: isSuccess 
+                            ? (isSuccessIn ? "rgba(16, 185, 129, 0.2)" : "rgba(14, 165, 233, 0.2)")
+                            : isError ? "rgba(239, 68, 68, 0.2)" : `linear-gradient(315deg, ${NEON_GREEN}30 0%, transparent 70%)`,
+                        animationDuration: "6s",
+                        animationDelay: "1s",
+                    }}
+                />
+                {/* Grid pattern */}
+                <div 
+                    className="absolute inset-0 opacity-[0.03]"
+                    style={{
+                        backgroundImage: `linear-gradient(${NEON_GREEN}20 1px, transparent 1px), linear-gradient(90deg, ${NEON_GREEN}20 1px, transparent 1px)`,
+                        backgroundSize: "clamp(30px, 4vw, 50px) clamp(30px, 4vw, 50px)",
+                    }}
+                />
             </div>
 
             {/* Top bar */}
-            <header className="relative z-10 w-full flex items-center justify-between px-4 sm:px-8 pt-4 sm:pt-6">
-                <button onClick={() => router.push("/kiosk")} className={cn("flex items-center gap-2 transition-colors min-h-[44px]",
-                    isAutoTheme && !isSuccess && !isError ? "text-muted-foreground hover:text-foreground" : "text-white/50 hover:text-white"
-                )}>
-                    <ArrowLeft className="h-4 w-4" /><span className="text-sm">Back</span>
+            <header 
+                className="relative z-10 w-full flex items-center justify-between"
+                style={{ padding: "clamp(1rem, 3vh, 1.5rem) clamp(1rem, 3vw, 2rem)" }}
+            >
+                <button
+                    onClick={() => {
+                        sessionStorage.removeItem("kiosk-pin-verified");
+                        sessionStorage.removeItem("kiosk-pin-verified-time");
+                        router.replace("/kiosk");
+                    }}
+                    className="flex items-center gap-2 text-white/50 hover:text-white transition-colors min-h-[44px]"
+                    style={{ fontSize: "clamp(0.75rem, 1.2vw, 0.875rem)" }}
+                >
+                    <ArrowLeft className="h-4 w-4" /><span>Back</span>
                 </button>
                 <div className="text-center">
                     {ks.showClock && (
-                        <p className={cn("font-mono text-2xl sm:text-4xl font-bold tracking-widest tabular-nums drop-shadow-lg", textClass)}>{timeStr}</p>
+                        <p 
+                            className="font-mono font-bold tracking-widest tabular-nums"
+                            style={{ 
+                                fontSize: "clamp(1.25rem, 3vw, 2.5rem)",
+                                color: NEON_GREEN,
+                                textShadow: `0 0 20px ${NEON_GREEN_DIM}, 0 0 40px ${NEON_GREEN_DIM}`
+                            }}
+                        >
+                            {timeStr}
+                        </p>
                     )}
-                    {ks.showDate && <p className={cn("text-xs mt-1", textMutedClass)}>{dateStr}</p>}
+                    {ks.showDate && (
+                        <p className="text-white/40 mt-1" style={{ fontSize: "clamp(0.65rem, 1vw, 0.75rem)" }}>{dateStr}</p>
+                    )}
                 </div>
                 <div className="flex items-center gap-3">
                     {ks.showLogo && logoUrl ? (
-                        <img src={logoUrl} alt={companyName}
-                            className={cn("h-7 max-w-[100px] object-contain", !isAutoTheme && "brightness-0 invert opacity-90")} />
+                        <img 
+                            src={logoUrl} 
+                            alt={companyName}
+                            className="object-contain brightness-0 invert opacity-90"
+                            style={{ height: "clamp(1.5rem, 3vh, 2rem)", maxWidth: "clamp(80px, 10vw, 120px)" }}
+                        />
                     ) : (
-                        <span className={cn("font-semibold text-sm", textMutedClass)}>{companyName || "NexHRMS"}</span>
+                        <span className="font-semibold text-white/40" style={{ fontSize: "clamp(0.75rem, 1.2vw, 0.875rem)" }}>
+                            {companyName || "NexHRMS"}
+                        </span>
                     )}
                 </div>
             </header>
 
             {/* Success/Error overlay */}
             {feedback !== "idle" && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md">
                     <div className="text-center space-y-4 animate-in zoom-in-90 duration-300">
                         {isSuccess ? (
                             <>
-                                <div className={cn("h-20 w-20 mx-auto rounded-full flex items-center justify-center",
-                                    isSuccessIn ? "bg-emerald-500/20" : "bg-sky-500/20")}>
-                                    <CheckCircle className={cn("h-10 w-10", isSuccessIn ? "text-emerald-400" : "text-sky-400")} />
+                                <div 
+                                    className="mx-auto rounded-full flex items-center justify-center"
+                                    style={{
+                                        width: "clamp(80px, 15vw, 120px)",
+                                        height: "clamp(80px, 15vw, 120px)",
+                                        background: isSuccessIn 
+                                            ? `radial-gradient(circle, ${NEON_GREEN}30 0%, transparent 70%)`
+                                            : "radial-gradient(circle, rgba(14, 165, 233, 0.3) 0%, transparent 70%)",
+                                        boxShadow: isSuccessIn 
+                                            ? `0 0 60px ${NEON_GREEN}40` 
+                                            : "0 0 60px rgba(14, 165, 233, 0.4)",
+                                    }}
+                                >
+                                    <CheckCircle 
+                                        style={{ 
+                                            width: "clamp(40px, 8vw, 60px)", 
+                                            height: "clamp(40px, 8vw, 60px)",
+                                            color: isSuccessIn ? NEON_GREEN : "#0ea5e9",
+                                        }} 
+                                    />
                                 </div>
-                                <p className={cn("text-3xl font-bold", isSuccessIn ? "text-emerald-300" : "text-sky-300")}>
+                                <p 
+                                    className="font-bold"
+                                    style={{ 
+                                        fontSize: "clamp(1.5rem, 5vw, 2.5rem)",
+                                        color: isSuccessIn ? NEON_GREEN : "#0ea5e9",
+                                        textShadow: isSuccessIn 
+                                            ? `0 0 30px ${NEON_GREEN}60` 
+                                            : "0 0 30px rgba(14, 165, 233, 0.6)",
+                                    }}
+                                >
                                     {isSuccessIn ? "Checked In" : "Checked Out"}
                                 </p>
-                                {checkedInName && <p className="text-white text-4xl font-bold mt-2">{checkedInName}</p>}
-                                <p className="text-white/30 text-sm">{now.toLocaleTimeString()}</p>
+                                {checkedInName && (
+                                    <p 
+                                        className="text-white font-bold mt-2"
+                                        style={{ fontSize: "clamp(1.75rem, 6vw, 3rem)" }}
+                                    >
+                                        {checkedInName}
+                                    </p>
+                                )}
+                                <p className="text-white/30" style={{ fontSize: "clamp(0.75rem, 1.5vw, 1rem)" }}>
+                                    {now.toLocaleTimeString()}
+                                </p>
                             </>
                         ) : (
                             <>
-                                <div className="h-20 w-20 mx-auto rounded-full bg-red-500/20 flex items-center justify-center">
-                                    <XCircle className="h-10 w-10 text-red-400" />
+                                <div 
+                                    className="mx-auto rounded-full bg-red-500/20 flex items-center justify-center"
+                                    style={{
+                                        width: "clamp(70px, 12vw, 100px)",
+                                        height: "clamp(70px, 12vw, 100px)",
+                                    }}
+                                >
+                                    <XCircle 
+                                        className="text-red-400"
+                                        style={{ 
+                                            width: "clamp(35px, 6vw, 50px)", 
+                                            height: "clamp(35px, 6vw, 50px)" 
+                                        }} 
+                                    />
                                 </div>
-                                <p className="text-2xl font-bold text-red-300">Invalid - Try Again</p>
+                                <p 
+                                    className="font-bold text-red-300"
+                                    style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)" }}
+                                >
+                                    Invalid - Try Again
+                                </p>
                             </>
                         )}
                     </div>
@@ -540,17 +753,42 @@ export default function FaceKioskPage() {
             )}
 
             {/* Main content — two-column on desktop, stacked on mobile */}
-            <main className="relative z-10 flex flex-col lg:flex-row items-start justify-center gap-4 sm:gap-6 px-4 sm:px-6 flex-1 w-full max-w-6xl mx-auto py-4">
+            <main 
+                className="relative z-10 flex flex-col lg:flex-row items-start justify-center flex-1 w-full mx-auto"
+                style={{ 
+                    gap: "clamp(1rem, 3vw, 2rem)",
+                    padding: "clamp(1rem, 2vh, 1.5rem) clamp(1rem, 3vw, 2rem)",
+                    maxWidth: "min(1400px, 95vw)",
+                }}
+            >
                 {/* LEFT: Face Scanner Column */}
-                <div className="flex flex-col items-center gap-4 sm:gap-6 w-full lg:w-[420px] lg:flex-shrink-0">
+                <div 
+                    className="flex flex-col items-center w-full lg:flex-shrink-0"
+                    style={{ 
+                        gap: "clamp(1rem, 2vh, 1.5rem)",
+                        maxWidth: "min(480px, 100%)",
+                    }}
+                >
                     {/* Mode toggle */}
-                    <div className={cn("flex rounded-2xl overflow-hidden border backdrop-blur-sm", toggleBgClass)}>
+                    <div 
+                        className="flex rounded-2xl overflow-hidden backdrop-blur-xl"
+                        style={{
+                            background: "rgba(255, 255, 255, 0.03)",
+                            border: `1px solid ${NEON_GREEN}20`,
+                        }}
+                    >
                         <button
                             onClick={() => { setMode("in"); setScanState("idle"); setMatchedName(""); setTrackingStatus("no-face"); setTrackingBox(null); if (autoConfirmTimerRef.current) { clearInterval(autoConfirmTimerRef.current); autoConfirmTimerRef.current = null; } setAutoConfirmCountdown(null); }}
                             className={cn(
-                                "px-6 sm:px-10 py-3 text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 min-h-[44px]",
-                                mode === "in" ? "bg-emerald-500/80 text-white shadow-lg shadow-emerald-900/30" : toggleInactiveClass
+                                "flex items-center justify-center gap-2 font-semibold transition-all duration-200 min-h-[44px]",
+                                mode === "in" ? "text-black" : "text-white/30 hover:text-white/60"
                             )}
+                            style={{
+                                padding: "clamp(0.6rem, 1.5vh, 0.75rem) clamp(1.5rem, 4vw, 2.5rem)",
+                                fontSize: "clamp(0.75rem, 1.2vw, 0.875rem)",
+                                background: mode === "in" ? NEON_GREEN : "transparent",
+                                boxShadow: mode === "in" ? `0 0 30px ${NEON_GREEN}50` : "none",
+                            }}
                         >
                             <LogIn className="h-4 w-4" />Check In
                         </button>
@@ -558,9 +796,15 @@ export default function FaceKioskPage() {
                             <button
                                 onClick={() => { setMode("out"); setScanState("idle"); setMatchedName(""); setTrackingStatus("no-face"); setTrackingBox(null); if (autoConfirmTimerRef.current) { clearInterval(autoConfirmTimerRef.current); autoConfirmTimerRef.current = null; } setAutoConfirmCountdown(null); }}
                                 className={cn(
-                                    "px-6 sm:px-10 py-3 text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 min-h-[44px]",
-                                    mode === "out" ? "bg-sky-500/80 text-white shadow-lg shadow-sky-900/30" : toggleInactiveClass
+                                    "flex items-center justify-center gap-2 font-semibold transition-all duration-200 min-h-[44px]",
+                                    mode === "out" ? "text-black" : "text-white/30 hover:text-white/60"
                                 )}
+                                style={{
+                                    padding: "clamp(0.6rem, 1.5vh, 0.75rem) clamp(1.5rem, 4vw, 2.5rem)",
+                                    fontSize: "clamp(0.75rem, 1.2vw, 0.875rem)",
+                                    background: mode === "out" ? "#0ea5e9" : "transparent",
+                                    boxShadow: mode === "out" ? "0 0 30px rgba(14, 165, 233, 0.5)" : "none",
+                                }}
                             >
                                 <LogOut className="h-4 w-4" />Check Out
                             </button>
@@ -569,27 +813,54 @@ export default function FaceKioskPage() {
 
                     {/* Enrollment Required */}
                     {enrollmentChecked && !isEnrolled ? (
-                        <div className={cn("border border-amber-500/30 rounded-3xl p-4 sm:p-8 backdrop-blur-sm flex flex-col items-center gap-4 sm:gap-5 shadow-2xl w-full max-w-sm",
-                            isAutoTheme ? "bg-card" : "bg-white/[0.04]"
-                        )}>
+                        <div 
+                            className="border border-amber-500/30 rounded-3xl backdrop-blur-xl flex flex-col items-center shadow-2xl w-full"
+                            style={{
+                                padding: "clamp(1rem, 3vh, 2rem)",
+                                gap: "clamp(1rem, 2vh, 1.5rem)",
+                                maxWidth: "min(400px, 90vw)",
+                                background: "rgba(255, 255, 255, 0.04)",
+                            }}
+                        >
                             <div className="h-16 w-16 rounded-full bg-amber-500/20 flex items-center justify-center">
                                 <AlertTriangle className="h-8 w-8 text-amber-400" />
                             </div>
-                            <p className={cn("text-lg font-bold text-center", textClass)}>Face Enrollment Required</p>
-                            <p className={cn("text-sm text-center", textMutedClass)}>
+                            <p className="text-lg font-bold text-center text-white">Face Enrollment Required</p>
+                            <p className="text-sm text-center text-white/40">
                                 You need to enroll your face before using face recognition check-in.
                             </p>
-                            <button onClick={() => router.push("/kiosk/face/enroll")}
-                                className="w-full py-3.5 rounded-xl bg-violet-500/80 hover:bg-violet-500 text-white text-sm font-bold transition-all min-h-[44px]">
+                            <button 
+                                onClick={() => router.replace("/kiosk/face/enroll")}
+                                className="w-full rounded-xl text-black font-bold transition-all min-h-[44px] hover:opacity-90"
+                                style={{
+                                    padding: "clamp(0.75rem, 1.5vh, 1rem)",
+                                    fontSize: "clamp(0.75rem, 1.2vw, 0.875rem)",
+                                    background: NEON_GREEN,
+                                    boxShadow: `0 0 30px ${NEON_GREEN}40`,
+                                }}
+                            >
                                 <ScanFace className="h-4 w-4 inline mr-2" />Enroll Face Now
                             </button>
                         </div>
                     ) : (
                         /* Face Recognition Panel */
-                        <div className={cn("rounded-3xl p-4 sm:p-6 backdrop-blur-sm flex flex-col items-center gap-4 sm:gap-5 shadow-2xl w-full border", cardClass)}>
+                        <div 
+                            className="rounded-3xl backdrop-blur-xl flex flex-col items-center shadow-2xl w-full"
+                            style={{
+                                padding: "clamp(1rem, 3vh, 1.5rem)",
+                                gap: "clamp(1rem, 2vh, 1.5rem)",
+                                background: "rgba(255, 255, 255, 0.03)",
+                                border: `1px solid ${NEON_GREEN}15`,
+                            }}
+                        >
                             <div className="flex items-center gap-2">
-                                <ScanFace className="h-4 w-4 text-emerald-400/60" />
-                                <p className={cn("text-[11px] font-semibold uppercase tracking-widest", textMutedClass)}>Face Recognition</p>
+                                <ScanFace style={{ color: NEON_GREEN, opacity: 0.6 }} className="h-4 w-4" />
+                                <p 
+                                    className="font-semibold uppercase tracking-widest text-white/40"
+                                    style={{ fontSize: "clamp(0.6rem, 1vw, 0.7rem)" }}
+                                >
+                                    Face Recognition
+                                </p>
                             </div>
 
                             {/* Camera feed */}
@@ -645,8 +916,26 @@ export default function FaceKioskPage() {
                                         <Loader2 className="h-8 w-8 text-white animate-spin" />
                                         <p className="text-white/70 text-xs mt-2">
                                             {scanState === "loading" ? "Loading models..." :
-                                             scanState === "scanning" ? "Detecting face..." : "Verifying identity..."}
+                                             scanState === "scanning" ? "Capturing face..." : "Recognizing..."}
                                         </p>
+                                    </div>
+                                )}
+                                {/* Smart guidance hint overlay */}
+                                {scanState === "idle" && guidanceHint && (
+                                    <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none">
+                                        <div className={cn(
+                                            "backdrop-blur-sm rounded-full px-3 py-1.5 max-w-[90%]",
+                                            trackingStatus === "hold-steady" ? "bg-blue-900/70" :
+                                            trackingStatus === "detecting" ? "bg-amber-900/70" :
+                                            "bg-black/60"
+                                        )}>
+                                            <span className={cn(
+                                                "text-[11px] font-medium",
+                                                trackingStatus === "hold-steady" ? "text-blue-300" :
+                                                trackingStatus === "detecting" ? "text-amber-300" :
+                                                "text-white/70"
+                                            )}>{guidanceHint}</span>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -665,7 +954,7 @@ export default function FaceKioskPage() {
                                     </div>
                                     {matchDistance !== null && (
                                         <p className="text-white/20 text-[10px] text-center">
-                                            Match distance: {matchDistance.toFixed(4)} (threshold: 0.38)
+                                            Match distance: {matchDistance.toFixed(4)} (threshold: 0.42)
                                         </p>
                                     )}
                                     <button
@@ -717,7 +1006,10 @@ export default function FaceKioskPage() {
                             )}
 
                             {scanState === "idle" && (
-                                <p className={cn("text-[10px] text-center", textFaintClass)}>
+                                <p 
+                                    className="text-center text-white/30"
+                                    style={{ fontSize: "clamp(0.55rem, 0.9vw, 0.65rem)" }}
+                                >
                                     {trackingStatus === "no-face"
                                         ? "Step in front of the camera — auto-scan will detect your face"
                                         : "Hold steady for automatic recognition"}
@@ -725,10 +1017,11 @@ export default function FaceKioskPage() {
                             )}
 
                             {/* Re-enroll link */}
-                            <button onClick={() => router.push("/kiosk/face/enroll")}
-                                className={cn("flex items-center gap-1.5 text-[10px] transition-colors",
-                                    isAutoTheme ? "text-muted-foreground/40 hover:text-muted-foreground" : "text-white/25 hover:text-white/50"
-                                )}>
+                            <button 
+                                onClick={() => router.replace("/kiosk/face/enroll")}
+                                className="flex items-center gap-1.5 text-white/25 hover:text-white/50 transition-colors"
+                                style={{ fontSize: "clamp(0.55rem, 0.9vw, 0.65rem)" }}
+                            >
                                 <RotateCcw className="h-3 w-3" />Re-enroll Face
                             </button>
                         </div>
@@ -736,50 +1029,99 @@ export default function FaceKioskPage() {
                 </div>
 
                 {/* RIGHT: Daily Activity Log */}
-                <div className={cn("w-full lg:flex-1 lg:max-w-sm rounded-3xl backdrop-blur-sm shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-160px)] border", cardClass)}>
-                    <div className={cn("px-4 py-3 border-b flex items-center gap-2",
-                        isAutoTheme ? "border-border" : "border-white/10"
-                    )}>
-                        <ClipboardList className="h-4 w-4 text-blue-400/70" />
-                        <h2 className={cn("text-xs font-semibold uppercase tracking-widest",
-                            isAutoTheme ? "text-muted-foreground" : "text-white/70"
-                        )}>Today&apos;s Activity</h2>
-                        <span className={cn("ml-auto text-[10px] tabular-nums", textFaintClass)}>{kioskLog.length} {kioskLog.length === 1 ? "entry" : "entries"}</span>
+                <div 
+                    className="w-full lg:flex-1 rounded-3xl backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col"
+                    style={{
+                        maxWidth: "min(400px, 100%)",
+                        maxHeight: "clamp(300px, 50vh, 500px)",
+                        background: "rgba(255, 255, 255, 0.03)",
+                        border: `1px solid ${NEON_GREEN}15`,
+                    }}
+                >
+                    <div 
+                        className="flex items-center gap-2"
+                        style={{
+                            padding: "clamp(0.75rem, 1.5vh, 1rem) clamp(1rem, 2vw, 1.25rem)",
+                            borderBottom: `1px solid ${NEON_GREEN}10`,
+                        }}
+                    >
+                        <ClipboardList style={{ color: NEON_GREEN, opacity: 0.7 }} className="h-4 w-4" />
+                        <h2 
+                            className="font-semibold uppercase tracking-widest text-white/70"
+                            style={{ fontSize: "clamp(0.6rem, 1vw, 0.7rem)" }}
+                        >
+                            Today&apos;s Activity
+                        </h2>
+                        <span 
+                            className="ml-auto tabular-nums text-white/30"
+                            style={{ fontSize: "clamp(0.55rem, 0.9vw, 0.65rem)" }}
+                        >
+                            {todayActivity.length} {todayActivity.length === 1 ? "entry" : "entries"}
+                        </span>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-                        {kioskLog.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-10 gap-2">
-                                <ClipboardList className={cn("h-8 w-8", isAutoTheme ? "text-muted-foreground/20" : "text-white/10")} />
-                                <p className={cn("text-xs", isAutoTheme ? "text-muted-foreground/40" : "text-white/20")}>No activity yet today</p>
-                                <p className={cn("text-[10px]", isAutoTheme ? "text-muted-foreground/30" : "text-white/10")}>Scan a face to check in or out</p>
+                    <div 
+                        className="flex-1 overflow-y-auto space-y-1.5"
+                        style={{ padding: "clamp(0.5rem, 1.5vh, 0.75rem)" }}
+                    >
+                        {todayActivity.length === 0 ? (
+                            <div 
+                                className="flex flex-col items-center justify-center gap-2"
+                                style={{ padding: "clamp(1.5rem, 5vh, 3rem) 0" }}
+                            >
+                                <ClipboardList className="text-white/10" style={{ width: "clamp(24px, 5vw, 32px)", height: "clamp(24px, 5vw, 32px)" }} />
+                                <p className="text-white/20" style={{ fontSize: "clamp(0.65rem, 1vw, 0.75rem)" }}>No activity yet today</p>
+                                <p className="text-white/10" style={{ fontSize: "clamp(0.55rem, 0.9vw, 0.65rem)" }}>Scan a face to check in or out</p>
                             </div>
                         ) : (
-                            kioskLog.map((entry, i) => (
-                                <div key={i} className={cn(
-                                    "flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors",
-                                    entry.type === "in"
-                                        ? "bg-emerald-500/5 border-emerald-500/20"
-                                        : "bg-sky-500/5 border-sky-500/20"
-                                )}>
-                                    <div className={cn(
-                                        "h-7 w-7 rounded-full flex items-center justify-center shrink-0",
-                                        entry.type === "in" ? "bg-emerald-500/20" : "bg-sky-500/20"
-                                    )}>
+                            todayActivity.map((entry, i) => (
+                                <div 
+                                    key={i} 
+                                    className="flex items-center gap-3 rounded-xl transition-colors"
+                                    style={{
+                                        padding: "clamp(0.5rem, 1vh, 0.75rem) clamp(0.75rem, 1.5vw, 1rem)",
+                                        background: entry.type === "in" 
+                                            ? `${NEON_GREEN}08` 
+                                            : "rgba(14, 165, 233, 0.05)",
+                                        border: entry.type === "in"
+                                            ? `1px solid ${NEON_GREEN}20`
+                                            : "1px solid rgba(14, 165, 233, 0.2)",
+                                    }}
+                                >
+                                    <div 
+                                        className="rounded-full flex items-center justify-center shrink-0"
+                                        style={{
+                                            width: "clamp(24px, 4vw, 32px)",
+                                            height: "clamp(24px, 4vw, 32px)",
+                                            background: entry.type === "in" ? `${NEON_GREEN}20` : "rgba(14, 165, 233, 0.2)",
+                                        }}
+                                    >
                                         {entry.type === "in"
-                                            ? <LogIn className="h-3.5 w-3.5 text-emerald-400" />
-                                            : <LogOut className="h-3.5 w-3.5 text-sky-400" />
+                                            ? <LogIn style={{ color: NEON_GREEN, width: "clamp(12px, 2vw, 16px)", height: "clamp(12px, 2vw, 16px)" }} />
+                                            : <LogOut className="text-sky-400" style={{ width: "clamp(12px, 2vw, 16px)", height: "clamp(12px, 2vw, 16px)" }} />
                                         }
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className={cn("text-sm font-medium truncate", isAutoTheme ? "text-foreground" : "text-white/80")}>{entry.name}</p>
-                                        <p className={cn(
-                                            "text-[10px]",
-                                            entry.type === "in" ? "text-emerald-400/60" : "text-sky-400/60"
-                                        )}>
+                                        <p 
+                                            className="font-medium truncate text-white/80"
+                                            style={{ fontSize: "clamp(0.75rem, 1.2vw, 0.875rem)" }}
+                                        >
+                                            {entry.name}
+                                        </p>
+                                        <p 
+                                            style={{ 
+                                                fontSize: "clamp(0.55rem, 0.9vw, 0.65rem)",
+                                                color: entry.type === "in" ? `${NEON_GREEN}99` : "rgba(14, 165, 233, 0.6)",
+                                            }}
+                                        >
                                             {entry.type === "in" ? "Checked In" : "Checked Out"}
                                         </p>
                                     </div>
-                                    <span className={cn("text-[10px] tabular-nums shrink-0", textFaintClass)}>{entry.time}</span>
+                                    <span 
+                                        className="tabular-nums shrink-0 text-white/30"
+                                        style={{ fontSize: "clamp(0.55rem, 0.9vw, 0.65rem)" }}
+                                    >
+                                        {entry.time}
+                                    </span>
                                 </div>
                             ))
                         )}
@@ -788,8 +1130,18 @@ export default function FaceKioskPage() {
             </main>
 
             {/* Footer */}
-            <footer className="relative z-10 w-full flex items-center justify-center pb-4 sm:pb-6">
-                <div className={cn("flex items-center gap-2 text-xs", textFaintClass)}>
+            <footer 
+                className="relative z-10 w-full flex items-center justify-center"
+                style={{ padding: "clamp(0.75rem, 2vh, 1.5rem) 0" }}
+            >
+                <div 
+                    className="flex items-center gap-2 text-white/20"
+                    style={{ fontSize: "clamp(0.6rem, 1vw, 0.75rem)" }}
+                >
+                    <div 
+                        className="h-1.5 w-1.5 rounded-full animate-pulse"
+                        style={{ backgroundColor: NEON_GREEN }}
+                    />
                     <span>{companyName || "NexHRMS"} • Face Recognition Kiosk</span>
                 </div>
             </footer>

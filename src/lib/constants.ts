@@ -272,8 +272,8 @@ export const NAV_ITEMS: {
             label: "Settings",
             href: "/settings",
             icon: "Settings",
-            roles: ["admin", "hr"],
-            permission: "page:settings",
+            roles: ["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"],
+            permission: "page:dashboard",
         },
     ];
 
@@ -305,10 +305,10 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
     ],
     hr: ["/dashboard", "/employees", "/projects", "/tasks", "/messages", "/attendance", "/leave", "/reports", "/notifications", "/timesheets", "/settings/shifts", "/kiosk", "/profile"],
     finance: ["/dashboard", "/payroll", "/payroll/settings", "/loans", "/reports", "/reports/government", "/employees/directory", "/employees/manage", "/notifications", "/profile"],
-    employee: ["/dashboard", "/attendance", "/leave", "/payroll", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile"],
-    supervisor: ["/dashboard", "/attendance", "/leave", "/timesheets", "/employees", "/projects", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile"],
+    employee: ["/dashboard", "/attendance", "/leave", "/payroll", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings"],
+    supervisor: ["/dashboard", "/attendance", "/leave", "/timesheets", "/employees", "/projects", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings"],
     payroll_admin: ["/dashboard", "/payroll", "/payroll/settings", "/loans", "/reports", "/reports/government", "/timesheets", "/notifications", "/profile"],
-    auditor: ["/dashboard", "/audit", "/reports", "/employees", "/notifications", "/profile"],
+    auditor: ["/dashboard", "/audit", "/reports", "/employees", "/notifications", "/profile", "/settings"],
 };
 
 /** Map a URL path to the permission needed to access it */

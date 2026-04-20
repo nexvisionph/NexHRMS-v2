@@ -5,14 +5,16 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAppearanceStore } from "@/store/appearance.store";
-import { useKioskStore } from "@/store/kiosk.store";
 import { loadFaceModels, detectFace, averageDescriptors } from "@/lib/face-api";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import {
     ArrowLeft, Camera, CheckCircle, XCircle, Loader2, RotateCcw,
     ScanFace, ChevronRight,
 } from "lucide-react";
+
+// Neon theme colors
+const NEON_GREEN = "#39FF14";
+const NEON_GREEN_DIM = "rgba(57, 255, 20, 0.6)";
 
 /**
  * Face Enrollment — Front-face capture with multi-frame averaging.
@@ -37,7 +39,6 @@ export default function FaceEnrollPage() {
     const currentUser = useAuthStore((s) => s.currentUser);
     const employees = useEmployeesStore((s) => s.employees);
     const companyName = useAppearanceStore((s) => s.companyName);
-    const ks = useKioskStore((s) => s.settings);
 
     // Resolve the actual employee ID (e.g. "EMP027") from the auth profile
     const myEmployee = employees.find(
@@ -55,17 +56,24 @@ export default function FaceEnrollPage() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
 
-    // PIN verification
+    // PIN verification — redirect if not verified; guard browser back
     useEffect(() => {
         const verified = sessionStorage.getItem("kiosk-pin-verified");
         const verifiedTime = sessionStorage.getItem("kiosk-pin-verified-time");
-        if (!verified || !verifiedTime) { router.push("/kiosk"); return; }
+        if (!verified || !verifiedTime) { router.replace("/kiosk"); return; }
         const elapsed = Date.now() - parseInt(verifiedTime);
         if (elapsed > 5 * 60 * 1000) {
             sessionStorage.removeItem("kiosk-pin-verified");
             sessionStorage.removeItem("kiosk-pin-verified-time");
-            router.push("/kiosk");
+            router.replace("/kiosk");
+            return;
         }
+        window.history.pushState({ kioskGuard: true }, "");
+        const handlePopState = () => {
+            router.replace("/kiosk/face");
+        };
+        window.addEventListener("popstate", handlePopState);
+        return () => window.removeEventListener("popstate", handlePopState);
     }, [router]);
 
     // Load face-api.js models on mount
@@ -223,42 +231,93 @@ export default function FaceEnrollPage() {
             stopCamera();
             setState("done");
             toast.success("Face enrolled successfully!");
-            setTimeout(() => router.push("/kiosk/face"), 2000);
+            setTimeout(() => router.replace("/kiosk/face"), 2000);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Network error");
             setState("error");
         }
-    }, [descriptor, referenceImage, currentUser.id, stopCamera, router]);
+    }, [descriptor, referenceImage, currentUser.id, employeeId, stopCamera, router]);
 
     return (
-        <div className={cn(
-            "fixed inset-0 flex flex-col select-none overflow-auto",
-            ks.kioskTheme === "midnight" ? "bg-slate-950" :
-            ks.kioskTheme === "charcoal" ? "bg-neutral-950" : "bg-zinc-950"
-        )}>
-            {/* Ambient blob */}
+        <div className="fixed inset-0 flex flex-col select-none overflow-auto bg-black">
+            {/* Animated gradient background */}
             <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                <div className="absolute -top-40 -left-40 w-[550px] h-[550px] rounded-full blur-[130px] opacity-20 bg-violet-600" />
+                {/* Top-left neon blob */}
+                <div 
+                    className="absolute rounded-full blur-[150px] animate-pulse"
+                    style={{
+                        width: "clamp(300px, 40vw, 600px)",
+                        height: "clamp(300px, 40vh, 600px)",
+                        top: "-10%",
+                        left: "-10%",
+                        background: `linear-gradient(135deg, ${NEON_GREEN}40 0%, ${NEON_GREEN}10 100%)`,
+                        animationDuration: "4s",
+                    }}
+                />
+                {/* Bottom-right neon blob */}
+                <div 
+                    className="absolute rounded-full blur-[180px] animate-pulse"
+                    style={{
+                        width: "clamp(350px, 50vw, 700px)",
+                        height: "clamp(350px, 50vh, 700px)",
+                        bottom: "-15%",
+                        right: "-15%",
+                        background: `linear-gradient(315deg, ${NEON_GREEN}30 0%, transparent 70%)`,
+                        animationDuration: "6s",
+                        animationDelay: "1s",
+                    }}
+                />
+                {/* Grid pattern */}
+                <div 
+                    className="absolute inset-0 opacity-[0.03]"
+                    style={{
+                        backgroundImage: `linear-gradient(${NEON_GREEN}20 1px, transparent 1px), linear-gradient(90deg, ${NEON_GREEN}20 1px, transparent 1px)`,
+                        backgroundSize: "clamp(30px, 4vw, 50px) clamp(30px, 4vw, 50px)",
+                    }}
+                />
             </div>
 
             {/* Top bar */}
-            <header className="relative z-10 w-full flex items-center justify-between px-4 sm:px-8 pt-4 sm:pt-6">
-                <button onClick={() => router.push("/kiosk/face")} className="flex items-center gap-2 text-white/50 hover:text-white transition-colors min-h-[44px]">
-                    <ArrowLeft className="h-4 w-4" /><span className="text-sm">Back</span>
+            <header 
+                className="relative z-10 w-full flex items-center justify-between"
+                style={{ padding: "clamp(1rem, 3vh, 1.5rem) clamp(1rem, 3vw, 2rem)" }}
+            >
+                <button 
+                    onClick={() => router.replace("/kiosk/face")} 
+                    className="flex items-center gap-2 text-white/50 hover:text-white transition-colors min-h-[44px]"
+                    style={{ fontSize: "clamp(0.75rem, 1.2vw, 0.875rem)" }}
+                >
+                    <ArrowLeft className="h-4 w-4" /><span>Back</span>
                 </button>
                 <div className="text-center">
-                    <p className="text-white/40 text-xs font-semibold uppercase tracking-widest">Face Enrollment</p>
+                    <p 
+                        className="font-semibold uppercase tracking-widest"
+                        style={{ 
+                            fontSize: "clamp(0.6rem, 1vw, 0.75rem)",
+                            color: NEON_GREEN,
+                            textShadow: `0 0 10px ${NEON_GREEN_DIM}`,
+                        }}
+                    >
+                        Face Enrollment
+                    </p>
                 </div>
                 <div className="w-16 sm:w-20" />
             </header>
 
             {/* Main content */}
-            <main className="relative z-10 flex flex-col items-center justify-center gap-4 sm:gap-6 px-4 sm:px-6 flex-1 w-full max-w-md mx-auto py-4">
+            <main 
+                className="relative z-10 flex flex-col items-center justify-center flex-1 w-full mx-auto"
+                style={{
+                    gap: "clamp(1rem, 3vh, 1.5rem)",
+                    padding: "clamp(1rem, 2vh, 1.5rem) clamp(1rem, 3vw, 2rem)",
+                    maxWidth: "min(480px, 95vw)",
+                }}
+            >
 
                 {/* Loading models */}
                 {state === "loading-models" && (
                     <div className="text-center space-y-4">
-                        <Loader2 className="h-12 w-12 text-violet-400 animate-spin mx-auto" />
+                        <Loader2 style={{ color: NEON_GREEN }} className="h-12 w-12 animate-spin mx-auto" />
                         <p className="text-white/60 text-sm">Loading face recognition models...</p>
                         <p className="text-white/30 text-xs">This may take a few seconds on first load</p>
                     </div>
@@ -267,10 +326,27 @@ export default function FaceEnrollPage() {
                 {/* Done state */}
                 {state === "done" && (
                     <div className="text-center space-y-4 animate-in zoom-in-90 duration-300">
-                        <div className="h-20 w-20 mx-auto rounded-full bg-emerald-500/20 flex items-center justify-center">
-                            <CheckCircle className="h-10 w-10 text-emerald-400" />
+                        <div 
+                            className="mx-auto rounded-full flex items-center justify-center"
+                            style={{
+                                width: "clamp(70px, 12vw, 100px)",
+                                height: "clamp(70px, 12vw, 100px)",
+                                background: `radial-gradient(circle, ${NEON_GREEN}30 0%, transparent 70%)`,
+                                boxShadow: `0 0 60px ${NEON_GREEN}40`,
+                            }}
+                        >
+                            <CheckCircle style={{ color: NEON_GREEN, width: "clamp(35px, 6vw, 50px)", height: "clamp(35px, 6vw, 50px)" }} />
                         </div>
-                        <p className="text-2xl font-bold text-emerald-300">Face Enrolled!</p>
+                        <p 
+                            className="font-bold"
+                            style={{ 
+                                fontSize: "clamp(1.5rem, 4vw, 2rem)",
+                                color: NEON_GREEN,
+                                textShadow: `0 0 20px ${NEON_GREEN_DIM}`,
+                            }}
+                        >
+                            Face Enrolled!
+                        </p>
                         <p className="text-white/40 text-sm">Your face has been securely enrolled for recognition.</p>
                         <p className="text-white/30 text-xs">Redirecting to verification kiosk...</p>
                     </div>
@@ -279,14 +355,29 @@ export default function FaceEnrollPage() {
                 {/* Error state */}
                 {state === "error" && (
                     <div className="text-center space-y-4">
-                        <div className="h-20 w-20 mx-auto rounded-full bg-red-500/20 flex items-center justify-center">
-                            <XCircle className="h-10 w-10 text-red-400" />
+                        <div 
+                            className="mx-auto rounded-full flex items-center justify-center"
+                            style={{
+                                width: "clamp(70px, 12vw, 100px)",
+                                height: "clamp(70px, 12vw, 100px)",
+                                background: "radial-gradient(circle, rgba(239, 68, 68, 0.3) 0%, transparent 70%)",
+                                boxShadow: "0 0 60px rgba(239, 68, 68, 0.4)",
+                            }}
+                        >
+                            <XCircle style={{ color: "#ef4444", width: "clamp(35px, 6vw, 50px)", height: "clamp(35px, 6vw, 50px)" }} />
                         </div>
-                        <p className="text-lg font-bold text-red-300">Enrollment Failed</p>
+                        <p className="text-lg font-bold text-red-400">Enrollment Failed</p>
                         <p className="text-white/40 text-sm">{error}</p>
-                        <button onClick={() => { setDescriptor(null); setReferenceImage(""); setPreviewUrl(""); setState("idle"); setError(""); }}
-                            className="px-6 py-3 rounded-xl bg-white/10 text-white text-sm hover:bg-white/20 transition-colors min-h-[44px]">
-                            <RotateCcw className="h-3.5 w-3.5 inline mr-2" />Start Over
+                        <button 
+                            onClick={() => { setDescriptor(null); setReferenceImage(""); setPreviewUrl(""); setState("idle"); setError(""); }}
+                            className="rounded-xl text-white text-sm transition-all min-h-[44px]"
+                            style={{
+                                padding: "clamp(0.75rem, 2vh, 1rem) clamp(1.5rem, 4vw, 2rem)",
+                                background: `linear-gradient(135deg, ${NEON_GREEN}30 0%, ${NEON_GREEN}10 100%)`,
+                                border: `1px solid ${NEON_GREEN}40`,
+                            }}
+                        >
+                            <RotateCcw className="h-3.5 w-3.5 inline mr-2" style={{ color: NEON_GREEN }} />Start Over
                         </button>
                     </div>
                 )}
@@ -294,29 +385,59 @@ export default function FaceEnrollPage() {
                 {/* Enrolling state */}
                 {state === "enrolling" && (
                     <div className="text-center space-y-4">
-                        <Loader2 className="h-12 w-12 text-violet-400 animate-spin mx-auto" />
+                        <Loader2 style={{ color: NEON_GREEN }} className="h-12 w-12 animate-spin mx-auto" />
                         <p className="text-white/60 text-sm">Enrolling your face...</p>
                     </div>
                 )}
 
                 {/* Idle / Camera / Scanning / Captured states */}
                 {(state === "idle" || state === "camera" || state === "scanning" || state === "captured") && (
-                    <div className="bg-white/[0.04] border border-white/10 rounded-3xl p-4 sm:p-6 backdrop-blur-sm flex flex-col items-center gap-4 sm:gap-5 shadow-2xl w-full">
+                    <div 
+                        className="backdrop-blur-xl flex flex-col items-center w-full"
+                        style={{
+                            background: "rgba(255, 255, 255, 0.03)",
+                            border: `1px solid ${NEON_GREEN}15`,
+                            borderRadius: "clamp(1.25rem, 3vw, 1.5rem)",
+                            padding: "clamp(1rem, 3vh, 1.5rem)",
+                            gap: "clamp(1rem, 2.5vh, 1.25rem)",
+                            boxShadow: `0 0 40px ${NEON_GREEN}08`,
+                        }}
+                    >
                         <div className="flex items-center gap-2">
-                            <ScanFace className="h-4 w-4 text-violet-400/60" />
-                            <p className="text-white/40 text-[11px] font-semibold uppercase tracking-widest">
+                            <ScanFace style={{ color: `${NEON_GREEN}99` }} className="h-4 w-4" />
+                            <p 
+                                className="font-semibold uppercase tracking-widest"
+                                style={{ 
+                                    fontSize: "clamp(0.6rem, 1vw, 0.7rem)",
+                                    color: `${NEON_GREEN}99`,
+                                }}
+                            >
                                 Front Face Capture
                             </p>
                         </div>
 
-                        <p className="text-white/60 text-sm text-center">
+                        <p 
+                            className="text-center"
+                            style={{
+                                fontSize: "clamp(0.75rem, 1.2vw, 0.875rem)",
+                                color: "rgba(255, 255, 255, 0.6)",
+                            }}
+                        >
                             {state === "captured"
                                 ? "Review your capture below, then enroll."
                                 : "Look straight at the camera and press Scan."}
                         </p>
 
                         {/* Camera viewport */}
-                        <div className="relative w-full aspect-[3/4] sm:aspect-[4/3] rounded-2xl overflow-hidden bg-black/50">
+                        <div 
+                            className="relative w-full overflow-hidden"
+                            style={{
+                                aspectRatio: "3/4",
+                                borderRadius: "clamp(0.75rem, 2vw, 1rem)",
+                                background: "rgba(0, 0, 0, 0.5)",
+                                border: `1px solid ${NEON_GREEN}20`,
+                            }}
+                        >
                             {state === "captured" && previewUrl ? (
                                 <img // eslint-disable-line @next/next/no-img-element
                                     src={previewUrl}
@@ -335,15 +456,21 @@ export default function FaceEnrollPage() {
                                     />
                                     {/* Oval face guide */}
                                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                        <div className={cn(
-                                            "w-40 h-52 sm:w-48 sm:h-60 rounded-[50%] border-2 border-dashed transition-colors",
-                                            state === "scanning" ? "border-amber-400 animate-pulse" : "border-white/20"
-                                        )} />
+                                        <div 
+                                            className="rounded-[50%] border-2 border-dashed transition-colors"
+                                            style={{
+                                                width: "clamp(8rem, 30vw, 12rem)",
+                                                height: "clamp(11rem, 40vw, 15rem)",
+                                                borderColor: state === "scanning" ? NEON_GREEN : "rgba(255, 255, 255, 0.2)",
+                                                boxShadow: state === "scanning" ? `0 0 30px ${NEON_GREEN}40` : "none",
+                                                animation: state === "scanning" ? "pulse 2s infinite" : "none",
+                                            }}
+                                        />
                                     </div>
                                     {/* Scanning overlay */}
                                     {state === "scanning" && (
                                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
-                                            <Loader2 className="h-8 w-8 text-white animate-spin" />
+                                            <Loader2 className="h-8 w-8 animate-spin" style={{ color: NEON_GREEN }} />
                                             <p className="text-white/70 text-xs mt-2">Scanning face... {scanProgress}%</p>
                                         </div>
                                     )}
@@ -353,27 +480,58 @@ export default function FaceEnrollPage() {
                         <canvas ref={canvasRef} className="hidden" />
 
                         {/* Action buttons — min 44px height for mobile touch targets */}
-                        <div className="w-full flex gap-3">
+                        <div className="w-full flex" style={{ gap: "clamp(0.5rem, 1.5vw, 0.75rem)" }}>
                             {state === "idle" && (
-                                <button onClick={startCamera}
-                                    className="flex-1 py-3.5 rounded-xl bg-violet-500/80 hover:bg-violet-500 text-white text-sm font-bold transition-all min-h-[44px]">
+                                <button 
+                                    onClick={startCamera}
+                                    className="flex-1 rounded-xl text-white text-sm font-bold transition-all min-h-[44px]"
+                                    style={{
+                                        padding: "clamp(0.75rem, 2vh, 1rem)",
+                                        background: `linear-gradient(135deg, ${NEON_GREEN} 0%, ${NEON_GREEN}bb 100%)`,
+                                        boxShadow: `0 0 30px ${NEON_GREEN}40`,
+                                        color: "#000",
+                                    }}
+                                >
                                     <Camera className="h-4 w-4 inline mr-2" />Open Camera
                                 </button>
                             )}
                             {state === "camera" && (
-                                <button onClick={handleScan}
-                                    className="flex-1 py-3.5 rounded-xl bg-violet-500/80 hover:bg-violet-500 text-white text-sm font-bold transition-all min-h-[44px]">
+                                <button 
+                                    onClick={handleScan}
+                                    className="flex-1 rounded-xl text-sm font-bold transition-all min-h-[44px]"
+                                    style={{
+                                        padding: "clamp(0.75rem, 2vh, 1rem)",
+                                        background: `linear-gradient(135deg, ${NEON_GREEN} 0%, ${NEON_GREEN}bb 100%)`,
+                                        boxShadow: `0 0 30px ${NEON_GREEN}40`,
+                                        color: "#000",
+                                    }}
+                                >
                                     <Camera className="h-4 w-4 inline mr-2" />Scan Face
                                 </button>
                             )}
                             {state === "captured" && (
                                 <>
-                                    <button onClick={handleRetake}
-                                        className="flex-1 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-all min-h-[44px]">
-                                        <RotateCcw className="h-3.5 w-3.5 inline mr-1.5" />Retake
+                                    <button 
+                                        onClick={handleRetake}
+                                        className="flex-1 rounded-xl text-white text-sm font-medium transition-all min-h-[44px]"
+                                        style={{
+                                            padding: "clamp(0.75rem, 2vh, 1rem)",
+                                            background: `${NEON_GREEN}15`,
+                                            border: `1px solid ${NEON_GREEN}30`,
+                                        }}
+                                    >
+                                        <RotateCcw className="h-3.5 w-3.5 inline mr-1.5" style={{ color: NEON_GREEN }} />Retake
                                     </button>
-                                    <button onClick={handleEnroll}
-                                        className="flex-1 py-3.5 rounded-xl bg-emerald-500/80 hover:bg-emerald-500 text-white text-sm font-bold transition-all min-h-[44px]">
+                                    <button 
+                                        onClick={handleEnroll}
+                                        className="flex-1 rounded-xl text-sm font-bold transition-all min-h-[44px]"
+                                        style={{
+                                            padding: "clamp(0.75rem, 2vh, 1rem)",
+                                            background: `linear-gradient(135deg, ${NEON_GREEN} 0%, ${NEON_GREEN}bb 100%)`,
+                                            boxShadow: `0 0 30px ${NEON_GREEN}40`,
+                                            color: "#000",
+                                        }}
+                                    >
                                         Enroll<ChevronRight className="h-4 w-4 inline ml-1" />
                                     </button>
                                 </>
@@ -381,7 +539,13 @@ export default function FaceEnrollPage() {
                         </div>
 
                         {state === "idle" && (
-                            <p className="text-white/25 text-[10px] text-center">
+                            <p 
+                                className="text-center"
+                                style={{
+                                    fontSize: "clamp(0.55rem, 0.9vw, 0.625rem)",
+                                    color: "rgba(255, 255, 255, 0.25)",
+                                }}
+                            >
                                 Your face will be scanned using multiple frames for accuracy.
                                 Works best with good lighting and a clear front-facing view.
                             </p>
@@ -391,8 +555,26 @@ export default function FaceEnrollPage() {
             </main>
 
             {/* Footer */}
-            <footer className="relative z-10 w-full flex items-center justify-center pb-4 sm:pb-6">
-                <div className="flex items-center gap-2 text-white/20 text-xs">
+            <footer 
+                className="relative z-10 w-full flex items-center justify-center"
+                style={{ padding: "clamp(1rem, 2vh, 1.5rem)" }}
+            >
+                <div 
+                    className="flex items-center gap-2"
+                    style={{ 
+                        fontSize: "clamp(0.6rem, 1vw, 0.75rem)",
+                        color: "rgba(255, 255, 255, 0.3)",
+                    }}
+                >
+                    <span 
+                        className="animate-pulse rounded-full"
+                        style={{
+                            width: "6px",
+                            height: "6px",
+                            background: NEON_GREEN,
+                            boxShadow: `0 0 10px ${NEON_GREEN}`,
+                        }}
+                    />
                     <span>{companyName || "NexHRMS"} • Face Enrollment</span>
                 </div>
             </footer>

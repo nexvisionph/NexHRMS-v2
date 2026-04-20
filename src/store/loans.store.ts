@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { Loan, LoanDeduction, LoanRepaymentSchedule, LoanBalanceHistory } from "@/types";
 import { SEED_LOANS } from "@/data/seed";
@@ -208,6 +209,7 @@ export const useLoansStore = create<LoansState>()(
         {
             name: "nexhrms-loans",
             version: 2,
+            storage: safePersistStorage,
             migrate: () => ({ loans: SEED_LOANS }),
         }
     )

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/auth.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -93,10 +93,14 @@ const CHANNEL_OPTIONS: { value: NotificationChannel; label: string; icon: string
 
 export default function NotificationSettingsPage() {
     const currentUser = useAuthStore((s) => s.currentUser);
-    const { rules, providerConfig, updateRule, toggleRule, resetRules, updateProviderConfig } = useNotificationsStore();
+    const { rules, providerConfig, updateRule, toggleRule, resetRules, updateProviderConfig, fetchFromDb, hasFetchedFromDb } = useNotificationsStore();
     const [resetOpen, setResetOpen] = useState(false);
     const [editingTrigger, setEditingTrigger] = useState<NotificationTrigger | null>(null);
     const rh = useRoleHref();
+
+    useEffect(() => {
+        if (!hasFetchedFromDb) { fetchFromDb(); }
+    }, [hasFetchedFromDb, fetchFromDb]);
 
     if (currentUser.role !== "admin") {
         return (

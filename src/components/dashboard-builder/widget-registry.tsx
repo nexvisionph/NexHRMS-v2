@@ -40,7 +40,7 @@ import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format, parseISO, isAfter, startOfDay, isToday } from "date-fns";
+import { parseISO, isAfter, startOfDay, isToday } from "date-fns";
 
 /** Format "HH:MM" time string to "h:mm AM/PM" */
 function formatTimeAmPm(time: string | null | undefined): string {
@@ -117,9 +117,20 @@ function WidgetSkeleton() {
 }
 
 // ─── KPI Card wrapper ────────────────────────────────────────
-function KpiCard({ label, value, icon: Icon, color, bg }: { label: string; value: string | number; icon: React.ElementType; color: string; bg: string }) {
-    return (
-        <Card className="border border-border/40 shadow-sm hover:shadow-md transition-all duration-200 h-full bg-card/60 backdrop-blur-sm">
+interface KpiCardProps { 
+    label: string; 
+    value: string | number; 
+    icon: React.ElementType; 
+    color: string; 
+    bg: string;
+    href?: string;
+}
+
+function KpiCard({ label, value, icon: Icon, color, bg, href }: KpiCardProps) {
+    const rh = useRoleHref();
+    
+    const cardContent = (
+        <Card className={`border border-border/40 shadow-sm hover:shadow-md transition-all duration-200 h-full bg-card/60 backdrop-blur-sm ${href ? "cursor-pointer hover:border-primary/40 hover:bg-card/80" : ""}`}>
             <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                     <div className="space-y-2">
@@ -133,6 +144,12 @@ function KpiCard({ label, value, icon: Icon, color, bg }: { label: string; value
             </CardContent>
         </Card>
     );
+
+    if (href) {
+        return <Link href={rh(href)} className="block h-full">{cardContent}</Link>;
+    }
+
+    return cardContent;
 }
 
 // ─── Individual Widget Components ────────────────────────────
@@ -145,91 +162,91 @@ const DONUT_COLORS = [
 
 function KpiActiveEmployees() {
     const count = useEmployeesStore((s) => s.employees.filter((e) => e.status === "active").length);
-    return <KpiCard label="Active Employees" value={count} icon={Users} color="text-primary" bg="bg-primary/10" />;
+    return <KpiCard label="Active Employees" value={count} icon={Users} color="text-primary" bg="bg-primary/10" href="/employees/manage" />;
 }
 
 function KpiPresentToday() {
     const logs = useAttendanceStore((s) => s.logs);
     const [today] = useState(() => new Date().toISOString().split("T")[0]);
     const val = useMemo(() => today ? logs.filter((l) => l.date === today && l.status === "present").length : 0, [logs, today]);
-    return <KpiCard label="Present Today" value={val} icon={UserCheck} color="text-emerald-500" bg="bg-emerald-500/10" />;
+    return <KpiCard label="Present Today" value={val} icon={UserCheck} color="text-emerald-500" bg="bg-emerald-500/10" href="/attendance" />;
 }
 
 function KpiAbsentToday() {
     const logs = useAttendanceStore((s) => s.logs);
     const [today] = useState(() => new Date().toISOString().split("T")[0]);
     const val = useMemo(() => today ? logs.filter((l) => l.date === today && l.status === "absent").length : 0, [logs, today]);
-    return <KpiCard label="Absent Today" value={val} icon={UserX} color="text-red-500" bg="bg-red-500/10" />;
+    return <KpiCard label="Absent Today" value={val} icon={UserX} color="text-red-500" bg="bg-red-500/10" href="/attendance" />;
 }
 
 function KpiOnLeave() {
     const logs = useAttendanceStore((s) => s.logs);
     const [today] = useState(() => new Date().toISOString().split("T")[0]);
     const val = useMemo(() => today ? logs.filter((l) => l.date === today && l.status === "on_leave").length : 0, [logs, today]);
-    return <KpiCard label="On Leave" value={val} icon={CalendarOff} color="text-amber-500" bg="bg-amber-500/10" />;
+    return <KpiCard label="On Leave" value={val} icon={CalendarOff} color="text-amber-500" bg="bg-amber-500/10" href="/leave" />;
 }
 
 function KpiPendingLeaves() {
     const count = useLeaveStore((s) => s.requests.filter((r) => r.status === "pending").length);
-    return <KpiCard label="Pending Leave Requests" value={count} icon={Clock} color="text-violet-500" bg="bg-violet-500/10" />;
+    return <KpiCard label="Pending Leave Requests" value={count} icon={Clock} color="text-violet-500" bg="bg-violet-500/10" href="/leave" />;
 }
 
 function KpiOutstandingLoans() {
     const loans = useLoansStore((s) => s.loans);
     const val = loans.reduce((sum, l) => l.status === "active" ? sum + l.remainingBalance : sum, 0);
-    return <KpiCard label="Outstanding Loans" value={val.toLocaleString()} icon={Banknote} color="text-blue-600" bg="bg-blue-500/10" />;
+    return <KpiCard label="Outstanding Loans" value={val.toLocaleString()} icon={Banknote} color="text-blue-600" bg="bg-blue-500/10" href="/loans" />;
 }
 
 function KpiPendingOt() {
     const count = useAttendanceStore((s) => s.overtimeRequests.filter((r) => r.status === "pending").length);
-    return <KpiCard label="Pending OT Requests" value={count} icon={ClipboardList} color="text-blue-500" bg="bg-blue-500/10" />;
+    return <KpiCard label="Pending OT Requests" value={count} icon={ClipboardList} color="text-blue-500" bg="bg-blue-500/10" href="/attendance" />;
 }
 
 function KpiPayslipsIssued() {
     const count = usePayrollStore((s) => s.payslips.filter((p) => p.status === "draft").length);
-    return <KpiCard label="Draft Payslips" value={count} icon={FileText} color="text-amber-500" bg="bg-amber-500/10" />;
+    return <KpiCard label="Draft Payslips" value={count} icon={FileText} color="text-amber-500" bg="bg-amber-500/10" href="/payroll" />;
 }
 
 function KpiConfirmedPayslips() {
     const count = usePayrollStore((s) => s.payslips.filter((p) => p.status === "published").length);
-    return <KpiCard label="Published Payslips" value={count} icon={CheckCircle} color="text-violet-500" bg="bg-violet-500/10" />;
+    return <KpiCard label="Published Payslips" value={count} icon={CheckCircle} color="text-violet-500" bg="bg-violet-500/10" href="/payroll" />;
 }
 
 function KpiPaidPayslips() {
     const count = usePayrollStore((s) => s.payslips.filter((p) => p.status === "signed").length);
-    return <KpiCard label="Signed Payslips" value={count} icon={CreditCard} color="text-emerald-500" bg="bg-emerald-500/10" />;
+    return <KpiCard label="Signed Payslips" value={count} icon={CreditCard} color="text-emerald-500" bg="bg-emerald-500/10" href="/payroll" />;
 }
 
 function KpiLockedRuns() {
     const count = usePayrollStore((s) => s.runs.filter((r) => r.status === "locked").length);
-    return <KpiCard label="Locked Runs" value={count} icon={Shield} color="text-violet-500" bg="bg-violet-500/10" />;
+    return <KpiCard label="Locked Runs" value={count} icon={Shield} color="text-violet-500" bg="bg-violet-500/10" href="/payroll" />;
 }
 
 function KpiPendingAdjustments() {
     const count = usePayrollStore((s) => s.adjustments.filter((a) => a.status === "pending").length);
-    return <KpiCard label="Pending Adjustments" value={count} icon={Clock} color="text-orange-500" bg="bg-orange-500/10" />;
+    return <KpiCard label="Pending Adjustments" value={count} icon={Clock} color="text-orange-500" bg="bg-orange-500/10" href="/payroll" />;
 }
 
 function KpiAuditTotal() {
     const count = useAuditStore((s) => s.logs.length);
-    return <KpiCard label="Total Audit Entries" value={count} icon={Activity} color="text-primary" bg="bg-primary/10" />;
+    return <KpiCard label="Total Audit Entries" value={count} icon={Activity} color="text-primary" bg="bg-primary/10" href="/audit" />;
 }
 
 function KpiAuditToday() {
     const logs = useAuditStore((s) => s.logs);
     const [today] = useState(() => new Date().toISOString().split("T")[0]);
     const val = useMemo(() => today ? logs.filter((l) => l.timestamp.startsWith(today)).length : 0, [logs, today]);
-    return <KpiCard label="Actions Today" value={val} icon={Clock} color="text-emerald-500" bg="bg-emerald-500/10" />;
+    return <KpiCard label="Actions Today" value={val} icon={Clock} color="text-emerald-500" bg="bg-emerald-500/10" href="/audit" />;
 }
 
 function KpiUniqueActions() {
     const count = useAuditStore((s) => new Set(s.logs.map((l) => l.action)).size);
-    return <KpiCard label="Unique Actions" value={count} icon={ClipboardList} color="text-violet-500" bg="bg-violet-500/10" />;
+    return <KpiCard label="Unique Actions" value={count} icon={ClipboardList} color="text-violet-500" bg="bg-violet-500/10" href="/audit" />;
 }
 
 function KpiUniqueActors() {
     const count = useAuditStore((s) => new Set(s.logs.map((l) => l.performedBy)).size);
-    return <KpiCard label="Unique Actors" value={count} icon={Users} color="text-blue-500" bg="bg-blue-500/10" />;
+    return <KpiCard label="Unique Actors" value={count} icon={Users} color="text-blue-500" bg="bg-blue-500/10" href="/audit" />;
 }
 
 // Charts
@@ -473,6 +490,7 @@ function MyAttendanceStatus() {
     const [checkIn, setCheckIn] = useState<string | null>(null);
     const [checkOut, setCheckOut] = useState<string | null>(null);
     const [weekStats, setWeekStats] = useState({ presentDays: 0, totalHours: 0, lateDays: 0 });
+    const rh = useRoleHref();
 
     // Fetch fresh attendance data from API on mount + every 30s
     useEffect(() => {
@@ -517,38 +535,40 @@ function MyAttendanceStatus() {
     const displayStatus = status === "loading" ? "Loading..." : status.replace("_", " ");
 
     return (
-        <Card className={`border-2 ${statusStyle[status]}`}>
-            <CardContent className="p-5">
-                <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-xl bg-white/20 dark:bg-black/20">
-                        <LogIn className="h-6 w-6" />
-                    </div>
-                    <div>
-                        <p className="text-xs font-medium opacity-70">Today&apos;s Status</p>
-                        <p className="text-xl font-bold capitalize mt-0.5">{displayStatus}</p>
-                        {checkIn && (
-                            <p className="text-xs opacity-70 mt-0.5">In: {formatTimeAmPm(checkIn)}{checkOut ? `  Out: ${formatTimeAmPm(checkOut)}` : ""}</p>
-                        )}
-                    </div>
-                </div>
-                {status !== "loading" && (
-                    <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-                        <div>
-                            <p className="text-lg font-bold">{weekStats.presentDays}<span className="text-muted-foreground font-normal">/5</span></p>
-                            <p className="text-muted-foreground">Days Present</p>
+        <Link href={rh("/attendance")} className="block h-full">
+            <Card className={`border-2 ${statusStyle[status]} cursor-pointer hover:shadow-md transition-all`}>
+                <CardContent className="p-5">
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 rounded-xl bg-white/20 dark:bg-black/20">
+                            <LogIn className="h-6 w-6" />
                         </div>
                         <div>
-                            <p className="text-lg font-bold">{weekStats.totalHours}</p>
-                            <p className="text-muted-foreground">Hours Worked</p>
-                        </div>
-                        <div>
-                            <p className="text-lg font-bold">{weekStats.lateDays}</p>
-                            <p className="text-muted-foreground">Late Days</p>
+                            <p className="text-xs font-medium opacity-70">Today&apos;s Status</p>
+                            <p className="text-xl font-bold capitalize mt-0.5">{displayStatus}</p>
+                            {checkIn && (
+                                <p className="text-xs opacity-70 mt-0.5">In: {formatTimeAmPm(checkIn)}{checkOut ? `  Out: ${formatTimeAmPm(checkOut)}` : ""}</p>
+                            )}
                         </div>
                     </div>
-                )}
-            </CardContent>
-        </Card>
+                    {status !== "loading" && (
+                        <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
+                            <div>
+                                <p className="text-lg font-bold">{weekStats.presentDays}<span className="text-muted-foreground font-normal">/5</span></p>
+                                <p className="text-muted-foreground">Days Present</p>
+                            </div>
+                            <div>
+                                <p className="text-lg font-bold">{weekStats.totalHours}</p>
+                                <p className="text-muted-foreground">Hours Worked</p>
+                            </div>
+                            <div>
+                                <p className="text-lg font-bold">{weekStats.lateDays}</p>
+                                <p className="text-muted-foreground">Late Days</p>
+                            </div>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </Link>
     );
 }
 
@@ -584,32 +604,32 @@ function MyLeaveBalance() {
     }, [myLeaves, currentYear]);
 
     return (
-        <Card className="border border-border/50">
-            <CardHeader className="pb-2">
-                <div className="flex items-center gap-2">
-                    <CalendarOff className="h-5 w-5 text-muted-foreground" />
-                    <CardTitle className="text-base font-semibold">Leave Balance {currentYear}</CardTitle>
-                </div>
-            </CardHeader>
-            <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {leaveUsage.map((l) => (
-                        <div key={l.type} className="space-y-1.5">
-                            <div className="flex items-center justify-between text-sm">
-                                <span className="font-medium">{l.label}</span>
-                                <span className="text-muted-foreground">{l.used} / {l.alloc} days used</span>
+        <Link href={rh("/leave")} className="block h-full">
+            <Card className="border border-border/50 cursor-pointer hover:shadow-md hover:border-primary/40 transition-all h-full">
+                <CardHeader className="pb-2">
+                    <div className="flex items-center gap-2">
+                        <CalendarOff className="h-5 w-5 text-muted-foreground" />
+                        <CardTitle className="text-base font-semibold">Leave Balance {currentYear}</CardTitle>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {leaveUsage.map((l) => (
+                            <div key={l.type} className="space-y-1.5">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="font-medium">{l.label}</span>
+                                    <span className="text-muted-foreground">{l.used} / {l.alloc} days used</span>
+                                </div>
+                                <Progress value={l.alloc > 0 ? (l.used / l.alloc) * 100 : 0} className="h-2" />
                             </div>
-                            <Progress value={l.alloc > 0 ? (l.used / l.alloc) * 100 : 0} className="h-2" />
-                        </div>
-                    ))}
-                </div>
-                <Link href={rh("/leave")}>
+                        ))}
+                    </div>
                     <Button variant="outline" size="sm" className="mt-4 w-full gap-1.5">
                         <Plus className="h-3.5 w-3.5" /> Request Leave
                     </Button>
-                </Link>
-            </CardContent>
-        </Card>
+                </CardContent>
+            </Card>
+        </Link>
     );
 }
 
@@ -628,30 +648,32 @@ function MyLatestPayslip() {
     }, [payslips, empRecord]);
 
     return (
-        <Card className="border border-border/50">
-            <CardContent className="p-5">
-                <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-xl bg-emerald-500/10">
-                        <CreditCard className="h-6 w-6 text-emerald-500" />
+        <Link href={rh("/payroll")} className="block h-full">
+            <Card className="border border-border/50 cursor-pointer hover:shadow-md hover:border-primary/40 transition-all h-full">
+                <CardContent className="p-5">
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 rounded-xl bg-emerald-500/10">
+                            <CreditCard className="h-6 w-6 text-emerald-500" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground font-medium">Latest Payslip</p>
+                            {latestPayslip ? (
+                                <>
+                                    <p className="text-xl font-bold mt-0.5">{formatCurrency(latestPayslip.netPay)}</p>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                        <Badge variant="secondary" className="text-[10px]">{latestPayslip.status}</Badge>
+                                        <span className="text-xs text-muted-foreground">{latestPayslip.issuedAt}</span>
+                                    </div>
+                                </>
+                            ) : (
+                                <p className="text-sm text-muted-foreground mt-1">No payslips yet</p>
+                            )}
+                            <span className="text-xs text-primary hover:underline">View payslips</span>
+                        </div>
                     </div>
-                    <div className="min-w-0">
-                        <p className="text-xs text-muted-foreground font-medium">Latest Payslip</p>
-                        {latestPayslip ? (
-                            <>
-                                <p className="text-xl font-bold mt-0.5">{formatCurrency(latestPayslip.netPay)}</p>
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                    <Badge variant="secondary" className="text-[10px]">{latestPayslip.status}</Badge>
-                                    <span className="text-xs text-muted-foreground">{latestPayslip.issuedAt}</span>
-                                </div>
-                            </>
-                        ) : (
-                            <p className="text-sm text-muted-foreground mt-1">No payslips yet</p>
-                        )}
-                        <Link href={rh("/payroll")} className="text-xs text-primary hover:underline">View payslips</Link>
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
+                </CardContent>
+            </Card>
+        </Link>
     );
 }
 
@@ -696,7 +718,7 @@ function MyLeaveRequests() {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead className="text-xs">Type</TableHead>
+                                <TableHead className="text-xs pl-6">Type</TableHead>
                                 <TableHead className="text-xs">Period</TableHead>
                                 <TableHead className="text-xs">Days</TableHead>
                                 <TableHead className="text-xs">Status</TableHead>
@@ -712,7 +734,7 @@ function MyLeaveRequests() {
                                 };
                                 return (
                                     <TableRow key={req.id}>
-                                        <TableCell className="text-sm font-medium">{req.type}</TableCell>
+                                        <TableCell className="text-sm font-medium pl-6">{req.type}</TableCell>
                                         <TableCell className="text-xs text-muted-foreground">{req.startDate} &ndash; {req.endDate}</TableCell>
                                         <TableCell className="text-sm">{days}d</TableCell>
                                         <TableCell>

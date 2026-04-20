@@ -15,7 +15,7 @@ import { format, parseISO, formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 const typeColors: Record<string, string> = {
     assignment: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
@@ -83,6 +83,7 @@ export default function NotificationsPage() {
     const { hasPermission } = useRolesStore();
     const rh = useRoleHref();
     const isAdmin = hasPermission(currentUser.role, "notifications:manage");
+    const [adminTab, setAdminTab] = useState<"my" | "log">("my");
 
     // Handle notification click - mark as read and navigate
     const handleNotificationClick = (notificationId: string, link?: string, isRead?: boolean) => {
@@ -103,16 +104,22 @@ export default function NotificationsPage() {
         return emp?.id;
     }, [employees, currentUser]);
 
-    // Filter notifications for non-admin users
-    const displayLogs = useMemo(() => {
-        if (isAdmin) return logs;
+    // My notifications — always filtered by current user's employee ID
+    const myLogs = useMemo(() => {
         if (!currentEmployeeId) return [];
         return logs.filter((l) => l.employeeId === currentEmployeeId);
-    }, [logs, isAdmin, currentEmployeeId]);
+    }, [logs, currentEmployeeId]);
 
+    // For the active view: "my" tab shows own notifications, "log" tab shows all
+    const displayLogs = useMemo(() => {
+        if (isAdmin && adminTab === "log") return logs;
+        return myLogs;
+    }, [logs, myLogs, isAdmin, adminTab]);
+
+    // Unread count always based on current user's own notifications
     const unreadCount = useMemo(() => {
-        return displayLogs.filter((l) => !l.read).length;
-    }, [displayLogs]);
+        return myLogs.filter((l) => !l.read).length;
+    }, [myLogs]);
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
 
@@ -183,7 +190,7 @@ export default function NotificationsPage() {
                                                 )}
                                             </div>
                                             <h3 className="font-medium text-sm">{log.subject}</h3>
-                                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{log.body}</p>
+                                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2 break-all">{log.body}</p>
                                             <p className="text-xs text-muted-foreground/60 mt-2 flex items-center gap-1">
                                                 <Clock className="h-3 w-3" />
                                                 {formatRelativeTime(log.sentAt)}
@@ -216,18 +223,32 @@ export default function NotificationsPage() {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Notification Log</h1>
+                    <h1 className="text-2xl font-bold tracking-tight">
+                        {adminTab === "log" ? "Notification Log" : "My Notifications"}
+                    </h1>
                     <p className="text-sm text-muted-foreground mt-0.5">
-                        {logs.length} notification{logs.length !== 1 ? "s" : ""} dispatched
+                        {displayLogs.length} notification{displayLogs.length !== 1 ? "s" : ""}
+                        {adminTab === "log" ? " dispatched" : ""}
+                        {unreadCount > 0 && <span className="ml-1 font-semibold text-primary">· {unreadCount} unread</span>}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
+                    {unreadCount > 0 && currentEmployeeId && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={() => markAllAsRead(currentEmployeeId)}
+                        >
+                            <CheckCheck className="h-4 w-4" /> Mark All Read
+                        </Button>
+                    )}
                     <Link href={rh("/settings/notifications")}>
                         <Button variant="outline" size="sm" className="gap-1.5">
                             <Settings className="h-4 w-4" /> Rules
                         </Button>
                     </Link>
-                    {logs.length > 0 && (
+                    {adminTab === "log" && logs.length > 0 && (
                         <Button
                             variant="outline"
                             size="sm"
@@ -240,81 +261,179 @@ export default function NotificationsPage() {
                 </div>
             </div>
 
-            {/* Summary Badges */}
-            <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary" className="text-[10px] gap-1">
-                    <Mail className="h-3 w-3" /> {logs.filter((l) => l.channel === "email" || l.channel === "both").length} email
-                </Badge>
-                <Badge variant="secondary" className="text-[10px] gap-1">
-                    <MessageSquare className="h-3 w-3" /> {logs.filter((l) => l.channel === "sms" || l.channel === "both").length} SMS
-                </Badge>
-                <Badge variant="secondary" className="text-[10px] gap-1">
-                    <Bell className="h-3 w-3" /> {logs.filter((l) => l.channel === "in_app" || !l.channel).length} in-app
-                </Badge>
+            {/* Admin tab switcher */}
+            <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-lg w-fit">
+                <Button
+                    variant={adminTab === "my" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={() => setAdminTab("my")}
+                >
+                    <Bell className="h-3.5 w-3.5" /> My Notifications
+                    {unreadCount > 0 && (
+                        <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[9px]">{unreadCount}</Badge>
+                    )}
+                </Button>
+                <Button
+                    variant={adminTab === "log" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={() => setAdminTab("log")}
+                >
+                    <Mail className="h-3.5 w-3.5" /> System Log
+                </Button>
             </div>
 
-            <Card className="border border-border/50">
-                <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="text-xs">Employee</TableHead>
-                                <TableHead className="text-xs">Type</TableHead>
-                                <TableHead className="text-xs">Channel</TableHead>
-                                <TableHead className="text-xs">Subject</TableHead>
-                                <TableHead className="text-xs">Status</TableHead>
-                                <TableHead className="text-xs">Sent At</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {logs.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-12">
-                                        <Mail className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
-                                        <p className="text-sm text-muted-foreground">No notifications dispatched yet</p>
-                                        <p className="text-xs text-muted-foreground/60 mt-1">
-                                            Notifications are triggered by payroll actions, attendance, leave, and geofence events
-                                        </p>
-                                    </TableCell>
-                                </TableRow>
-                            ) : (
-                                logs.map((log) => (
-                                    <TableRow key={log.id}>
-                                        <TableCell className="text-sm font-medium">{getEmpName(log.employeeId)}</TableCell>
-                                        <TableCell>
-                                            <Badge variant="secondary" className={`text-[10px] ${typeColors[log.type] || ""}`}>
-                                                {typeLabels[log.type] || log.type}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell>
-                                            <span className="text-xs whitespace-nowrap">
-                                                {channelIcons[log.channel || "in_app"] || "\uD83D\uDD14 In-App"}
-                                            </span>
-                                        </TableCell>
-                                        <TableCell className="text-xs max-w-[220px] truncate text-muted-foreground" title={log.subject}>
-                                            {log.subject}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant="secondary" className={`text-[10px] ${
-                                                log.status === "sent" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" :
-                                                log.status === "failed" ? "bg-red-500/15 text-red-700 dark:text-red-400" :
-                                                "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                                            }`}>
-                                                {log.status || "simulated"}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                                            {formatSentAt(log.sentAt)}
-                                        </TableCell>
+            {/* My Notifications — card-based */}
+            {adminTab === "my" ? (
+                displayLogs.length === 0 ? (
+                    <Card className="border border-border/50">
+                        <CardContent className="flex flex-col items-center justify-center py-16">
+                            <Bell className="h-12 w-12 mb-3 text-muted-foreground/40" />
+                            <p className="text-sm text-muted-foreground">No notifications yet</p>
+                            <p className="text-xs text-muted-foreground/60 mt-1">
+                                You&apos;ll see updates about payslips, tasks, leave requests, and more here
+                            </p>
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <div className="space-y-3">
+                        {displayLogs.map((log) => (
+                            <Card
+                                key={log.id}
+                                className={`border transition-colors cursor-pointer hover:bg-muted/50 ${!log.read ? "bg-primary/5 border-primary/20" : "border-border/50"}`}
+                                onClick={() => handleNotificationClick(log.id, log.link, log.read)}
+                            >
+                                <CardContent className="p-4">
+                                    <div className="flex items-start gap-3">
+                                        <div className={`p-2 rounded-full ${typeColors[log.type] || "bg-muted"}`}>
+                                            <Bell className="h-4 w-4" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Badge variant="secondary" className={`text-[10px] ${typeColors[log.type] || ""}`}>
+                                                    {typeLabels[log.type] || log.type}
+                                                </Badge>
+                                                {!log.read && (
+                                                    <span className="h-2 w-2 rounded-full bg-primary" />
+                                                )}
+                                            </div>
+                                            <h3 className="font-medium text-sm">{log.subject}</h3>
+                                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2 break-all">{log.body}</p>
+                                            <p className="text-xs text-muted-foreground/60 mt-2 flex items-center gap-1">
+                                                <Clock className="h-3 w-3" />
+                                                {formatRelativeTime(log.sentAt)}
+                                            </p>
+                                        </div>
+                                        {!log.read && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 shrink-0"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    markAsRead(log.id);
+                                                }}
+                                            >
+                                                <Check className="h-4 w-4" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                )
+            ) : (
+                /* System Log — table-based */
+                <>
+                    {/* Summary Badges */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary" className="text-[10px] gap-1">
+                            <Mail className="h-3 w-3" /> {displayLogs.filter((l) => l.channel === "email" || l.channel === "both").length} email
+                        </Badge>
+                        <Badge variant="secondary" className="text-[10px] gap-1">
+                            <MessageSquare className="h-3 w-3" /> {displayLogs.filter((l) => l.channel === "sms" || l.channel === "both").length} SMS
+                        </Badge>
+                        <Badge variant="secondary" className="text-[10px] gap-1">
+                            <Bell className="h-3 w-3" /> {displayLogs.filter((l) => l.channel === "in_app" || !l.channel).length} in-app
+                        </Badge>
+                    </div>
+
+                    <Card className="border border-border/50">
+                        <CardContent className="p-0">
+                          <div className="overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead className="text-xs w-4"></TableHead>
+                                        <TableHead className="text-xs">Employee</TableHead>
+                                        <TableHead className="text-xs">Type</TableHead>
+                                        <TableHead className="text-xs">Channel</TableHead>
+                                        <TableHead className="text-xs">Subject</TableHead>
+                                        <TableHead className="text-xs">Status</TableHead>
+                                        <TableHead className="text-xs">Sent At</TableHead>
                                     </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-            </Card>
+                                </TableHeader>
+                                <TableBody>
+                                    {displayLogs.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={7} className="text-center py-12">
+                                                <Mail className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
+                                                <p className="text-sm text-muted-foreground">No notifications dispatched yet</p>
+                                                <p className="text-xs text-muted-foreground/60 mt-1">
+                                                    Notifications are triggered by payroll actions, attendance, leave, and geofence events
+                                                </p>
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        displayLogs.map((log) => (
+                                            <TableRow
+                                                key={log.id}
+                                                className={`cursor-pointer transition-colors hover:bg-muted/50 ${!log.read ? "bg-primary/5" : ""}`}
+                                                onClick={() => handleNotificationClick(log.id, log.link, log.read)}
+                                            >
+                                                <TableCell className="pr-0">
+                                                    {!log.read && (
+                                                        <span className="inline-block h-2 w-2 rounded-full bg-primary" />
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className={`text-sm ${!log.read ? "font-semibold" : "font-medium"}`}>{getEmpName(log.employeeId)}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant="secondary" className={`text-[10px] ${typeColors[log.type] || ""}`}>
+                                                        {typeLabels[log.type] || log.type}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <span className="text-xs whitespace-nowrap">
+                                                        {channelIcons[log.channel || "in_app"] || "\uD83D\uDD14 In-App"}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="text-xs max-w-[220px] truncate text-muted-foreground" title={log.subject}>
+                                                    {log.subject}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge variant="secondary" className={`text-[10px] ${
+                                                        log.status === "sent" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" :
+                                                        log.status === "failed" ? "bg-red-500/15 text-red-700 dark:text-red-400" :
+                                                        "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                                                    }`}>
+                                                        {log.status || "simulated"}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                                    {formatSentAt(log.sentAt)}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    )}
+                                </TableBody>
+                            </Table>
+                          </div>
+                        </CardContent>
+                    </Card>
+                </>
+            )}
         </div>
     );
 }

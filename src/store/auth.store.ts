@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { safePersistStorage } from "@/lib/storage";
 import type { Role, DemoUser } from "@/types";
 import { DEMO_USERS } from "@/data/seed";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -255,6 +256,7 @@ export const useAuthStore = create<AuthState>()(
         {
             name: "nexhrms-auth",
             version: 8,
+            storage: safePersistStorage,
             migrate: (persisted: unknown, version: number) => {
                 console.log(`[auth] Migration running: v${version} → v8`);
                 // Any version < 5: full reset from seed

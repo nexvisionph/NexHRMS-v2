@@ -13,6 +13,7 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Plus } from "lucide-react";
+import { EmployeeCombobox } from "@/components/ui/employee-combobox";
 import { toast } from "sonner";
 
 interface CreateAdjustmentDialogProps {
@@ -58,22 +59,26 @@ export function CreateAdjustmentDialog({
         const refSlip = payslips.find((p) => p.id === refPayslipId);
         const runId = refSlip?.payrollBatchId || `RUN-${refSlip?.issuedAt || "manual"}`;
 
-        onSubmit({
-            payrollRunId: runId,
-            employeeId,
-            adjustmentType,
-            referencePayslipId: refPayslipId,
-            amount: adjustmentType === "deduction" ? -Math.abs(numAmount) : Math.abs(numAmount),
-            reason: reason.trim(),
-            createdBy: currentUserId,
-        });
-        toast.success("Adjustment created");
-        setEmployeeId("");
-        setAdjustmentType("earnings");
-        setRefPayslipId("");
-        setAmount("");
-        setReason("");
-        onOpenChange(false);
+        try {
+            onSubmit({
+                payrollRunId: runId,
+                employeeId,
+                adjustmentType,
+                referencePayslipId: refPayslipId,
+                amount: adjustmentType === "deduction" ? -Math.abs(numAmount) : Math.abs(numAmount),
+                reason: reason.trim(),
+                createdBy: currentUserId,
+            });
+            toast.success("Adjustment created");
+            setEmployeeId("");
+            setAdjustmentType("earnings");
+            setRefPayslipId("");
+            setAmount("");
+            setReason("");
+            onOpenChange(false);
+        } catch (err) {
+            toast.error(`Failed to create adjustment: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
     };
 
     return (
@@ -87,14 +92,9 @@ export function CreateAdjustmentDialog({
                 <div className="space-y-4 pt-2">
                     <div>
                         <label className="text-xs font-medium">Employee</label>
-                        <Select value={employeeId} onValueChange={(v) => { setEmployeeId(v); setRefPayslipId(""); }}>
-                            <SelectTrigger className="mt-1"><SelectValue placeholder="Select employee" /></SelectTrigger>
-                            <SelectContent>
-                                {employees.filter((e) => e.id).map((e) => (
-                                    <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <div className="mt-1">
+                            <EmployeeCombobox value={employeeId} onValueChange={(v) => { setEmployeeId(v); setRefPayslipId(""); }} required placeholder="Select employee" statusFilter={null} className="w-full" />
+                        </div>
                     </div>
 
                     <div>

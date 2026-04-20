@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/auth.store";
 import { useKioskStore } from "@/store/kiosk.store";
 import type { KioskTheme, KioskClockFormat, KioskIdleAction, PenaltyApplyTo } from "@/store/kiosk.store";
@@ -87,8 +87,12 @@ function SliderRow({ label, hint, value, min, max, step, unit, onChange }: {
 
 export default function KioskSettingsPage() {
     const currentUser = useAuthStore((s) => s.currentUser);
-    const { settings, updateSettings, resetSettings } = useKioskStore();
+    const { settings, updateSettings, resetSettings, fetchConfig, hasFetchedConfig } = useKioskStore();
     const [resetOpen, setResetOpen] = useState(false);
+
+    useEffect(() => {
+        if (!hasFetchedConfig) { fetchConfig(); }
+    }, [hasFetchedConfig, fetchConfig]);
     const [showAdminPin, setShowAdminPin] = useState(false);
     const [changingPin, setChangingPin] = useState(false);
     const [newPin, setNewPin] = useState("");
@@ -181,8 +185,8 @@ export default function KioskSettingsPage() {
                 </div>
                 <div className="space-y-1.5">
                     <p className="text-sm font-medium">Welcome Message</p>
-                    <p className="text-xs text-muted-foreground">Displayed under QR and PIN panels</p>
-                    <Input value={s.welcomeMessage} onChange={(e) => u({ welcomeMessage: e.target.value })} placeholder="Scan QR or enter your PIN" />
+                    <p className="text-xs text-muted-foreground">Displayed under QR and Face scan panels</p>
+                    <Input value={s.welcomeMessage} onChange={(e) => u({ welcomeMessage: e.target.value })} placeholder="Scan your QR code or use face recognition" />
                 </div>
                 <div className="space-y-1.5">
                     <p className="text-sm font-medium">Footer Message</p>
@@ -194,9 +198,6 @@ export default function KioskSettingsPage() {
             <Section icon={Fingerprint} title="Check-in Methods" description="Toggle which methods appear on the kiosk">
                 <Row label="Face Recognition" hint="Face scan tab on the kiosk">
                     <Switch checked={s.enableFace} onCheckedChange={(v) => u({ enableFace: v })} />
-                </Row>
-                <Row label="PIN Entry" hint="Numeric PIN keypad on the kiosk">
-                    <Switch checked={s.enablePin} onCheckedChange={(v) => u({ enablePin: v })} />
                 </Row>
                 <Row label="QR Code Scan" hint="QR code displayed for mobile app scanning">
                     <Switch checked={s.enableQr} onCheckedChange={(v) => u({ enableQr: v })} />
@@ -210,18 +211,6 @@ export default function KioskSettingsPage() {
                 <p className="text-[10px] text-muted-foreground">
                     Enable at least one method. When multiple methods are active, the kiosk shows a tab selector bar.
                 </p>
-            </Section>
-
-            {/* ── PIN Configuration ── */}
-            <Section icon={KeyRound} title="PIN Configuration" description="Employee PIN length and security">
-                <SliderRow label="PIN Length" hint="Maximum digits employees can enter"
-                    value={s.pinLength} min={4} max={8} step={1} unit=" digits" onChange={(v) => u({ pinLength: v })} />
-                <SliderRow label="Max Failed Attempts" hint="0 = unlimited"
-                    value={s.maxPinAttempts} min={0} max={10} step={1} unit="" onChange={(v) => u({ maxPinAttempts: v })} />
-                {s.maxPinAttempts > 0 && (
-                    <SliderRow label="Lockout Duration" hint="Seconds before trying again"
-                        value={s.lockoutDuration} min={10} max={600} step={10} unit="s" onChange={(v) => u({ lockoutDuration: v })} />
-                )}
             </Section>
 
             {/* ── QR / Token ── */}
@@ -506,8 +495,7 @@ export default function KioskSettingsPage() {
                                 {s.kioskEnabled ? "Active" : "Disabled"}
                             </Badge>
                         </p>
-                        <p><span className="font-medium text-foreground">Methods:</span> {[s.enableFace && "Face", s.enablePin && "PIN", s.enableQr && "QR", s.enableNfc && "NFC"].filter(Boolean).join(", ") || "None"}</p>
-                        <p><span className="font-medium text-foreground">PIN length:</span> {s.pinLength} digits</p>
+                        <p><span className="font-medium text-foreground">Methods:</span> {[s.enableFace && "Face", s.enableQr && "QR", s.enableNfc && "NFC"].filter(Boolean).join(", ") || "None"}</p>
                         <p><span className="font-medium text-foreground">Token refresh:</span> every {s.tokenRefreshInterval}s</p>
                         <p><span className="font-medium text-foreground">Feedback:</span> {s.feedbackDuration}ms</p>
                     </div>

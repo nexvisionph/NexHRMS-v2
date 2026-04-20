@@ -46,16 +46,16 @@ const EMBEDDING_HIGH_CONFIDENCE_THRESHOLD = 0.25;
  * Embedding-only threshold (fallback when AI is unavailable).
  * face-api.js same-person distances across sessions (L2-normalized): 0.15–0.40.
  * Different-person distances: typically >0.45.
- * Tightened from 0.48 → 0.38 to reject borderline false positives.
+ * Calibrated to 0.42 to balance security with natural variation across sessions.
  */
-const EMBEDDING_STRICT_THRESHOLD = 0.38;
+const EMBEDDING_STRICT_THRESHOLD = 0.42;
 
 /**
  * Extra-strict threshold used when there is only 1 enrolled face in the system.
  * With a single enrollment, any probe within the threshold matches — so we
  * require a stronger match to compensate for the lack of relative comparison.
  */
-const SINGLE_ENROLLMENT_THRESHOLD = 0.34;
+const SINGLE_ENROLLMENT_THRESHOLD = 0.40;
 
 /**
  * Minimum margin between best and second-best match distances.
@@ -534,13 +534,17 @@ export async function matchFace(
     }
 
     // ── Margin check: if multiple enrollments, best must be significantly closer than 2nd ──
-    if (secondBest && secondBest.distance < EMBEDDING_PREFILTER_THRESHOLD) {
+    // Skip margin check for HIGH-CONFIDENCE matches (distance < 0.25) — these are definitive.
+    // Margin ambiguity only matters in the uncertain zone where distances could be borderline.
+    if (secondBest && secondBest.distance < EMBEDDING_PREFILTER_THRESHOLD && best.distance >= EMBEDDING_HIGH_CONFIDENCE_THRESHOLD) {
       const margin = secondBest.distance - best.distance;
       console.log(`[matchFace] Margin check: best=${best.distance.toFixed(4)} 2nd=${secondBest.distance.toFixed(4)} margin=${margin.toFixed(4)} required=${MIN_MATCH_MARGIN}`);
       if (margin < MIN_MATCH_MARGIN) {
         console.log(`[matchFace] REJECTED: insufficient margin between best (${best.employeeId}) and 2nd (${secondBest.employeeId}) — ambiguous match`);
         return { ok: true };
       }
+    } else if (secondBest && best.distance < EMBEDDING_HIGH_CONFIDENCE_THRESHOLD) {
+      console.log(`[matchFace] Margin check SKIPPED: best distance ${best.distance.toFixed(4)} is high-confidence (< ${EMBEDDING_HIGH_CONFIDENCE_THRESHOLD})`);
     }
 
     // ── Select effective threshold based on number of enrollments ──

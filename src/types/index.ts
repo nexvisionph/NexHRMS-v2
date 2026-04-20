@@ -63,16 +63,16 @@ export type OvertimeStatus = "pending" | "approved" | "rejected";
 export type AdjustmentType = "earnings" | "deduction" | "net_correction" | "statutory_correction";
 export type AdjustmentStatus = "pending" | "approved" | "applied" | "rejected";
 export type SalaryChangeStatus = "pending" | "approved" | "rejected";
-export type AttendanceFlag = "missing_in" | "missing_out" | "out_of_geofence" | "duplicate_scan" | "device_mismatch" | "overtime_without_approval";
+export type AttendanceFlag = "missing_in" | "missing_out" | "out_of_geofence" | "duplicate_scan" | "device_mismatch" | "overtime_without_approval" | "late_arrival" | "early_departure" | "suspicious_activity";
 export type AttendanceEventType =
   | "IN" | "OUT" | "BREAK_START" | "BREAK_END"
   | "OVERRIDE" | "BULK_OVERRIDE"
   | "MARK_ABSENT" | "MARK_PRESENT"
   | "OT_APPROVED" | "OT_REJECTED" | "OT_SUBMITTED"
-  | "EXCEPTION_RESOLVED" | "EXCEPTION_SCANNED"
+  | "EXCEPTION_RESOLVED" | "EXCEPTION_SCANNED" | "EXCEPTION_REOPENED" | "EXCEPTION_DELETED" | "EXCEPTION_UPDATED"
   | "HOLIDAY_ADDED" | "HOLIDAY_UPDATED" | "HOLIDAY_DELETED"
   | "CSV_IMPORTED" | "CSV_EXPORTED"
-  | "PENALTY_APPLIED" | "PENALTY_CLEARED"
+  | "PENALTY_APPLIED" | "PENALTY_CLEARED" | "CHEAT_DETECTED"
   | "SHIFT_ASSIGNED" | "DATA_RESET";
 export type TimesheetStatus = "computed" | "submitted" | "approved" | "rejected";
 export type AccrualFrequency = "monthly" | "annual";
@@ -86,7 +86,8 @@ export type AuditAction =
   | "loan_created" | "loan_frozen" | "loan_unfrozen" | "loan_settled"
   | "payment_recorded" | "employee_resigned" | "employee_deleted" | "final_pay_created"
   | "timesheet_approved" | "timesheet_rejected"
-  | "kiosk_registered" | "attendance_correction"
+  | "kiosk_registered" | "attendance_correction" | "cheat_detected"
+  | "mark_absent" | "bulk_mark_absent"
   | "task_created" | "task_assigned" | "task_completed" | "task_verified" | "task_rejected"
   | "tag_created" | "tag_updated" | "tag_deleted"
   | "announcement_sent" | "channel_created";
@@ -236,6 +237,7 @@ export interface Employee {
   preferredChannel?: MessageChannel;
   deductionExempt?: boolean;       // true = skip ALL government deductions (contract-based employees)
   deductionExemptReason?: string;  // reason for exemption (e.g., "Contract-based", "Minimum wage earner")
+  notificationPreferences?: Record<string, boolean>; // per-employee notification opt-outs (from DB jsonb column)
   createdAt?: string;     // ISO timestamptz from DB
   updatedAt?: string;     // ISO timestamptz from DB
 }
@@ -530,8 +532,10 @@ export interface Payslip {
   confirmedAt?: string;
   publishedAt?: string;
   paidAt?: string;
-  paymentMethod?: string;
-  bankReferenceId?: string;
+  paymentMethod?: "bank_transfer" | "gcash" | "cash" | "check";
+  bankReferenceId?: string;  // Reference: Bank ref, GCash ID, Check number
+  paymentProofUrl?: string;  // URL to uploaded proof image
+  cashAmount?: number;       // For cash payments, actual amount given
   payrollBatchId?: string;
   pdfHash?: string;
   notes?: string;
@@ -700,7 +704,7 @@ export type NotificationType =
     | "task_assigned" | "task_submitted" | "task_verified" | "task_rejected"
     | "payslip_published" | "payslip_signed" | "payslip_unsigned_reminder" | "payment_confirmed"
     | "leave_submitted" | "leave_approved" | "leave_rejected"
-    | "attendance_missing" | "geofence_violation" | "location_disabled"
+    | "attendance_missing" | "geofence_violation" | "location_disabled" | "cheat_detected"
     | "loan_reminder" | "overtime_submitted"
     | "birthday" | "contract_expiry" | "daily_summary";
 
@@ -1128,5 +1132,4 @@ export interface FaceVerificationResult {
   spoofIndicators?: string[];
 }
 
-// Project interface with verification fields — defined above in Project & Geofencing section
-// (Duplicate removed to avoid interface merging confusion)
+// Project interface is defined above (line ~681) with all verification fields included.

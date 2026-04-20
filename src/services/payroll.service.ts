@@ -61,11 +61,19 @@ export async function publishPayslip(id: string): Promise<ServiceResult<Payslip>
   return updatePayslip(id, { status: "published", publishedAt: new Date().toISOString() });
 }
 
-export async function recordPayment(id: string, method: string, bankRef: string): Promise<ServiceResult<Payslip>> {
+export async function recordPayment(
+  id: string, 
+  method: "bank_transfer" | "gcash" | "cash" | "check", 
+  bankRef: string,
+  cashAmount?: number,
+  paymentProofUrl?: string
+): Promise<ServiceResult<Payslip>> {
   return updatePayslip(id, {
     paidAt: new Date().toISOString(),
     paymentMethod: method,
     bankReferenceId: bankRef,
+    cashAmount: method === "cash" ? cashAmount : undefined,
+    paymentProofUrl,
   });
 }
 

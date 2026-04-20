@@ -44,7 +44,8 @@ import { useEventsStore } from "@/store/events.store";
 import { useMessagingStore } from "@/store/messaging.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useTimesheetStore } from "@/store/timesheet.store";
-import { useNotificationsStore } from "@/store/notifications.store";
+import { useNotificationsStore, DEFAULT_EMPLOYEE_PREFS } from "@/store/notifications.store";
+import type { EmployeeNotifPrefs } from "@/store/notifications.store";
 import { useLocationStore } from "@/store/location.store";
 import { useAuthStore } from "@/store/auth.store";
 
@@ -56,8 +57,8 @@ let _realtimeChannel: ReturnType<ReturnType<typeof createClient>["channel"]> | n
  * Pull all data from Supabase and replace Zustand store state.
  * Call this once after successful login or on app mount.
  */
-export async function hydrateAllStores(): Promise<void> {
-  return hydrateAllStoresInternal();
+export async function hydrateAllStores(opts?: { skipSessionCheck?: boolean }): Promise<void> {
+  return hydrateAllStoresInternal(opts);
 }
 
 /**
@@ -70,16 +71,18 @@ export async function forceRehydrate(): Promise<void> {
   await hydrateAllStoresInternal();
 }
 
-async function hydrateAllStoresInternal(): Promise<void> {
+async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): Promise<void> {
   if (!shouldSync()) return;
   if (_hydrated) return;
 
   // Check for valid session before attempting to fetch data.
   // This prevents 406 errors when the refresh token is invalid.
-  const hasSession = await hasValidSession();
-  if (!hasSession) {
-    console.info("[sync] No valid session — skipping hydration");
-    return;
+  if (!opts?.skipSessionCheck) {
+    const hasSession = await hasValidSession();
+    if (!hasSession) {
+      console.info("[sync] No valid session — skipping hydration");
+      return;
+    }
   }
 
   try {
@@ -272,16 +275,16 @@ async function hydrateAllStoresInternal(): Promise<void> {
       });
     }
 
-    // Hydrate tasks store
-    if (taskGroups.length > 0 || tasks.length > 0 || completionReports.length > 0 || taskComments.length > 0 || taskTagsList.length > 0) {
-      useTasksStore.setState({
-        ...(taskGroups.length > 0 ? { groups: taskGroups } : {}),
-        ...(tasks.length > 0 ? { tasks } : {}),
-        ...(completionReports.length > 0 ? { completionReports } : {}),
-        ...(taskComments.length > 0 ? { comments: taskComments } : {}),
-        ...(taskTagsList.length > 0 ? { taskTags: taskTagsList } : {}),
-      });
-    }
+    // Hydrate tasks store — always set groups and tasks from DB so stale
+    // seed/localStorage data never hides real assignments.  Completion
+    // reports, comments, and tags are only replaced when DB has rows.
+    useTasksStore.setState({
+      groups: taskGroups,
+      tasks,
+      ...(completionReports.length > 0 ? { completionReports } : {}),
+      ...(taskComments.length > 0 ? { comments: taskComments } : {}),
+      ...(taskTagsList.length > 0 ? { taskTags: taskTagsList } : {}),
+    });
 
     // Hydrate timesheet store
     if (timesheets.length > 0 || ruleSets.length > 0) {
@@ -291,12 +294,28 @@ async function hydrateAllStoresInternal(): Promise<void> {
       });
     }
 
-    // Hydrate notifications store
-    if (notificationLogs.length > 0 || notificationRules.length > 0) {
-      useNotificationsStore.setState({
-        ...(notificationLogs.length > 0 ? { logs: notificationLogs } : {}),
-        ...(notificationRules.length > 0 ? { rules: notificationRules } : {}),
-      });
+    // Hydrate notifications store — always set logs from DB so stale
+    // localStorage data from a previous user session is cleared on login.
+    useNotificationsStore.setState({
+      logs: notificationLogs,
+      ...(notificationRules.length > 0 ? { rules: notificationRules } : {}),
+    });
+
+    // Hydrate per-employee notification preferences from DB employee records.
+    // Each employee row may have a notification_preferences jsonb column.
+    if (employees.length > 0) {
+      const dbPrefs: Record<string, EmployeeNotifPrefs> = {};
+      for (const emp of employees) {
+        if (emp.notificationPreferences && typeof emp.notificationPreferences === "object" && Object.keys(emp.notificationPreferences).length > 0) {
+          dbPrefs[emp.id] = { ...DEFAULT_EMPLOYEE_PREFS, ...emp.notificationPreferences } as EmployeeNotifPrefs;
+        }
+      }
+      if (Object.keys(dbPrefs).length > 0) {
+        const currentPrefs = useNotificationsStore.getState().employeePrefs;
+        useNotificationsStore.setState({
+          employeePrefs: { ...currentPrefs, ...dbPrefs },
+        });
+      }
     }
 
     // Hydrate location store
@@ -328,6 +347,8 @@ export function startWriteThrough(): void {
   // Determine write scope — only admin/hr manage HR data (employees meta, leave balances, attendance logs)
   const role = useAuthStore.getState().currentUser?.role ?? "";
   const isAdminOrHr = ["admin", "hr"].includes(role);
+  // Kiosk mode syncs all attendance data (used by all employees without individual login)
+  const isKioskMode = typeof window !== "undefined" && window.location.pathname.startsWith("/kiosk");
 
   // ─── Employees write-through ──────────────────────────────
   _subscriptions.push(
@@ -404,7 +425,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useAttendanceStore.subscribe(
       (state, prevState) => {
-        // Logs: admin/hr sync all logs; employees sync only their own log entries
+        // Logs: admin/hr/kiosk sync all logs; employees sync only their own log entries
         const currentUserState = useAuthStore.getState().currentUser;
         const currentEmployees = useEmployeesStore.getState().employees;
         const myEmployeeId = currentEmployees.find(
@@ -414,16 +435,18 @@ export function startWriteThrough(): void {
         for (const log of state.logs) {
           const prev = prevState.logs.find((l) => l.id === log.id);
           if (!prev || JSON.stringify(prev) !== JSON.stringify(log)) {
-            // Admin/HR sync all; employees only sync their own
-            if (isAdminOrHr || log.employeeId === myEmployeeId) {
+            // Admin/HR/kiosk sync all; employees only sync their own
+            if (isAdminOrHr || isKioskMode || log.employeeId === myEmployeeId) {
               attendanceDb.upsertLog(log);
             }
           }
         }
         // Events (append-only): all roles — employees clock in/out
+        // Collect promises so evidence inserts can wait for parent events (FK constraint)
+        const eventInsertPromises: Promise<boolean>[] = [];
         for (const evt of state.events) {
           if (!prevState.events.find((e) => e.id === evt.id)) {
-            attendanceDb.insertEvent(evt);
+            eventInsertPromises.push(attendanceDb.insertEvent(evt));
           }
         }
         // Holidays, shifts, exceptions, penalties, shifts: admin/hr only
@@ -459,10 +482,16 @@ export function startWriteThrough(): void {
           }
         }
         // Evidence (append-only): all roles
-        for (const ev of state.evidence) {
-          if (!prevState.evidence.find((e) => e.id === ev.id)) {
-            attendanceDb.insertEvidence(ev);
-          }
+        // Must wait for parent event inserts to commit first (attendance_evidence_event_id_fkey)
+        const newEvidence = state.evidence.filter(
+          (ev) => !prevState.evidence.find((e) => e.id === ev.id)
+        );
+        if (newEvidence.length > 0) {
+          Promise.all(eventInsertPromises).then(() => {
+            for (const ev of newEvidence) {
+              attendanceDb.insertEvidence(ev);
+            }
+          });
         }
         // Exceptions and penalties: admin/hr only
         if (isAdminOrHr) {
@@ -733,58 +762,63 @@ export function startWriteThrough(): void {
   );
 
   // ─── Tasks write-through ──────────────────────────────────
+  // Groups MUST be persisted before tasks because tasks have a FK on group_id.
+  // We use an async IIFE to await all group upserts before touching tasks,
+  // preventing FK-violation silent failures when both are created together.
   _subscriptions.push(
     useTasksStore.subscribe(
       (state, prevState) => {
-        // Task groups
-        for (const g of state.groups) {
-          const prev = prevState.groups.find((pg) => pg.id === g.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(g)) {
-            tasksDb.upsertGroup(g);
+        void (async () => {
+          // Task groups — await all upserts/deletes before tasks
+          for (const g of state.groups) {
+            const prev = prevState.groups.find((pg) => pg.id === g.id);
+            if (!prev || JSON.stringify(prev) !== JSON.stringify(g)) {
+              await tasksDb.upsertGroup(g);
+            }
           }
-        }
-        for (const prev of prevState.groups) {
-          if (!state.groups.find((g) => g.id === prev.id)) {
-            tasksDb.deleteGroup(prev.id);
+          for (const prev of prevState.groups) {
+            if (!state.groups.find((g) => g.id === prev.id)) {
+              await tasksDb.deleteGroup(prev.id);
+            }
           }
-        }
-        // Tasks
-        for (const t of state.tasks) {
-          const prev = prevState.tasks.find((pt) => pt.id === t.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(t)) {
-            tasksDb.upsertTask(t);
+          // Tasks — safe to run now that groups are committed
+          for (const t of state.tasks) {
+            const prev = prevState.tasks.find((pt) => pt.id === t.id);
+            if (!prev || JSON.stringify(prev) !== JSON.stringify(t)) {
+              tasksDb.upsertTask(t);
+            }
           }
-        }
-        for (const prev of prevState.tasks) {
-          if (!state.tasks.find((t) => t.id === prev.id)) {
-            tasksDb.deleteTask(prev.id);
+          for (const prev of prevState.tasks) {
+            if (!state.tasks.find((t) => t.id === prev.id)) {
+              tasksDb.deleteTask(prev.id);
+            }
           }
-        }
-        // Completion reports
-        for (const r of state.completionReports) {
-          const prev = prevState.completionReports.find((pr) => pr.id === r.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(r)) {
-            tasksDb.upsertCompletionReport(r);
+          // Completion reports
+          for (const r of state.completionReports) {
+            const prev = prevState.completionReports.find((pr) => pr.id === r.id);
+            if (!prev || JSON.stringify(prev) !== JSON.stringify(r)) {
+              tasksDb.upsertCompletionReport(r);
+            }
           }
-        }
-        // Comments (append-only)
-        for (const c of state.comments) {
-          if (!prevState.comments.find((pc) => pc.id === c.id)) {
-            tasksDb.insertComment(c);
+          // Comments (append-only)
+          for (const c of state.comments) {
+            if (!prevState.comments.find((pc) => pc.id === c.id)) {
+              tasksDb.insertComment(c);
+            }
           }
-        }
-        // Task tags
-        for (const tag of state.taskTags) {
-          const prev = prevState.taskTags.find((pt) => pt.id === tag.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(tag)) {
-            tasksDb.upsertTag(tag);
+          // Task tags
+          for (const tag of state.taskTags) {
+            const prev = prevState.taskTags.find((pt) => pt.id === tag.id);
+            if (!prev || JSON.stringify(prev) !== JSON.stringify(tag)) {
+              tasksDb.upsertTag(tag);
+            }
           }
-        }
-        for (const prev of prevState.taskTags) {
-          if (!state.taskTags.find((t) => t.id === prev.id)) {
-            tasksDb.deleteTag(prev.id);
+          for (const prev of prevState.taskTags) {
+            if (!state.taskTags.find((t) => t.id === prev.id)) {
+              tasksDb.deleteTag(prev.id);
+            }
           }
-        }
+        })();
       }
     )
   );
@@ -1264,6 +1298,58 @@ export function startRealtime(): void {
         });
       })
     )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "announcements" },
+      safe(({ new: row }: { new: Record<string, unknown> }) => {
+        const ann = keysToCamel(row) as Record<string, unknown>;
+        useMessagingStore.setState((s) => ({
+          announcements: s.announcements.map((a) =>
+            a.id === ann.id
+              ? (JSON.stringify(a) !== JSON.stringify(ann) ? { ...a, ...ann } as typeof a : a)
+              : a
+          ),
+        }));
+      })
+    )
+    // ── text_channels ────────────────────────────────────────
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "text_channels" },
+      safe(({ new: row }: { new: Record<string, unknown> }) => {
+        const ch = keysToCamel(row) as Record<string, unknown>;
+        useMessagingStore.setState((s) => {
+          if (s.channels.find((c) => c.id === ch.id)) return s;
+          return { channels: [...s.channels, ch as unknown as typeof s.channels[0]] };
+        });
+      })
+    )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "text_channels" },
+      safe(({ new: row }: { new: Record<string, unknown> }) => {
+        const ch = keysToCamel(row) as Record<string, unknown>;
+        useMessagingStore.setState((s) => ({
+          channels: s.channels.map((c) =>
+            c.id === ch.id
+              ? (JSON.stringify(c) !== JSON.stringify(ch) ? { ...c, ...ch } as typeof c : c)
+              : c
+          ),
+        }));
+      })
+    )
+    .on(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "text_channels" },
+      safe(({ old: row }: { old: Record<string, unknown> }) => {
+        const id = row?.id as string;
+        if (!id) return;
+        useMessagingStore.setState((s) => ({
+          channels: s.channels.filter((c) => c.id !== id),
+          messages: s.messages.filter((m) => m.channelId !== id),
+        }));
+      })
+    )
     // ── channel_messages ─────────────────────────────────────
     .on(
       "postgres_changes",
@@ -1274,6 +1360,20 @@ export function startRealtime(): void {
           if (s.messages.find((m) => m.id === msg.id)) return s;
           return { messages: [...s.messages, msg as unknown as typeof s.messages[0]] };
         });
+      })
+    )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "channel_messages" },
+      safe(({ new: row }: { new: Record<string, unknown> }) => {
+        const msg = keysToCamel(row) as Record<string, unknown>;
+        useMessagingStore.setState((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === msg.id
+              ? (JSON.stringify(m) !== JSON.stringify(msg) ? { ...m, ...msg } as typeof m : m)
+              : m
+          ),
+        }));
       })
     )
     // ── tasks ────────────────────────────────────────────────
@@ -1552,13 +1652,42 @@ export function startRealtime(): void {
         }));
       })
     )
+    // ── notification_logs (realtime) ────────────────────────
+    // When another user's write-through inserts a log destined for us,
+    // this listener ensures our in-app notification tab updates immediately
+    // without requiring a page refresh.
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "notification_logs" },
+      safe(({ new: row }: { new: Record<string, unknown> }) => {
+        const log = keysToCamel(row) as Record<string, unknown>;
+        useNotificationsStore.setState((s) => {
+          if (s.logs.find((l) => l.id === log.id)) return s;
+          return { logs: [log as unknown as typeof s.logs[0], ...s.logs].slice(0, 500) };
+        });
+      })
+    )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "notification_logs" },
+      safe(({ new: row }: { new: Record<string, unknown> }) => {
+        const log = keysToCamel(row) as Record<string, unknown>;
+        useNotificationsStore.setState((s) => ({
+          logs: s.logs.map((l) =>
+            l.id === log.id
+              ? (JSON.stringify(l) !== JSON.stringify(log) ? { ...l, ...log } as typeof l : l)
+              : l
+          ),
+        }));
+      })
+    )
     .subscribe((status: string, err?: unknown) => {
       if (status === "SUBSCRIBED") {
         _realtimeRetries = 0;
-        console.log("[realtime] Connected — watching 23 tables");
+        console.log("[realtime] Connected — watching 26 tables");
       }
       if (status === "CHANNEL_ERROR") {
-        const errMsg = err instanceof Error ? err.message : (typeof err === "string" ? err : "");
+        const errMsg = err instanceof Error ? err.message : (typeof err === "string" ? err : JSON.stringify(err) ?? "");
         if (!errMsg) {
           // Empty error usually means misconfigured credentials — don't retry
           console.warn("[realtime] Channel error (check Supabase URL/key configuration)");
@@ -1566,14 +1695,29 @@ export function startRealtime(): void {
         }
         // "mismatch between server and client bindings" = tables missing from
         // supabase_realtime publication. This is a config issue — retrying won't help.
-        // Run migration 040_realtime_missing_tables_disable_rls.sql to fix.
         if (errMsg.includes("mismatch")) {
           console.warn(
             "[realtime] Server/client binding mismatch — run migration 040 to add missing tables to supabase_realtime publication"
           );
           return;
         }
-        console.error("[realtime] Channel error", errMsg);
+        // JWT expired — refresh the session first, then reconnect.
+        // This is normal behaviour when a browser tab is idle and the access token expires.
+        if (errMsg.includes("InvalidJWTToken") || errMsg.includes("Token has expired") || errMsg.includes("expired")) {
+          console.info("[realtime] JWT expired — refreshing session before reconnect");
+          const client = createClient();
+          client.auth.refreshSession().then(({ error: refreshErr }: { error: Error | null }) => {
+            if (refreshErr) {
+              console.info("[realtime] Session refresh failed — user may need to log in again");
+              // Don't spam retries — the auth listener will redirect when needed
+              return;
+            }
+            // Reconnect after a short delay to let the new token propagate
+            setTimeout(() => startRealtime(), 1000);
+          });
+          return;
+        }
+        console.warn("[realtime] Channel error", errMsg);
         // Auto-retry with backoff (only for transient errors)
         if (_realtimeRetries < MAX_RETRIES) {
           _realtimeRetries++;

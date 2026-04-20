@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useAppearanceStore } from "@/store/appearance.store";
+import { useEmployeesStore } from "@/store/employees.store";
 import { signIn } from "@/services/auth.service";
+import { hydrateAllStores, startWriteThrough, startRealtime } from "@/services/sync.service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,21 +15,22 @@ import { toast } from "sonner";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 
 // Set to true to use local demo login (no Supabase required)
 const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 const DEMO_ACCOUNTS = [
-    { role: "Admin", email: "admin@nexhrms.com", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
-    { role: "HR", email: "hr@nexhrms.com", color: "bg-blue-500/15 text-blue-700 dark:text-blue-400" },
-    { role: "Finance", email: "finance@nexhrms.com", color: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
-    { role: "Employee", email: "employee@nexhrms.com", color: "bg-purple-500/15 text-purple-700 dark:text-purple-400" },
-    { role: "Supervisor", email: "supervisor@nexhrms.com", color: "bg-orange-500/15 text-orange-700 dark:text-orange-400" },
-    { role: "Payroll", email: "payroll@nexhrms.com", color: "bg-teal-500/15 text-teal-700 dark:text-teal-400" },
-    { role: "Auditor", email: "auditor@nexhrms.com", color: "bg-slate-500/15 text-slate-700 dark:text-slate-400" },
-    { role: "QR Employee 1", email: "qr@nexhrms.com", color: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400" },
-    { role: "QR Employee 2", email: "qr2@nexhrms.com", color: "bg-pink-500/15 text-pink-700 dark:text-pink-400" },
-    { role: "\uD83E\uDD16 Face Demo", email: "face@nexhrms.com", color: "bg-violet-500/15 text-violet-700 dark:text-violet-400" },
+    { role: "Admin", email: "admin@sdsi.com", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
+    { role: "HR", email: "hr@sdsi.com", color: "bg-blue-500/15 text-blue-700 dark:text-blue-400" },
+    { role: "Finance", email: "finance@sdsi.com", color: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
+    { role: "Employee", email: "employee@sdsi.com", color: "bg-purple-500/15 text-purple-700 dark:text-purple-400" },
+    { role: "Supervisor", email: "supervisor@sdsi.com", color: "bg-orange-500/15 text-orange-700 dark:text-orange-400" },
+    { role: "Payroll", email: "payroll@sdsi.com", color: "bg-teal-500/15 text-teal-700 dark:text-teal-400" },
+    { role: "Auditor", email: "auditor@sdsi.com", color: "bg-slate-500/15 text-slate-700 dark:text-slate-400" },
+    { role: "QR Employee 1", email: "qr@sdsi.com", color: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400" },
+    { role: "QR Employee 2", email: "qr2@sdsi.com", color: "bg-pink-500/15 text-pink-700 dark:text-pink-400" },
+    { role: "\uD83E\uDD16 Face Demo", email: "face@sdsi.com", color: "bg-violet-500/15 text-violet-700 dark:text-violet-400" },
 ];
 const PAYROLL_TEST_ACCOUNTS = [
     { role: "Sr. Engineer", email: "maria.cruz@nexhrms.test", color: "bg-rose-500/15 text-rose-700 dark:text-rose-400", name: "Maria Cruz" },
@@ -41,22 +44,31 @@ const PAYROLL_TEST_ACCOUNTS = [
 ];
 export default function LoginPage() {
     const router = useRouter();
-    const localLogin = useAuthStore((s) => s.login);
-    const setUser = useAuthStore((s) => s.setUser);
+    const { login: localLogin, setUser } = useAuthStore(
+        useShallow((s) => ({ login: s.login, setUser: s.setUser }))
+    );
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [showPayrollAccounts, setShowPayrollAccounts] = useState(false);
+    const employees = useEmployeesStore((s) => s.employees);
 
-    // Branding from appearance store
-    const loginHeading = useAppearanceStore((s) => s.loginHeading);
-    const loginSubheading = useAppearanceStore((s) => s.loginSubheading);
-    const loginBackground = useAppearanceStore((s) => s.loginBackground);
-    const loginBgColor = useAppearanceStore((s) => s.loginBgColor);
-    const loginCardStyle = useAppearanceStore((s) => s.loginCardStyle);
-    const logoUrl = useAppearanceStore((s) => s.logoUrl);
-    const companyName = useAppearanceStore((s) => s.companyName);
-    const brandTagline = useAppearanceStore((s) => s.brandTagline);
+    // Consolidated branding from appearance store
+    const {
+        loginHeading, loginSubheading, loginBackground, loginBgColor,
+        loginCardStyle, logoUrl, companyName, brandTagline
+    } = useAppearanceStore(
+        useShallow((s) => ({
+            loginHeading: s.loginHeading,
+            loginSubheading: s.loginSubheading,
+            loginBackground: s.loginBackground,
+            loginBgColor: s.loginBgColor,
+            loginCardStyle: s.loginCardStyle,
+            logoUrl: s.logoUrl,
+            companyName: s.companyName,
+            brandTagline: s.brandTagline,
+        }))
+    );
 
     const handleSupabaseLogin = async (loginEmail: string, loginPassword: string) => {
         setLoading(true);
@@ -79,9 +91,18 @@ export default function LoginPage() {
                     emergencyContact: result.user.emergencyContact,
                 });
                 useAuthStore.setState({ isAuthenticated: true });
-                // Redirect immediately — client-layout will handle store hydration
+                // Start store hydration NOW — runs in parallel with navigation
+                // so data is ready by the time the dashboard mounts
+                hydrateAllStores({ skipSessionCheck: true }).then(() => {
+                    startWriteThrough();
+                    startRealtime();
+                });
                 toast.success("Welcome back!");
                 router.push(`/${result.user.role}/dashboard`);
+            } else if (result.error === "deactivated") {
+                toast.error("Your account has been deactivated. Please contact your HR administrator.");
+                setLoading(false);
+                router.push("/deactivated");
             } else {
                 toast.error(result.error || "Invalid email or password");
                 setLoading(false);
@@ -94,17 +115,24 @@ export default function LoginPage() {
 
     const handleDemoLogin = (loginEmail: string, loginPassword: string) => {
         setLoading(true);
-        setTimeout(() => {
-            const success = localLogin(loginEmail, loginPassword);
-            if (success) {
-                toast.success("Welcome back!");
-                const role = useAuthStore.getState().currentUser.role;
-                router.push(`/${role}/dashboard`);
-            } else {
-                toast.error("Invalid email or password");
-            }
+        // Check employee status before allowing demo login
+        const emp = employees.find(
+            (e) => e.email?.toLowerCase() === loginEmail.toLowerCase()
+        );
+        if (emp && (emp.status === "inactive" || emp.status === "resigned")) {
             setLoading(false);
-        }, 500);
+            router.push("/deactivated");
+            return;
+        }
+        const success = localLogin(loginEmail, loginPassword);
+        if (success) {
+            toast.success("Welcome back!");
+            const role = useAuthStore.getState().currentUser.role;
+            router.push(`/${role}/dashboard`);
+        } else {
+            toast.error("Invalid email or password");
+        }
+        setLoading(false);
     };
 
     const handleLogin = (e: React.FormEvent) => {
@@ -192,7 +220,7 @@ export default function LoginPage() {
                             <label className="text-sm font-medium">Email</label>
                             <Input
                                 type="email"
-                                placeholder="admin@nexhrms.com"
+                                placeholder="admin@sdsi.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 className="mt-1.5"

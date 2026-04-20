@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/auth.store";
 import { useLocationStore } from "@/store/location.store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,9 +78,14 @@ function SliderRow({ label, hint, value, min, max, step, unit, onChange }: {
 
 export default function LocationSettingsPage() {
     const currentUser = useAuthStore((s) => s.currentUser);
-    const { config, updateConfig, resetToSeed } = useLocationStore();
+    const { config, updateConfig, resetToSeed, fetchConfig, hasFetchedConfig } = useLocationStore();
     const [resetOpen, setResetOpen] = useState(false);
     const rh = useRoleHref();
+
+    // Load config from DB on first mount
+    useEffect(() => {
+        if (!hasFetchedConfig) fetchConfig();
+    }, [hasFetchedConfig, fetchConfig]);
 
     if (currentUser.role !== "admin") {
         return (

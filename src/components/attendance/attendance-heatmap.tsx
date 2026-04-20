@@ -133,18 +133,20 @@ export function AttendanceHeatmap({
         return map;
     }, [logs]);
 
-    // Status filter: further filter employees who match the status on any visible day
+    // Status filter: filter employees by their status on today's date (or the
+    // nearest past date in the visible range). Previously used `dateRange.some`
+    // which showed employees with e.g. "on_leave" under the "Present" filter
+    // because they had a present day earlier in the week.
     const displayEmployees = useMemo(() => {
         if (statusFilter === "all") return filteredEmployees;
-        return filteredEmployees.filter((emp) =>
-            dateRange.some((d) => {
-                const dateStr = format(d, "yyyy-MM-dd");
-                const log = logMap.get(`${emp.id}|${dateStr}`);
-                const status = resolveStatus(log, holidayDates.has(dateStr));
-                return status === statusFilter;
-            })
-        );
-    }, [filteredEmployees, statusFilter, dateRange, logMap, holidayDates]);
+        const today = format(new Date(), "yyyy-MM-dd");
+        return filteredEmployees.filter((emp) => {
+            const dateStr = today;
+            const log = logMap.get(`${emp.id}|${dateStr}`);
+            const status = resolveStatus(log, holidayDates.has(dateStr));
+            return status === statusFilter;
+        });
+    }, [filteredEmployees, statusFilter, logMap, holidayDates]);
 
     // ─── Modal state ──────────────────────────────────────────────
     const [modalOpen, setModalOpen] = useState(false);
@@ -258,25 +260,24 @@ export function AttendanceHeatmap({
     };
     const goToday = () => setAnchorDate(new Date());
 
-    // ─── Summary stats ────────────────────────────────────────────
+    // ─── Summary stats (today only) ─────────────────────────────
     const stats = useMemo(() => {
         let present = 0, absent = 0, late = 0, onLeave = 0;
-        displayEmployees.forEach((emp) => {
-            dateRange.forEach((d) => {
-                if (isWeekend(d)) return;
-                const dateStr = format(d, "yyyy-MM-dd");
-                if (holidayDates.has(dateStr)) return;
-                const log = logMap.get(`${emp.id}|${dateStr}`);
-                if (!log) return;
-                if (log.status === "present") {
-                    if (log.lateMinutes && log.lateMinutes > 0) late++;
-                    else present++;
-                } else if (log.status === "absent") absent++;
-                else if (log.status === "on_leave") onLeave++;
-            });
+        const todayStr = format(new Date(), "yyyy-MM-dd");
+        if (isWeekend(new Date()) || holidayDates.has(todayStr)) {
+            return { present, absent, late, onLeave };
+        }
+        filteredEmployees.forEach((emp) => {
+            const log = logMap.get(`${emp.id}|${todayStr}`);
+            if (!log) return;
+            if (log.status === "present") {
+                if (log.lateMinutes && log.lateMinutes > 0) late++;
+                else present++;
+            } else if (log.status === "absent") absent++;
+            else if (log.status === "on_leave") onLeave++;
         });
         return { present, absent, late, onLeave };
-    }, [displayEmployees, dateRange, logMap, holidayDates]);
+    }, [filteredEmployees, logMap, holidayDates]);
 
     // ─── Cell size based on view ──────────────────────────────────
     const cellW = isCompact ? "w-[28px]" : viewMode === "2weeks" ? "w-[48px]" : "w-[80px]";
