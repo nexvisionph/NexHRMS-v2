@@ -39,10 +39,10 @@ export function AdminDashboard() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">
+                    <h1 className="text-3xl font-bold tracking-tight">
                         Welcome back, {currentUser.name.split(" ")[0]}!
                     </h1>
-                    <p className="text-muted-foreground text-sm mt-0.5">
+                    <p className="text-muted-foreground text-base mt-1">
                         Full system overview — employees, attendance, payroll, and financials.
                     </p>
                 </div>
@@ -179,9 +179,9 @@ function KpiStatsRow() {
     ];
 
     return (
-        <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">
-                Attendance data as of: <span className="font-medium text-foreground">{(() => { try { return format(parseISO(reportingDate), "MMMM d, yyyy"); } catch { return reportingDate; } })()}</span>
+        <div className="space-y-1.5">
+            <p className="text-sm text-muted-foreground">
+                Attendance data as of: <span className="font-semibold text-foreground">{(() => { try { return format(parseISO(reportingDate), "MMMM d, yyyy"); } catch { return reportingDate; } })()}</span>
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {stats.map((stat) => (
@@ -190,12 +190,12 @@ function KpiStatsRow() {
                             <CardContent className="p-5">
                                 <div className="flex items-start justify-between">
                                     <div className="space-y-2">
-                                        <p className="text-sm text-muted-foreground font-medium">{stat.label}</p>
-                                        <p className="text-3xl font-bold tracking-tight">{stat.value}</p>
-                                        <div className="flex items-center gap-1 text-xs">
-                                            {stat.changeType === "positive" && <ArrowUpRight className="h-3 w-3 text-emerald-500" />}
-                                            {stat.changeType === "negative" && <ArrowDownRight className="h-3 w-3 text-red-500" />}
-                                            {stat.changeType === "warning" && <AlertCircle className="h-3 w-3 text-amber-500" />}
+                                        <p className="text-base text-muted-foreground font-semibold">{stat.label}</p>
+                                        <p className="text-4xl font-bold tracking-tight">{stat.value}</p>
+                                        <div className="flex items-center gap-1 text-sm font-medium">
+                                            {stat.changeType === "positive" && <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />}
+                                            {stat.changeType === "negative" && <ArrowDownRight className="h-3.5 w-3.5 text-red-500" />}
+                                            {stat.changeType === "warning" && <AlertCircle className="h-3.5 w-3.5 text-amber-500" />}
                                             <span className={
                                                 stat.changeType === "positive" ? "text-emerald-600 dark:text-emerald-400" :
                                                 stat.changeType === "negative" ? "text-red-600 dark:text-red-400" :
