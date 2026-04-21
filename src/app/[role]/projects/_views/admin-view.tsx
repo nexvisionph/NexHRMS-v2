@@ -188,18 +188,18 @@ export default function AdminProjectsView() {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
-                    <p className="text-sm text-muted-foreground mt-0.5">{projects.length} projects</p>
+                    <h1 className="text-2xl font-bold tracking-tight">Location</h1>
+                    <p className="text-sm text-muted-foreground mt-0.5">{projects.length} locations</p>
                 </div>
                 <Dialog open={addOpen} onOpenChange={setAddOpen}>
                     <DialogTrigger asChild>
-                        <Button className="gap-1.5"><Plus className="h-4 w-4" /> New Project</Button>
+                        <Button className="gap-1.5"><Plus className="h-4 w-4" /> New Location</Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader><DialogTitle>Create Project</DialogTitle></DialogHeader>
+                        <DialogHeader><DialogTitle>Create Location</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
                             <div>
-                                <label className="text-sm font-medium">Project Name *</label>
+                                <label className="text-sm font-medium">Location Name *</label>
                                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nexvision" className="mt-1" />
                             </div>
                             <div>
@@ -235,7 +235,7 @@ export default function AdminProjectsView() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead className="text-xs">ID</TableHead>
-                                    <TableHead className="text-xs">Project Name</TableHead>
+                                    <TableHead className="text-xs">Location Name</TableHead>
                                     <TableHead className="text-xs">Location</TableHead>
                                     <TableHead className="text-xs">Radius</TableHead>
                                     <TableHead className="text-xs">Status</TableHead>
@@ -324,8 +324,8 @@ export default function AdminProjectsView() {
 
             <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
                 <DialogContent className="max-w-lg">
-                    <DialogHeader><DialogTitle>Assign Employees to Project</DialogTitle></DialogHeader>
-                    <p className="text-xs text-muted-foreground -mt-1">Each employee can only be assigned to one project at a time.</p>
+                    <DialogHeader><DialogTitle>Assign Employees to Location</DialogTitle></DialogHeader>
+                    <p className="text-xs text-muted-foreground -mt-1">Each employee can only be assigned to one location at a time.</p>
                     <div className="relative">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                         <Input
@@ -376,10 +376,10 @@ export default function AdminProjectsView() {
             {/* ── Edit Project Dialog ───────────────────────────────── */}
             <Dialog open={editOpen} onOpenChange={setEditOpen}>
                 <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader><DialogTitle>Edit Project</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>Edit Location</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
                         <div>
-                            <label className="text-sm font-medium">Project Name *</label>
+                            <label className="text-sm font-medium">Location Name *</label>
                             <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nexvision" className="mt-1" />
                         </div>
                         <div>

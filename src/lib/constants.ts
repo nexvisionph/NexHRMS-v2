@@ -134,7 +134,7 @@ export const NAV_ITEMS: {
             permission: "page:employees",
         },
         {
-            label: "Projects",
+            label: "Location",
             href: "/projects",
             icon: "FolderKanban",
             roles: ["admin", "hr", "supervisor"],
