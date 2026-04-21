@@ -64,3 +64,163 @@ function downloadBlob(content: string | ArrayBuffer, filename: string, mimeType:
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// ─── Import Template Definitions ──────────────────────────────────────────────
+
+export const PAYROLL_TEMPLATE_HEADERS = [
+  "Employee Name",
+  "Email",
+  "Department",
+  "Job Title",
+  "Period Start",
+  "Period End",
+  "Pay Frequency",
+  "Gross Pay",
+  "Allowances",
+  "Holiday Pay",
+  "SSS",
+  "PhilHealth",
+  "Pag-IBIG",
+  "Tax",
+  "Loan Deduction",
+  "Custom Deductions",
+  "Other Deductions",
+  "Net Pay",
+  "Payment Method",
+  "Bank Reference",
+  "Notes",
+] as const;
+
+export const ATTENDANCE_TEMPLATE_HEADERS = [
+  "Employee Name",
+  "Email",
+  "Event Type",
+  "Date",
+  "Time",
+  "Project ID",
+  "Device ID",
+  "GPS Lat",
+  "GPS Lng",
+  "GPS Accuracy (m)",
+  "Geofence Pass",
+  "Face Verified",
+  "Device Integrity",
+  "Mock Location",
+] as const;
+
+const PAYROLL_SAMPLE_ROWS: Record<string, string>[] = [
+  {
+    "Employee Name": "Juan Dela Cruz",
+    Email: "juan@company.com",
+    Department: "Engineering",
+    "Job Title": "Developer",
+    "Period Start": "2026-04-01",
+    "Period End": "2026-04-15",
+    "Pay Frequency": "semi_monthly",
+    "Gross Pay": "25000",
+    Allowances: "2000",
+    "Holiday Pay": "0",
+    SSS: "900",
+    PhilHealth: "500",
+    "Pag-IBIG": "200",
+    Tax: "1500",
+    "Loan Deduction": "0",
+    "Custom Deductions": "0",
+    "Other Deductions": "0",
+    "Net Pay": "19900",
+    "Payment Method": "bank_transfer",
+    "Bank Reference": "",
+    Notes: "",
+  },
+];
+
+const ATTENDANCE_SAMPLE_ROWS: Record<string, string>[] = [
+  {
+    "Employee Name": "Juan Dela Cruz",
+    Email: "juan@company.com",
+    "Event Type": "IN",
+    Date: "2026-04-20",
+    Time: "08:00:00",
+    "Project ID": "",
+    "Device ID": "",
+    "GPS Lat": "14.5995",
+    "GPS Lng": "120.9842",
+    "GPS Accuracy (m)": "10",
+    "Geofence Pass": "Yes",
+    "Face Verified": "Yes",
+    "Device Integrity": "pass",
+    "Mock Location": "No",
+  },
+  {
+    "Employee Name": "Juan Dela Cruz",
+    Email: "juan@company.com",
+    "Event Type": "OUT",
+    Date: "2026-04-20",
+    Time: "17:00:00",
+    "Project ID": "",
+    "Device ID": "",
+    "GPS Lat": "14.5995",
+    "GPS Lng": "120.9842",
+    "GPS Accuracy (m)": "10",
+    "Geofence Pass": "Yes",
+    "Face Verified": "Yes",
+    "Device Integrity": "pass",
+    "Mock Location": "No",
+  },
+];
+
+/**
+ * Download an import template file (XLSX or CSV) for payroll or attendance.
+ * Includes headers + 1-2 sample rows so users know the expected format.
+ */
+export function downloadImportTemplate(
+  module: "payroll" | "attendance",
+  format: ExportFormat
+) {
+  const headers =
+    module === "payroll" ? PAYROLL_TEMPLATE_HEADERS : ATTENDANCE_TEMPLATE_HEADERS;
+  const sampleRows =
+    module === "payroll" ? PAYROLL_SAMPLE_ROWS : ATTENDANCE_SAMPLE_ROWS;
+
+  exportToFile({
+    filename: `${module}-import-template`,
+    format,
+    sheets: [
+      {
+        name: module === "payroll" ? "Payroll Import" : "Attendance Import",
+        data: sampleRows.map((row) => {
+          const ordered: Record<string, unknown> = {};
+          for (const h of headers) {
+            ordered[h] = row[h] ?? "";
+          }
+          return ordered;
+        }),
+      },
+    ],
+  });
+}
+
+/**
+ * Parse an uploaded XLSX or CSV file into an array of row objects.
+ * The first row is treated as headers.
+ */
+export function parseImportFile(file: File): Promise<Record<string, unknown>[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
+          defval: "",
+        });
+        resolve(rows);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsArrayBuffer(file);
+  });
+}

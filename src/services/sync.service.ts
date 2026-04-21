@@ -344,16 +344,23 @@ export function startWriteThrough(): void {
   // Clean up previous subscriptions
   stopWriteThrough();
 
-  // Determine write scope — only admin/hr manage HR data (employees meta, leave balances, attendance logs)
-  const role = useAuthStore.getState().currentUser?.role ?? "";
-  const isAdminOrHr = ["admin", "hr"].includes(role);
   // Kiosk mode syncs all attendance data (used by all employees without individual login)
   const isKioskMode = typeof window !== "undefined" && window.location.pathname.startsWith("/kiosk");
+
+  // Outer role snapshot — used by all subscription callbacks below.
+  // NOTE: the employees callback re-reads this dynamically to avoid a
+  // stale-closure RLS race condition (see below).
+  const outerRole = useAuthStore.getState().currentUser?.role ?? "";
+  const isAdminOrHr = ["admin", "hr"].includes(outerRole);
 
   // ─── Employees write-through ──────────────────────────────
   _subscriptions.push(
     useEmployeesStore.subscribe(
       (state, prevState) => {
+        // Re-read role dynamically on every tick — never rely on a captured value
+        // from when startWriteThrough() was called (stale-closure RLS race condition).
+        const currentRole = useAuthStore.getState().currentUser?.role ?? "";
+        const isAdminOrHr = ["admin", "hr"].includes(currentRole);
         // Detect changed employees — only admin/hr can write employee records
         if (isAdminOrHr) {
           for (const emp of state.employees) {
@@ -781,11 +788,14 @@ export function startWriteThrough(): void {
               await tasksDb.deleteGroup(prev.id);
             }
           }
-          // Tasks — safe to run now that groups are committed
+          // Tasks — safe to run now that groups are committed.
+          // Collect promises so child rows (comments, completion reports) can wait
+          // for their parent task insert to commit (FK: task_id).
+          const taskUpsertPromises: Promise<boolean>[] = [];
           for (const t of state.tasks) {
             const prev = prevState.tasks.find((pt) => pt.id === t.id);
             if (!prev || JSON.stringify(prev) !== JSON.stringify(t)) {
-              tasksDb.upsertTask(t);
+              taskUpsertPromises.push(tasksDb.upsertTask(t));
             }
           }
           for (const prev of prevState.tasks) {
@@ -793,14 +803,15 @@ export function startWriteThrough(): void {
               tasksDb.deleteTask(prev.id);
             }
           }
-          // Completion reports
+          await Promise.all(taskUpsertPromises);
+          // Completion reports — FK to tasks
           for (const r of state.completionReports) {
             const prev = prevState.completionReports.find((pr) => pr.id === r.id);
             if (!prev || JSON.stringify(prev) !== JSON.stringify(r)) {
               tasksDb.upsertCompletionReport(r);
             }
           }
-          // Comments (append-only)
+          // Comments (append-only) — FK to tasks
           for (const c of state.comments) {
             if (!prevState.comments.find((pc) => pc.id === c.id)) {
               tasksDb.insertComment(c);

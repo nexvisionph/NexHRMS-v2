@@ -642,7 +642,7 @@ INSERT INTO public.employees (
     address, emergency_contact, pin, nfc_id, created_at, updated_at
 )
 VALUES (
-    'EMP029', 'Alex Reyes', 'face@sdsi.com', 'employee', 'Operations',
+    'EMP029', 'Alex Reyes', 'face@nexhrms.com', 'employee', 'Operations',
     'active', 'ONSITE', 52000, '2025-01-15', 90, 'Makati, Metro Manila',
     '+63-917-5550029', '1993-07-14',
     ARRAY['Mon','Tue','Wed','Thu','Fri'], 'semi_monthly',

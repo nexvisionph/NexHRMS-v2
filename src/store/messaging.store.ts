@@ -33,7 +33,7 @@ const DEFAULT_CONFIG: MessagingConfig = {
     whatsappEnabled: true,
     smsEnabled: false,
     emailFromName: "NexHRMS",
-    emailFromAddress: "noreply@sdsi.com",
+    emailFromAddress: "noreply@nexhrms.com",
 };
 
 interface MessagingState {

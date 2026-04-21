@@ -76,10 +76,15 @@ export default function QRKioskPage() {
     const [errorMessage, setErrorMessage] = useState("QR code not recognized");
     const [deviceId] = useState(() => {
         if (typeof window === "undefined") return "";
-        const stored = localStorage.getItem("sdsi-kiosk-qr-device-id");
-        if (stored) return stored;
+        const stored = localStorage.getItem("nex-kiosk-qr-device-id")
+            ?? localStorage.getItem("sdsi-kiosk-qr-device-id");
+        if (stored) {
+            localStorage.setItem("nex-kiosk-qr-device-id", stored);
+            localStorage.removeItem("sdsi-kiosk-qr-device-id");
+            return stored;
+        }
         const id = `KIOSK-QR-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-        localStorage.setItem("sdsi-kiosk-qr-device-id", id);
+        localStorage.setItem("nex-kiosk-qr-device-id", id);
         return id;
     });
 
@@ -329,15 +334,33 @@ export default function QRKioskPage() {
             }
             qrStreamRef.current = stream;
 
+            // Wait up to two animation frames for React to commit the render
+            // with the video element before assigning srcObject.
+            await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
             if (qrVideoRef.current) {
                 qrVideoRef.current.srcObject = stream;
-                // Ensure video plays — required on some browsers/deployments
+                // Wait for video to be ready — with 4s timeout so we never hang.
                 await new Promise<void>((resolve) => {
                     const v = qrVideoRef.current!;
+                    const cleanup = () => {
+                        clearTimeout(timer);
+                        v.removeEventListener("loadedmetadata", onReady);
+                    };
                     const onReady = () => {
+                        cleanup();
                         v.play().catch(() => {}).finally(resolve);
                     };
-                    if (v.readyState >= 2) { onReady(); } else { v.onloadedmetadata = onReady; }
+                    // 4-second hard timeout — if loadedmetadata never fires, proceed anyway.
+                    const timer = setTimeout(() => {
+                        cleanup();
+                        v.play().catch(() => {}).finally(resolve);
+                    }, 4000);
+                    if (v.readyState >= 2) {
+                        onReady();
+                    } else {
+                        v.addEventListener("loadedmetadata", onReady, { once: true });
+                    }
                 });
             }
 
@@ -398,6 +421,21 @@ export default function QRKioskPage() {
             return () => clearTimeout(timer);
         }
     }, [startQrScanner, feedback]);
+
+    // Watchdog: if camera is stuck in "Starting camera..." for >6s with no error,
+    // auto-recover by restarting the scanner.
+    useEffect(() => {
+        if (qrScanning || qrCameraError || feedback !== "idle") return;
+        const verified = sessionStorage.getItem("kiosk-pin-verified");
+        if (!verified) return;
+        const timer = setTimeout(() => {
+            if (!qrScanning && !qrCameraError) {
+                console.warn("[QR watchdog] Camera stuck — attempting recovery");
+                startQrScanner();
+            }
+        }, 6000);
+        return () => clearTimeout(timer);
+    }, [qrScanning, qrCameraError, feedback, startQrScanner]);
 
     const isSuccessIn = feedback === "success-in";
     const isSuccessOut = feedback === "success-out";
@@ -475,7 +513,7 @@ export default function QRKioskPage() {
                         />
                     ) : (
                         <span className="font-semibold text-white/40" style={{ fontSize: "clamp(0.75rem, 1.2vw, 0.875rem)" }}>
-                            {companyName || "SDSI"}
+                            {companyName || "NexHRMS"}
                         </span>
                     )}
                 </div>
@@ -654,8 +692,19 @@ export default function QRKioskPage() {
                                 border: `2px solid ${NEON_GREEN}30`,
                             }}
                         >
+                            {/* Video element is ALWAYS in the DOM so qrVideoRef is never null.
+                                Visibility is toggled via CSS to avoid ref timing races. */}
+                            <video
+                                ref={qrVideoRef}
+                                autoPlay
+                                muted
+                                playsInline
+                                className="w-full h-full object-cover"
+                                style={{ display: qrScanning && !qrCameraError ? "block" : "none" }}
+                            />
+
                             {qrCameraError ? (
-                                <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-neutral-900 to-neutral-800">
+                                <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-neutral-900 to-neutral-800">
                                     <CameraOff className="h-12 w-12 text-neutral-600" />
                                     <p className="text-white/40" style={{ fontSize: "clamp(0.65rem, 1vw, 0.75rem)" }}>
                                         Camera unavailable
@@ -673,7 +722,7 @@ export default function QRKioskPage() {
                                     </button>
                                 </div>
                             ) : !qrScanning ? (
-                                <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-neutral-900 to-neutral-800">
+                                <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-neutral-900 to-neutral-800">
                                     <Loader2 style={{ color: NEON_GREEN }} className="h-10 w-10 animate-spin" />
                                     <p className="text-white/40" style={{ fontSize: "clamp(0.65rem, 1vw, 0.75rem)" }}>
                                         Starting camera...
@@ -681,7 +730,6 @@ export default function QRKioskPage() {
                                 </div>
                             ) : (
                                 <>
-                                    <video ref={qrVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
                                     {/* Scan frame overlay */}
                                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                         <div 

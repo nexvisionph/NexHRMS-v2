@@ -363,7 +363,61 @@ export const attendanceDb = {
   // Evidence
   fetchEvidence: () => fetchAll<AttendanceEvidence>("attendance_evidence"),
   async insertEvidence(evidence: AttendanceEvidence): Promise<boolean> {
-    return insertRow("attendance_evidence", evidence as unknown as Record<string, unknown>);
+    if (!evidence.eventId) {
+      console.warn("[db] insertEvidence: missing eventId, skipping");
+      return false;
+    }
+    // Permanent FK guard: ensure parent attendance_events row exists before
+    // inserting evidence. Without this, the write-through subscriber can race
+    // ahead of the parent event commit and trigger:
+    //   "violates foreign key constraint attendance_evidence_event_id_fkey"
+    // Strategy:
+    //   1. Check if the parent event exists in the DB
+    //   2. If not, look it up in the local Zustand store and insert it first
+    //   3. Then insert the evidence (with one retry on transient FK error)
+    const sb = supabase();
+    const { data: existingEvent } = await sb
+      .from("attendance_events")
+      .select("id")
+      .eq("id", evidence.eventId)
+      .maybeSingle();
+
+    if (!existingEvent) {
+      // Look the event up in the local store (avoids a circular import
+      // by accessing window.__zustand or using a lazy require pattern)
+      try {
+        const { useAttendanceStore } = await import("@/store/attendance.store");
+        const localEvent = useAttendanceStore
+          .getState()
+          .events.find((e) => e.id === evidence.eventId);
+        if (localEvent) {
+          const ok = await attendanceDb.insertEvent(localEvent);
+          if (!ok) {
+            console.warn(
+              `[db] insertEvidence: parent event ${evidence.eventId} could not be inserted; deferring evidence`
+            );
+            return false;
+          }
+        } else {
+          console.warn(
+            `[db] insertEvidence: parent event ${evidence.eventId} not found locally or in DB; skipping evidence`
+          );
+          return false;
+        }
+      } catch (err) {
+        console.warn(
+          `[db] insertEvidence: could not resolve parent event:`,
+          err instanceof Error ? err.message : String(err)
+        );
+        return false;
+      }
+    }
+
+    // Now safe to insert the evidence row
+    return insertRow(
+      "attendance_evidence",
+      evidence as unknown as Record<string, unknown>
+    );
   },
 
   // Exceptions
@@ -640,7 +694,7 @@ export const payrollDb = {
   // ─── Deduction Overrides (per-employee) ─────────────────────
   fetchDeductionOverrides: () => fetchAll<DeductionOverride>("deduction_overrides"),
 
-  async upsertDeductionOverride(override: DeductionOverride & { id?: string }): Promise<boolean> {
+  async upsertDeductionOverride(override: DeductionOverride): Promise<boolean> {
     // Use the composite unique (employee_id, deduction_type) for upsert
     const dbRow = keysToSnake(override as unknown as Record<string, unknown>);
     const { error } = await supabase()
@@ -956,11 +1010,42 @@ export const messagingDb = {
     return deleteRow("text_channels", id);
   },
 
+  /**
+   * Ensure parent text_channel exists in DB before inserting a message.
+   * Without this guard, seed-only channels (SEED_TEXT_CHANNELS) that were never
+   * synced will cause: "violates foreign key constraint channel_messages_channel_id_fkey".
+   */
+  async _ensureChannelExists(channelId: string): Promise<boolean> {
+    if (!channelId) return false;
+    const { data } = await supabase()
+      .from("text_channels")
+      .select("id")
+      .eq("id", channelId)
+      .maybeSingle();
+    if (data) return true;
+    try {
+      const { useMessagingStore } = await import("@/store/messaging.store");
+      const local = useMessagingStore.getState().channels.find((c) => c.id === channelId);
+      if (local) {
+        return await messagingDb.upsertChannel(local);
+      }
+    } catch (err) {
+      console.warn(
+        `[db] _ensureChannelExists: lookup failed:`,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+    console.warn(`[db] _ensureChannelExists: channel ${channelId} not found locally or in DB`);
+    return false;
+  },
+
   async insertMessage(msg: ChannelMessage): Promise<boolean> {
+    if (!(await messagingDb._ensureChannelExists(msg.channelId))) return false;
     return insertRow("channel_messages", msg as unknown as Record<string, unknown>);
   },
 
   async upsertMessage(msg: ChannelMessage): Promise<boolean> {
+    if (!(await messagingDb._ensureChannelExists(msg.channelId))) return false;
     return upsertRow("channel_messages", msg as unknown as Record<string, unknown>);
   },
 };

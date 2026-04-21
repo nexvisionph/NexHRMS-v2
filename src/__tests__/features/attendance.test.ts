@@ -554,13 +554,13 @@ describe("Attendance Store", () => {
                 result.current.addHoliday({
                     name: "Company Anniversary",
                     date: "2026-06-15",
-                    type: "special",
+                    type: "special_non_working",
                 });
             });
 
             const holiday = result.current.holidays.find(h => h.name === "Company Anniversary");
             expect(holiday).toBeDefined();
-            expect(holiday?.type).toBe("special");
+            expect(holiday?.type).toBe("special_non_working");
         });
 
         it("should delete holiday", () => {

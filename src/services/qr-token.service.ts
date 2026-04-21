@@ -33,6 +33,12 @@ export async function generateQRToken(
     const token = `SDS-DYN-${nanoid(TOKEN_LENGTH)}`;
     const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_SECONDS * 1000).toISOString();
 
+    // Ensure the device exists in kiosk_devices (FK requirement).
+    await supabase.from("kiosk_devices").upsert(
+      { id: deviceId, name: deviceId },
+      { onConflict: "id", ignoreDuplicates: true },
+    );
+
     // Insert token into database
     const tokenId = `QRT-${nanoid(8)}`;
     const { error } = await supabase.from("qr_tokens").insert({

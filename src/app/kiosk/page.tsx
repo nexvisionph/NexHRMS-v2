@@ -76,17 +76,25 @@ export default function KioskLandingPage() {
         setShowError(false);
 
         try {
+            // PIN verification MUST happen server-side. No client-side fallback —
+            // any fallback would compare against a value present in the client
+            // bundle, which is trivially bypassable. Fail closed if the API
+            // is unreachable.
             let pinValid = false;
             try {
                 const res = await fetch(`/api/kiosk/admin-pin?pin=${encodeURIComponent(pin)}`);
                 if (res.ok) {
                     const data = await res.json() as { valid?: boolean };
                     pinValid = data.valid === true;
-                } else {
-                    pinValid = pin === (settings.adminPin || "000000");
                 }
-            } catch {
-                pinValid = pin === (settings.adminPin || "000000");
+            } catch (err) {
+                console.error("[kiosk] PIN verify network error:", err);
+                setError("Cannot verify PIN — network error. Please retry.");
+                setShowError(true);
+                setPin("");
+                toast.error("PIN verification failed — network error");
+                setIsLoading(false);
+                return;
             }
 
             if (!pinValid) {
@@ -177,7 +185,7 @@ export default function KioskLandingPage() {
                                 <Fingerprint className="h-4 w-4 sm:h-5 sm:w-5" style={{ color: NEON_GREEN }} />
                             </div>
                             <span className="font-bold text-sm sm:text-lg tracking-tight text-white">
-                                {companyName || "SDSI"}
+                                {companyName || "NexHRMS"}
                             </span>
                         </div>
                     )}

@@ -49,6 +49,7 @@ import { SelfieCapture } from "@/components/attendance/selfie-capture";
 import { LocationTracker } from "@/components/attendance/location-tracker";
 import { BreakTimer } from "@/components/attendance/break-timer";
 import { ExportBackupDialog } from "@/components/export-backup-dialog";
+import { ImportDataDialog } from "@/components/import-data-dialog";
 import { EmployeeCombobox } from "@/components/ui/employee-combobox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SiteSurveyGallery } from "@/components/attendance/site-survey-gallery";
@@ -197,7 +198,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const [holEditing, setHolEditing] = useState<Holiday | null>(null);
     const [holDate, setHolDate] = useState("");
     const [holName, setHolName] = useState("");
-    const [holType, setHolType] = useState<"regular" | "special" | "special_non_working" | "special_working">("regular");
+    const [holType, setHolType] = useState<"regular" | "special_non_working" | "special_working">("regular");
     const [holDeleteId, setHolDeleteId] = useState<string | null>(null);
 
     // CSV import ref
@@ -516,6 +517,11 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                         <ExportBackupDialog module="attendance" trigger={
                             <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 px-2.5 rounded-md">
                                 <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Backup</span>
+                            </Button>
+                        } />
+                        <ImportDataDialog module="attendance" trigger={
+                            <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 px-2.5 rounded-md">
+                                <UploadCloud className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Import DB</span>
                             </Button>
                         } />
                         {canImportCSV && (<>
@@ -1182,9 +1188,9 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                             <div><label className="text-sm font-medium">Date</label><Input type="date" value={holDate} onChange={(e) => setHolDate(e.target.value)} className="mt-1" /></div>
                             <div><label className="text-sm font-medium">Holiday Name</label><Input value={holName} onChange={(e) => setHolName(e.target.value)} placeholder="e.g. National Election Day" className="mt-1" /></div>
                             <div><label className="text-sm font-medium">Type</label>
-                                <Select value={holType} onValueChange={(v) => setHolType(v as "regular" | "special" | "special_non_working" | "special_working")}>
+                                <Select value={holType} onValueChange={(v) => setHolType(v as "regular" | "special_non_working" | "special_working")}>
                                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                                    <SelectContent><SelectItem value="regular">Regular Holiday (200%)</SelectItem><SelectItem value="special">Special Non-Working (130%)</SelectItem><SelectItem value="special_non_working">Special Non-Working (130%)</SelectItem><SelectItem value="special_working">Special Working (130%)</SelectItem></SelectContent>
+                                    <SelectContent><SelectItem value="regular">Regular Holiday (200%)</SelectItem><SelectItem value="special_non_working">Special Non-Working (130%)</SelectItem><SelectItem value="special_working">Special Working (130%)</SelectItem></SelectContent>
                                 </Select>
                             </div>
                             <div className="flex gap-2 pt-1"><Button variant="outline" className="flex-1" onClick={() => setHolDialogOpen(false)}>Cancel</Button>

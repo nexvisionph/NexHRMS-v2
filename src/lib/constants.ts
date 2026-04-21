@@ -76,24 +76,24 @@ export const PH_HOLIDAY_MULTIPLIERS = {
 // ─── Philippine National & Special Holidays 2026 ─────────────────────────────
 export const DEFAULT_HOLIDAYS: { date: string; name: string; type: HolidayType }[] = [
     { date: "2026-01-01", name: "New Year's Day", type: "regular" },
-    { date: "2026-01-28", name: "Chinese New Year", type: "special" },
-    { date: "2026-02-25", name: "EDSA People Power Revolution", type: "special" },
+    { date: "2026-01-28", name: "Chinese New Year", type: "special_non_working" },
+    { date: "2026-02-25", name: "EDSA People Power Revolution", type: "special_non_working" },
     { date: "2026-04-02", name: "Maundy Thursday", type: "regular" },
     { date: "2026-04-03", name: "Good Friday", type: "regular" },
-    { date: "2026-04-04", name: "Black Saturday", type: "special" },
+    { date: "2026-04-04", name: "Black Saturday", type: "special_non_working" },
     { date: "2026-04-09", name: "Araw ng Kagitingan", type: "regular" },
     { date: "2026-05-01", name: "Labor Day", type: "regular" },
     { date: "2026-06-12", name: "Independence Day", type: "regular" },
-    { date: "2026-08-21", name: "Ninoy Aquino Day", type: "special" },
+    { date: "2026-08-21", name: "Ninoy Aquino Day", type: "special_non_working" },
     { date: "2026-08-31", name: "National Heroes Day", type: "regular" },
-    { date: "2026-11-01", name: "All Saints Day", type: "special" },
-    { date: "2026-11-02", name: "All Souls Day", type: "special" },
+    { date: "2026-11-01", name: "All Saints Day", type: "special_non_working" },
+    { date: "2026-11-02", name: "All Souls Day", type: "special_non_working" },
     { date: "2026-11-30", name: "Bonifacio Day", type: "regular" },
-    { date: "2026-12-08", name: "Immaculate Conception", type: "special" },
-    { date: "2026-12-24", name: "Christmas Eve", type: "special" },
+    { date: "2026-12-08", name: "Immaculate Conception", type: "special_non_working" },
+    { date: "2026-12-24", name: "Christmas Eve", type: "special_non_working" },
     { date: "2026-12-25", name: "Christmas Day", type: "regular" },
     { date: "2026-12-30", name: "Rizal Day", type: "regular" },
-    { date: "2026-12-31", name: "New Year's Eve", type: "special" },
+    { date: "2026-12-31", name: "New Year's Eve", type: "special_non_working" },
 ];
 
 // ─── Policy Snapshot Versions ─────────────────────────────────────────────────

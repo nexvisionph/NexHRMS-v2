@@ -55,7 +55,11 @@ interface OrgSettings { emailAbsenceAlerts: boolean; emailLeaveUpdates: boolean;
 const defaultOrgSettings: OrgSettings = { emailAbsenceAlerts: true, emailLeaveUpdates: true, emailPayrollAlerts: true };
 function readOrgSettings() {
     if (typeof window === "undefined") return defaultOrgSettings;
-    try { const s = localStorage.getItem("sdsi-org-settings"); if (s) return { ...defaultOrgSettings, ...JSON.parse(s) }; } catch { /* ignore */ }
+    try {
+        const s = localStorage.getItem("nex-org-settings")
+            ?? localStorage.getItem("sdsi-org-settings");
+        if (s) return { ...defaultOrgSettings, ...JSON.parse(s) };
+    } catch { /* ignore */ }
     return defaultOrgSettings;
 }
 
@@ -64,7 +68,8 @@ function useOrgSettings() {
     const update = (patch: Partial<OrgSettings>) => {
         setSettings((prev: OrgSettings) => {
             const next = { ...prev, ...patch };
-            localStorage.setItem("sdsi-org-settings", JSON.stringify(next));
+            localStorage.setItem("nex-org-settings", JSON.stringify(next));
+            try { localStorage.removeItem("sdsi-org-settings"); } catch { /* ignore */ }
             return next;
         });
     };

@@ -133,11 +133,13 @@ const detectLocationSpoofing = (coords: GeolocationCoordinates): string | null =
  * Velocity check: detect teleportation between consecutive location readings.
  * If position changed >300 km/h since last known position, it's spoofed.
  */
-const LAST_LOCATION_KEY = "sdsi-last-checkin-loc";
+const LAST_LOCATION_KEY = "nex-last-checkin-loc";
+const LEGACY_LAST_LOCATION_KEY = "sdsi-last-checkin-loc";
 
 function checkLocationVelocity(lat: number, lng: number): string | null {
     try {
-        const stored = sessionStorage.getItem(LAST_LOCATION_KEY);
+        const stored = sessionStorage.getItem(LAST_LOCATION_KEY)
+            ?? sessionStorage.getItem(LEGACY_LAST_LOCATION_KEY);
         if (!stored) return null;
         const prev = JSON.parse(stored) as { lat: number; lng: number; ts: number };
         const elapsed = (Date.now() - prev.ts) / 1000; // seconds
