@@ -247,7 +247,7 @@ function SidebarComponent() {
                 {isMobile && (
                     <button
                         onClick={() => setMobileSidebarOpen(false)}
-                        className="rounded-lg p-1.5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+                        className="rounded-lg p-1.5 text-foreground/70 hover:bg-muted hover:text-foreground transition-colors"
                         aria-label="Close menu"
                     >
                         <X className="h-5 w-5" />
@@ -280,7 +280,7 @@ function SidebarComponent() {
                                             : "gap-3 px-3 py-2.5",
                                         isActive
                                             ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                                            : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                                            : "text-foreground/80 hover:bg-muted hover:text-foreground"
                                     )}
                                 >
                                     {Icon && <Icon className="h-5 w-5 shrink-0" />}
@@ -317,7 +317,7 @@ function SidebarComponent() {
                     <>
                         {showLabel && (
                             <div className="pt-3 pb-1 px-3">
-                                <span className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">Custom Pages</span>
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground/60">Custom Pages</span>
                             </div>
                         )}
                         {filtered.customNavItems.map((item) => {
@@ -337,7 +337,7 @@ function SidebarComponent() {
                                                     : "gap-3 px-3 py-2.5",
                                                 isActive
                                                     ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                                                    : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                                                    : "text-foreground/80 hover:bg-muted hover:text-foreground"
                                             )}
                                         >
                                             <Icon className="h-5 w-5 shrink-0" />
@@ -372,7 +372,7 @@ function SidebarComponent() {
                                 !showLabel && !isMobile
                                     ? "h-10 w-10 mx-auto justify-center"
                                     : "gap-3 px-3 py-2.5",
-                                "text-sidebar-foreground/75 hover:bg-red-500/15 hover:text-red-500"
+                                "text-foreground/80 hover:bg-red-500/15 hover:text-red-500"
                             )}
                         >
                             <LogOut className="h-5 w-5 shrink-0" />
@@ -388,7 +388,7 @@ function SidebarComponent() {
             {!isMobile && (
                 <button
                     onClick={toggleSidebar}
-                    className="flex h-12 w-full items-center justify-center border-t border-sidebar-border text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
+                    className="flex h-12 w-full items-center justify-center border-t border-sidebar-border text-foreground/70 hover:text-foreground transition-colors"
                     aria-label="Toggle sidebar"
                 >
                     <ChevronLeft
