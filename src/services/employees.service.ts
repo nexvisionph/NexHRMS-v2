@@ -8,6 +8,7 @@
  */
 
 import { createServerSupabaseClient, createAdminSupabaseClient } from "./supabase-server";
+import { nanoid } from "nanoid";
 import type { Employee, ServiceResult, SalaryChangeRequest, SalaryHistoryEntry } from "@/types";
 import { keysToCamel, keysToSnake, roleToDbFormat, roleFromDb } from "@/lib/db-utils";
 
@@ -141,9 +142,26 @@ async function purgeEmployeeDependencies(supabase: AdminSupabaseClient, employee
   return null;
 }
 
+async function purgeEmployeeDependenciesTransactional(
+  supabase: AdminSupabaseClient,
+  employeeId: string
+): Promise<string | null> {
+  const { error } = await supabase.rpc("purge_employee_dependencies", { employee_id: employeeId });
+  if (!error) return null;
+
+  const errorCode = (error as { code?: string }).code;
+  const errorMessage = (error as { message?: string }).message ?? "";
+  const isMissingFunction = errorCode === "PGRST202" || errorMessage.toLowerCase().includes("does not exist");
+  if (isMissingFunction) {
+    return purgeEmployeeDependencies(supabase, employeeId);
+  }
+
+  return error.message;
+}
+
 export async function deleteEmployeeById(id: string): Promise<ServiceResult<void>> {
   const supabase = await createAdminSupabaseClient();
-  const dependencyError = await purgeEmployeeDependencies(supabase, id);
+  const dependencyError = await purgeEmployeeDependenciesTransactional(supabase, id);
   if (dependencyError) return { ok: false, error: dependencyError };
 
   const { error } = await supabase.from("employees").delete().eq("id", id);
@@ -199,7 +217,7 @@ export async function getEmployeeById(id: string): Promise<ServiceResult<Employe
 
 export async function createEmployee(emp: Omit<Employee, "id" | "createdAt" | "updatedAt">): Promise<ServiceResult<Employee>> {
   const supabase = await createServerSupabaseClient();
-  const id = `EMP-${Date.now()}`;
+  const id = `EMP-${nanoid(10).toUpperCase()}`;
   const row = { ...employeeToDb(emp), id };
   const { data, error } = await supabase.from("employees").insert(row).select().single();
   if (error) return { ok: false, error: error.message };
@@ -228,7 +246,8 @@ export async function updateEmployee(id: string, patch: Partial<Employee>): Prom
     if (patch.birthday !== undefined) profilePatch.birthday = patch.birthday || null;
     if (patch.address !== undefined) profilePatch.address = patch.address || null;
     if (patch.emergencyContact !== undefined) profilePatch.emergency_contact = patch.emergencyContact || null;
-    await adminSupabase.from("profiles").update(profilePatch).eq("id", profileId);
+    const { error: profileError } = await adminSupabase.from("profiles").update(profilePatch).eq("id", profileId);
+    if (profileError) return { ok: false, error: profileError.message };
   }
 
   return { ok: true, data: employee };
