@@ -3,6 +3,7 @@
 import { createAdminSupabaseClient, createServerSupabaseClient } from "./supabase-server";
 import type { Role } from "@/types";
 import { isAdministrativeRole } from "@/lib/admin-tier";
+import { generateUserUniqueId } from "@/lib/id-generator";
 
 function resolveUserRole(profileRole?: string | null, metadataRole?: string | null): Role {
   const resolvedRole = metadataRole ?? profileRole ?? "employee";
@@ -89,34 +90,57 @@ export async function signOut() {
  * Sign up a new user account via Supabase Auth.
  * Used only when self-service sign-up is explicitly enabled.
  */
-export async function signUp(email: string, password: string) {
+export async function signUp(input: {
+  email: string;
+  password: string;
+  name: string;
+  role: Role;
+  department?: string;
+}) {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
+    email: input.email,
+    password: input.password,
     options: {
-      data: { role: "employee" },
+      data: { 
+        name: input.name,
+        role: input.role 
+      },
     },
   });
   if (error) return { ok: false as const, error: error.message };
 
-  return {
-    ok: true as const,
-    user: {
-      id: data.user?.id ?? "",
-      name: data.user?.user_metadata?.name ?? "",
-      email: data.user?.email ?? email,
-      role: resolveUserRole(data.user?.user_metadata?.role, data.user?.app_metadata?.role),
-      avatarUrl: undefined,
-      mustChangePassword: false,
-      profileComplete: false,
-      phone: undefined,
-      department: undefined,
-      birthday: undefined,
-      address: undefined,
-      emergencyContact: undefined,
-    },
-  };
+  if (data.user) {
+    const adminSupabase = await createAdminSupabaseClient();
+    const employeeId = await generateUserUniqueId(input.role);
+
+    // Update profile and create employee record
+    await Promise.all([
+      adminSupabase.from("profiles").update({
+        name: input.name,
+        role: input.role,
+        department: input.department ?? "",
+        profile_complete: true,
+      }).eq("id", data.user.id),
+      
+      adminSupabase.from("employees").insert({
+        id: employeeId,
+        profile_id: data.user.id,
+        name: input.name,
+        email: input.email,
+        role: input.role,
+        department: input.department ?? "",
+        status: "active",
+        work_type: "WFO",
+        salary: 0,
+        join_date: new Date().toISOString().split("T")[0],
+        productivity: 0,
+        location: "",
+      }),
+    ]);
+  }
+
+  return { ok: true as const };
 }
 
 /**
@@ -207,7 +231,7 @@ export async function createUserAccount(input: {
     } else {
       // No employee record exists - create one linked to this profile
       // This ensures every account has a corresponding employee record
-      const employeeId = `EMP-${Date.now().toString(36).toUpperCase()}`;
+      const employeeId = await generateUserUniqueId(input.role);
       await supabase.from("employees").insert({
         id: employeeId,
         profile_id: data.user.id,

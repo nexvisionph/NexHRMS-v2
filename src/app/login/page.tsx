@@ -108,49 +108,55 @@ export default function LoginPage() {
     const handleSupabaseLogin = async (loginEmail: string, loginPassword: string) => {
         setLoading(true);
         try {
-            const result = mode === "signUp"
-                ? await signUp(loginEmail, loginPassword)
-                : await signIn(loginEmail, loginPassword);
-            if (result.ok) {
-                if (mode === "signUp") {
+            if (mode === "signUp") {
+                // signUp expects a single input object with required fields.
+                const res = await signUp({ email: loginEmail, password: loginPassword, name: loginEmail.split('@')[0] ?? '', role: 'employee' });
+                if (res.ok) {
                     toast.success("Account created. Check your email to continue.");
                     setMode("signIn");
                     setLoading(false);
                     return;
                 }
+                toast.error(res.error || "Unable to create account");
+                setLoading(false);
+                return;
+            }
+
+            // Sign-in flow
+            const res = await signIn(loginEmail, loginPassword);
+            if (res.ok) {
                 // Hydrate Zustand store with Supabase user data
                 setUser({
-                    id: result.user.id,
-                    name: result.user.name,
-                    email: result.user.email,
-                    role: result.user.role,
-                    avatarUrl: result.user.avatarUrl,
-                    mustChangePassword: result.user.mustChangePassword,
-                    profileComplete: result.user.profileComplete,
-                    phone: result.user.phone,
-                    department: result.user.department,
-                    birthday: result.user.birthday,
-                    address: result.user.address,
-                    emergencyContact: result.user.emergencyContact,
+                    id: res.user.id,
+                    name: res.user.name,
+                    email: res.user.email,
+                    role: res.user.role,
+                    avatarUrl: res.user.avatarUrl,
+                    mustChangePassword: res.user.mustChangePassword,
+                    profileComplete: res.user.profileComplete,
+                    phone: res.user.phone,
+                    department: res.user.department,
+                    birthday: res.user.birthday,
+                    address: res.user.address,
+                    emergencyContact: res.user.emergencyContact,
                 });
                 useAuthStore.setState({ isAuthenticated: true });
-                // Start store hydration NOW — runs in parallel with navigation
-                // so data is ready by the time the dashboard mounts
                 hydrateAllStores({ skipSessionCheck: true }).then(() => {
                     startWriteThrough();
                     startRealtime();
                 });
                 toast.success("Welcome back!");
-                redirectAfterAuth(result.user.role);
-            } else if (result.error === "deactivated") {
+                redirectAfterAuth(res.user.role);
+            } else if (res.error === "deactivated") {
                 toast.error("Your account has been deactivated. Please contact your HR administrator.");
                 setLoading(false);
                 router.push("/deactivated");
             } else {
-                toast.error(result.error || "Invalid email or password");
+                toast.error(res.error || "Invalid email or password");
                 setLoading(false);
             }
-        } catch {
+        } catch (err) {
+            console.error(err);
             toast.error("Connection error. Please try again.");
             setLoading(false);
         }
@@ -233,7 +239,7 @@ export default function LoginPage() {
         >
             {/* Pattern overlay */}
             {loginBackground !== "solid" && (
-                <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,.02)_1px,transparent_1px)] bg-[size:60px_60px] dark:bg-[linear-gradient(rgba(255,255,255,.015)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.015)_1px,transparent_1px)]" />
+                <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(0,0,0,.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,.02)_1px,transparent_1px)] bg-[size:60px_60px] dark:bg-[linear-gradient(rgba(255,255,255,.015)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.015)_1px,transparent_1px)]" />
             )}
 
             {/* Split layout — branding panel */}
@@ -335,10 +341,10 @@ export default function LoginPage() {
                             <CircleHelp className="h-3.5 w-3.5" />
                             {mode === "recovery" ? "Back to sign in" : "Forgot password?"}
                         </button>
-                        {ALLOW_SIGN_UP && mode !== "recovery" ? (
-                            <button type="button" className="inline-flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => setMode((current) => current === "signIn" ? "signUp" : "signIn")}>
+                        {mode !== "recovery" ? (
+                            <button type="button" className="inline-flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => router.push("/signup")}>
                                 <ArrowLeftRight className="h-3.5 w-3.5" />
-                                {mode === "signUp" ? "Have an account? Sign in" : "Need an account? Sign up"}
+                                Need an account? Sign up
                             </button>
                         ) : null}
                     </div>
