@@ -55,6 +55,8 @@ import type { Employee, WorkType, PayFrequency, Role, JobTitle, Department, Dedu
 
 const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
+const ADMINISTRATIVE_TIER_ROLES: Role[] = ["admin", "hr", "finance", "supervisor", "payroll_admin", "auditor"];
+
 /* ═══════════════════════════════════════════════════════════════
    ADMIN / HR VIEW — Full Employee Management
    Two tabs: Management (CRUD table) + Directory & Salary
@@ -90,7 +92,18 @@ export default function AdminEmployeesView() {
     const canSetSalary = hasPermission(currentUser.role, "employees:view_salary");
     const canDirectSet = hasPermission(currentUser.role, "employees:approve_salary");
     const isHR = canSetSalary && !canDirectSet;
-    const canManageRoles = hasPermission(currentUser.role, "settings:roles");
+    const canAccessAdministrativeTier = ADMINISTRATIVE_TIER_ROLES.includes(currentUser.role);
+
+    useEffect(() => {
+        if (canAccessAdministrativeTier) return;
+        console.warn("[AdminEmployeesView] Access denied for administrative user-management controls", {
+            userId: currentUser.id,
+            userRole: currentUser.role,
+            userEmail: currentUser.email,
+            route: rh("/employees/manage"),
+            allowedRoles: ADMINISTRATIVE_TIER_ROLES,
+        });
+    }, [canAccessAdministrativeTier, currentUser.email, currentUser.id, currentUser.role, rh]);
 
     // ─── User Accounts (production: real DB, demo: Zustand store) ───
     const [realAccounts, setRealAccounts] = useState<DemoUserLike[]>([]);
@@ -784,9 +797,9 @@ export default function AdminEmployeesView() {
                 <TabsList>
                     <TabsTrigger value="management">Employee Management</TabsTrigger>
                     <TabsTrigger value="directory">Directory &amp; Salary</TabsTrigger>
-                    {canManageRoles && <TabsTrigger value="accounts">User Accounts</TabsTrigger>}
-                    {canManageRoles && <TabsTrigger value="job-titles">Job Titles</TabsTrigger>}
-                    {canManageRoles && <TabsTrigger value="departments">Departments</TabsTrigger>}
+                    {canAccessAdministrativeTier && <TabsTrigger value="accounts">User Accounts</TabsTrigger>}
+                    {canAccessAdministrativeTier && <TabsTrigger value="job-titles">Job Titles</TabsTrigger>}
+                    {canAccessAdministrativeTier && <TabsTrigger value="departments">Departments</TabsTrigger>}
                 </TabsList>
 
                 {/* ─── Management Tab ─── */}
@@ -1724,7 +1737,7 @@ export default function AdminEmployeesView() {
                 </TabsContent>
 
                 {/* ─── User Accounts Tab ─── */}
-                {canManageRoles && (
+                {canAccessAdministrativeTier && (
                 <TabsContent value="accounts" className="mt-4 space-y-4">
                     {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1907,7 +1920,7 @@ export default function AdminEmployeesView() {
                 )}
 
                 {/* ─── Job Titles Tab ─── */}
-                {canManageRoles && (
+                {canAccessAdministrativeTier && (
                 <TabsContent value="job-titles" className="mt-4 space-y-4">
                     {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -2103,7 +2116,7 @@ export default function AdminEmployeesView() {
                 )}
 
                 {/* ─── Departments Tab ─── */}
-                {canManageRoles && (
+                {canAccessAdministrativeTier && (
                 <TabsContent value="departments" className="mt-4 space-y-4">
                     {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
