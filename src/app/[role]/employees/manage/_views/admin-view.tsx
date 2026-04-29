@@ -18,10 +18,12 @@ import {
     adminDeleteAccount,
     listUserAccounts,
 } from "@/services/auth.service";
+import { createClient } from "@/services/supabase-browser";
 import type { DemoUserLike } from "@/services/auth.service";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -458,6 +460,116 @@ export default function AdminEmployeesView() {
     const [dirStatus, setDirStatus] = useState("all");
 
     const salaryDialogEmp = salaryDialogEmpId ? employees.find((e) => e.id === salaryDialogEmpId) : null;
+    
+    // Approval state
+    const [approvalOpen, setApprovalOpen] = useState(false);
+    const [approvingEmp, setApprovingEmp] = useState<Employee | null>(null);
+    const [approveRole, setApproveRole] = useState<Role>("employee");
+    const [approveJobTitle, setApproveJobTitle] = useState("");
+    const [approveSalary, setApproveSalary] = useState("");
+    const [approveDept, setApproveDept] = useState("");
+    const [approveWorkType, setApproveWorkType] = useState<WorkType>("WFO");
+    const [approvePayFreq, setApprovePayFreq] = useState<PayFrequency | "company">("company");
+    const [approveTeamLeader, setApproveTeamLeader] = useState("none");
+    const [approveShiftId, setApproveShiftId] = useState("none");
+    const [approveWorkDays, setApproveWorkDays] = useState<string[]>(["Mon","Tue","Wed","Thu","Fri"]);
+    const [approveProjectId, setApproveProjectId] = useState("none");
+    const [approveDeductionTemplateIds, setApproveDeductionTemplateIds] = useState<string[]>([]);
+    
+    const [approveSssMode, setApproveSssMode] = useState<DeductionOverrideMode>("auto");
+    const [approveSssValue, setApproveSssValue] = useState("");
+    const [approvePhilhealthMode, setApprovePhilhealthMode] = useState<DeductionOverrideMode>("auto");
+    const [approvePhilhealthValue, setApprovePhilhealthValue] = useState("");
+    const [approvePagibigMode, setApprovePagibigMode] = useState<DeductionOverrideMode>("auto");
+    const [approvePagibigValue, setApprovePagibigValue] = useState("");
+    const [approveBirMode, setApproveBirMode] = useState<DeductionOverrideMode>("auto");
+    const [approveBirValue, setApproveBirValue] = useState("");
+
+    const pendingAccounts = useMemo(() => {
+        return employees.filter(e => e.status === "inactive" && e.jobTitle === "PENDING_APPROVAL");
+    }, [employees]);
+
+    const handleApprove = async () => {
+        if (!approvingEmp) return;
+        const id = approvingEmp.id;
+        try {
+            updateEmployee(id, {
+                status: "active",
+                role: approveRole,
+                jobTitle: approveJobTitle,
+                department: approveDept,
+                salary: Number(approveSalary) || 0,
+                workType: approveWorkType,
+                payFrequency: approvePayFreq === "company" ? undefined : approvePayFreq,
+                teamLeader: approveTeamLeader,
+                shiftId: approveShiftId,
+                workDays: approveWorkDays,
+            });
+
+            // Handle project and shift assignments
+            if (approveProjectId && approveProjectId !== "none") assignToProject(approveProjectId, id);
+            if (approveShiftId && approveShiftId !== "none") assignShift(id, approveShiftId);
+
+            // Handle deduction template assignments
+            if (approveDeductionTemplateIds.length > 0) {
+                approveDeductionTemplateIds.forEach(templateId => {
+                    assignDeductionToEmployee({ employeeId: id, templateId }).catch(() => {});
+                });
+            }
+
+            // Handle tax overrides
+            const taxOverrides = [
+                { type: "sss" as const, mode: approveSssMode, value: approveSssValue },
+                { type: "philhealth" as const, mode: approvePhilhealthMode, value: approvePhilhealthValue },
+                { type: "pagibig" as const, mode: approvePagibigMode, value: approvePagibigValue },
+                { type: "bir" as const, mode: approveBirMode, value: approveBirValue },
+            ];
+            taxOverrides.forEach(({ type, mode, value }) => {
+                if (mode !== "auto") {
+                    setDeductionOverride({
+                        id: `DO-${id}-${type}`,
+                        employeeId: id,
+                        deductionType: type,
+                        mode,
+                        percentage: mode === "percentage" ? parseFloat(value) || 0 : undefined,
+                        fixedAmount: mode === "fixed" ? parseFloat(value) || 0 : undefined,
+                        updatedAt: new Date().toISOString(),
+                    });
+                }
+            });
+
+            // Update the profile role via Supabase
+            if (approvingEmp.profileId) {
+                const supabase = createClient();
+                await supabase.from("profiles").update({ 
+                    role: approveRole,
+                    department: approveDept,
+                    profile_complete: true
+                }).eq("id", approvingEmp.profileId);
+            }
+            toast.success(`Account for ${approvingEmp.name} approved as ${approveRole}`);
+            setApprovalOpen(false);
+            setApprovingEmp(null);
+            refreshAccounts();
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to approve account");
+        }
+    };
+
+    const handleReject = async (emp: Employee) => {
+        try {
+            if (emp.profileId) {
+                await adminDeleteAccount(emp.profileId);
+            } else {
+                removeEmployee(emp.id);
+            }
+            toast.success(`Registration for ${emp.name} rejected and account removed.`);
+            refreshAccounts();
+        } catch (err) {
+            toast.error("Failed to reject registration");
+        }
+    };
 
     const dirFiltered = useMemo(() => employees.filter((e) => {
         const matchSearch = !dirSearch || e.name.toLowerCase().includes(dirSearch.toLowerCase()) || e.email.toLowerCase().includes(dirSearch.toLowerCase());
@@ -793,10 +905,262 @@ export default function AdminEmployeesView() {
                 <p className="text-sm text-muted-foreground mt-0.5">{employees.length} total employees</p>
             </div>
 
+            {/* Approval Dialog */}
+            <Dialog open={approvalOpen} onOpenChange={setApprovalOpen}>
+                <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
+                    <div className="px-6 pt-5 pb-4 border-b">
+                        <DialogTitle className="text-base font-semibold">Approve User Registration</DialogTitle>
+                        <p className="text-xs text-muted-foreground mt-0.5">Assign a system role and job details for {approvingEmp?.name}.</p>
+                    </div>
+                    <div className="overflow-y-auto max-h-[calc(85vh-160px)] px-6 py-4 space-y-4">
+                        {/* Login Account / Role */}
+                        <div className="rounded-lg border bg-card">
+                            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/40 rounded-t-lg">
+                                <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">System Access</span>
+                            </div>
+                            <div className="p-4">
+                                <label className="text-xs font-medium text-muted-foreground">System Role</label>
+                                <Select value={approveRole} onValueChange={(v) => setApproveRole(v as Role)}>
+                                    <SelectTrigger className="mt-1 h-8 text-sm capitalize">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="employee">Employee</SelectItem>
+                                        <SelectItem value="supervisor">Supervisor</SelectItem>
+                                        <SelectItem value="hr">HR</SelectItem>
+                                        <SelectItem value="finance">Finance</SelectItem>
+                                        <SelectItem value="payroll_admin">Payroll Admin</SelectItem>
+                                        <SelectItem value="auditor">Auditor</SelectItem>
+                                        <SelectItem value="admin">Admin</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        {/* Job Details */}
+                        <div className="rounded-lg border bg-card">
+                            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/40 rounded-t-lg">
+                                <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Job Details</span>
+                            </div>
+                            <div className="p-4 space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-xs font-medium text-muted-foreground">Job Title <span className="text-destructive">*</span></label>
+                                        <Select value={approveJobTitle} onValueChange={setApproveJobTitle}>
+                                            <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select job title" /></SelectTrigger>
+                                            <SelectContent>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div><label className="text-xs font-medium text-muted-foreground">Department <span className="text-destructive">*</span></label>
+                                        <Select value={approveDept} onValueChange={setApproveDept}>
+                                            <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select dept" /></SelectTrigger>
+                                            <SelectContent>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-xs font-medium text-muted-foreground">Work Arrangement</label>
+                                        <Select value={approveWorkType} onValueChange={(v) => setApproveWorkType(v as WorkType)}>
+                                            <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
+                                            <SelectContent><SelectItem value="WFO">Work From Office</SelectItem><SelectItem value="WFH">Work From Home</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Full Onsite</SelectItem></SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div><label className="text-xs font-medium text-muted-foreground">Monthly Salary (₱)</label>
+                                        <Input type="number" value={approveSalary} onChange={(e) => setApproveSalary(e.target.value)} placeholder="e.g. 25000" className="mt-1 h-8 text-sm" />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-xs font-medium text-muted-foreground">Pay Frequency</label>
+                                        <Select value={approvePayFreq} onValueChange={(value) => setApprovePayFreq(value as PayFrequency | "company")}>
+                                            <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
+                                            <SelectContent><SelectItem value="company">Company Default</SelectItem><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="semi_monthly">Semi-Monthly</SelectItem><SelectItem value="bi_weekly">Bi-Weekly</SelectItem><SelectItem value="weekly">Weekly</SelectItem></SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-xs font-medium text-muted-foreground">Team Leader</label>
+                                        <Select value={approveTeamLeader} onValueChange={setApproveTeamLeader}>
+                                            <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select leader" /></SelectTrigger>
+                                            <SelectContent><SelectItem value="none">None</SelectItem>{[...new Map(employees.filter((e) => e.status === "active" && e.id && e.role !== "admin").map((e) => [e.id, e])).values()].map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div><label className="text-xs font-medium text-muted-foreground">Shift Schedule</label>
+                                        <Select value={approveShiftId} onValueChange={setApproveShiftId}>
+                                            <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select shift" /></SelectTrigger>
+                                            <SelectContent><SelectItem value="none">Default</SelectItem>{shiftTemplates.filter((s) => s.id).map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.startTime}–{s.endTime})</SelectItem>)}</SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                {/* Work Days */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="text-xs font-medium text-muted-foreground">Work Days</label>
+                                        <div className="flex items-center gap-1">
+                                            {[{ label: "Mon–Fri", days: ["Mon","Tue","Wed","Thu","Fri"] }, { label: "Mon–Sat", days: ["Mon","Tue","Wed","Thu","Fri","Sat"] }, { label: "All 7", days: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"] }].map(({ label, days }) => (
+                                                <button key={label} type="button" onClick={() => setApproveWorkDays(days)} className="px-2 py-0.5 text-[10px] font-medium rounded border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">{label}</button>
+                                            ))}
+                                            <button type="button" onClick={() => setApproveWorkDays([])} className="px-2 py-0.5 text-[10px] font-medium rounded border border-dashed border-muted-foreground/30 text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors">Clear</button>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-1.5">
+                                        {WEEK_DAYS.map((day) => (
+                                            <button key={day} type="button" onClick={() => {
+                                                if (approveWorkDays.includes(day)) setApproveWorkDays(approveWorkDays.filter(d => d !== day));
+                                                else setApproveWorkDays([...approveWorkDays, day]);
+                                            }} className={`flex-1 py-1.5 rounded-md text-xs font-semibold border transition-all ${approveWorkDays.includes(day) ? "bg-primary text-primary-foreground border-primary shadow-sm" : "bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"}`}>{day}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Project Assignment */}
+                        <div className="rounded-lg border bg-card">
+                            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/40 rounded-t-lg">
+                                <FolderKanban className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Project Assignment</span>
+                            </div>
+                            <div className="p-4">
+                                <label className="text-xs font-medium text-muted-foreground">Assign to Project</label>
+                                <Select value={approveProjectId} onValueChange={setApproveProjectId}>
+                                    <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="No project — assign later" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">No project</SelectItem>
+                                        {projects.filter((p) => p.status !== "completed" && p.id).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        {/* Deduction/Allowance Templates */}
+                        <div className="rounded-lg border bg-card">
+                            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/40 rounded-t-lg">
+                                <Receipt className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Deduction/Allowance</span>
+                            </div>
+                            <div className="p-4 space-y-2">
+                                {activeTemplates.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">No active templates available.</p>
+                                ) : (
+                                    activeTemplates.map((t) => (
+                                        <label key={t.id} className="flex items-center gap-2 cursor-pointer">
+                                            <Checkbox
+                                                checked={approveDeductionTemplateIds.includes(t.id)}
+                                                onCheckedChange={(checked) => {
+                                                    if (checked) setApproveDeductionTemplateIds([...approveDeductionTemplateIds, t.id]);
+                                                    else setApproveDeductionTemplateIds(approveDeductionTemplateIds.filter(id => id !== t.id));
+                                                }}
+                                            />
+                                            <span className="text-sm">{t.name}</span>
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.type === "allowance" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                                {t.type}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground ml-auto">
+                                                {t.calculationMode === "percentage" ? `${t.value}%` : `₱${t.value.toLocaleString()}`}
+                                            </span>
+                                        </label>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Tax Settings */}
+                        <div className="rounded-lg border bg-card">
+                            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/40 rounded-t-lg">
+                                <Calculator className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax Settings</span>
+                            </div>
+                            <div className="p-4 grid grid-cols-2 gap-4">
+                                {/* SSS */}
+                                <div>
+                                    <label className="text-xs font-medium text-muted-foreground">SSS</label>
+                                    <Select value={approveSssMode} onValueChange={(v: DeductionOverrideMode) => setApproveSssMode(v)}>
+                                        <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="auto">Auto-compute</SelectItem>
+                                            <SelectItem value="exempt">Exempt</SelectItem>
+                                            <SelectItem value="percentage">Custom %</SelectItem>
+                                            <SelectItem value="fixed">Fixed Amount</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {(approveSssMode === "percentage" || approveSssMode === "fixed") && (
+                                        <Input type="number" value={approveSssValue} onChange={(e) => setApproveSssValue(e.target.value)} className="mt-1 h-8 text-sm" />
+                                    )}
+                                </div>
+                                {/* PhilHealth */}
+                                <div>
+                                    <label className="text-xs font-medium text-muted-foreground">PhilHealth</label>
+                                    <Select value={approvePhilhealthMode} onValueChange={(v: DeductionOverrideMode) => setApprovePhilhealthMode(v)}>
+                                        <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="auto">Auto-compute</SelectItem>
+                                            <SelectItem value="exempt">Exempt</SelectItem>
+                                            <SelectItem value="percentage">Custom %</SelectItem>
+                                            <SelectItem value="fixed">Fixed Amount</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {(approvePhilhealthMode === "percentage" || approvePhilhealthMode === "fixed") && (
+                                        <Input type="number" value={approvePhilhealthValue} onChange={(e) => setApprovePhilhealthValue(e.target.value)} className="mt-1 h-8 text-sm" />
+                                    )}
+                                </div>
+                                {/* Pag-IBIG */}
+                                <div>
+                                    <label className="text-xs font-medium text-muted-foreground">Pag-IBIG</label>
+                                    <Select value={approvePagibigMode} onValueChange={(v: DeductionOverrideMode) => setApprovePagibigMode(v)}>
+                                        <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="auto">Auto-compute</SelectItem>
+                                            <SelectItem value="exempt">Exempt</SelectItem>
+                                            <SelectItem value="percentage">Custom %</SelectItem>
+                                            <SelectItem value="fixed">Fixed Amount</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {(approvePagibigMode === "percentage" || approvePagibigMode === "fixed") && (
+                                        <Input type="number" value={approvePagibigValue} onChange={(e) => setApprovePagibigValue(e.target.value)} className="mt-1 h-8 text-sm" />
+                                    )}
+                                </div>
+                                {/* BIR */}
+                                <div>
+                                    <label className="text-xs font-medium text-muted-foreground">Withholding Tax (BIR)</label>
+                                    <Select value={approveBirMode} onValueChange={(v: DeductionOverrideMode) => setApproveBirMode(v)}>
+                                        <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="auto">Auto-compute</SelectItem>
+                                            <SelectItem value="exempt">Exempt</SelectItem>
+                                            <SelectItem value="percentage">Custom %</SelectItem>
+                                            <SelectItem value="fixed">Fixed Amount</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {(approveBirMode === "percentage" || approveBirMode === "fixed") && (
+                                        <Input type="number" value={approveBirValue} onChange={(e) => setApproveBirValue(e.target.value)} className="mt-1 h-8 text-sm" />
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t bg-muted/20">
+                        <Button variant="outline" onClick={() => setApprovalOpen(false)} className="h-8 text-sm">Cancel</Button>
+                        <Button onClick={handleApprove} className="gap-1.5 h-8 text-sm">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            Approve & Link Profile
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             <Tabs defaultValue="management">
                 <TabsList>
                     <TabsTrigger value="management">Employee Management</TabsTrigger>
                     <TabsTrigger value="directory">Directory &amp; Salary</TabsTrigger>
+                    {canAccessAdministrativeTier && <TabsTrigger value="pending" className="relative">
+                        Pending Accounts
+                        {pendingAccounts.length > 0 && (
+                            <Badge className="ml-2 bg-destructive text-destructive-foreground hover:bg-destructive px-1.5 py-0 min-w-[1.2rem] flex justify-center">
+                                {pendingAccounts.length}
+                            </Badge>
+                        )}
+                    </TabsTrigger>}
                     {canAccessAdministrativeTier && <TabsTrigger value="accounts">User Accounts</TabsTrigger>}
                     {canAccessAdministrativeTier && <TabsTrigger value="job-titles">Job Titles</TabsTrigger>}
                     {canAccessAdministrativeTier && <TabsTrigger value="departments">Departments</TabsTrigger>}
@@ -1734,6 +2098,75 @@ export default function AdminEmployeesView() {
                             </CardContent>
                         </Card>
                     )}
+                </TabsContent>
+
+                {/* ─── Pending Accounts Tab ─── */}
+                <TabsContent value="pending" className="mt-4 space-y-4">
+                    <Card>
+                        <CardContent className="p-0">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>User</TableHead>
+                                        <TableHead>Email</TableHead>
+                                        <TableHead>Applied Date</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {pendingAccounts.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                                                No pending registrations at the moment.
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        pendingAccounts.map((emp) => (
+                                            <TableRow key={emp.id}>
+                                                <TableCell className="font-medium">
+                                                    <div className="flex items-center gap-2">
+                                                        <Avatar className="h-8 w-8">
+                                                            <AvatarFallback>{getInitials(emp.name)}</AvatarFallback>
+                                                        </Avatar>
+                                                        {emp.name}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>{emp.email}</TableCell>
+                                                <TableCell>{emp.joinDate}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex justify-end gap-2">
+                                                        <Button 
+                                                            variant="outline" 
+                                                            size="sm"
+                                                            className="text-destructive hover:bg-destructive/10"
+                                                            onClick={() => handleReject(emp)}
+                                                        >
+                                                            <XCircle className="h-4 w-4 mr-1.5" />
+                                                            Deny
+                                                        </Button>
+                                                        <Button 
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                setApprovingEmp(emp);
+                                                                setApproveDept(emp.department || "");
+                                                                setApproveRole("employee");
+                                                                setApproveJobTitle("");
+                                                                setApproveSalary("");
+                                                                setApprovalOpen(true);
+                                                            }}
+                                                        >
+                                                            <ShieldCheck className="h-4 w-4 mr-1.5" />
+                                                            Confirm Credentials
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
                 </TabsContent>
 
                 {/* ─── User Accounts Tab ─── */}

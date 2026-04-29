@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, UserPlus, Shield, User, Briefcase, Building2 } from "lucide-react";
+import { ArrowLeft, UserPlus, Shield, User, Briefcase, Building2, Phone, Cake, MapPin } from "lucide-react";
 import { SYSTEM_ROLES, DEPARTMENTS } from "@/lib/constants";
 import type { Role } from "@/types";
 
@@ -25,6 +25,10 @@ export default function SignupPage() {
         password: "",
         role: "employee" as Role,
         department: "",
+        phone: "",
+        emergencyContact: "",
+        birthday: "",
+        address: "",
         agree: false,
     });
 
@@ -39,10 +43,14 @@ export default function SignupPage() {
                 name: formData.name,
                 role: formData.role,
                 department: formData.department,
+                phone: formData.phone,
+                emergencyContact: formData.emergencyContact,
+                birthday: formData.birthday,
+                address: formData.address,
             });
 
             if (result.ok) {
-                toast.success("Account created successfully! Please check your email to verify.");
+                toast.success("Account created successfully. You can sign in now.");
                 router.push("/login");
             } else {
                 toast.error(result.error || "Signup failed. Please try again.");
@@ -139,27 +147,6 @@ export default function SignupPage() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center">
-                                        <Shield className="h-3 w-3 mr-1.5" />
-                                        System Role
-                                    </Label>
-                                    <Select 
-                                        value={formData.role} 
-                                        onValueChange={(val) => setFormData({ ...formData, role: val as Role })}
-                                    >
-                                        <SelectTrigger className="h-11 bg-background/50 border-muted-foreground/20 focus:border-primary/50 transition-all capitalize">
-                                            <SelectValue placeholder="Select a role" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {SYSTEM_ROLES.map((role) => (
-                                                <SelectItem key={role} value={role} className="capitalize">
-                                                    {role.replace("_", " ")}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center">
                                         <Briefcase className="h-3 w-3 mr-1.5" />
                                         Department
                                     </Label>
@@ -179,6 +166,62 @@ export default function SignupPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="phone" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center">
+                                        <Phone className="h-3 w-3 mr-1.5" />
+                                        Phone Number
+                                    </Label>
+                                    <Input 
+                                        id="phone"
+                                        placeholder="+63 XXX XXX XXXX" 
+                                        value={formData.phone}
+                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                        className="h-11 bg-background/50 border-muted-foreground/20 focus:border-primary/50 transition-all"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="birthday" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center">
+                                        <Cake className="h-3 w-3 mr-1.5" />
+                                        Birthday
+                                    </Label>
+                                    <Input 
+                                        id="birthday"
+                                        type="date"
+                                        value={formData.birthday}
+                                        onChange={(e) => setFormData({ ...formData, birthday: e.target.value })}
+                                        className="h-11 bg-background/50 border-muted-foreground/20 focus:border-primary/50 transition-all"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="emergency" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center">
+                                        <Shield className="h-3 w-3 mr-1.5" />
+                                        Emergency Contact
+                                    </Label>
+                                    <Input 
+                                        id="emergency"
+                                        placeholder="Name / Phone" 
+                                        value={formData.emergencyContact}
+                                        onChange={(e) => setFormData({ ...formData, emergencyContact: e.target.value })}
+                                        className="h-11 bg-background/50 border-muted-foreground/20 focus:border-primary/50 transition-all"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="address" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center">
+                                    <MapPin className="h-3 w-3 mr-1.5" />
+                                    Home Address
+                                </Label>
+                                <Input 
+                                    id="address"
+                                    placeholder="Complete address" 
+                                    value={formData.address}
+                                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                    className="h-11 bg-background/50 border-muted-foreground/20 focus:border-primary/50 transition-all"
+                                />
                             </div>
 
                             <div className="flex items-start space-x-3 pt-2">
