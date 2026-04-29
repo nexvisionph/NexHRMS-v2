@@ -409,13 +409,13 @@ export function RealFaceVerification({
                 console.log(`[face-verify] Verify response:`, verifyData);
 
                 if (verifyData?.ok && verifyData.verified) {
-                    console.log(`[face-verify] ✅ VERIFIED employee=${employeeId} distance=${verifyData.distance?.toFixed(4) ?? "?"}`);
+                    console.log(`[face-verify] VERIFIED employee=${employeeId} distance=${verifyData.distance?.toFixed(4) ?? "?"}`);
                     setPhase("verified");
                     setTimeout(() => onVerified(), 1500);
                     return;
                 }
 
-                console.warn(`[face-verify] ❌ Verify FAILED for employee=${employeeId}`, verifyData);
+                console.warn(`[face-verify] Verify FAILED for employee=${employeeId}`, verifyData);
 
                 // Check if employee has enrollment at all
                 const statusRes = await fetch(`/api/face-recognition/enroll?action=status&employeeId=${encodeURIComponent(employeeId)}`);
@@ -452,13 +452,13 @@ export function RealFaceVerification({
             console.log(`[face-verify] Match response:`, matchData);
 
             if (matchData?.ok && matchData.employeeId) {
-                console.log(`[face-verify] ✅ MATCHED employee=${matchData.employeeId} distance=${matchData.distance?.toFixed(4) ?? "?"}`);
+                console.log(`[face-verify] MATCHED employee=${matchData.employeeId} distance=${matchData.distance?.toFixed(4) ?? "?"}`);
                 setPhase("verified");
                 setTimeout(() => onVerified(), 1500);
                 return;
             }
 
-            console.warn(`[face-verify] ❌ Match FAILED`, matchData);
+            console.warn(`[face-verify] Match FAILED`, matchData);
             setError("Face verification failed.");
             setErrorHint("Your face did not match any enrolled profile. Try with better lighting or enroll first.");
             setPhase("failed");

@@ -416,7 +416,7 @@ export default function FaceKioskPage() {
                 setTrackingStatus("matched");
                 setTrackingBox(null);
                 setGuidanceHint("");
-                console.log(`[kiosk-face] ✅ MATCH: ${name} (distance=${matchData.distance?.toFixed(4)})`);
+                console.log(`[kiosk-face] MATCH: ${name} (distance=${matchData.distance?.toFixed(4)})`);
                 toast.success(`Matched: ${name} (distance: ${matchData.distance?.toFixed(3)})`);
 
                 // Auto-confirm after 3s countdown
@@ -439,7 +439,7 @@ export default function FaceKioskPage() {
                 const errorMsg = serverError
                     ? `Recognition failed: ${serverError}`
                     : "Face not recognized. Please ensure you have enrolled your face and try again.";
-                console.log(`[kiosk-face] ❌ NO MATCH: ${serverError || "face not recognized"}`);
+                console.log(`[kiosk-face] NO MATCH: ${serverError || "face not recognized"}`);
                 toast.error(errorMsg);
                 setGuidanceHint("Try again — look straight at the camera");
                 setScanState("idle");
