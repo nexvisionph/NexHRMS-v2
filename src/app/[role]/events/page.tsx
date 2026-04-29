@@ -566,6 +566,19 @@ export default function EventsPage() {
                         <DialogClose asChild>
                             <Button variant="outline">Cancel</Button>
                         </DialogClose>
+                        {editEvent && (
+                            <Button
+                                variant="outline"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-500/10"
+                                onClick={() => {
+                                    const targetId = editEvent.id;
+                                    setEditOpen(false);
+                                    setDeleteId(targetId);
+                                }}
+                            >
+                                Delete
+                            </Button>
+                        )}
                         <Button onClick={handleEdit}>Save Changes</Button>
                     </DialogFooter>
                 </DialogContent>
