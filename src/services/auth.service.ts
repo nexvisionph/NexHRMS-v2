@@ -52,6 +52,10 @@ export async function signIn(email: string, password: string) {
 
   // Block deactivated or resigned employees before granting a session
   if (employee && (employee.status === "inactive" || employee.status === "resigned")) {
+    if (employee.job_title === "PENDING_APPROVAL") {
+      await supabase.auth.signOut();
+      return { ok: false as const, error: "pending_approval" };
+    }
     await supabase.auth.signOut();
     return {
       ok: false as const,
@@ -96,48 +100,66 @@ export async function signUp(input: {
   name: string;
   role: Role;
   department?: string;
+  phone?: string;
+  emergencyContact?: string;
+  birthday?: string;
+  address?: string;
 }) {
-  const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.auth.signUp({
+  const supabase = await createAdminSupabaseClient();
+  const { data, error } = await supabase.auth.admin.createUser({
     email: input.email,
     password: input.password,
-    options: {
-      data: { 
-        name: input.name,
-        role: input.role 
-      },
+    email_confirm: true,
+    user_metadata: { 
+      name: input.name,
+      role: input.role 
     },
   });
   if (error) return { ok: false as const, error: error.message };
 
   if (data.user) {
-    const adminSupabase = await createAdminSupabaseClient();
     const employeeId = await generateUserUniqueId(input.role);
 
-    // Update profile and create employee record
-    await Promise.all([
-      adminSupabase.from("profiles").update({
+    const [profileResult, employeeResult] = await Promise.all([
+      supabase.from("profiles").update({
         name: input.name,
         role: input.role,
         department: input.department ?? "",
         profile_complete: true,
+        phone: input.phone ?? null,
+        emergency_contact: input.emergencyContact ?? null,
+        birthday: input.birthday ?? null,
+        address: input.address ?? null,
       }).eq("id", data.user.id),
       
-      adminSupabase.from("employees").insert({
+      supabase.from("employees").insert({
         id: employeeId,
         profile_id: data.user.id,
         name: input.name,
         email: input.email,
         role: input.role,
         department: input.department ?? "",
-        status: "active",
+        status: "inactive",
+        job_title: "PENDING_APPROVAL",
         work_type: "WFO",
         salary: 0,
         join_date: new Date().toISOString().split("T")[0],
         productivity: 0,
         location: "",
+        phone: input.phone ?? null,
+        emergency_contact: input.emergencyContact ?? null,
+        birthday: input.birthday ?? null,
+        address: input.address ?? null,
       }),
     ]);
+
+    if (profileResult.error) {
+      return { ok: false as const, error: profileResult.error.message };
+    }
+
+    if (employeeResult.error) {
+      return { ok: false as const, error: employeeResult.error.message };
+    }
   }
 
   return { ok: true as const };

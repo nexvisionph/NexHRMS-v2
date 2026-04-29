@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronUp, Apple, CircleHelp, Chrome, ArrowLeftRight } from "lucide-react";
+import { ChevronDown, ChevronUp, Apple, CircleHelp, Chrome, ArrowLeftRight, ArrowLeft } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { createClient } from "@/services/supabase-browser";
 
@@ -112,7 +112,7 @@ export default function LoginPage() {
                 // signUp expects a single input object with required fields.
                 const res = await signUp({ email: loginEmail, password: loginPassword, name: loginEmail.split('@')[0] ?? '', role: 'employee' });
                 if (res.ok) {
-                    toast.success("Account created. Check your email to continue.");
+                    toast.success("Account created successfully. You can sign in now.");
                     setMode("signIn");
                     setLoading(false);
                     return;
@@ -151,6 +151,9 @@ export default function LoginPage() {
                 toast.error("Your account has been deactivated. Please contact your HR administrator.");
                 setLoading(false);
                 router.push("/deactivated");
+            } else if (res.error === "pending_approval") {
+                toast.info("Your account is pending admin approval. Please wait for confirmation.");
+                setLoading(false);
             } else {
                 toast.error(res.error || "Invalid email or password");
                 setLoading(false);
@@ -264,9 +267,20 @@ export default function LoginPage() {
 
             <div className={cn(
                 "flex items-center justify-center",
-                loginCardStyle === "split" ? "w-full md:w-1/2 p-4 md:p-8" : "relative w-full"
+                loginCardStyle === "split" ? "w-full md:w-1/2 p-4 md:p-8" : "relative w-full max-w-lg"
             )}>
-                <Card className="relative w-full max-w-lg overflow-hidden border-0 shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] bg-card sm:rounded-2xl rounded-xl">
+                {mode === "recovery" && (
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="absolute -top-12 left-0 text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setMode("signIn")}
+                    >
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        Back to Sign In
+                    </Button>
+                )}
+                <Card className="relative w-full overflow-hidden border-0 shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] bg-card sm:rounded-2xl rounded-xl">
                     {/* Decorative Top Accent line */}
                     <div className="absolute top-0 left-0 right-0 h-1.5 bg-primary" />
                     
