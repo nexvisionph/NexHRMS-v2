@@ -18,6 +18,7 @@ import {
     adminDeleteAccount,
     listUserAccounts,
 } from "@/services/auth.service";
+import { deleteEmployee } from "@/services/employees.service";
 import type { DemoUserLike } from "@/services/auth.service";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -344,15 +345,53 @@ export default function AdminEmployeesView() {
 
     const handleDeleteAccount = async (acc: DemoUserLike) => {
         setActionLoading(true);
+        const linkedEmployee = employees.find((e) => e.profileId === acc.id);
         if (USE_DEMO_MODE) {
             demoDeleteAccount(acc.id);
+            if (linkedEmployee) removeEmployee(linkedEmployee.id);
         } else {
             const result = await adminDeleteAccount(acc.id);
             if (!result.ok) { setActionLoading(false); toast.error(result.error); return; }
+            if (linkedEmployee) removeEmployee(linkedEmployee.id);
             await refreshAccounts();
         }
         setActionLoading(false);
         toast.success(`Account for ${acc.name} deleted.`);
+    };
+
+    const handleDeleteEmployee = async (emp: Employee) => {
+        setActionLoading(true);
+
+        if (USE_DEMO_MODE) {
+            if (emp.profileId) {
+                demoDeleteAccount(emp.profileId);
+            }
+            removeEmployee(emp.id);
+            setActionLoading(false);
+            toast.success(`${emp.name} removed`);
+            return;
+        }
+
+        const result = emp.profileId
+            ? await adminDeleteAccount(emp.profileId)
+            : await deleteEmployee(emp.id);
+
+        if (!result.ok) {
+            setActionLoading(false);
+            toast.error(result.error);
+            return;
+        }
+
+        removeEmployee(emp.id);
+        await refreshAccounts();
+        useAuditStore.getState().log({
+            entityType: "employee",
+            entityId: emp.id,
+            action: "employee_deleted",
+            performedBy: currentUser.id,
+        });
+        setActionLoading(false);
+        toast.success(`${emp.name} removed`);
     };
 
     const filteredAccounts = useMemo(() => {
@@ -1626,7 +1665,7 @@ export default function AdminEmployeesView() {
                                                                         <AlertDialogHeader><AlertDialogTitle>Delete Employee</AlertDialogTitle><AlertDialogDescription>Are you sure you want to permanently remove <strong>{emp.name}</strong>{emp.status === "active" ? " (currently active)" : ""}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
                                                                         <AlertDialogFooter>
                                                                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => { removeEmployee(emp.id); useAuditStore.getState().log({ entityType: "employee", entityId: emp.id, action: "employee_deleted", performedBy: currentUser.id }); toast.success(`${emp.name} removed`); }}>Delete</AlertDialogAction>
+                                                                            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => handleDeleteEmployee(emp)} disabled={actionLoading}>Delete</AlertDialogAction>
                                                                         </AlertDialogFooter>
                                                                     </AlertDialogContent>
                                                                 </AlertDialog>

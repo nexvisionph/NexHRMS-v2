@@ -3,6 +3,7 @@
 import { createAdminSupabaseClient, createServerSupabaseClient } from "./supabase-server";
 import type { Role } from "@/types";
 import { isAdministrativeRole } from "@/lib/admin-tier";
+import { deleteEmployeeByProfileId } from "./employees.service";
 
 function resolveUserRole(profileRole?: string | null, metadataRole?: string | null): Role {
   const resolvedRole = metadataRole ?? profileRole ?? "employee";
@@ -286,8 +287,19 @@ export async function adminDeleteAccount(userId: string) {
 
   const supabase = await createAdminSupabaseClient();
 
-  // Delete employee record first (FK constraint)
-  await supabase.from("employees").delete().eq("profile_id", userId);
+  const { data: targetProfile, error: targetProfileError } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (targetProfileError) {
+    return { ok: false as const, error: targetProfileError.message };
+  }
+
+  const employeeDeletion = await deleteEmployeeByProfileId(userId, targetProfile?.email ?? undefined);
+  if (!employeeDeletion.ok) return { ok: false as const, error: employeeDeletion.error };
+
   // Auth user deletion cascades to profile via FK
   const { error } = await supabase.auth.admin.deleteUser(userId);
   if (error) return { ok: false as const, error: error.message };
