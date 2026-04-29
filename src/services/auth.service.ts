@@ -2,6 +2,13 @@
 
 import { createAdminSupabaseClient, createServerSupabaseClient } from "./supabase-server";
 import type { Role } from "@/types";
+import { isAdministrativeRole } from "@/lib/admin-tier";
+
+function resolveUserRole(profileRole?: string | null, metadataRole?: string | null): Role {
+  const resolvedRole = metadataRole ?? profileRole ?? "employee";
+  if (isAdministrativeRole(resolvedRole)) return resolvedRole;
+  return resolvedRole as Role;
+}
 
 /**
  * Sign in with email/password via Supabase Auth.
@@ -57,7 +64,7 @@ export async function signIn(email: string, password: string) {
       id: employee?.id ?? data.user.id,
       name: profile?.name ?? data.user.user_metadata?.name ?? "",
       email: data.user.email ?? "",
-      role: (profile?.role ?? data.user.user_metadata?.role ?? "employee") as Role,
+      role: resolveUserRole(profile?.role, data.user.user_metadata?.role ?? data.user.app_metadata?.role),
       avatarUrl: profile?.avatar_url,
       mustChangePassword: profile?.must_change_password ?? false,
       profileComplete: profile?.profile_complete ?? false,
@@ -76,6 +83,40 @@ export async function signIn(email: string, password: string) {
 export async function signOut() {
   const supabase = await createServerSupabaseClient();
   await supabase.auth.signOut();
+}
+
+/**
+ * Sign up a new user account via Supabase Auth.
+ * Used only when self-service sign-up is explicitly enabled.
+ */
+export async function signUp(email: string, password: string) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { role: "employee" },
+    },
+  });
+  if (error) return { ok: false as const, error: error.message };
+
+  return {
+    ok: true as const,
+    user: {
+      id: data.user?.id ?? "",
+      name: data.user?.user_metadata?.name ?? "",
+      email: data.user?.email ?? email,
+      role: resolveUserRole(data.user?.user_metadata?.role, data.user?.app_metadata?.role),
+      avatarUrl: undefined,
+      mustChangePassword: false,
+      profileComplete: false,
+      phone: undefined,
+      department: undefined,
+      birthday: undefined,
+      address: undefined,
+      emergencyContact: undefined,
+    },
+  };
 }
 
 /**
@@ -113,7 +154,7 @@ export async function createUserAccount(input: {
     .eq("id", callerUser.id)
     .single();
 
-  if (callerProfile?.role !== "admin") {
+  if (!isAdministrativeRole(callerProfile?.role)) {
     return { ok: false as const, error: "Only admins can create accounts" };
   }
 
@@ -205,7 +246,7 @@ export async function adminResetPassword(userId: string, newPassword: string) {
     .eq("id", callerUser.id)
     .single();
 
-  if (callerProfile?.role !== "admin") {
+  if (!isAdministrativeRole(callerProfile?.role)) {
     return { ok: false as const, error: "Only admins can reset passwords" };
   }
 
@@ -239,7 +280,7 @@ export async function adminDeleteAccount(userId: string) {
     .eq("id", callerUser.id)
     .single();
 
-  if (callerProfile?.role !== "admin") {
+  if (!isAdministrativeRole(callerProfile?.role)) {
     return { ok: false as const, error: "Only admins can delete accounts" };
   }
 
@@ -288,7 +329,7 @@ export async function listUserAccounts() {
     .eq("id", callerUser.id)
     .single();
 
-  if (!callerProfile || !["admin", "hr"].includes(callerProfile.role)) {
+  if (!callerProfile || (!isAdministrativeRole(callerProfile.role) && callerProfile.role !== "hr")) {
     return { ok: false as const, error: "Insufficient permissions", accounts: [] as DemoUserLike[] };
   }
 

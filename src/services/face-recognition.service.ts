@@ -389,13 +389,13 @@ export async function verifyFace(
 
     // If distance is very large, reject immediately
     if (distance > EMBEDDING_PREFILTER_THRESHOLD) {
-      console.log(`[verifyFace] ❌ REJECTED by pre-filter (distance ${distance.toFixed(4)} > ${EMBEDDING_PREFILTER_THRESHOLD})`);
+      console.log(`[verifyFace] REJECTED by pre-filter (distance ${distance.toFixed(4)} > ${EMBEDDING_PREFILTER_THRESHOLD})`);
       return { ok: true, verified: false, distance };
     }
 
     // ── Fast path: high-confidence embedding match → skip AI entirely ──
     if (distance < EMBEDDING_HIGH_CONFIDENCE_THRESHOLD) {
-      console.log(`[verifyFace] ✅ VERIFIED (high-confidence fast path, distance=${distance.toFixed(4)} < ${EMBEDDING_HIGH_CONFIDENCE_THRESHOLD})`);
+      console.log(`[verifyFace] VERIFIED (high-confidence fast path, distance=${distance.toFixed(4)} < ${EMBEDDING_HIGH_CONFIDENCE_THRESHOLD})`);
       await updateVerificationStats(supabase, employeeId, data.verification_count as number);
       return { ok: true, verified: true, distance };
     }
@@ -409,10 +409,10 @@ export async function verifyFace(
       if (aiResult.isError) {
         console.log(`[verifyFace] AI unavailable, falling back to embedding-only`);
       } else if (!aiResult.match) {
-        console.log(`[verifyFace] ❌ REJECTED by AI (confidence=${aiResult.confidence})`);
+        console.log(`[verifyFace] REJECTED by AI (confidence=${aiResult.confidence})`);
         return { ok: true, verified: false, distance, aiConfidence: aiResult.confidence };
       } else {
-        console.log(`[verifyFace] ✅ VERIFIED by AI (distance=${distance.toFixed(4)}, AI confidence=${aiResult.confidence})`);
+        console.log(`[verifyFace] VERIFIED by AI (distance=${distance.toFixed(4)}, AI confidence=${aiResult.confidence})`);
         await updateVerificationStats(supabase, employeeId, data.verification_count as number);
         return { ok: true, verified: true, distance, aiConfidence: aiResult.confidence };
       }
@@ -420,7 +420,7 @@ export async function verifyFace(
 
     // ── Fallback: embedding-only with calibrated threshold ──
     const verified = distance < EMBEDDING_STRICT_THRESHOLD;
-    console.log(`[verifyFace] Embedding-only fallback: distance=${distance.toFixed(4)} threshold=${EMBEDDING_STRICT_THRESHOLD} → ${verified ? "✅ VERIFIED" : "❌ REJECTED"}`);
+    console.log(`[verifyFace] Embedding-only fallback: distance=${distance.toFixed(4)} threshold=${EMBEDDING_STRICT_THRESHOLD} → ${verified ? "VERIFIED" : "REJECTED"}`);
     if (verified) {
       await updateVerificationStats(supabase, employeeId, data.verification_count as number);
     }

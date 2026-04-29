@@ -1,6 +1,6 @@
 // ─── Core Types ──────────────────────────────────────────────
 
-export type Role = "admin" | "hr" | "finance" | "employee" | "supervisor" | "payroll_admin" | "auditor";
+export type Role = "admin" | "support_admin" | "finance_admin" | "analyst" | "hr" | "finance" | "employee" | "supervisor" | "payroll_admin" | "auditor";
 
 export type EmployeeStatus = "active" | "inactive" | "resigned";
 export type WorkType = "WFH" | "WFO" | "HYBRID" | "ONSITE";
