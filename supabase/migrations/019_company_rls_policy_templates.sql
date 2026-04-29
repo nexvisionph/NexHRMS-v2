@@ -1,0 +1,28 @@
+-- ============================================================
+-- 019: Company-scoped RLS policy templates (scaffold)
+-- This file contains example RLS policy snippets you can adapt and apply
+-- after you add `company_id` to tables and ensure JWT claims include company_id.
+-- Do NOT enable these automatically without verifying JWT claim setup.
+-- ============================================================
+
+-- Example: enable RLS for a table and create a company-scoped policy
+-- Replace <table> with the target table name.
+--
+-- ALTER TABLE public.<table> ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "<table> company scope" ON public.<table>
+--   FOR ALL
+--   USING (company_id = current_setting('jwt.claims.company_id', true))
+--   WITH CHECK (company_id = current_setting('jwt.claims.company_id', true));
+--
+-- Example: allow admins (based on a `role` claim) to bypass company scope
+-- CREATE POLICY "<table> admin bypass" ON public.<table>
+--   FOR ALL
+--   USING (current_setting('jwt.claims.role', true) = 'admin')
+--   WITH CHECK (current_setting('jwt.claims.role', true) = 'admin');
+--
+-- Notes:
+-- 1) Use `current_setting('jwt.claims.company_id', true)` when your JWT contains `company_id`.
+-- 2) If your JWT uses a different claim name (e.g., `org`), update the expressions accordingly.
+-- 3) Test policies thoroughly in a staging environment before enabling in production.
+
+-- End of migration 019.
