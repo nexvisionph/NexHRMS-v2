@@ -186,9 +186,11 @@ function inferEventType(
   eventType: ReturnType<typeof mapEventType>,
   existingLog: { check_in?: string | null; check_out?: string | null } | null
 ) {
-  if (eventType) return eventType;
+  // T800 devices often send the same io_mode for every successful face scan.
+  // For attendance, treat scans as a daily IN/OUT toggle.
   if (!existingLog?.check_in) return "IN";
   if (!existingLog.check_out) return "OUT";
+  if (eventType && eventType !== "IN" && eventType !== "OUT") return eventType;
   return null;
 }
 
