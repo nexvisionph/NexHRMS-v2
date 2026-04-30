@@ -1,6 +1,6 @@
 // ─── Core Types ──────────────────────────────────────────────
 
-export type Role = "admin" | "hr" | "finance" | "employee" | "supervisor" | "payroll_admin" | "auditor";
+export type Role = "admin" | "support_admin" | "finance_admin" | "analyst" | "hr" | "finance" | "employee" | "supervisor" | "payroll_admin" | "auditor";
 
 export type EmployeeStatus = "active" | "inactive" | "resigned";
 export type WorkType = "WFH" | "WFO" | "HYBRID" | "ONSITE";
@@ -234,6 +234,7 @@ export interface Employee {
   avatarUrl?: string;
   pin?: string; // employee PIN for kiosk
   nfcId?: string; // NFC badge ID for kiosk scan
+  biometricId?: string; // biometric device user ID (e.g., T800)
   resignedAt?: string;
   shiftId?: string;
   payFrequency?: PayFrequency; // per-employee override (falls back to company default)

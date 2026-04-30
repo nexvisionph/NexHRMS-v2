@@ -4,8 +4,9 @@ import { useAuthStore } from "@/store/auth.store";
 import { useParams, useRouter, usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import type { Role } from "@/types";
+import { ADMIN_TIER_ROLES } from "@/lib/admin-tier";
 
-const VALID_ROLES: Role[] = ["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"];
+const VALID_ROLES: Role[] = ["admin", ...ADMIN_TIER_ROLES.filter((role) => role !== "admin"), "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"];
 
 function RoleLoadingState() {
     return (

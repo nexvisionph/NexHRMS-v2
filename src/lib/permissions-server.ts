@@ -6,6 +6,7 @@
  */
 
 import type { Permission } from "@/types";
+import { isAdministrativeRole } from "@/lib/admin-tier";
 
 // ─── Role Permission Mappings (Server-side mirror of roles.store.ts) ─────────
 // These are the default permissions per role. For custom roles, we'd need to
@@ -109,6 +110,7 @@ const PROTECTED_ROUTES: RouteRule[] = [
  * Check if a role has a specific permission.
  */
 export function hasPermissionServer(role: string, permission: Permission): boolean {
+    if (isAdministrativeRole(role)) return true;
     const rolePerms = ROLE_PERMISSIONS[role];
     if (!rolePerms) return false;
     
@@ -140,6 +142,9 @@ export function canAccessRoute(
     role: string,
     pathname: string
 ): { allowed: true } | { allowed: false; requiredPermissions: Permission[] } {
+    if (isAdministrativeRole(role)) {
+        return { allowed: true };
+    }
     // Find matching route rule
     for (const rule of PROTECTED_ROUTES) {
         if (rule.pattern.test(pathname)) {

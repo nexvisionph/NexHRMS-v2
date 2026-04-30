@@ -36,6 +36,7 @@ export function EnrollmentReminder({ adminView = false, compact = false, employe
             (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name
         );
     const resolvedEmployeeId = employeeIdProp ?? myEmployee?.id;
+    const requiresBiometricEnrollment = !!myEmployee?.biometricId;
 
     // Build the enrollment link based on user role (avoids kiosk PIN gate)
     const enrollPath = `/${currentUser.role}/face-enrollment`;
@@ -45,13 +46,18 @@ export function EnrollmentReminder({ adminView = false, compact = false, employe
 
     useEffect(() => {
         if (!resolvedEmployeeId) return;
+        if (!requiresBiometricEnrollment) {
+            setIsEnrolled(true);
+            setLoading(false);
+            return;
+        }
 
         fetch(`/api/face-recognition/enroll?action=status&employeeId=${encodeURIComponent(resolvedEmployeeId)}`)
             .then((r) => r.json())
             .then((data) => setIsEnrolled(data.enrolled ?? false))
             .catch(() => setIsEnrolled(false))
             .finally(() => setLoading(false));
-    }, [resolvedEmployeeId]);
+    }, [resolvedEmployeeId, requiresBiometricEnrollment]);
 
     if (loading) {
         return compact ? null : (
@@ -91,6 +97,10 @@ export function EnrollmentReminder({ adminView = false, compact = false, employe
                 </CardContent>
             </Card>
         );
+    }
+
+    if (!requiresBiometricEnrollment) {
+        return compact ? null : null;
     }
 
     // Employee self-view: enrolled

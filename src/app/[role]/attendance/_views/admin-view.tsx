@@ -461,7 +461,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
         if (selfieDataUrl && userLocation) {
             addPhoto({ eventId: `checkin-${Date.now()}`, employeeId: myEmployeeId, photoDataUrl: selfieDataUrl, gpsLat: userLocation.lat, gpsLng: userLocation.lng, gpsAccuracyMeters: geoResult?.accuracy || 0, capturedAt: new Date().toISOString(), geofencePass: geoResult?.within ?? true, projectId: myProject?.id });
         }
-        setStep("done"); toast.success("Check-in successful! 🎉");
+        setStep("done"); toast.success("Check-in successful!");
     }, [myEmployeeId, myProject, userLocation, checkIn, selfieDataUrl, geoResult, addPhoto]);
 
     const viewTitle = mode === "admin" ? "Attendance Management" : mode === "hr" ? "Attendance Overview" : "Team Attendance";
@@ -1074,7 +1074,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <p className={`text-sm font-semibold ${isHolidayToday ? "text-emerald-700 dark:text-emerald-300" : "text-foreground"}`}>
-                                        {isHolidayToday ? `Today is a Holiday — ${upcoming.name} 🎉` : `Next Holiday: ${upcoming.name}`}
+                                        {isHolidayToday ? `Today is a Holiday — ${upcoming.name}` : `Next Holiday: ${upcoming.name}`}
                                     </p>
                                     <p className={`text-xs mt-0.5 ${isHolidayToday ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
                                         {new Date(upcoming.date + "T00:00:00").toLocaleDateString("en-PH", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}

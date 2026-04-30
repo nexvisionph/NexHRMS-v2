@@ -2,6 +2,14 @@
 
 import { createAdminSupabaseClient, createServerSupabaseClient } from "./supabase-server";
 import type { Role } from "@/types";
+import { isAdministrativeRole } from "@/lib/admin-tier";
+import { deleteEmployeeByProfileId } from "./employees.service";
+
+function resolveUserRole(profileRole?: string | null, metadataRole?: string | null): Role {
+  const resolvedRole = metadataRole ?? profileRole ?? "employee";
+  if (isAdministrativeRole(resolvedRole)) return resolvedRole;
+  return resolvedRole as Role;
+}
 
 /**
  * Sign in with email/password via Supabase Auth.
@@ -57,7 +65,7 @@ export async function signIn(email: string, password: string) {
       id: employee?.id ?? data.user.id,
       name: profile?.name ?? data.user.user_metadata?.name ?? "",
       email: data.user.email ?? "",
-      role: (profile?.role ?? data.user.user_metadata?.role ?? "employee") as Role,
+      role: resolveUserRole(profile?.role, data.user.user_metadata?.role ?? data.user.app_metadata?.role),
       avatarUrl: profile?.avatar_url,
       mustChangePassword: profile?.must_change_password ?? false,
       profileComplete: profile?.profile_complete ?? false,
@@ -76,6 +84,40 @@ export async function signIn(email: string, password: string) {
 export async function signOut() {
   const supabase = await createServerSupabaseClient();
   await supabase.auth.signOut();
+}
+
+/**
+ * Sign up a new user account via Supabase Auth.
+ * Used only when self-service sign-up is explicitly enabled.
+ */
+export async function signUp(email: string, password: string) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { role: "employee" },
+    },
+  });
+  if (error) return { ok: false as const, error: error.message };
+
+  return {
+    ok: true as const,
+    user: {
+      id: data.user?.id ?? "",
+      name: data.user?.user_metadata?.name ?? "",
+      email: data.user?.email ?? email,
+      role: resolveUserRole(data.user?.user_metadata?.role, data.user?.app_metadata?.role),
+      avatarUrl: undefined,
+      mustChangePassword: false,
+      profileComplete: false,
+      phone: undefined,
+      department: undefined,
+      birthday: undefined,
+      address: undefined,
+      emergencyContact: undefined,
+    },
+  };
 }
 
 /**
@@ -113,7 +155,7 @@ export async function createUserAccount(input: {
     .eq("id", callerUser.id)
     .single();
 
-  if (callerProfile?.role !== "admin") {
+  if (!isAdministrativeRole(callerProfile?.role)) {
     return { ok: false as const, error: "Only admins can create accounts" };
   }
 
@@ -205,7 +247,7 @@ export async function adminResetPassword(userId: string, newPassword: string) {
     .eq("id", callerUser.id)
     .single();
 
-  if (callerProfile?.role !== "admin") {
+  if (!isAdministrativeRole(callerProfile?.role)) {
     return { ok: false as const, error: "Only admins can reset passwords" };
   }
 
@@ -239,15 +281,37 @@ export async function adminDeleteAccount(userId: string) {
     .eq("id", callerUser.id)
     .single();
 
-  if (callerProfile?.role !== "admin") {
+  if (!isAdministrativeRole(callerProfile?.role)) {
     return { ok: false as const, error: "Only admins can delete accounts" };
   }
 
   const supabase = await createAdminSupabaseClient();
 
-  // Delete employee record first (FK constraint)
-  await supabase.from("employees").delete().eq("profile_id", userId);
-  // Auth user deletion cascades to profile via FK
+  const { data: targetProfile, error: targetProfileError } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (targetProfileError) {
+    return { ok: false as const, error: targetProfileError.message };
+  }
+
+  const employeeDeletion = await deleteEmployeeByProfileId(userId, targetProfile?.email ?? undefined);
+  if (!employeeDeletion.ok) return { ok: false as const, error: employeeDeletion.error };
+
+  const { error: createdByError } = await supabase
+    .from("profiles")
+    .update({ created_by: null })
+    .eq("created_by", userId);
+  if (createdByError) return { ok: false as const, error: createdByError.message };
+
+  const { error: profileDeleteError } = await supabase
+    .from("profiles")
+    .delete()
+    .eq("id", userId);
+  if (profileDeleteError) return { ok: false as const, error: profileDeleteError.message };
+
   const { error } = await supabase.auth.admin.deleteUser(userId);
   if (error) return { ok: false as const, error: error.message };
 
@@ -288,7 +352,7 @@ export async function listUserAccounts() {
     .eq("id", callerUser.id)
     .single();
 
-  if (!callerProfile || !["admin", "hr"].includes(callerProfile.role)) {
+  if (!callerProfile || (!isAdministrativeRole(callerProfile.role) && callerProfile.role !== "hr")) {
     return { ok: false as const, error: "Insufficient permissions", accounts: [] as DemoUserLike[] };
   }
 

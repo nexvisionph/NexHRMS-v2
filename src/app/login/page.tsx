@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useAppearanceStore } from "@/store/appearance.store";
 import { useEmployeesStore } from "@/store/employees.store";
-import { signIn } from "@/services/auth.service";
+import { signIn, signUp } from "@/services/auth.service";
 import { hydrateAllStores, startWriteThrough, startRealtime } from "@/services/sync.service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,13 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Apple, CircleHelp, Chrome, ArrowLeftRight } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
+import { createClient } from "@/services/supabase-browser";
 
 // Set to true to use local demo login (no Supabase required)
 const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+const ALLOW_SIGN_UP = process.env.NEXT_PUBLIC_ALLOW_SIGN_UP === "true";
 
 const DEMO_ACCOUNTS = [
     { role: "Admin", email: "admin@nexhrms.com", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
@@ -44,14 +46,18 @@ const PAYROLL_TEST_ACCOUNTS = [
 ];
 export default function LoginPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { login: localLogin, setUser } = useAuthStore(
         useShallow((s) => ({ login: s.login, setUser: s.setUser }))
     );
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [showPayrollAccounts, setShowPayrollAccounts] = useState(false);
+    const [mode, setMode] = useState<"signIn" | "signUp" | "recovery">(ALLOW_SIGN_UP ? "signIn" : "recovery" === searchParams.get("type") ? "recovery" : "signIn");
     const employees = useEmployeesStore((s) => s.employees);
+    const supabase = useMemo(() => createClient(), []);
 
     // Consolidated branding from appearance store
     const {
@@ -70,11 +76,48 @@ export default function LoginPage() {
         }))
     );
 
+    useEffect(() => {
+        if (searchParams.get("type") === "recovery") {
+            setMode("recovery");
+        }
+    }, [searchParams]);
+
+    const redirectAfterAuth = (role: string) => {
+        router.push(`/${role}/dashboard`);
+    };
+
+    const handleOAuthLogin = async (provider: "google" | "apple") => {
+        setLoading(true);
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider,
+                options: {
+                    redirectTo: `${window.location.origin}/login`,
+                },
+            });
+            if (error) {
+                toast.error(error.message);
+                setLoading(false);
+            }
+        } catch {
+            toast.error("OAuth sign-in failed. Please try again.");
+            setLoading(false);
+        }
+    };
+
     const handleSupabaseLogin = async (loginEmail: string, loginPassword: string) => {
         setLoading(true);
         try {
-            const result = await signIn(loginEmail, loginPassword);
+            const result = mode === "signUp"
+                ? await signUp(loginEmail, loginPassword)
+                : await signIn(loginEmail, loginPassword);
             if (result.ok) {
+                if (mode === "signUp") {
+                    toast.success("Account created. Check your email to continue.");
+                    setMode("signIn");
+                    setLoading(false);
+                    return;
+                }
                 // Hydrate Zustand store with Supabase user data
                 setUser({
                     id: result.user.id,
@@ -98,7 +141,7 @@ export default function LoginPage() {
                     startRealtime();
                 });
                 toast.success("Welcome back!");
-                router.push(`/${result.user.role}/dashboard`);
+                redirectAfterAuth(result.user.role);
             } else if (result.error === "deactivated") {
                 toast.error("Your account has been deactivated. Please contact your HR administrator.");
                 setLoading(false);
@@ -135,13 +178,39 @@ export default function LoginPage() {
         setLoading(false);
     };
 
+    const handlePasswordRecovery = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (password !== confirmPassword) {
+            toast.error("Passwords do not match");
+            return;
+        }
+        setLoading(true);
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) {
+            toast.error(error.message);
+            setLoading(false);
+            return;
+        }
+        toast.success("Password updated. You can sign in now.");
+        setMode("signIn");
+        setLoading(false);
+    };
+
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
+        if (mode === "recovery") {
+            void handlePasswordRecovery(e);
+            return;
+        }
         if (USE_DEMO_MODE) {
             handleDemoLogin(email, password);
         } else {
-            handleSupabaseLogin(email, password);
+            void handleSupabaseLogin(email, password);
         }
+    };
+
+    const handleForgotPassword = async () => {
+        router.push("/login?type=recovery");
     };
 
     const handleQuickLogin = (demoEmail: string) => {
@@ -216,6 +285,8 @@ export default function LoginPage() {
                 <CardContent className="space-y-6 px-6 md:px-10 pb-8">
                     {/* Login Form */}
                     <form onSubmit={handleLogin} className="space-y-4">
+                        {mode !== "recovery" && (
+                            <>
                         <div>
                             <label className="text-sm font-medium">Email</label>
                             <Input
@@ -238,10 +309,39 @@ export default function LoginPage() {
                                 required
                             />
                         </div>
+                        </>
+                        )}
+                        {mode === "recovery" && (
+                            <>
+                                <div>
+                                    <label className="text-sm font-medium">New Password</label>
+                                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1.5" required />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium">Confirm Password</label>
+                                    <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="mt-1.5" required />
+                                </div>
+                            </>
+                        )}
                         <Button type="submit" size="lg" className="w-full text-base font-semibold transition-transform active:scale-[0.99] shadow-md" disabled={loading}>
-                            {loading ? "Authenticating..." : "Secure Sign In"}
+                            {loading ? "Authenticating..." : mode === "recovery" ? "Update Password" : mode === "signUp" ? "Create Account" : "Secure Sign In"}
                         </Button>
                     </form>
+
+                    {/* OAuth buttons removed per request */}
+
+                    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                        <button type="button" className="inline-flex items-center gap-1 hover:text-foreground transition-colors" onClick={handleForgotPassword}>
+                            <CircleHelp className="h-3.5 w-3.5" />
+                            {mode === "recovery" ? "Back to sign in" : "Forgot password?"}
+                        </button>
+                        {ALLOW_SIGN_UP && mode !== "recovery" ? (
+                            <button type="button" className="inline-flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => setMode((current) => current === "signIn" ? "signUp" : "signIn")}>
+                                <ArrowLeftRight className="h-3.5 w-3.5" />
+                                {mode === "signUp" ? "Have an account? Sign in" : "Need an account? Sign up"}
+                            </button>
+                        ) : null}
+                    </div>
 
                     {/* Divider */}
                     <div className="relative py-2">
@@ -278,7 +378,7 @@ export default function LoginPage() {
                             className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground/70 hover:bg-muted/30 transition-colors"
                             onClick={() => setShowPayrollAccounts((v) => !v)}
                         >
-                            <span>💰 Payroll Test Accounts</span>
+                            <span>Payroll Test Accounts</span>
                             {showPayrollAccounts ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                         </button>
                         {showPayrollAccounts && (

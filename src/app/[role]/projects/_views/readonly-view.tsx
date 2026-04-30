@@ -12,9 +12,9 @@ import { getInitials } from "@/lib/format";
 import { FolderKanban, MapPin } from "lucide-react";
 
 const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
-    active: { label: "🟢 Active", variant: "default" },
-    completed: { label: "🔵 Completed", variant: "secondary" },
-    on_hold: { label: "🟡 On Hold", variant: "outline" },
+    active: { label: "Active", variant: "default" },
+    completed: { label: "Completed", variant: "secondary" },
+    on_hold: { label: "On Hold", variant: "outline" },
 };
 
 export default function ReadonlyProjectsView() {

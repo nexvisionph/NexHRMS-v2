@@ -16,6 +16,7 @@ import { useMessagingStore } from "@/store/messaging.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useProjectsStore } from "@/store/projects.store";
 import { NAV_ITEMS } from "@/lib/constants";
+import { isAdministrativeRole } from "@/lib/admin-tier";
 import {
     LayoutDashboard,
     Users,
@@ -102,8 +103,9 @@ function SidebarComponent() {
     );
     
     const hasPermission = useRolesStore((s) => s.hasPermission);
+    const roleForAccess = isAdministrativeRole(role) ? "admin" : role;
     const getVisiblePages = usePageBuilderStore((s) => s.getVisiblePages);
-    const customPages = useMemo(() => getVisiblePages(role), [getVisiblePages, role]);
+    const customPages = useMemo(() => getVisiblePages(roleForAccess), [getVisiblePages, roleForAccess]);
 
     // Consolidated appearance store selector
     const { modules, navOverrides, sidebarVariant, logoUrl, companyName, logoTextVisible } = useAppearanceStore(
@@ -155,12 +157,12 @@ function SidebarComponent() {
                 }
                 // Permission check — also enforce roles list when defined
                 if (item.permission) {
-                    if (item.roles && item.roles.length > 0 && !item.roles.includes(role as never)) {
+                    if (item.roles && item.roles.length > 0 && !item.roles.includes(roleForAccess as never)) {
                         return false;
                     }
-                    return hasPermission(role, item.permission);
+                    return hasPermission(roleForAccess, item.permission);
                 }
-                return item.roles.includes(role as never);
+                return item.roles.includes(roleForAccess as never);
             })
             .filter((item) => {
                 // Nav override hidden check
@@ -187,7 +189,7 @@ function SidebarComponent() {
         }));
 
         return { systemItems, customNavItems };
-    }, [role, hasPermission, customPages, modules, navOverrides, hasFaceProject]);
+    }, [role, roleForAccess, hasPermission, customPages, modules, navOverrides, hasFaceProject]);
 
     // Build role-prefixed paths
     const rolePrefix = `/${role}`;

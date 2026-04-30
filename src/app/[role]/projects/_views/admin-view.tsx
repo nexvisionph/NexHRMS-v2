@@ -279,9 +279,9 @@ export default function AdminProjectsView() {
                                             <Select value={project.status || "active"} onValueChange={(v) => updateProject(project.id, { status: v as "active" | "completed" | "on_hold" })}>
                                                 <SelectTrigger className="h-7 w-full sm:w-[110px] text-xs border-0 bg-transparent"><SelectValue /></SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="active">🟢 Active</SelectItem>
-                                                    <SelectItem value="completed">🔵 Completed</SelectItem>
-                                                    <SelectItem value="on_hold">🟡 On Hold</SelectItem>
+                                                    <SelectItem value="active">Active</SelectItem>
+                                                    <SelectItem value="completed">Completed</SelectItem>
+                                                    <SelectItem value="on_hold">On Hold</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </TableCell>
