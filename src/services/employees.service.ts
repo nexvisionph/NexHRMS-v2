@@ -8,8 +8,11 @@
  */
 
 import { createServerSupabaseClient, createAdminSupabaseClient } from "./supabase-server";
+import { nanoid } from "nanoid";
 import type { Employee, ServiceResult, SalaryChangeRequest, SalaryHistoryEntry } from "@/types";
 import { keysToCamel, keysToSnake, roleToDbFormat, roleFromDb } from "@/lib/db-utils";
+
+type AdminSupabaseClient = Awaited<ReturnType<typeof createAdminSupabaseClient>>;
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
@@ -33,6 +36,166 @@ function employeeToDb(emp: Partial<Employee>): Record<string, unknown> {
   return row;
 }
 
+async function deleteRowsByEmployeeId(
+  supabase: AdminSupabaseClient,
+  table: string,
+  employeeId: string,
+  column = "employee_id"
+): Promise<string | null> {
+  const { error } = await supabase.from(table).delete().eq(column, employeeId);
+  return error ? `${table}: ${error.message}` : null;
+}
+
+async function deleteRowsByIds(
+  supabase: AdminSupabaseClient,
+  table: string,
+  column: string,
+  ids: string[]
+): Promise<string | null> {
+  if (ids.length === 0) return null;
+  const { error } = await supabase.from(table).delete().in(column, ids);
+  return error ? `${table}: ${error.message}` : null;
+}
+
+async function purgeEmployeeDependencies(supabase: AdminSupabaseClient, employeeId: string): Promise<string | null> {
+  const { data: attendanceEvents, error: attendanceEventsError } = await supabase
+    .from("attendance_events")
+    .select("id")
+    .eq("employee_id", employeeId);
+  if (attendanceEventsError) return `attendance_events: ${attendanceEventsError.message}`;
+  const attendanceEventIds = ((attendanceEvents ?? []) as Array<{ id: string }>).map((row) => row.id);
+
+  const { data: loanRows, error: loansError } = await supabase
+    .from("loans")
+    .select("id")
+    .eq("employee_id", employeeId);
+  if (loansError) return `loans: ${loansError.message}`;
+  const loanIds = ((loanRows ?? []) as Array<{ id: string }>).map((row) => row.id);
+
+  const { data: payslipRows, error: payslipsError } = await supabase
+    .from("payslips")
+    .select("id")
+    .eq("employee_id", employeeId);
+  if (payslipsError) return `payslips: ${payslipsError.message}`;
+  const payslipIds = ((payslipRows ?? []) as Array<{ id: string }>).map((row) => row.id);
+
+  const deletePlan: Array<Promise<string | null>> = [
+    deleteRowsByEmployeeId(supabase, "attendance_exceptions", employeeId),
+    deleteRowsByEmployeeId(supabase, "attendance_logs", employeeId),
+    deleteRowsByEmployeeId(supabase, "break_records", employeeId),
+    deleteRowsByEmployeeId(supabase, "overtime_requests", employeeId),
+    deleteRowsByEmployeeId(supabase, "location_pings", employeeId),
+    deleteRowsByEmployeeId(supabase, "employee_shifts", employeeId),
+    deleteRowsByEmployeeId(supabase, "penalty_records", employeeId),
+    deleteRowsByEmployeeId(supabase, "manual_checkins", employeeId),
+    deleteRowsByEmployeeId(supabase, "manual_checkins", employeeId, "performed_by"),
+    deleteRowsByEmployeeId(supabase, "site_survey_photos", employeeId),
+    deleteRowsByEmployeeId(supabase, "timesheets", employeeId),
+    deleteRowsByEmployeeId(supabase, "leave_requests", employeeId),
+    deleteRowsByEmployeeId(supabase, "leave_balances", employeeId),
+    deleteRowsByEmployeeId(supabase, "notification_logs", employeeId),
+    deleteRowsByEmployeeId(supabase, "employee_documents", employeeId),
+    deleteRowsByEmployeeId(supabase, "qr_tokens", employeeId),
+    deleteRowsByEmployeeId(supabase, "face_enrollments", employeeId),
+    deleteRowsByEmployeeId(supabase, "project_assignments", employeeId),
+    deleteRowsByEmployeeId(supabase, "task_comments", employeeId),
+    deleteRowsByEmployeeId(supabase, "task_completion_reports", employeeId),
+    deleteRowsByEmployeeId(supabase, "channel_messages", employeeId),
+    deleteRowsByEmployeeId(supabase, "salary_history", employeeId),
+    deleteRowsByEmployeeId(supabase, "salary_change_requests", employeeId),
+    deleteRowsByEmployeeId(supabase, "final_pay_computations", employeeId),
+    deleteRowsByEmployeeId(supabase, "deduction_overrides", employeeId),
+    deleteRowsByEmployeeId(supabase, "employee_deduction_assignments", employeeId),
+    deleteRowsByEmployeeId(supabase, "payroll_adjustments", employeeId),
+    deleteRowsByIds(supabase, "loan_deductions", "loan_id", loanIds),
+    deleteRowsByIds(supabase, "loan_balance_history", "loan_id", loanIds),
+    deleteRowsByIds(supabase, "loan_repayment_schedule", "loan_id", loanIds),
+    deleteRowsByIds(supabase, "payslip_line_items", "payslip_id", payslipIds),
+    deleteRowsByIds(supabase, "payroll_run_payslips", "payslip_id", payslipIds),
+    deleteRowsByIds(supabase, "payroll_adjustments", "reference_payslip_id", payslipIds),
+  ];
+
+  for (const task of deletePlan) {
+    const error = await task;
+    if (error) return error;
+  }
+
+  if (attendanceEventIds.length > 0) {
+    const error = await deleteRowsByIds(supabase, "attendance_evidence", "event_id", attendanceEventIds);
+    if (error) return error;
+    const exceptionEventError = await deleteRowsByIds(supabase, "attendance_exceptions", "event_id", attendanceEventIds);
+    if (exceptionEventError) return exceptionEventError;
+    const eventError = await deleteRowsByIds(supabase, "attendance_events", "id", attendanceEventIds);
+    if (eventError) return eventError;
+  }
+
+  if (loanIds.length > 0) {
+    const loanError = await deleteRowsByIds(supabase, "loans", "id", loanIds);
+    if (loanError) return loanError;
+  }
+
+  if (payslipIds.length > 0) {
+    const payslipError = await deleteRowsByIds(supabase, "payslips", "id", payslipIds);
+    if (payslipError) return payslipError;
+  }
+
+  return null;
+}
+
+async function purgeEmployeeDependenciesTransactional(
+  supabase: AdminSupabaseClient,
+  employeeId: string
+): Promise<string | null> {
+  const { error } = await supabase.rpc("purge_employee_dependencies", { employee_id: employeeId });
+  if (!error) return null;
+
+  const errorCode = (error as { code?: string }).code;
+  const errorMessage = (error as { message?: string }).message ?? "";
+  const isMissingFunction = errorCode === "PGRST202" || errorMessage.toLowerCase().includes("does not exist");
+  if (isMissingFunction) {
+    return purgeEmployeeDependencies(supabase, employeeId);
+  }
+
+  return error.message;
+}
+
+export async function deleteEmployeeById(id: string): Promise<ServiceResult<void>> {
+  const supabase = await createAdminSupabaseClient();
+  const dependencyError = await purgeEmployeeDependenciesTransactional(supabase, id);
+  if (dependencyError) return { ok: false, error: dependencyError };
+
+  const { error } = await supabase.from("employees").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: undefined };
+}
+
+export async function deleteEmployeeByProfileId(profileId: string, email?: string): Promise<ServiceResult<void>> {
+  const supabase = await createAdminSupabaseClient();
+  const { data: employeeByProfile, error: employeeLookupError } = await supabase
+    .from("employees")
+    .select("id")
+    .eq("profile_id", profileId)
+    .maybeSingle();
+
+  if (employeeLookupError) return { ok: false, error: employeeLookupError.message };
+
+  let employeeId = (employeeByProfile as { id?: string } | null)?.id;
+
+  if (!employeeId && email) {
+    const { data: employeeByEmail, error: employeeEmailError } = await supabase
+      .from("employees")
+      .select("id")
+      .ilike("email", email)
+      .maybeSingle();
+    if (employeeEmailError) return { ok: false, error: employeeEmailError.message };
+    employeeId = (employeeByEmail as { id?: string } | null)?.id;
+  }
+
+  if (!employeeId) return { ok: true, data: undefined };
+
+  return deleteEmployeeById(employeeId);
+}
+
 // ─── Employee CRUD ───────────────────────────────────────────────
 
 export async function getEmployees(): Promise<ServiceResult<Employee[]>> {
@@ -54,7 +217,7 @@ export async function getEmployeeById(id: string): Promise<ServiceResult<Employe
 
 export async function createEmployee(emp: Omit<Employee, "id" | "createdAt" | "updatedAt">): Promise<ServiceResult<Employee>> {
   const supabase = await createServerSupabaseClient();
-  const id = `EMP-${Date.now()}`;
+  const id = `EMP-${nanoid(10).toUpperCase()}`;
   const row = { ...employeeToDb(emp), id };
   const { data, error } = await supabase.from("employees").insert(row).select().single();
   if (error) return { ok: false, error: error.message };
@@ -83,17 +246,15 @@ export async function updateEmployee(id: string, patch: Partial<Employee>): Prom
     if (patch.birthday !== undefined) profilePatch.birthday = patch.birthday || null;
     if (patch.address !== undefined) profilePatch.address = patch.address || null;
     if (patch.emergencyContact !== undefined) profilePatch.emergency_contact = patch.emergencyContact || null;
-    await adminSupabase.from("profiles").update(profilePatch).eq("id", profileId);
+    const { error: profileError } = await adminSupabase.from("profiles").update(profilePatch).eq("id", profileId);
+    if (profileError) return { ok: false, error: profileError.message };
   }
 
   return { ok: true, data: employee };
 }
 
 export async function deleteEmployee(id: string): Promise<ServiceResult<void>> {
-  const supabase = await createServerSupabaseClient();
-  const { error } = await supabase.from("employees").delete().eq("id", id);
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, data: undefined };
+  return deleteEmployeeById(id);
 }
 
 // ─── Salary Management ───────────────────────────────────────────

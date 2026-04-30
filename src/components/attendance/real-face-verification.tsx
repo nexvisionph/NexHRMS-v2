@@ -10,6 +10,7 @@ import {
 import { loadFaceModels, detectFace, detectFaceQuick, averageDescriptors, descriptorConsistency } from "@/lib/face-api";
 import type { FaceTrackingResult } from "@/lib/face-api";
 import { useAuthStore } from "@/store/auth.store";
+import { useEmployeesStore } from "@/store/employees.store";
 
 /**
  * Real Face Verification component using face-api.js 128-d embeddings.
@@ -60,6 +61,7 @@ export function RealFaceVerification({
     required: _required = false,
 }: RealFaceVerificationProps) {
     const currentUserId = useAuthStore((s) => s.currentUser?.id);
+    const employees = useEmployeesStore((s) => s.employees);
     const [phase, setPhase] = useState<Phase>("loading");
     const [error, setError] = useState("");
     const [errorHint, setErrorHint] = useState("");
@@ -78,6 +80,8 @@ export function RealFaceVerification({
     const trackingRef = useRef(true);
     const stableCountRef = useRef(0);
     const autoScanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const resolvedEmployee = employeeId ? employees.find((employee) => employee.id === employeeId) : undefined;
+    const requiresBiometricEnrollment = !!resolvedEmployee?.biometricId;
 
     // Clean up camera + wake lock
     const cleanup = useCallback(() => {
@@ -421,7 +425,7 @@ export function RealFaceVerification({
                 const statusRes = await fetch(`/api/face-recognition/enroll?action=status&employeeId=${encodeURIComponent(employeeId)}`);
                 if (statusRes.ok) {
                     const statusData = await statusRes.json();
-                    if (!statusData.enrolled) {
+                    if (!statusData.enrolled && requiresBiometricEnrollment) {
                         console.log(`[face-verify] Employee ${employeeId} has no face enrollment`);
                         setPhase("no-enrollment");
                         return;

@@ -89,6 +89,7 @@ export default function AdminProfileView() {
     const [editWorkType, setEditWorkType] = useState<WorkType>("WFO");
     const [editSalary, setEditSalary] = useState("");
     const [editLocation, setEditLocation] = useState("");
+    const [editBiometricId, setEditBiometricId] = useState("");
     const [editPayFreq, setEditPayFreq] = useState<string>("company");
     const [docName, setDocName] = useState("");
     const [docOpen, setDocOpen] = useState(false);
@@ -107,6 +108,7 @@ export default function AdminProfileView() {
         setEditWorkType(employee.workType);
         setEditSalary(String(employee.salary));
         setEditLocation(employee.location || "__none__");
+        setEditBiometricId(employee.biometricId || "");
         setEditPayFreq(employee.payFrequency || "company");
         setEditOpen(true);
     };
@@ -127,6 +129,10 @@ export default function AdminProfileView() {
             }
             formattedPhone = phoneResult.formatted;
         }
+        if (editBiometricId.trim() && employees.some((e) => e.id !== employee.id && e.biometricId && e.biometricId === editBiometricId.trim())) {
+            toast.error("This T800 user ID is already assigned to another employee");
+            return;
+        }
         
         updateEmployee(employee.id, {
             name: editName, email: editEmail, phone: formattedPhone,
@@ -135,6 +141,7 @@ export default function AdminProfileView() {
             department: editDept, workType: editWorkType,
             salary: Number(editSalary) || employee.salary,
             location: editLocation === "__none__" ? "" : editLocation,
+            biometricId: editBiometricId.trim() || undefined,
             payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
         });
         useAuditStore.getState().log({ entityType: "employee", entityId: employee.id, action: "adjustment_applied", performedBy: currentUser.id, reason: "Profile updated" });
@@ -278,6 +285,7 @@ export default function AdminProfileView() {
                             <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Job Title" value={employee.jobTitle || "—"} />
                             <InfoRow icon={<Briefcase className="h-4 w-4" />} label="System Role" value={employee.role} />
                             <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Work Type" value={employee.workType} />
+                                <InfoRow icon={<FileText className="h-4 w-4" />} label="T800 User ID" value={employee.biometricId || "—"} />
                             <InfoRow icon={<Calendar className="h-4 w-4" />} label="Joined" value={formatDate(employee.joinDate)} />
                             <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Team Leader" value={employee.teamLeader ? employees.find((e) => e.id === employee.teamLeader)?.name || "—" : "—"} />
                         </CardContent>
@@ -523,6 +531,10 @@ export default function AdminProfileView() {
                             <div><label className="text-sm font-medium">Location</label>
                                 <Select value={editLocation || "__none__"} onValueChange={setEditLocation}><SelectTrigger className="mt-1"><SelectValue placeholder="Select location" /></SelectTrigger><SelectContent><SelectItem value="__none__">— Not Specified —</SelectItem>{LOCATIONS.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select>
                             </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div><label className="text-sm font-medium">T800 User ID</label><Input value={editBiometricId} onChange={(e) => setEditBiometricId(e.target.value)} className="mt-1" placeholder="Must match the T800 enrolled user ID" /><p className="mt-1 text-[11px] text-muted-foreground">This is the ID the T800 sends when the employee scans.</p></div>
+                            <div />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div><label className="text-sm font-medium">Pay Frequency</label>
