@@ -98,6 +98,10 @@ export const useEmployeesStore = create<EmployeesState>()(
                 if (employees.some((e) => e.email.toLowerCase() === emp.email.toLowerCase())) {
                     return { ok: false, error: `An employee with email "${emp.email}" already exists.` };
                 }
+                // Check for duplicate biometric ID when one is provided
+                if (emp.biometricId && employees.some((e) => e.biometricId && e.biometricId === emp.biometricId && e.id !== emp.id)) {
+                    return { ok: false, error: `T800 user ID "${emp.biometricId}" is already assigned to another employee.` };
+                }
                 set({ employees: [...employees, emp] });
                 return { ok: true };
             },
@@ -107,6 +111,9 @@ export const useEmployeesStore = create<EmployeesState>()(
                     // For the governed salary-change workflow (propose → approve), use proposeSalaryChange / approveSalaryChange.
                     const { salary: _salary, ...safeData } = data;
                     const updateData = _salary !== undefined ? data : safeData;
+                    if (updateData.biometricId && s.employees.some((e) => e.id !== id && e.biometricId && e.biometricId === updateData.biometricId)) {
+                        return s;
+                    }
                     return {
                         employees: s.employees.map((e) => (e.id === id ? { ...e, ...updateData } : e)),
                     };
