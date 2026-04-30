@@ -234,6 +234,7 @@ export interface Employee {
   avatarUrl?: string;
   pin?: string; // employee PIN for kiosk
   nfcId?: string; // NFC badge ID for kiosk scan
+  biometricId?: string; // biometric device user ID (e.g., T800)
   resignedAt?: string;
   shiftId?: string;
   payFrequency?: PayFrequency; // per-employee override (falls back to company default)
