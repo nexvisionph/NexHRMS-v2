@@ -129,7 +129,8 @@ export async function getAttendanceLogs(employeeId?: string, dateFrom?: string, 
 export async function upsertAttendanceLog(log: AttendanceLog): Promise<ServiceResult<AttendanceLog>> {
   const supabase = await createServerSupabaseClient();
   const row = attendanceLogTsToRow(log as unknown as Record<string, unknown>);
-  const { data, error } = await supabase.from("attendance_logs").upsert(row, { onConflict: "id" }).select().single();
+  // NOTE: Requires UNIQUE constraint on (employee_id, date) — see migration 015_attendance_logs_unique.sql
+  const { data, error } = await supabase.from("attendance_logs").upsert(row, { onConflict: "employee_id,date" }).select().single();
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: attendanceLogRowToTs(data as Record<string, unknown>) as unknown as AttendanceLog };
 }
@@ -216,7 +217,9 @@ export async function rejectOvertimeRequest(id: string, reviewedBy: string, reas
 export async function getHolidays(year?: number): Promise<ServiceResult<Holiday[]>> {
   const supabase = await createServerSupabaseClient();
   let query = supabase.from("holidays").select("*");
-  if (year) query = query.eq("year", year);
+  if (year) {
+    query = query.gte("date", `${year}-01-01`).lte("date", `${year}-12-31`);
+  }
   query = query.order("date", { ascending: true });
   const { data, error } = await query;
   if (error) return { ok: false, error: error.message };
