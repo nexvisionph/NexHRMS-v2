@@ -300,7 +300,18 @@ export async function adminDeleteAccount(userId: string) {
   const employeeDeletion = await deleteEmployeeByProfileId(userId, targetProfile?.email ?? undefined);
   if (!employeeDeletion.ok) return { ok: false as const, error: employeeDeletion.error };
 
-  // Auth user deletion cascades to profile via FK
+  const { error: createdByError } = await supabase
+    .from("profiles")
+    .update({ created_by: null })
+    .eq("created_by", userId);
+  if (createdByError) return { ok: false as const, error: createdByError.message };
+
+  const { error: profileDeleteError } = await supabase
+    .from("profiles")
+    .delete()
+    .eq("id", userId);
+  if (profileDeleteError) return { ok: false as const, error: profileDeleteError.message };
+
   const { error } = await supabase.auth.admin.deleteUser(userId);
   if (error) return { ok: false as const, error: error.message };
 
