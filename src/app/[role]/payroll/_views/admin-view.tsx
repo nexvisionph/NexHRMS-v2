@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Plus, CheckCircle, Eye, Lock, Gift, Download, CalendarDays, RotateCcw, Send, CreditCard, FileText, Sparkles, Shield, PenTool, Search, Settings, Building2, Printer, Clock, Percent, Trash2, AlertCircle, Info, Save, Pencil, X, Loader2, FileSignature, Calculator, Edit, Users } from "lucide-react";
+import { Plus, CheckCircle, Eye, Lock, LockOpen, Gift, Download, CalendarDays, RotateCcw, Send, CreditCard, FileText, Sparkles, Shield, PenTool, Search, Settings, Building2, Printer, Clock, Percent, Trash2, AlertCircle, Info, Save, Pencil, X, Loader2, FileSignature, Calculator, Edit, Users } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/format";
 import { computeAllPHDeductions } from "@/lib/ph-deductions";
@@ -38,6 +38,7 @@ import { PayslipTable } from "@/components/payroll/payslip-table";
 import { PayScheduleSettings } from "@/components/payroll/pay-schedule-settings";
 import { GovernmentReports } from "@/components/payroll/government-reports";
 import { PrintablePayslip } from "@/components/payroll/printable-payslip";
+import { PayrollReadinessChecklist } from "@/components/payroll/payroll-readiness-checklist";
 import { format, endOfMonth, subMonths, getYear, getMonth } from "date-fns";
 import { dispatchNotification } from "@/lib/notifications";
 import { useAuditStore } from "@/store/audit.store";
@@ -66,7 +67,7 @@ interface AdminPayrollViewProps {
 export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewProps) {
     const params = useParams();
     const role = params.role as string;
-    const { payslips, runs, adjustments, finalPayComputations, issuePayslip, confirmPayslip, publishPayslip, recordPayment, confirmPaidByFinance, lockRun, publishRun, markRunPaid, approveAdjustment, applyAdjustment, createAdjustment, computeFinalPay, generate13thMonth, exportBankFile, createDraftRun, validateRun, resetToSeed, paySchedule, updatePaySchedule, signatureConfig, updateSignatureConfig, deductionOverrides, setDeductionOverride, removeDeductionOverride, clearEmployeeOverrides, getDeductionOverride, getEmployeeOverrides, globalDefaults, updateGlobalDefault, getGlobalDefault, updatePayslipFromServer } = usePayrollStore();
+    const { payslips, runs, adjustments, finalPayComputations, issuePayslip, confirmPayslip, publishPayslip, recordPayment, confirmPaidByFinance, lockRun, unlockRun, publishRun, markRunPaid, approveAdjustment, applyAdjustment, createAdjustment, computeFinalPay, generate13thMonth, exportBankFile, createDraftRun, validateRun, resetToSeed, paySchedule, updatePaySchedule, signatureConfig, updateSignatureConfig, deductionOverrides, setDeductionOverride, removeDeductionOverride, clearEmployeeOverrides, getDeductionOverride, getEmployeeOverrides, globalDefaults, updateGlobalDefault, getGlobalDefault, updatePayslipFromServer } = usePayrollStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
     const { getActiveByEmployee, recordDeduction } = useLoansStore();
@@ -92,6 +93,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
 
     const [open, setOpen] = useState(false);
     const [snapshotRunDate, setSnapshotRunDate] = useState<string | null>(null);
+    const [checklistPassedMap, setChecklistPassedMap] = useState<Record<string, boolean>>({});
     const [viewSlip, setViewSlip] = useState<string | null>(null);
     const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
     const [formAllowances, setFormAllowances] = useState("0");
@@ -232,8 +234,9 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
 
     // ─── Issue handler ────────────────────────────────────────────
     const handleIssue = () => {
-        const issuanceDateLocked = isRunLocked(formIssuedAt);
-        if (issuanceDateLocked) { toast.error("Selected issuance date belongs to a locked run."); return; }
+        const periodKey = `${cutoffDates.start}/${cutoffDates.end}`;
+        const cutoffLocked = isRunLocked(periodKey);
+        if (cutoffLocked) { toast.error("This cutoff period is locked. Unlock the payroll run first to issue new payslips."); return; }
         if (selectedEmployeeIds.length === 0 || !cutoffDates.start || !cutoffDates.end) { toast.error("Please select at least one employee and set cutoff dates"); return; }
         if (cutoffDates.start > cutoffDates.end) { toast.error("Cutoff start date must be before end date"); return; }
         const allowancesVal = Number(formAllowances) || 0;
@@ -409,18 +412,26 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     }, [generate13thMonth]);
 
     const payrollRuns = useMemo(() => {
-        const grouped: Record<string, { date: string; count: number; totalNet: number; totalGross: number; published: number }> = {};
-        payslips.forEach((p) => {
-            const key = p.issuedAt;
-            if (!grouped[key]) grouped[key] = { date: key, count: 0, totalNet: 0, totalGross: 0, published: 0 };
-            grouped[key].count++; grouped[key].totalNet += p.netPay; grouped[key].totalGross += (p.grossPay || 0);
-            if (p.status === "published" || p.status === "signed") grouped[key].published++;
-        });
-        return Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date));
-    }, [payslips]);
+        return runs.map((r) => {
+            const runPayslips = payslips.filter((p) => (r.payslipIds || []).includes(p.id));
+            return {
+                date: r.periodLabel,
+                runId: r.id,
+                count: runPayslips.length,
+                totalNet: runPayslips.reduce((sum, p) => sum + p.netPay, 0),
+                totalGross: runPayslips.reduce((sum, p) => sum + (p.grossPay || 0), 0),
+                published: runPayslips.filter((p) => p.status === "published" || p.status === "signed").length,
+                draftCount: runPayslips.filter((p) => p.status === "draft").length,
+            };
+        }).sort((a, b) => b.date.localeCompare(a.date));
+    }, [runs, payslips]);
 
     const isRunLocked = (runDate: string) => runs.find((r) => r.periodLabel === runDate)?.locked ?? false;
-    const isTodayLocked = isRunLocked(formIssuedAt);
+    const isCutoffPeriodLocked = useMemo(() => {
+        if (!cutoffDates.start || !cutoffDates.end) return false;
+        const periodKey = `${cutoffDates.start}/${cutoffDates.end}`;
+        return runs.some((r) => r.locked && r.periodLabel === periodKey);
+    }, [runs, cutoffDates]);
     const viewedPayslip = viewSlip ? payslips.find((p) => p.id === viewSlip) : null;
 
     const viewTitle = mode === "admin" ? "Payroll Management" : mode === "finance" ? "Payroll & Finance" : "Payroll Administration";
@@ -607,13 +618,17 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                         </Button>
                         <ExportBackupDialog module="payroll" />
                         <ImportDataDialog module="payroll" onImportComplete={() => toast.success("Payroll data imported — refresh to see changes")} />
-                        <Dialog open={open} onOpenChange={setOpen}>
+                        <Dialog open={open} onOpenChange={(isOpen) => {
+                            if (isOpen && isCutoffPeriodLocked) {
+                                toast.error("This cutoff period is locked. Unlock the payroll run first to issue new payslips.");
+                                return;
+                            }
+                            setOpen(isOpen);
+                        }}>
                             <DialogTrigger asChild>
-                                <div className="inline-block" title={isTodayLocked ? "Run is locked" : ""}>
-                                    <Button className="gap-1.5" disabled={isTodayLocked}>
-                                        {isTodayLocked ? <Lock className="h-4 w-4" /> : <Plus className="h-4 w-4" />} Issue Payslip
-                                    </Button>
-                                </div>
+                                <Button className="gap-1.5">
+                                    {isCutoffPeriodLocked ? <Lock className="h-4 w-4" /> : <Plus className="h-4 w-4" />} Issue Payslip
+                                </Button>
                             </DialogTrigger>
                             <DialogContent className="max-w-2xl flex flex-col max-h-[90vh]">
                                 <DialogHeader className="shrink-0">
@@ -987,7 +1002,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                             <div className="overflow-x-auto">
                                 <Table>
                                     <TableHeader><TableRow>
-                                        <TableHead className="text-xs">Date</TableHead><TableHead className="text-xs">Payslips</TableHead>
+                                        <TableHead className="text-xs">Period</TableHead><TableHead className="text-xs">Payslips</TableHead>
                                         <TableHead className="text-xs">Total Gross</TableHead><TableHead className="text-xs">Total Net</TableHead>
                                         <TableHead className="text-xs">Status</TableHead>
                                         {canIssue && <TableHead className="text-xs w-40">Actions</TableHead>}
@@ -998,11 +1013,16 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                         ) : payrollRuns.map((run) => {
                                             const locked = isRunLocked(run.date);
                                             const runObj = runs.find((r) => r.periodLabel === run.date);
-                                            const runStatus = runObj?.status ?? (locked ? "locked" : "draft");
+                                            const runStatus = runObj?.status ?? "draft";
+                                            // Format period label for display: "2026-05-01/2026-05-15" → "May 01 – May 15"
+                                            const [pStart, pEnd] = run.date.split("/");
+                                            const periodDisplay = pStart && pEnd
+                                                ? `${pStart} – ${pEnd}`
+                                                : run.date;
                                             return (
                                                 <TableRow key={run.date}>
-                                                    <TableCell className="text-sm">{run.date}</TableCell>
-                                                    <TableCell className="text-sm">{run.count}</TableCell>
+                                                    <TableCell className="text-sm">{periodDisplay}</TableCell>
+                                                    <TableCell className="text-sm">{run.count}{run.draftCount > 0 && <span className="text-amber-500 text-[10px] ml-1">({run.draftCount} draft)</span>}</TableCell>
                                                     <TableCell className="text-sm">₱{run.totalGross.toLocaleString()}</TableCell>
                                                     <TableCell className="text-sm font-medium">₱{run.totalNet.toLocaleString()}</TableCell>
                                                     <TableCell>
@@ -1017,13 +1037,52 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                         <TableCell>
                                                             <div className="flex items-center gap-1">
                                                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="Export bank file" onClick={() => exportBankFile(run.date, employees.map((e) => ({ id: e.id, name: e.name, salary: e.salary })))}><Download className="h-3.5 w-3.5" /></Button>
-                                                                {!runObj && <Button variant="ghost" size="sm" className="h-7 text-[10px] text-amber-600" onClick={() => { createDraftRun(run.date, payslips.filter((p) => p.issuedAt === run.date).map((p) => p.id)); toast.success("Draft created"); }}>Draft</Button>}
                                                                 {runObj && !locked && (
                                                                     <AlertDialog>
                                                                         <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="Lock"><Lock className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
+                                                                        <AlertDialogContent className="max-w-lg">
+                                                                            <AlertDialogHeader>
+                                                                                <AlertDialogTitle>Lock Payroll Run?</AlertDialogTitle>
+                                                                                <AlertDialogDescription>This will lock <strong>{periodDisplay}</strong>. All payslips must be published before locking.</AlertDialogDescription>
+                                                                            </AlertDialogHeader>
+                                                                            {/* ── Readiness Checklist Gate ── */}
+                                                                            {runObj && (
+                                                                                <PayrollReadinessChecklist
+                                                                                    runId={runObj.id}
+                                                                                    periodLabel={runObj.periodLabel}
+                                                                                    payslipIds={runObj.payslipIds ?? []}
+                                                                                    onAllChecksPassed={(passed) => setChecklistPassedMap((prev) => ({ ...prev, [runObj.id]: passed }))}
+                                                                                />
+                                                                            )}
+                                                                            <AlertDialogFooter>
+                                                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                                <AlertDialogAction
+                                                                                    disabled={!checklistPassedMap[runObj?.id ?? ""]}
+                                                                                    className={!checklistPassedMap[runObj?.id ?? ""] ? "opacity-50 cursor-not-allowed" : ""}
+                                                                                    onClick={() => {
+                                                                                        lockRun(run.date, currentUser.id);
+                                                                                        useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_locked", performedBy: currentUser.id });
+                                                                                        toast.success("Payroll run locked");
+                                                                                    }}
+                                                                                >
+                                                                                    Lock
+                                                                                </AlertDialogAction>
+                                                                            </AlertDialogFooter>
+                                                                        </AlertDialogContent>
+                                                                    </AlertDialog>
+                                                                )}
+                                                                {locked && canLock && (
+                                                                    <AlertDialog>
+                                                                        <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500" title="Unlock for correction"><LockOpen className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
                                                                         <AlertDialogContent>
-                                                                            <AlertDialogHeader><AlertDialogTitle>Lock Payroll Run?</AlertDialogTitle><AlertDialogDescription>This will permanently lock <strong>{run.date}</strong> and publish all draft payslips in this run.</AlertDialogDescription></AlertDialogHeader>
-                                                                            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { lockRun(run.date, currentUser.id); useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_locked", performedBy: currentUser.id }); toast.success("Run locked & payslips published"); }}>Lock</AlertDialogAction></AlertDialogFooter>
+                                                                            <AlertDialogHeader>
+                                                                                <AlertDialogTitle>Unlock Payroll Run?</AlertDialogTitle>
+                                                                                <AlertDialogDescription>This will unlock <strong>{periodDisplay}</strong> for corrections. Published payslips remain published — only the run lock is removed. You must re-lock to finalize the period again.</AlertDialogDescription>
+                                                                            </AlertDialogHeader>
+                                                                            <AlertDialogFooter>
+                                                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                                <AlertDialogAction onClick={() => { unlockRun(run.date, currentUser.id); useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_locked", performedBy: currentUser.id }); toast.success("Run unlocked for corrections"); }}>Unlock</AlertDialogAction>
+                                                                            </AlertDialogFooter>
                                                                         </AlertDialogContent>
                                                                     </AlertDialog>
                                                                 )}

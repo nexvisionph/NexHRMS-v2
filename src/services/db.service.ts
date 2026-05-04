@@ -514,7 +514,7 @@ export const payrollDb = {
     if (toAdd.length > 0) {
       const { error: insErr } = await supabase()
         .from("payroll_run_payslips")
-        .insert(toAdd.map((pid) => ({ run_id: run.id, payslip_id: pid })));
+        .upsert(toAdd.map((pid) => ({ run_id: run.id, payslip_id: pid })), { onConflict: "run_id,payslip_id", ignoreDuplicates: true });
       if (insErr) console.error("[db] payroll_run_payslips.insert:", insErr.message);
     }
 
