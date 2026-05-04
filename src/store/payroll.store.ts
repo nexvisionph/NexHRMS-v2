@@ -62,6 +62,7 @@ interface PayrollState {
     createDraftRun: (runDate: string, payslipIds: string[], runType?: PayrollRun["runType"]) => void;
     validateRun: (runDate: string) => void;
     lockRun: (runDate: string, lockedBy?: string) => void;
+    unlockRun: (runDate: string, unlockedBy?: string) => void;
     publishRun: (runDate: string) => void;
     markRunPaid: (runDate: string) => void;
     // ─── Adjustments ──────────────────────────────────
@@ -163,17 +164,38 @@ export const usePayrollStore = create<PayrollState>()(
                             && p.payFrequency === data.payFrequency
                     );
                     if (duplicate) return {};
-                    return {
-                        payslips: [
-                            ...s.payslips,
-                            {
-                                ...data,
-                                id: `PS-${nanoid(8)}`,
-                                status: "draft",
-                                issuedAt: data.issuedAt ?? new Date().toISOString().split("T")[0],
-                            },
-                        ],
+                    const newId = `PS-${nanoid(8)}`;
+                    const periodKey = `${data.periodStart}/${data.periodEnd}`;
+                    const runId = `RUN-${periodKey}`;
+                    const newPayslip = {
+                        ...data,
+                        id: newId,
+                        status: "draft" as const,
+                        issuedAt: data.issuedAt ?? new Date().toISOString().split("T")[0],
+                        payrollBatchId: runId,
                     };
+                    // Auto-create or append to draft run for this cutoff period
+                    const existingRun = s.runs.find((r) => r.periodLabel === periodKey);
+                    let updatedRuns = s.runs;
+                    if (!existingRun) {
+                        updatedRuns = [...s.runs, {
+                            id: runId,
+                            periodLabel: periodKey,
+                            createdAt: new Date().toISOString(),
+                            status: "draft" as const,
+                            locked: false,
+                            payslipIds: [newId],
+                            runType: "regular" as const,
+                        }];
+                    } else if (existingRun.status === "draft") {
+                        updatedRuns = s.runs.map((r) =>
+                            r.id === existingRun.id
+                                ? { ...r, payslipIds: [...(r.payslipIds || []), newId] }
+                                : r
+                        );
+                    }
+                    // If run is locked, payslip is created but NOT added to the run
+                    return { payslips: [...s.payslips, newPayslip], runs: updatedRuns };
                 }),
 
             // DEPRECATED: no-op in simplified flow (kept for backward compat)
@@ -283,14 +305,11 @@ export const usePayrollStore = create<PayrollState>()(
             validateRun: (_runDate) =>
                 set(() => ({})),
 
-            // Lock run: draft → locked (auto-publishes all draft payslips, freezes policy snapshot)
+            // Lock run: draft → locked (freezes policy snapshot — payslips must be published first)
             lockRun: (runDate, lockedBy = "system") =>
                 set((s) => {
                     const existingRun = s.runs.find((r) => r.periodLabel === runDate);
-                    if (existingRun?.locked) return {};
-                    const runPayslipIds = existingRun?.payslipIds?.length
-                        ? existingRun.payslipIds
-                        : s.payslips.filter((p) => p.issuedAt === runDate).map((p) => p.id);
+                    if (!existingRun || existingRun.status !== "draft") return {};
                     const snapshot = {
                         taxTableVersion: POLICY_VERSIONS.taxTable,
                         sssVersion: POLICY_VERSIONS.sss,
@@ -301,41 +320,25 @@ export const usePayrollStore = create<PayrollState>()(
                         ruleSetVersion: "RS-DEFAULT-v1",
                         lockedBy,
                     };
-                    if (existingRun) {
-                        if (existingRun.status !== "draft") return {};
-                        return {
-                            runs: s.runs.map((r) =>
-                                r.id === existingRun.id
-                                    ? { ...r, locked: true, status: "locked" as const, lockedAt: new Date().toISOString(), policySnapshot: snapshot }
-                                    : r
-                            ),
-                            // Auto-publish all draft payslips in this run
-                            payslips: s.payslips.map((p) =>
-                                runPayslipIds.includes(p.id) && p.status === "draft"
-                                    ? { ...p, status: "published" as const, publishedAt: new Date().toISOString() }
-                                    : p
-                            ),
-                        };
-                    }
                     return {
-                        runs: [
-                            ...s.runs,
-                            {
-                                id: `RUN-${runDate}`,
-                                periodLabel: runDate,
-                                createdAt: new Date().toISOString(),
-                                status: "locked" as const,
-                                locked: true,
-                                lockedAt: new Date().toISOString(),
-                                payslipIds: runPayslipIds,
-                                policySnapshot: snapshot,
-                                runType: "regular",
-                            },
-                        ],
-                        payslips: s.payslips.map((p) =>
-                            runPayslipIds.includes(p.id) && p.status === "draft"
-                                ? { ...p, status: "published" as const, publishedAt: new Date().toISOString() }
-                                : p
+                        runs: s.runs.map((r) =>
+                            r.id === existingRun.id
+                                ? { ...r, locked: true, status: "locked" as const, lockedAt: new Date().toISOString(), policySnapshot: snapshot }
+                                : r
+                        ),
+                    };
+                }),
+
+            // Unlock run: locked → draft (for corrections; published payslips stay published)
+            unlockRun: (runDate, _unlockedBy = "system") =>
+                set((s) => {
+                    const run = s.runs.find((r) => r.periodLabel === runDate);
+                    if (!run || !run.locked) return {};
+                    return {
+                        runs: s.runs.map((r) =>
+                            r.id === run.id
+                                ? { ...r, locked: false, status: "draft" as const, lockedAt: undefined, policySnapshot: undefined }
+                                : r
                         ),
                     };
                 }),
@@ -588,7 +591,7 @@ export const usePayrollStore = create<PayrollState>()(
         }),
         {
             name: "nexhrms-payroll",
-            version: 7,
+            version: 8,
             storage: safePersistStorage,
             migrate: () => ({
                 payslips: [],
