@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useAppearanceStore } from "@/store/appearance.store";
 import { useEmployeesStore } from "@/store/employees.store";
-import { signIn, signUp } from "@/services/auth.service";
+import { signIn } from "@/services/auth.service";
 import { hydrateAllStores, startWriteThrough, startRealtime } from "@/services/sync.service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,13 +14,12 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronUp, Apple, CircleHelp, Chrome, ArrowLeftRight, ArrowLeft } from "lucide-react";
+import { ChevronDown, ChevronUp, Apple, CircleHelp, Chrome, ArrowLeft } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { createClient } from "@/services/supabase-browser";
 
 // Set to true to use local demo login (no Supabase required)
 const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-const ALLOW_SIGN_UP = process.env.NEXT_PUBLIC_ALLOW_SIGN_UP === "true";
 
 const DEMO_ACCOUNTS = [
     { role: "Admin", email: "admin@nexhrms.com", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
@@ -55,7 +54,7 @@ export default function LoginPage() {
     const [confirmPassword, setConfirmPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [showPayrollAccounts, setShowPayrollAccounts] = useState(false);
-    const [mode, setMode] = useState<"signIn" | "signUp" | "recovery">(ALLOW_SIGN_UP ? "signIn" : "recovery" === searchParams.get("type") ? "recovery" : "signIn");
+    const [mode, setMode] = useState<"signIn" | "recovery">("recovery" === searchParams.get("type") ? "recovery" : "signIn");
     const employees = useEmployeesStore((s) => s.employees);
     const supabase = useMemo(() => createClient(), []);
 
@@ -108,20 +107,6 @@ export default function LoginPage() {
     const handleSupabaseLogin = async (loginEmail: string, loginPassword: string) => {
         setLoading(true);
         try {
-            if (mode === "signUp") {
-                // signUp expects a single input object with required fields.
-                const res = await signUp({ email: loginEmail, password: loginPassword, name: loginEmail.split('@')[0] ?? '', role: 'employee' });
-                if (res.ok) {
-                    toast.success("Account created successfully. You can sign in now.");
-                    setMode("signIn");
-                    setLoading(false);
-                    return;
-                }
-                toast.error(res.error || "Unable to create account");
-                setLoading(false);
-                return;
-            }
-
             // Sign-in flow
             const res = await signIn(loginEmail, loginPassword);
             if (res.ok) {
@@ -344,7 +329,7 @@ export default function LoginPage() {
                             </>
                         )}
                         <Button type="submit" size="lg" className="w-full text-base font-semibold transition-transform active:scale-[0.99] shadow-md" disabled={loading}>
-                            {loading ? "Authenticating..." : mode === "recovery" ? "Update Password" : mode === "signUp" ? "Create Account" : "Secure Sign In"}
+                            {loading ? "Authenticating..." : mode === "recovery" ? "Update Password" : "Secure Sign In"}
                         </Button>
                     </form>
 
@@ -355,12 +340,7 @@ export default function LoginPage() {
                             <CircleHelp className="h-3.5 w-3.5" />
                             {mode === "recovery" ? "Back to sign in" : "Forgot password?"}
                         </button>
-                        {mode !== "recovery" ? (
-                            <button type="button" className="inline-flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => router.push("/signup")}>
-                                <ArrowLeftRight className="h-3.5 w-3.5" />
-                                Need an account? Sign up
-                            </button>
-                        ) : null}
+
                     </div>
 
                     {/* Divider */}

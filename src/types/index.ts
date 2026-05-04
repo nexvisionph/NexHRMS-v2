@@ -1157,3 +1157,25 @@ export interface AppearanceConfig {
 
 /** Alias for DemoUser — maps to profiles table */
 export type Profile = DemoUser;
+
+// ─── Performance Management Module ─────────────────────────────
+export {
+  type PerformanceCycle,
+  type PerformanceCycleStatus,
+  type PerformanceCriterion,
+  type PerformanceSalaryBand,
+  type PerformanceReview,
+  type ReviewStatus,
+  type PerformanceRating,
+  type PerformanceSalaryAdjustment,
+  type SalaryAdjustmentStatus,
+  type PerformanceAuditLog,
+  type CreateCycleInput,
+  type UpdateCycleInput,
+  type CreateCriterionInput,
+  type CreateReviewInput,
+  type SubmitReviewInput,
+  type AcknowledgeReviewInput,
+  type CreateSalaryBandInput,
+  type ApproveAdjustmentInput,
+} from "./performance";
