@@ -76,10 +76,13 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case "confirm":
-        // In the simplified flow, confirm is a no-op — go straight to publish
-        requiredStatus = "draft";
-        update = { status: "draft" };
-        break;
+        // True no-op in simplified flow — no DB write needed
+        return NextResponse.json({
+          ok: true,
+          successCount: payslipIds.length,
+          totalRequested: payslipIds.length,
+          message: "Confirm is a no-op in simplified flow",
+        });
       case "publish":
         requiredStatus = "draft";
         update = { status: "published", published_at: now };
