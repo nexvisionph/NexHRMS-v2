@@ -7,8 +7,8 @@ export type WorkType = "WFH" | "WFO" | "HYBRID" | "ONSITE";
 export type AttendanceStatus = "present" | "absent" | "on_leave";
 export type LeaveType = "SL" | "VL" | "EL" | "OTHER" | "ML" | "PL" | "SPL";
 export type LeaveStatus = "pending" | "approved" | "rejected";
-export type PayslipStatus = "draft" | "published" | "signed";
-export type PayrollRunStatus = "draft" | "locked" | "completed";
+export type PayslipStatus = "draft" | "published" | "signed" | "paid";
+export type PayrollRunStatus = "draft" | "locked" | "published" | "completed";
 export type FinalPayStatus = "draft" | "validated" | "locked" | "published" | "paid";
 
 // ─── Custom Deduction Templates ──────────────────────────────
@@ -1157,3 +1157,25 @@ export interface AppearanceConfig {
 
 /** Alias for DemoUser — maps to profiles table */
 export type Profile = DemoUser;
+
+// ─── Performance Management Module ─────────────────────────────
+export {
+  type PerformanceCycle,
+  type PerformanceCycleStatus,
+  type PerformanceCriterion,
+  type PerformanceSalaryBand,
+  type PerformanceReview,
+  type ReviewStatus,
+  type PerformanceRating,
+  type PerformanceSalaryAdjustment,
+  type SalaryAdjustmentStatus,
+  type PerformanceAuditLog,
+  type CreateCycleInput,
+  type UpdateCycleInput,
+  type CreateCriterionInput,
+  type CreateReviewInput,
+  type SubmitReviewInput,
+  type AcknowledgeReviewInput,
+  type CreateSalaryBandInput,
+  type ApproveAdjustmentInput,
+} from "./performance";
