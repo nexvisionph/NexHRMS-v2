@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Calculator, FileText } from "lucide-react";
 import { EmployeeCombobox } from "@/components/ui/employee-combobox";
+import { computeAllPHDeductions } from "@/lib/ph-deductions";
 import { toast } from "sonner";
 
 interface ComputeFinalPayDialogProps {
@@ -41,8 +42,8 @@ export function ComputeFinalPayDialog({
     const [extraLeaveDays, setExtraLeaveDays] = useState("");
 
     const resignedEmployees = useMemo(
-        () => employees.filter((e) => e.status === "resigned" && !existingIds.includes(e.id)),
-        [employees, existingIds]
+        () => employees.filter((e) => e.status === "resigned"),
+        [employees]
     );
 
     const selectedEmp = employees.find((e) => e.id === employeeId);
@@ -64,8 +65,10 @@ export function ComputeFinalPayDialog({
         const otPay = Math.round(otHours * hourlyRate * 1.25);
         const leavePay = Math.round(leaveDays * dailyRate);
         const gross = proRated + otPay + leavePay;
-        const net = Math.max(0, gross - autoLoan);
-        return { proRated, otPay, leavePay, gross, loan: autoLoan, net, dailyRate };
+        const govDeductions = computeAllPHDeductions(gross);
+        const totalDeductions = autoLoan + govDeductions.totalDeductions;
+        const net = Math.max(0, gross - totalDeductions);
+        return { proRated, otPay, leavePay, gross, loan: autoLoan, govDeductions, net, dailyRate };
     }, [selectedEmp, otHours, leaveDays, autoLoan]);
 
     const handleSubmit = () => {
@@ -80,6 +83,12 @@ export function ComputeFinalPayDialog({
         if (leaveDays < 0) {
             toast.error("Leave days cannot be negative");
             return;
+        }
+        // Confirmation if re-computing
+        if (existingIds.includes(employeeId)) {
+            if (!window.confirm("This will replace the existing final pay calculation. Continue?")) {
+                return;
+            }
         }
         try {
             onSubmit({
@@ -174,6 +183,30 @@ export function ComputeFinalPayDialog({
                                                 <div className="flex justify-between text-red-600 dark:text-red-400">
                                                     <span>Outstanding Loans</span>
                                                     <span>−{formatCurrency(preview.loan)}</span>
+                                                </div>
+                                            )}
+                                            {preview.govDeductions.sss > 0 && (
+                                                <div className="flex justify-between text-red-600 dark:text-red-400">
+                                                    <span>SSS</span>
+                                                    <span>−{formatCurrency(preview.govDeductions.sss)}</span>
+                                                </div>
+                                            )}
+                                            {preview.govDeductions.philHealth > 0 && (
+                                                <div className="flex justify-between text-red-600 dark:text-red-400">
+                                                    <span>PhilHealth</span>
+                                                    <span>−{formatCurrency(preview.govDeductions.philHealth)}</span>
+                                                </div>
+                                            )}
+                                            {preview.govDeductions.pagIBIG > 0 && (
+                                                <div className="flex justify-between text-red-600 dark:text-red-400">
+                                                    <span>Pag-IBIG</span>
+                                                    <span>−{formatCurrency(preview.govDeductions.pagIBIG)}</span>
+                                                </div>
+                                            )}
+                                            {preview.govDeductions.withholdingTax > 0 && (
+                                                <div className="flex justify-between text-red-600 dark:text-red-400">
+                                                    <span>Withholding Tax</span>
+                                                    <span>−{formatCurrency(preview.govDeductions.withholdingTax)}</span>
                                                 </div>
                                             )}
                                             <div className="flex justify-between font-bold text-sm border-t border-blue-200 dark:border-blue-800 pt-1">

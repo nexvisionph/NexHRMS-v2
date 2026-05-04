@@ -5,6 +5,7 @@ import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { Payslip, PayrollRun, PayrollAdjustment, PayScheduleConfig, FinalPayComputation, PayrollSignatureConfig, DeductionOverride, DeductionGlobalDefault, DeductionType } from "@/types";
 import { POLICY_VERSIONS } from "@/lib/constants";
+import { computeAllPHDeductions } from "@/lib/ph-deductions";
 
 export const DEFAULT_PAY_SCHEDULE: PayScheduleConfig = {
     defaultFrequency: "semi_monthly",
@@ -194,7 +195,7 @@ export const usePayrollStore = create<PayrollState>()(
                 set((s) => ({
                     payslips: s.payslips.map((p) =>
                         p.id === id && p.status === "published"
-                            ? { ...p, paidAt: new Date().toISOString(), paymentMethod, bankReferenceId }
+                            ? { ...p, status: "paid" as const, paidAt: new Date().toISOString(), paymentMethod, bankReferenceId }
                             : p
                     ),
                 })),
@@ -226,6 +227,7 @@ export const usePayrollStore = create<PayrollState>()(
                         p.id === id
                             ? { 
                                 ...p, 
+                                status: "paid" as const,
                                 paidAt: new Date().toISOString(), 
                                 paidConfirmedBy: confirmedBy, 
                                 paidConfirmedAt: new Date().toISOString(), 
@@ -345,6 +347,11 @@ export const usePayrollStore = create<PayrollState>()(
                     if (!run || !run.locked || run.status === "completed") return {};
                     const runPayslipIds = run.payslipIds ?? [];
                     return {
+                        runs: s.runs.map((r) =>
+                            r.periodLabel === runDate
+                                ? { ...r, status: "published" as const, publishedAt: new Date().toISOString() }
+                                : r
+                        ),
                         payslips: s.payslips.map((p) =>
                             runPayslipIds.includes(p.id) && p.status === "draft"
                                 ? { ...p, status: "published" as const, publishedAt: new Date().toISOString() }
@@ -435,8 +442,6 @@ export const usePayrollStore = create<PayrollState>()(
             // ─── Final Pay (§14) ───────────────────────────────────────
             computeFinalPay: (data) =>
                 set((s) => {
-                    const existing = s.finalPayComputations.find((f) => f.employeeId === data.employeeId);
-                    if (existing) return {}; // already computed
                     const resignDate = new Date(data.resignedAt);
                     // Pro-rate salary for the CURRENT PARTIAL MONTH only (last payroll to resignation)
                     const daysInMonth = new Date(resignDate.getFullYear(), resignDate.getMonth() + 1, 0).getDate();
@@ -449,7 +454,9 @@ export const usePayrollStore = create<PayrollState>()(
                     // Leave cash-out at daily rate
                     const leavePayout = Math.round(data.leaveDays * dailyRate);
                     const grossFinalPay = proRatedSalary + unpaidOT + leavePayout;
-                    const deductions = data.loanBalance;
+                    // Government deductions (SSS, PhilHealth, Pag-IBIG, withholding tax)
+                    const govDeductions = computeAllPHDeductions(grossFinalPay);
+                    const deductions = data.loanBalance + govDeductions.totalDeductions;
                     const netFinalPay = Math.max(0, grossFinalPay - deductions);
 
                     const comp: FinalPayComputation = {
@@ -466,7 +473,9 @@ export const usePayrollStore = create<PayrollState>()(
                         status: "draft",
                         createdAt: new Date().toISOString(),
                     };
-                    return { finalPayComputations: [...s.finalPayComputations, comp] };
+                    // Replace existing computation if present, otherwise append
+                    const filtered = s.finalPayComputations.filter((f) => f.employeeId !== data.employeeId);
+                    return { finalPayComputations: [...filtered, comp] };
                 }),
 
             getFinalPay: (employeeId) =>
