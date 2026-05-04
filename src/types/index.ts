@@ -337,6 +337,12 @@ export interface AttendanceLog {
   date: string;
   checkIn?: string;
   checkOut?: string;
+  checkInMethod?: "fingerprint" | "face" | "rfid" | "pin" | "manual";
+  checkOutMethod?: "fingerprint" | "face" | "rfid" | "pin" | "manual";
+  checkInDeviceId?: string;
+  checkOutDeviceId?: string;
+  source?: "biometric" | "manual" | "mobile";
+  needsReview?: boolean;
   hours?: number;
   status: AttendanceStatus;
   projectId?: string;
@@ -420,6 +426,15 @@ export interface Timesheet {
   approvedBy?: string;
   approvedAt?: string;
 }
+
+// ─── Biometric Integration ───────────────────────────────────
+export {
+  type BiometricMethod,
+  type BiometricLogType,
+  type BiometricDevice,
+  type BiometricEnrollment,
+  type BiometricLog,
+} from "./biometric";
 
 // ─── Leave Engine (§9) ───────────────────────────────────────
 
