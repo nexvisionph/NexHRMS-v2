@@ -50,6 +50,7 @@ import { useProjectsStore } from "@/store/projects.store";
 import { ThirteenthMonthModal } from "@/components/payroll/thirteenth-month-modal";
 import { ExportBackupDialog } from "@/components/export-backup-dialog";
 import { ImportDataDialog } from "@/components/import-data-dialog";
+import PayrollPaymentWizard from "@/features/payroll-payment/payroll-payment-wizard";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -797,6 +798,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
             <Tabs defaultValue="payslips">
                 <TabsList className="w-full justify-start">
                     <TabsTrigger value="payslips">Payslips</TabsTrigger>
+                    {canIssue && <TabsTrigger value="payment-workflow" className="gap-1.5"><CreditCard className="h-3.5 w-3.5" /> Payment Workflow</TabsTrigger>}
                     <TabsTrigger value="runs">Payroll Runs</TabsTrigger>
                     {canIssue && <TabsTrigger value="management" className="gap-1.5"><PenTool className="h-3.5 w-3.5" /> Management</TabsTrigger>}
                     {canIssue && <TabsTrigger value="deductions" className="gap-1.5"><Calculator className="h-3.5 w-3.5" /> Deduction/Allowance</TabsTrigger>}
@@ -994,6 +996,12 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                         </div>
                     )}
                 </TabsContent>
+
+                {canIssue && (
+                    <TabsContent value="payment-workflow" className="mt-4">
+                        <PayrollPaymentWizard />
+                    </TabsContent>
+                )}
 
                 {/* Runs Tab */}
                 <TabsContent value="runs" className="mt-4">
