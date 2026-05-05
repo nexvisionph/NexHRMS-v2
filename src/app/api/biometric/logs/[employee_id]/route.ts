@@ -18,6 +18,16 @@ async function getCurrentEmployee(supabase: Awaited<ReturnType<typeof createClie
   return byProfile || null;
 }
 
+function manilaDateBoundaryUtc(date: string, endOfDay = false) {
+  const [year, month, day] = date.split("-").map(Number);
+  if (!year || !month || !day) return null;
+
+  const nextDayOffset = endOfDay ? 1 : 0;
+  const utcMs = Date.UTC(year, month - 1, day + nextDayOffset) - (8 * 60 * 60 * 1000);
+  const boundaryMs = endOfDay ? utcMs - 1 : utcMs;
+  return new Date(boundaryMs).toISOString();
+}
+
 export async function GET(req: Request, { params }: { params: Promise<{ employee_id: string }> }) {
   const { employee_id } = await params;
   try {
@@ -47,8 +57,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ employee
       .eq("company_id", employee.company_id || "default")
       .eq("employee_id", employee_id);
 
-    if (dateFrom) query = query.gte("logged_at", `${dateFrom}T00:00:00.000Z`);
-    if (dateTo) query = query.lte("logged_at", `${dateTo}T23:59:59.999Z`);
+    const dateFromUtc = dateFrom ? manilaDateBoundaryUtc(dateFrom) : null;
+    const dateToUtc = dateTo ? manilaDateBoundaryUtc(dateTo, true) : null;
+
+    if (dateFromUtc) query = query.gte("logged_at", dateFromUtc);
+    if (dateToUtc) query = query.lte("logged_at", dateToUtc);
 
     const { data, error } = await query.order("logged_at", { ascending: false }).limit(500);
 

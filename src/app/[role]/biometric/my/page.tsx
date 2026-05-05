@@ -90,6 +90,13 @@ function prettify(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function formatDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function MyBiometricPage() {
   const currentUser = useAuthStore((s) => s.currentUser);
   const employees = useEmployeesStore((s) => s.employees);
@@ -101,9 +108,12 @@ export default function MyBiometricPage() {
   const [biometricLogs, setBiometricLogs] = useState<BiometricLogRow[]>([]);
   const [exceptions, setExceptions] = useState<ExceptionRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [dateFrom, setDateFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
-  const [exceptionDate, setExceptionDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateFrom, setDateFrom] = useState(() => {
+    const now = new Date();
+    return formatDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1));
+  });
+  const [dateTo, setDateTo] = useState(() => formatDateInputValue(new Date()));
+  const [exceptionDate, setExceptionDate] = useState(() => formatDateInputValue(new Date()));
   const [exceptionFlag, setExceptionFlag] = useState<(typeof EXCEPTION_FLAGS)[number]>("missing_in");
   const [exceptionNotes, setExceptionNotes] = useState("");
 
@@ -236,7 +246,7 @@ export default function MyBiometricPage() {
     const blob = new Blob([csv], { type: "text/csv" });
     const anchor = document.createElement("a");
     anchor.href = URL.createObjectURL(blob);
-    anchor.download = `my-biometric-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.download = `my-biometric-logs-${formatDateInputValue(new Date())}.csv`;
     anchor.click();
     URL.revokeObjectURL(anchor.href);
   };
