@@ -181,6 +181,12 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     const last6Months = useMemo(() => Array.from({ length: 6 }, (_, i) => format(subMonths(new Date(), i), "yyyy-MM")), []);
     const last12Months = useMemo(() => Array.from({ length: 12 }, (_, i) => format(subMonths(new Date(), i), "yyyy-MM")), []);
     const activeEmployees = useMemo(() => employees.filter((e) => e.status === "active"), [employees]);
+    const [empSearchTerm, setEmpSearchTerm] = useState("");
+    const filteredActiveEmployees = useMemo(() => {
+        if (!empSearchTerm.trim()) return activeEmployees;
+        const q = empSearchTerm.toLowerCase();
+        return activeEmployees.filter((e) => e.name.toLowerCase().includes(q) || e.department.toLowerCase().includes(q) || e.role.toLowerCase().includes(q));
+    }, [activeEmployees, empSearchTerm]);
     const allSelected = selectedEmployeeIds.length === activeEmployees.length && activeEmployees.length > 0;
 
     // ─── Filtered & paginated payslips ───────────────────────────
@@ -395,7 +401,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         if (skippedDuplicates > 0) toast.warning(`${skippedDuplicates} employee${skippedDuplicates > 1 ? "s" : ""} already had payslips for this period — skipped.`);
         if (successCount > 0) toast.success(`Issued ${successCount} payslip${successCount > 1 ? "s" : ""}${loanMsg}`);
         else if (skippedDuplicates > 0) toast.info("No new payslips issued — all selected employees already have payslips for this period.");
-        setOpen(false); setSelectedEmployeeIds([]); setFormAllowances("0"); setFormOtherDeductions("0"); setFormOTHours("0"); setFormNightDiffHours("0"); setFormNotes(""); setFormIssuedAt(format(new Date(), "yyyy-MM-dd"));
+        setOpen(false); setSelectedEmployeeIds([]); setFormAllowances("0"); setFormOtherDeductions("0"); setFormOTHours("0"); setFormNightDiffHours("0"); setFormNotes(""); setFormIssuedAt(format(new Date(), "yyyy-MM-dd")); setEmpSearchTerm("");
         } catch (err) {
             toast.error(`Payslip issuance failed: ${err instanceof Error ? err.message : "Unknown error"}`);
         }
@@ -630,12 +636,14 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                     {isCutoffPeriodLocked ? <Lock className="h-4 w-4" /> : <Plus className="h-4 w-4" />} Issue Payslip
                                 </Button>
                             </DialogTrigger>
-                            <DialogContent className="max-w-2xl flex flex-col max-h-[90vh]">
+                            <DialogContent className="max-w-6xl w-[95vw] flex flex-col max-h-[90vh]">
                                 <DialogHeader className="shrink-0">
                                     <DialogTitle>Issue Payslip — Bulk</DialogTitle>
-                                    <p className="text-sm text-muted-foreground mt-1">Select employees to issue payslips.</p>
+                                    <p className="text-sm text-muted-foreground mt-1">Configure pay period, select employees, and issue payslips.</p>
                                 </DialogHeader>
-                                <div className="space-y-4 pt-1 overflow-y-auto pr-1">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-1 overflow-y-auto pr-1">
+                                    {/* ── Left Column: Config ── */}
+                                    <div className="space-y-4">
                                     {/* Pay Period */}
                                     <div>
                                         <label className="text-sm font-medium">Pay Period</label>
@@ -659,17 +667,24 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                     </div>
                                     {/* Issue Date */}
                                     <div><label className="text-sm font-medium">Issue Date</label><Input type="date" value={formIssuedAt} onChange={(e) => setFormIssuedAt(e.target.value)} className="mt-1" /></div>
+                                    </div>
+                                    {/* ── Right Column: Employees ── */}
+                                    <div className="space-y-4">
                                     {/* Employee Selection */}
                                     <div>
                                         <div className="flex items-center justify-between mb-2">
                                             <label className="text-sm font-medium">Select Employees ({selectedEmployeeIds.length} selected)</label>
                                             <Button type="button" variant="outline" size="sm" onClick={toggleSelectAll} className="h-8 text-xs">{allSelected ? "Deselect All" : "Select All"}</Button>
                                         </div>
+                                        <div className="relative mb-2">
+                                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                            <Input placeholder="Search employees..." value={empSearchTerm} onChange={(e) => setEmpSearchTerm(e.target.value)} className="pl-8 h-8 text-xs" />
+                                        </div>
                                         <Card className="border border-border/50 max-h-[280px] overflow-y-auto">
                                             <CardContent className="p-2 space-y-1">
-                                                {activeEmployees.length === 0 ? (
-                                                    <p className="text-sm text-muted-foreground text-center py-4">No active employees</p>
-                                                ) : activeEmployees.map((emp) => {
+                                                {filteredActiveEmployees.length === 0 ? (
+                                                    <p className="text-sm text-muted-foreground text-center py-4">{empSearchTerm ? "No employees match search" : "No active employees"}</p>
+                                                ) : filteredActiveEmployees.map((emp) => {
                                                     const alreadyIssued = !!(cutoffDates.start && cutoffDates.end && payslips.some(
                                                         (p) => p.employeeId === emp.id && p.periodStart === cutoffDates.start && p.periodEnd === cutoffDates.end
                                                     ));
@@ -695,6 +710,9 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                             </CardContent>
                                         </Card>
                                     </div>
+                                    </div>
+                                    {/* ── Full Width: Details ── */}
+                                    <div className="lg:col-span-2 space-y-4">
                                     {/* Allowances & Deductions */}
                                     <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
                                         <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">Applied to ALL selected</p>
@@ -786,6 +804,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                     <Button onClick={handleIssue} className="w-full" disabled={selectedEmployeeIds.length === 0}>
                                         Issue {selectedEmployeeIds.length} Payslip{selectedEmployeeIds.length !== 1 ? "s" : ""}
                                     </Button>
+                                </div>
                                 </div>
                             </DialogContent>
                         </Dialog>

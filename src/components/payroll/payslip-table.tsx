@@ -26,6 +26,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
     draft: { label: "Draft", color: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
     published: { label: "Published", color: "bg-violet-500/15 text-violet-700 dark:text-violet-400" },
     signed: { label: "Signed", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
+    paid: { label: "Paid", color: "bg-blue-500/15 text-blue-700 dark:text-blue-400" },
 };
 
 type PaymentMethod = "bank_transfer" | "gcash" | "cash" | "check";
@@ -246,13 +247,14 @@ export function PayslipTable({ payslips, getEmpName, onMarkPaid, isAdmin }: Pays
                                                         >
                                                             <Eye className="h-3.5 w-3.5" />
                                                         </Button>
-                                                        {isAdmin && ps.status === "published" && (
+                                                        {isAdmin && (ps.status === "published" || ps.status === "signed") && (
                                                             <Button
                                                                 variant="ghost"
                                                                 size="sm"
-                                                                className="h-7 w-7 p-0 text-emerald-600"
-                                                                onClick={() => setMarkPaidId(ps.id)}
-                                                                title="Mark as Paid"
+                                                                className={`h-7 w-7 p-0 ${ps.signedAt ? "text-emerald-600" : "text-muted-foreground/40 cursor-not-allowed"}`}
+                                                                onClick={() => ps.signedAt ? setMarkPaidId(ps.id) : null}
+                                                                disabled={!ps.signedAt}
+                                                                title={ps.signedAt ? "Mark as Paid" : "Awaiting employee signature"}
                                                             >
                                                                 <CreditCard className="h-3.5 w-3.5" />
                                                             </Button>

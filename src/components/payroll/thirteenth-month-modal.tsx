@@ -268,7 +268,7 @@ export function ThirteenthMonthModal({
 
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
-            <DialogContent className="!max-w-5xl w-full h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
+            <DialogContent className="!max-w-5xl w-full max-h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
                 {/* Header */}
                 <div className="px-6 py-4 border-b bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30">
                     <DialogHeader>

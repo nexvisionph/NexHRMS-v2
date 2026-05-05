@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { usePayrollStore } from "@/store/payroll.store";
 import { useAttendanceStore } from "@/store/attendance.store";
 import { useLeaveStore } from "@/store/leave.store";
@@ -26,6 +27,8 @@ import {
     Eye,
     ChevronDown,
     ChevronUp,
+    ArrowRight,
+    ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -47,6 +50,10 @@ interface PayrollReadinessChecklistProps {
     payslipIds: string[];
     /** Callback fired whenever blocking-check result changes */
     onAllChecksPassed: (passed: boolean) => void;
+    /** Switch to a tab in the parent Payroll page */
+    onSwitchTab?: (tab: string) => void;
+    /** Current user role for cross-page links */
+    role?: string;
 }
 
 interface CheckResult {
@@ -57,6 +64,7 @@ interface CheckResult {
     message: string;
     count?: number;
     icon: React.ReactNode;
+    navHint?: { label: string; tab?: string; href?: string };
 }
 
 export function PayrollReadinessChecklist({
@@ -64,6 +72,8 @@ export function PayrollReadinessChecklist({
     periodLabel,
     payslipIds,
     onAllChecksPassed,
+    onSwitchTab,
+    role = "admin",
 }: PayrollReadinessChecklistProps) {
     // ── Store selectors ──────────────────────────────────────────
     const payslips = usePayrollStore((s) => s.payslips);
@@ -112,6 +122,7 @@ export function PayrollReadinessChecklist({
                     : `${missingOuts.length} employee(s) have missing clock-out in this period`,
             count: missingOuts.length,
             icon: <Clock className="h-4 w-4" />,
+            navHint: { label: "Go to Attendance", href: `/${role}/attendance` },
         };
 
         // Check 2 — Payslips exist for this run (BLOCKING)
@@ -126,6 +137,7 @@ export function PayrollReadinessChecklist({
                     : "No payslips have been generated for this run",
             count: runPayslips.length,
             icon: <FileText className="h-4 w-4" />,
+            navHint: { label: "Issue Payslips", tab: "payslips" },
         };
 
         // Check 3 — No zero or negative net pay (BLOCKING)
@@ -141,6 +153,7 @@ export function PayrollReadinessChecklist({
                     : `${badNetPay.length} payslip(s) have ₱0 or negative net pay`,
             count: badNetPay.length,
             icon: <Banknote className="h-4 w-4" />,
+            navHint: { label: "View Payslips", tab: "payslips" },
         };
 
         // Check 4 — All payslips published (BLOCKING)
@@ -174,6 +187,7 @@ export function PayrollReadinessChecklist({
                     : `${pendingLeaves.length} leave request(s) are still pending — may affect attendance`,
             count: pendingLeaves.length,
             icon: <CalendarClock className="h-4 w-4" />,
+            navHint: { label: "Go to Leave", href: `/${role}/leave` },
         };
 
         // Check 6 — No pending payroll adjustments (WARNING)
@@ -189,6 +203,7 @@ export function PayrollReadinessChecklist({
                     : `${pendingAdj.length} adjustment(s) are pending and may not be included`,
             count: pendingAdj.length,
             icon: <Settings2 className="h-4 w-4" />,
+            navHint: { label: "View Management", tab: "management" },
         };
 
         return [check1, check2, check3, check4, check5, check6];
@@ -381,6 +396,24 @@ export function PayrollReadinessChecklist({
                                             </Table>
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {/* Quick-nav for other failed checks */}
+                            {!check.passed && check.id !== "all-published" && check.navHint && (
+                                <div className="mt-1.5 ml-6">
+                                    {check.navHint.href ? (
+                                        <Link href={check.navHint.href}>
+                                            <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1">
+                                                <ExternalLink className="h-3 w-3" /> {check.navHint.label}
+                                            </Button>
+                                        </Link>
+                                    ) : check.navHint.tab && onSwitchTab ? (
+                                        <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1"
+                                            onClick={() => onSwitchTab(check.navHint!.tab!)}>
+                                            <ArrowRight className="h-3 w-3" /> {check.navHint.label}
+                                        </Button>
+                                    ) : null}
                                 </div>
                             )}
                         </div>
