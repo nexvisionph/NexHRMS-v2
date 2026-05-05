@@ -151,6 +151,7 @@ export default function AdminTasksView() {
 
     // ── Task view mode (table / board) ───────────────────────
     const [taskViewMode, setTaskViewMode] = useState<"table" | "board">("table");
+    const [activeTab, setActiveTab] = useState("tasks");
 
     // ── Sorting ───────────────────────────────────────────────
     const [sortField, setSortField] = useState<"title" | "priority" | "dueDate" | "status" | "createdAt">("createdAt");
@@ -645,7 +646,7 @@ export default function AdminTasksView() {
             </div>
 
             {/* ── Main Tabs ────────────────────────────────── */}
-            <Tabs defaultValue="tasks">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <TabsList>
                         <TabsTrigger value="tasks" className="gap-1.5 text-xs sm:text-sm">
@@ -676,7 +677,8 @@ export default function AdminTasksView() {
                         </TabsTrigger>
                     </TabsList>
 
-                    {/* View mode toggle — visible context for All Tasks tab */}
+                    {/* View mode toggle — only visible on All Tasks tab */}
+                    {activeTab === "tasks" && (
                     <div className="flex items-center gap-1 border rounded-md p-0.5">
                         <Button
                             variant={taskViewMode === "table" ? "secondary" : "ghost"}
@@ -697,6 +699,7 @@ export default function AdminTasksView() {
                             <LayoutGrid className="h-3.5 w-3.5" />
                         </Button>
                     </div>
+                    )}
                 </div>
 
 
