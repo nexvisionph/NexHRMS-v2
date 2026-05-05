@@ -34,7 +34,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: typeof 
 };
 
 export default function EmployeePayrollView() {
-    const { payslips, updatePayslipFromServer, signatureConfig } = usePayrollStore();
+    const { payslips, runs, updatePayslipFromServer, signatureConfig, isPayslipRunLocked } = usePayrollStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
 
@@ -64,8 +64,8 @@ export default function EmployeePayrollView() {
     // ─── Computed stats ───────────────────────────────────────────
     const totalEarned = useMemo(() => myPayslips.reduce((s, p) => s + p.netPay, 0), [myPayslips]);
     const latestPayslip = myPayslips[0];
-    // Employees can sign once payslip is published (simplified flow: published → signed)
-    const pendingSign = useMemo(() => myPayslips.filter((p) => p.status === "published" && !p.signedAt), [myPayslips]);
+    // Employees can sign only when payslip is published AND its payroll run is locked
+    const pendingSign = useMemo(() => myPayslips.filter((p) => p.status === "published" && !p.signedAt && isPayslipRunLocked(p.id)), [myPayslips, runs]);
     const pendingAck = useMemo(() => [] as typeof myPayslips, []);
 
     // ─── E-Sign handler (calls API first, then updates store with server data) ───
@@ -307,7 +307,7 @@ export default function EmployeePayrollView() {
                                         ) : myPayslips.map((ps) => {
                                             const sc = statusConfig[ps.status] || statusConfig.draft;
                                             const totalDed = (ps.sssDeduction || 0) + (ps.philhealthDeduction || 0) + (ps.pagibigDeduction || 0) + (ps.taxDeduction || 0) + (ps.otherDeductions || 0) + (ps.loanDeduction || 0);
-                                            const canSign = ps.status === "published" && !ps.signedAt;
+                                            const canSign = ps.status === "published" && !ps.signedAt && isPayslipRunLocked(ps.id);
                                             return (
                                                 <TableRow key={ps.id}>
                                                     <TableCell className="text-xs text-muted-foreground">{ps.periodStart} – {ps.periodEnd}</TableCell>
@@ -335,6 +335,10 @@ export default function EmployeePayrollView() {
                                                                 <PenTool className="h-3.5 w-3.5" />
                                                                 <span className="text-xs font-medium">E-Sign</span>
                                                             </Button>
+                                                        ) : ps.status === "published" && !ps.signedAt ? (
+                                                            <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1" title="Payroll run must be locked before you can sign">
+                                                                <AlertCircle className="h-3 w-3" /> Run not locked
+                                                            </span>
                                                         ) : (
                                                             <span className="text-[10px] text-muted-foreground flex items-center gap-1" title="Payslip must be published before you can sign">
                                                                 <Info className="h-3 w-3" /> Pending
@@ -544,7 +548,7 @@ export default function EmployeePayrollView() {
                                                     </div>
                                                 )}
                                             </div>
-                                        ) : viewedPayslip.status === "published" ? (
+                                        ) : viewedPayslip.status === "published" && isPayslipRunLocked(viewedPayslip.id) ? (
                                             <div className="space-y-2">
                                                 <Button
                                                     className="w-full gap-2 bg-violet-600 hover:bg-violet-700 text-white"
@@ -556,6 +560,13 @@ export default function EmployeePayrollView() {
                                                 <p className="text-[10px] text-muted-foreground text-center">
                                                     Sign to acknowledge you have reviewed and accepted this payslip
                                                 </p>
+                                            </div>
+                                        ) : viewedPayslip.status === "published" ? (
+                                            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md text-center space-y-1">
+                                                <p className="text-xs text-amber-700 dark:text-amber-400 font-medium flex items-center justify-center gap-1.5">
+                                                    <AlertCircle className="h-3.5 w-3.5" /> Payroll run not locked yet
+                                                </p>
+                                                <p className="text-[10px] text-amber-600 dark:text-amber-500">You can sign once the payroll admin locks the payroll run.</p>
                                             </div>
                                         ) : (
                                             <div className="p-3 bg-muted/30 rounded-md text-center">

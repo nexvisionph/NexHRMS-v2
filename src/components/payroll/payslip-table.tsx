@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { Payslip } from "@/types";
+import type { Payslip, PayrollRun } from "@/types";
 import { formatCurrency } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Eye, CheckCircle, CreditCard, Search, FileText, Upload, Image } from "lucide-react";
+import { Eye, CheckCircle, CreditCard, Search, FileText, Upload, Image, Lock } from "lucide-react";
 import { PayslipDetail } from "./payslip-detail";
 import { PayslipSignatureViewer } from "./payslip-signature-viewer";
 import { toast } from "sonner";
@@ -33,12 +33,18 @@ type PaymentMethod = "bank_transfer" | "gcash" | "cash" | "check";
 
 interface PayslipTableProps {
     payslips: Payslip[];
+    runs?: PayrollRun[];
     getEmpName: (id: string) => string;
     onMarkPaid?: (id: string, method: PaymentMethod, reference: string, cashAmount?: number, paymentProofUrl?: string) => void;
     isAdmin?: boolean;
 }
 
-export function PayslipTable({ payslips, getEmpName, onMarkPaid, isAdmin }: PayslipTableProps) {
+export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAdmin }: PayslipTableProps) {
+    const isPayslipRunLocked = (ps: Payslip) => {
+        if (!ps.payrollBatchId) return false;
+        const run = runs.find((r) => r.id === ps.payrollBatchId);
+        return !!run?.locked;
+    };
     const [statusFilter, setStatusFilter] = useState("all");
     const [signedFilter, setSignedFilter] = useState("all");
     const [searchTerm, setSearchTerm] = useState("");
@@ -247,18 +253,23 @@ export function PayslipTable({ payslips, getEmpName, onMarkPaid, isAdmin }: Pays
                                                         >
                                                             <Eye className="h-3.5 w-3.5" />
                                                         </Button>
-                                                        {isAdmin && (ps.status === "published" || ps.status === "signed") && (
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className={`h-7 w-7 p-0 ${ps.signedAt ? "text-emerald-600" : "text-muted-foreground/40 cursor-not-allowed"}`}
-                                                                onClick={() => ps.signedAt ? setMarkPaidId(ps.id) : null}
-                                                                disabled={!ps.signedAt}
-                                                                title={ps.signedAt ? "Mark as Paid" : "Awaiting employee signature"}
-                                                            >
-                                                                <CreditCard className="h-3.5 w-3.5" />
-                                                            </Button>
-                                                        )}
+                                                        {isAdmin && (ps.status === "published" || ps.status === "signed") && (() => {
+                                                            const runLocked = isPayslipRunLocked(ps);
+                                                            const canPay = !!ps.signedAt && runLocked;
+                                                            const title = !runLocked ? "Payroll run must be locked first" : !ps.signedAt ? "Awaiting employee signature" : "Mark as Paid";
+                                                            return (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className={`h-7 w-7 p-0 ${canPay ? "text-emerald-600" : "text-muted-foreground/40 cursor-not-allowed"}`}
+                                                                    onClick={() => canPay ? setMarkPaidId(ps.id) : null}
+                                                                    disabled={!canPay}
+                                                                    title={title}
+                                                                >
+                                                                    {!runLocked ? <Lock className="h-3.5 w-3.5" /> : <CreditCard className="h-3.5 w-3.5" />}
+                                                                </Button>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
