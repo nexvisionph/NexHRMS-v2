@@ -20,7 +20,7 @@ const METHOD_COLORS: Record<string, { bg: string; text: string }> = {
   manual: { bg: "#EF4444", text: "#ffffff" },
 };
 
-const METHOD_OPTIONS = ["all", "fingerprint", "face", "rfid", "pin", "manual"];
+const METHOD_OPTIONS = ["all", "fingerprint", "face", "palm", "rfid", "pin", "manual"];
 
 type LogRow = {
   id: string;

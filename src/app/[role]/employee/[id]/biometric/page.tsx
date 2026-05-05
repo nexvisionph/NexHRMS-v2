@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
-const METHODS = ["fingerprint", "face", "rfid", "pin"] as const;
+const METHODS = ["fingerprint", "face", "palm", "rfid", "pin"] as const;
 
 type EnrollmentRow = {
   id: string;

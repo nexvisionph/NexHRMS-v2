@@ -46,6 +46,7 @@ import {
     QrCode,
     ScanFace,
     UserCircle,
+    Fingerprint,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEffect, useMemo, useCallback, memo } from "react";
@@ -77,6 +78,7 @@ const iconMap: Record<string, React.ElementType> = {
     QrCode,
     ScanFace,
     UserCircle,
+    Fingerprint,
 };
 
 function SidebarComponent() {
