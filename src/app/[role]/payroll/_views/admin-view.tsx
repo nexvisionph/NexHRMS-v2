@@ -1087,7 +1087,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                                         </AlertDialogContent>
                                                                     </AlertDialog>
                                                                 )}
-                                                                {locked && canLock && (
+                                                                {locked && canLock && runStatus !== "completed" && (
                                                                     <AlertDialog>
                                                                         <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500" title="Unlock for correction"><LockOpen className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
                                                                         <AlertDialogContent>
