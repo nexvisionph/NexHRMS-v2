@@ -14,7 +14,7 @@ export async function GET() {
 
     const { data: employee } = await supabase
       .from("employees")
-      .select("role")
+      .select("role, company_id")
       .eq("id", user.id)
       .single();
 
@@ -25,6 +25,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from("biometric_devices")
       .select("id, name, location, device_type, supported_methods, is_active, last_synced_at, api_key_last4, created_at")
+      .eq("company_id", employee.company_id || "default")
       .order("created_at", { ascending: false });
 
     if (error) throw error;
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
     const { data, error } = await supabase
       .from("biometric_devices")
       .insert({
-        company_id: employee.company_id,
+        company_id: employee.company_id || "default",
         name,
         location: location || null,
         device_type: device_type || null,

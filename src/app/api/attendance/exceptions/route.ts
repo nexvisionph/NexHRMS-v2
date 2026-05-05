@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Missing required fields: employeeId, date, flag" }, { status: 400 });
         }
 
-        const validFlags = ["missing_in", "missing_out", "duplicate_scan", "out_of_geofence", "device_mismatch", "late_arrival", "early_departure", "suspicious_activity"];
+        const validFlags = ["missing_in", "missing_out", "duplicate_scan", "out_of_geofence", "device_mismatch", "overtime_without_approval", "late_arrival", "early_departure", "suspicious_activity"];
         if (!validFlags.includes(flag)) {
             return NextResponse.json({ error: `Invalid flag. Must be one of: ${validFlags.join(", ")}` }, { status: 400 });
         }

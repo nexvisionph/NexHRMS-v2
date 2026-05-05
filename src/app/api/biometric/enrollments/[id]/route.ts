@@ -5,14 +5,14 @@ import { getCurrentUserFromCookie } from "@/services/auth.service";
 async function getCurrentEmployee(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const { data: byId } = await supabase
     .from("employees")
-    .select("id, role, profile_id")
+    .select("id, role, profile_id, company_id")
     .eq("id", userId)
     .maybeSingle();
   if (byId?.id) return byId;
 
   const { data: byProfile } = await supabase
     .from("employees")
-    .select("id, role, profile_id")
+    .select("id, role, profile_id, company_id")
     .eq("profile_id", userId)
     .maybeSingle();
   return byProfile || null;
@@ -39,6 +39,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .from("biometric_enrollments")
       .select("*, enrolled_by_employee:employees(id, name, email)")
       .eq("employee_id", id)
+      .eq("company_id", currentEmp?.company_id || "default")
       .order("enrolled_at", { ascending: false });
 
     if (error) throw error;
@@ -68,6 +69,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       .from("biometric_enrollments")
       .update({ is_active: false })
       .eq("id", id)
+      .eq("company_id", currentEmp.company_id || "default")
       .select()
       .single();
 

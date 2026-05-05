@@ -14,7 +14,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const { data: employee } = await supabase
       .from("employees")
-      .select("role")
+      .select("role, company_id")
       .eq("id", user.id)
       .single();
 
@@ -35,6 +35,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .from("biometric_devices")
       .update(updates)
       .eq("id", id)
+      .eq("company_id", employee.company_id || "default")
       .select("id, name, location, device_type, supported_methods, is_active, last_synced_at, api_key_last4, created_at")
       .single();
 

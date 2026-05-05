@@ -13,7 +13,7 @@ export async function GET(req: Request) {
 
     const { data: employee } = await supabase
       .from("employees")
-      .select("role")
+      .select("role, company_id")
       .eq("id", user.id)
       .single();
 
@@ -32,7 +32,8 @@ export async function GET(req: Request) {
       .from("biometric_logs")
       .select(
         "*, employee:employees(id, name, email, department), device:biometric_devices(id, name, location, device_type)"
-      );
+      )
+      .eq("company_id", employee.company_id || "default");
 
     if (dateFrom) query = query.gte("logged_at", `${dateFrom}T00:00:00.000Z`);
     if (dateTo) query = query.lte("logged_at", `${dateTo}T23:59:59.999Z`);

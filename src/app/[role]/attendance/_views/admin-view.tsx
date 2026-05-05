@@ -81,18 +81,28 @@ const otStatusColor: Record<string, string> = { pending: "bg-amber-500/15 text-a
 const methodColors: Record<string, { bg: string; text: string }> = {
     fingerprint: { bg: "#22C55E", text: "#ffffff" },
     face: { bg: "#3B82F6", text: "#ffffff" },
+    palm: { bg: "#14B8A6", text: "#ffffff" },
     rfid: { bg: "#EAB308", text: "#111827" },
     pin: { bg: "#F97316", text: "#ffffff" },
     manual: { bg: "#EF4444", text: "#ffffff" },
+};
+const methodLabels: Record<string, string> = {
+    fingerprint: "Fingerprint",
+    face: "Face Scan",
+    palm: "Palm Scan",
+    rfid: "RFID",
+    pin: "PIN",
+    manual: "Manual",
 };
 
 function MethodBadge({ method }: { method?: string }) {
     if (!method) return <span className="text-muted-foreground">—</span>;
     const color = methodColors[method];
-    if (!color) return <Badge variant="outline" className="text-[10px]">{method}</Badge>;
+    const label = methodLabels[method] || method;
+    if (!color) return <Badge variant="outline" className="text-[10px]">{label}</Badge>;
     return (
         <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: color.bg, color: color.text }}>
-            {method.toUpperCase()}
+            {label}
         </span>
     );
 }
