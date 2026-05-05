@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useEffect, useRef, useState } from "react";
+import { useMemo, useEffect, useRef } from "react";
+import Link from "next/link";
 import { usePayrollStore } from "@/store/payroll.store";
 import { useAttendanceStore } from "@/store/attendance.store";
 import { useLeaveStore } from "@/store/leave.store";
@@ -8,9 +9,6 @@ import { useEmployeesStore } from "@/store/employees.store";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import {
     CheckCircle2,
     XCircle,
@@ -21,13 +19,9 @@ import {
     Banknote,
     CalendarClock,
     Settings2,
-    FileWarning,
-    Send,
-    Eye,
-    ChevronDown,
-    ChevronUp,
+    ArrowRight,
+    ExternalLink,
 } from "lucide-react";
-import { toast } from "sonner";
 
 /* ═══════════════════════════════════════════════════════════════
    Payroll Pre-Run Readiness Checklist (FEAT-01 / FEAT-02)
@@ -47,6 +41,10 @@ interface PayrollReadinessChecklistProps {
     payslipIds: string[];
     /** Callback fired whenever blocking-check result changes */
     onAllChecksPassed: (passed: boolean) => void;
+    /** Switch to a tab in the parent Payroll page */
+    onSwitchTab?: (tab: string) => void;
+    /** Current user role for cross-page links */
+    role?: string;
 }
 
 interface CheckResult {
@@ -57,6 +55,7 @@ interface CheckResult {
     message: string;
     count?: number;
     icon: React.ReactNode;
+    navHint?: { label: string; tab?: string; href?: string };
 }
 
 export function PayrollReadinessChecklist({
@@ -64,16 +63,15 @@ export function PayrollReadinessChecklist({
     periodLabel,
     payslipIds,
     onAllChecksPassed,
+    onSwitchTab,
+    role = "admin",
 }: PayrollReadinessChecklistProps) {
     // ── Store selectors ──────────────────────────────────────────
     const payslips = usePayrollStore((s) => s.payslips);
     const adjustments = usePayrollStore((s) => s.adjustments);
-    const publishPayslip = usePayrollStore((s) => s.publishPayslip);
     const exceptions = useAttendanceStore((s) => s.exceptions);
     const getPendingLeaves = useLeaveStore((s) => s.getPending);
     const employees = useEmployeesStore((s) => s.employees);
-
-    const [showReview, setShowReview] = useState(false);
 
     // Parse period from label "YYYY-MM-DD/YYYY-MM-DD"
     const [periodStart, periodEnd] = periodLabel.split("/");
@@ -85,10 +83,7 @@ export function PayrollReadinessChecklist({
         () => payslips.filter((p) => payslipIds.includes(p.id)),
         [payslips, payslipIds]
     );
-    const draftPayslips = useMemo(
-        () => runPayslips.filter((p) => p.status === "draft"),
-        [runPayslips]
-    );
+
 
     // ── Run all 6 checks ─────────────────────────────────────────
     const checks = useMemo<CheckResult[]>(() => {
@@ -112,6 +107,7 @@ export function PayrollReadinessChecklist({
                     : `${missingOuts.length} employee(s) have missing clock-out in this period`,
             count: missingOuts.length,
             icon: <Clock className="h-4 w-4" />,
+            navHint: { label: "Go to Attendance", href: `/${role}/attendance` },
         };
 
         // Check 2 — Payslips exist for this run (BLOCKING)
@@ -126,6 +122,7 @@ export function PayrollReadinessChecklist({
                     : "No payslips have been generated for this run",
             count: runPayslips.length,
             icon: <FileText className="h-4 w-4" />,
+            navHint: { label: "Issue Payslips", tab: "payslips" },
         };
 
         // Check 3 — No zero or negative net pay (BLOCKING)
@@ -141,23 +138,10 @@ export function PayrollReadinessChecklist({
                     : `${badNetPay.length} payslip(s) have ₱0 or negative net pay`,
             count: badNetPay.length,
             icon: <Banknote className="h-4 w-4" />,
+            navHint: { label: "View Payslips", tab: "payslips" },
         };
 
-        // Check 4 — All payslips published (BLOCKING)
-        const check4: CheckResult = {
-            id: "all-published",
-            label: "All payslips published",
-            passed: draftPayslips.length === 0,
-            blocking: true,
-            message:
-                draftPayslips.length === 0
-                    ? "All payslips have been published"
-                    : `${draftPayslips.length} payslip(s) are still in draft — publish before locking`,
-            count: draftPayslips.length,
-            icon: <FileWarning className="h-4 w-4" />,
-        };
-
-        // Check 5 — No pending leave requests in period (WARNING)
+        // Check 4 — No pending leave requests in period (WARNING)
         const pendingLeaves = periodStart && periodEnd
             ? getPendingLeaves().filter(
                 (r) => r.startDate <= periodEnd && r.endDate >= periodStart
@@ -174,9 +158,10 @@ export function PayrollReadinessChecklist({
                     : `${pendingLeaves.length} leave request(s) are still pending — may affect attendance`,
             count: pendingLeaves.length,
             icon: <CalendarClock className="h-4 w-4" />,
+            navHint: { label: "Go to Leave", href: `/${role}/leave` },
         };
 
-        // Check 6 — No pending payroll adjustments (WARNING)
+        // Check 5 — No pending payroll adjustments (WARNING)
         const pendingAdj = adjustments.filter((a) => a.status === "pending");
         const check6: CheckResult = {
             id: "pending-adjustments",
@@ -189,10 +174,11 @@ export function PayrollReadinessChecklist({
                     : `${pendingAdj.length} adjustment(s) are pending and may not be included`,
             count: pendingAdj.length,
             icon: <Settings2 className="h-4 w-4" />,
+            navHint: { label: "View Management", tab: "management" },
         };
 
-        return [check1, check2, check3, check4, check5, check6];
-    }, [exceptions, runPayslips, draftPayslips, adjustments, getPendingLeaves, periodStart, periodEnd]);
+        return [check1, check2, check3, check5, check6];
+    }, [exceptions, runPayslips, adjustments, getPendingLeaves, periodStart, periodEnd]);
 
     // ── Derive overall readiness ─────────────────────────────────
     const blockingFailed = checks.filter((c) => c.blocking && !c.passed);
@@ -210,12 +196,7 @@ export function PayrollReadinessChecklist({
         callbackRef.current(allClear);
     }, [allClear]);
 
-    // ── Publish all draft payslips in this run ───────────────────
-    const handlePublishAll = () => {
-        draftPayslips.forEach((p) => publishPayslip(p.id));
-        toast.success(`Published ${draftPayslips.length} payslip(s)`);
-        setShowReview(false);
-    };
+
 
     // ── Render ───────────────────────────────────────────────────
     return (
@@ -311,78 +292,21 @@ export function PayrollReadinessChecklist({
                                 )}
                             </div>
 
-                            {/* Draft payslips action row */}
-                            {check.id === "all-published" && !check.passed && (
-                                <div className="mt-1.5 ml-6 space-y-2">
-                                    <div className="flex gap-2">
-                                        <Button
-                                            size="sm"
-                                            className="h-7 text-xs gap-1.5 bg-violet-600 hover:bg-violet-700"
-                                            onClick={handlePublishAll}
-                                        >
-                                            <Send className="h-3 w-3" />
-                                            Publish All ({draftPayslips.length})
+                            {/* Quick-nav for failed checks */}
+                            {!check.passed && check.navHint && (
+                                <div className="mt-1.5 ml-6">
+                                    {check.navHint.href ? (
+                                        <Link href={check.navHint.href}>
+                                            <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1">
+                                                <ExternalLink className="h-3 w-3" /> {check.navHint.label}
+                                            </Button>
+                                        </Link>
+                                    ) : check.navHint.tab && onSwitchTab ? (
+                                        <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1"
+                                            onClick={() => onSwitchTab(check.navHint!.tab!)}>
+                                            <ArrowRight className="h-3 w-3" /> {check.navHint.label}
                                         </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-7 text-xs gap-1.5"
-                                            onClick={() => setShowReview(!showReview)}
-                                        >
-                                            <Eye className="h-3 w-3" />
-                                            Review & Publish
-                                            {showReview
-                                                ? <ChevronUp className="h-3 w-3" />
-                                                : <ChevronDown className="h-3 w-3" />}
-                                        </Button>
-                                    </div>
-
-                                    {/* Inline review table */}
-                                    {showReview && (
-                                        <div className="border border-border/50 rounded-lg overflow-hidden max-h-[180px] overflow-y-auto">
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow>
-                                                        <TableHead className="text-[10px] py-1.5">Employee</TableHead>
-                                                        <TableHead className="text-[10px] py-1.5">Net Pay</TableHead>
-                                                        <TableHead className="text-[10px] py-1.5">Status</TableHead>
-                                                        <TableHead className="text-[10px] py-1.5 w-20"></TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {draftPayslips.map((ps) => (
-                                                        <TableRow key={ps.id}>
-                                                            <TableCell className="text-xs py-1.5 font-medium">
-                                                                {getEmpName(ps.employeeId)}
-                                                            </TableCell>
-                                                            <TableCell className="text-xs py-1.5">
-                                                                ₱{ps.netPay.toLocaleString()}
-                                                            </TableCell>
-                                                            <TableCell className="py-1.5">
-                                                                <Badge variant="secondary" className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400">
-                                                                    draft
-                                                                </Badge>
-                                                            </TableCell>
-                                                            <TableCell className="py-1.5">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    className="h-6 text-[10px] text-violet-600 hover:text-violet-700"
-                                                                    onClick={() => {
-                                                                        publishPayslip(ps.id);
-                                                                        toast.success(`Published payslip for ${getEmpName(ps.employeeId)}`);
-                                                                    }}
-                                                                >
-                                                                    <Send className="h-3 w-3 mr-1" />
-                                                                    Publish
-                                                                </Button>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    ))}
-                                                </TableBody>
-                                            </Table>
-                                        </div>
-                                    )}
+                                    ) : null}
                                 </div>
                             )}
                         </div>
