@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { usePerformanceStore } from "@/store/performance.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -9,15 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { Loader2, AlertCircle, CheckCircle2, Send } from "lucide-react";
-import type { PerformanceReview, PerformanceCriterion } from "@/types";
+import type { Employee, PerformanceReview, PerformanceCriterion, PerformanceRating } from "@/types";
 
 export default function MyTeamReviewsPage() {
-  const role = useParams()?.role as string;
   const currentUser = useAuthStore((s) => s.currentUser);
   const employees = useEmployeesStore((s) => s.employees);
   const {
@@ -33,42 +29,49 @@ export default function MyTeamReviewsPage() {
     isLoading,
   } = usePerformanceStore();
 
-  const [directReports, setDirectReports] = useState<any[]>([]);
-  const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
+  const [directReports, setDirectReports] = useState<Employee[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [managerNotes, setManagerNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [existingReview, setExistingReview] = useState<PerformanceReview | null>(null);
 
-  // Authorization check
-  if (!["admin", "hr", "supervisor", "manager"].includes(currentUser?.role)) {
-    return (
-      <div className="p-8">
-        <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-          <AlertCircle className="h-5 w-5 text-destructive" />
-          <p className="text-destructive">You don't have permission to access team reviews.</p>
-        </div>
-      </div>
-    );
-  }
+  const canAccess = ["admin", "hr", "supervisor", "manager"].includes(currentUser?.role);
+  const currentEmployee = useMemo(
+    () =>
+      employees.find(
+        (employee) =>
+          employee.profileId === currentUser?.id ||
+          employee.id === currentUser?.id ||
+          employee.email.toLowerCase() === currentUser?.email?.toLowerCase()
+      ),
+    [employees, currentUser]
+  );
 
   useEffect(() => {
+    if (!canAccess) return;
     loadData();
-  }, []);
+  }, [canAccess]);
 
   useEffect(() => {
+    if (!canAccess) return;
     // Find direct reports for current user
-    const reports = employees.filter(
-      (e) => e.teamLeader?.toLowerCase() === currentUser?.email?.toLowerCase() || e.id === currentUser?.id
-    );
+    const reports = ["admin", "hr"].includes(currentUser?.role)
+      ? employees.filter((employee) => employee.status === "active")
+      : employees.filter(
+          (employee) =>
+            employee.teamLeader &&
+            currentEmployee &&
+            employee.teamLeader.toLowerCase() === currentEmployee.id.toLowerCase()
+        );
     setDirectReports(reports);
-  }, [employees, currentUser]);
+  }, [canAccess, employees, currentUser, currentEmployee]);
 
   useEffect(() => {
-    if (activeCycleId && selectedEmployee) {
+    if (canAccess && activeCycleId && selectedEmployee) {
       loadEmployeeReview();
     }
-  }, [activeCycleId, selectedEmployee]);
+  }, [canAccess, activeCycleId, selectedEmployee]);
 
   const loadData = async () => {
     try {
@@ -78,14 +81,18 @@ export default function MyTeamReviewsPage() {
         fetch("/api/performance/reviews"),
       ]);
 
+      if (!cyclesRes.ok || !reviewsRes.ok) throw new Error("Failed to load performance data");
       const cyclesData = await cyclesRes.json();
       const reviewsData = await reviewsRes.json();
+      if (!Array.isArray(cyclesData) || !Array.isArray(reviewsData)) {
+        throw new Error("Invalid performance data response");
+      }
 
       setCycles(cyclesData);
       setReviews(reviewsData);
 
       // Set active cycle to first active one, or first one
-      const activeCycle = cyclesData.find((c: any) => c.status === "active") || cyclesData[0];
+      const activeCycle = cyclesData.find((c) => c.status === "active") || cyclesData[0];
       if (activeCycle) {
         setActiveCycle(activeCycle.id);
       }
@@ -102,17 +109,20 @@ export default function MyTeamReviewsPage() {
       const res = await fetch(
         `/api/performance/reviews?cycle_id=${activeCycleId}&employee_id=${selectedEmployee?.id}`
       );
+      if (!res.ok) throw new Error("Failed to load employee review");
       const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Invalid review response");
 
       if (data.length > 0) {
-        setExistingReview(data[0]);
+        const review = data[0] as PerformanceReview;
+        setExistingReview(review);
         // Populate ratings from existing review
         const ratingMap: Record<string, number> = {};
-        data[0].ratings?.forEach((r: any) => {
+        review.ratings?.forEach((r: PerformanceRating) => {
           ratingMap[r.criterion_id] = r.score;
         });
         setRatings(ratingMap);
-        setManagerNotes(data[0].manager_notes || "");
+        setManagerNotes(review.manager_notes || "");
       } else {
         setExistingReview(null);
         setRatings({});
@@ -126,8 +136,9 @@ export default function MyTeamReviewsPage() {
   const handleLoadCycleDetails = async (cycleId: string) => {
     try {
       const res = await fetch(`/api/performance/criteria?cycle_id=${cycleId}`);
+      if (!res.ok) throw new Error("Failed to load criteria");
       const crits = await res.json();
-      setCriteria(crits);
+      setCriteria(Array.isArray(crits) ? crits : []);
     } catch (error) {
       console.error(error);
     }
@@ -139,7 +150,7 @@ export default function MyTeamReviewsPage() {
       return;
     }
 
-    if (criteria.length === 0 || Object.keys(ratings).length === 0) {
+    if (criteria.length === 0) {
       toast.error("Please rate all criteria");
       return;
     }
@@ -148,9 +159,10 @@ export default function MyTeamReviewsPage() {
     try {
       const ratingsList = criteria.map((c: PerformanceCriterion) => ({
         criterion_id: c.id,
-        score: ratings[c.id] || 0,
+        score: ratings[c.id] || 3,
         feedback: "",
       }));
+      let reviewIdToSubmit = existingReview?.id;
 
       if (existingReview) {
         // Update existing review
@@ -181,13 +193,15 @@ export default function MyTeamReviewsPage() {
         });
 
         if (!res.ok) throw new Error("Failed to create review");
+        const createdReview = await res.json();
+        reviewIdToSubmit = createdReview.id;
 
         toast.success("Review created");
       }
 
       // If submitting, transition status
-      if (submit && existingReview) {
-        const res = await fetch(`/api/performance/reviews/${existingReview.id}/submit`, {
+      if (submit && reviewIdToSubmit) {
+        const res = await fetch(`/api/performance/reviews/${reviewIdToSubmit}/submit`, {
           method: "POST",
         });
 
@@ -207,6 +221,17 @@ export default function MyTeamReviewsPage() {
 
   const activeCycle = cycles.find((c) => c.id === activeCycleId);
   const cycleIsActive = activeCycle?.status === "active";
+
+  if (!canAccess) {
+    return (
+      <div className="p-8">
+        <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+          <AlertCircle className="h-5 w-5 text-destructive" />
+          <p className="text-destructive">You do not have permission to access team reviews.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-6 space-y-6">
@@ -382,7 +407,7 @@ export default function MyTeamReviewsPage() {
                       <Button
                         onClick={() => handleSaveReview(true)}
                         disabled={
-                          submitting || criteria.length === 0 || !existingReview || existingReview.status !== "draft"
+                          submitting || criteria.length === 0 || (existingReview !== null && existingReview.status !== "draft")
                         }
                         className="gap-2"
                       >

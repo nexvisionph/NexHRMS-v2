@@ -36,13 +36,13 @@ export async function GET(
     // Check authorization: manager, employee, or admin/hr/finance
     const { data: currentEmployee } = await supabase
       .from("employees")
-      .select("role")
-      .eq("id", user.id)
+      .select("id, role")
+      .or(`id.eq.${user.id},email.eq.${user.email}`)
       .single();
 
     const canView =
-      data.manager_id === user.id ||
-      data.employee_id === user.id ||
+      data.manager_id === currentEmployee?.id ||
+      data.employee_id === currentEmployee?.id ||
       ["admin", "hr", "finance"].includes(currentEmployee?.role);
 
     if (!canView) {
@@ -80,7 +80,17 @@ export async function PUT(
       .single();
 
     // Check authorization: only manager can edit draft reviews
-    if (review?.manager_id !== user.id) {
+    const { data: currentEmployee } = await supabase
+      .from("employees")
+      .select("company_id, id")
+      .or(`id.eq.${user.id},email.eq.${user.email}`)
+      .single();
+
+    if (!currentEmployee) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (review?.manager_id !== currentEmployee.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -90,13 +100,6 @@ export async function PUT(
         { status: 400 }
       );
     }
-
-    // Get company_id
-    const { data: employee } = await supabase
-      .from("employees")
-      .select("company_id")
-      .eq("id", user.id)
-      .single();
 
     // Update review
     const { data: updated, error } = await supabase
@@ -132,7 +135,7 @@ export async function PUT(
     // Log audit
     await supabase.from("performance_audit_logs").insert({
       id: `PAL-${Date.now()}`,
-      company_id: employee?.company_id,
+      company_id: currentEmployee.company_id,
       entity_type: "review",
       entity_id: id,
       action: "updated",

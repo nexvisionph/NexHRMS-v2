@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
 import { usePerformanceStore } from "@/store/performance.store";
 import { useAuthStore } from "@/store/auth.store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,9 +15,8 @@ import { Loader2, AlertCircle, CheckCircle2, X } from "lucide-react";
 import type { PerformanceSalaryAdjustment } from "@/types";
 
 export default function SalaryAdjustmentQueuePage() {
-  const role = useParams()?.role as string;
   const currentUser = useAuthStore((s) => s.currentUser);
-  const { adjustments, setLoading, isLoading } = usePerformanceStore();
+  const { setLoading, isLoading } = usePerformanceStore();
 
   const [pendingAdjustments, setPendingAdjustments] = useState<PerformanceSalaryAdjustment[]>([]);
   const [selectedAdjustment, setSelectedAdjustment] = useState<PerformanceSalaryAdjustment | null>(null);
@@ -27,27 +25,20 @@ export default function SalaryAdjustmentQueuePage() {
   const [overrideReason, setOverrideReason] = useState("");
   const [processing, setProcessing] = useState(false);
 
-  // Authorization check
-  if (!["finance", "finance_admin", "admin", "payroll_admin"].includes(currentUser?.role)) {
-    return (
-      <div className="p-8">
-        <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-          <AlertCircle className="h-5 w-5 text-destructive" />
-          <p className="text-destructive">You don't have permission to approve salary adjustments.</p>
-        </div>
-      </div>
-    );
-  }
+  const canAccess = ["finance", "finance_admin", "admin", "payroll_admin"].includes(currentUser?.role);
 
   useEffect(() => {
+    if (!canAccess) return;
     loadAdjustments();
-  }, []);
+  }, [canAccess]);
 
   const loadAdjustments = async () => {
     try {
       setLoading(true);
       const res = await fetch("/api/performance/adjustments?status=pending");
+      if (!res.ok) throw new Error("Failed to load adjustments");
       const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Invalid adjustments response");
       setPendingAdjustments(data);
     } catch (error) {
       toast.error("Failed to load adjustments");
@@ -100,6 +91,17 @@ export default function SalaryAdjustmentQueuePage() {
     const increase = parseFloat(overrideAmount) || 0;
     return currentSalary + increase;
   };
+
+  if (!canAccess) {
+    return (
+      <div className="p-8">
+        <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+          <AlertCircle className="h-5 w-5 text-destructive" />
+          <p className="text-destructive">You do not have permission to approve salary adjustments.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-6 space-y-6">

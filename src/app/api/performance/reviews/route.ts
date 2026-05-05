@@ -55,11 +55,11 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { cycle_id, employee_id, ratings, manager_notes } = body;
 
-    // Get user's company_id and verify is manager
+    // Get the employee row linked to the signed-in profile.
     const { data: managerEmployee } = await supabase
       .from("employees")
       .select("company_id, id, role")
-      .eq("id", user.id)
+      .or(`id.eq.${user.id},email.eq.${user.email}`)
       .single();
 
     if (!managerEmployee) {
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
         company_id: managerEmployee.company_id,
         cycle_id,
         employee_id,
-        manager_id: user.id,
+        manager_id: managerEmployee.id,
         overall_rating: overallRating,
         manager_notes,
         status: "draft",
