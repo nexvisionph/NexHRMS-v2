@@ -983,12 +983,13 @@ export interface TaskGroup {
 
 export interface Task {
   id: string;
-  groupId: string;
+  groupId?: string;
   projectId?: string;
   title: string;
   description: string;
   priority: TaskPriority;
   status: TaskStatus;
+  startDate?: string;
   dueDate?: string;
   assignedTo: string[];
   createdBy: string;
