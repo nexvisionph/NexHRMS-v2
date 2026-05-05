@@ -7,6 +7,7 @@ export const runtime = "nodejs";
 
 const REQ_CODE_REALTIME_GLOG = "realtime_glog";
 const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
+const BIOMETRIC_METHODS = new Set(["fingerprint", "face", "palm", "rfid", "pin", "manual"]);
 
 const AES_KEY = Buffer.from([
   1, 2, 3, 4, 5, 6, 7, 8,
@@ -81,6 +82,16 @@ function mapEventType(ioMode: string) {
     default:
       return null;
   }
+}
+
+function normalizeBiometricMethod(raw: unknown) {
+  const method = String(raw || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
+  if (["fp", "finger", "finger_print", "fingerprint"].includes(method)) return "fingerprint";
+  if (["face", "face_scan", "facial"].includes(method)) return "face";
+  if (["palm", "palm_scan", "palmprint", "palm_print", "vein", "palm_vein"].includes(method)) return "palm";
+  if (["card", "rfid", "badge"].includes(method)) return "rfid";
+  if (["pin", "password"].includes(method)) return "pin";
+  return BIOMETRIC_METHODS.has(method) ? method : "face";
 }
 
 function decodeEncrypted(buffer: Buffer, encryptHeader: string | null) {
@@ -184,12 +195,17 @@ export async function GET() {
 
 function inferEventType(
   eventType: ReturnType<typeof mapEventType>,
-  existingLog: { check_in?: string | null; check_out?: string | null } | null
+  existingLog: { check_in?: string | null; check_out?: string | null } | null,
+  rawMode: string
 ) {
   // T800 devices often send the same io_mode for every successful face scan.
   // For attendance, treat scans as a daily IN/OUT toggle.
-  if (!existingLog?.check_in) return "IN";
-  if (!existingLog.check_out) return "OUT";
+  const allowsToggle = !eventType || rawMode.trim() === "1";
+  if (!existingLog?.check_in) return eventType === "OUT" ? null : "IN";
+  if (!existingLog.check_out) {
+    if (eventType === "OUT" || allowsToggle) return "OUT";
+    return eventType && eventType !== "IN" ? eventType : null;
+  }
   if (eventType && eventType !== "IN" && eventType !== "OUT") return eventType;
   return null;
 }
@@ -261,6 +277,9 @@ export async function POST(request: NextRequest) {
 
     const ioMode = normalizeIoMode(ioModeRaw);
     const mappedEventType = mapEventType(ioMode);
+    const biometricMethod = normalizeBiometricMethod(
+      payload.method ?? payload.recognition_method ?? payload.recognitionMethod ?? payload.verify_mode ?? payload.verifyMode
+    );
 
     const timeParts = parseIoTime(ioTime);
     if (!timeParts) {
@@ -275,6 +294,15 @@ export async function POST(request: NextRequest) {
     ).toISOString();
 
     const supabase = await createAdminSupabaseClient();
+    let biometricDeviceId: string | null = null;
+    if (devId) {
+      const { data: biometricDevice } = await supabase
+        .from("biometric_devices")
+        .select("id")
+        .eq("id", devId)
+        .maybeSingle();
+      biometricDeviceId = biometricDevice?.id ?? null;
+    }
 
     const { data: employee, error: employeeError } = await supabase
       .from("employees")
@@ -299,7 +327,7 @@ export async function POST(request: NextRequest) {
       .eq("date", eventLocalDate)
       .maybeSingle();
 
-    const eventType = inferEventType(mappedEventType, existingLog);
+    const eventType = inferEventType(mappedEventType, existingLog, ioModeRaw);
     if (!eventType) {
       console.warn("[t800] Unsupported or duplicate io_mode:", ioModeRaw, "user_id:", userId);
       return buildResponse("OK");
@@ -341,8 +369,11 @@ export async function POST(request: NextRequest) {
           employee_id: employee.id,
           date: eventLocalDate,
           check_in: eventLocalTime,
+          check_in_method: biometricMethod,
+          ...(biometricDeviceId ? { check_in_device_id: biometricDeviceId } : {}),
+          source: "biometric",
           status: "present",
-          face_verified: true,
+          face_verified: biometricMethod === "face",
           updated_at: nowISO,
         },
         { onConflict: "employee_id,date" }
@@ -371,7 +402,14 @@ export async function POST(request: NextRequest) {
 
       const { error: logError } = await supabase
         .from("attendance_logs")
-        .update({ check_out: eventLocalTime, hours, updated_at: nowISO })
+        .update({
+          check_out: eventLocalTime,
+          check_out_method: biometricMethod,
+          ...(biometricDeviceId ? { check_out_device_id: biometricDeviceId } : {}),
+          source: "biometric",
+          hours,
+          updated_at: nowISO,
+        })
         .eq("employee_id", employee.id)
         .eq("date", eventLocalDate);
 

@@ -5,7 +5,7 @@ import { createHash, randomBytes } from "crypto";
 export const runtime = "nodejs";
 
 const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
-const METHOD_SET = new Set(["fingerprint", "face", "rfid", "pin", "manual"]);
+const METHOD_SET = new Set(["fingerprint", "face", "palm", "rfid", "pin", "manual"]);
 
 function toManilaParts(utcIso: string) {
   const ms = new Date(utcIso).getTime() + MANILA_OFFSET_MS;

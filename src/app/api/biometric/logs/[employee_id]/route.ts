@@ -14,7 +14,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ employee
 
     const { data: employee } = await supabase
       .from("employees")
-      .select("role")
+      .select("role, company_id")
       .eq("id", user.id)
       .single();
 
@@ -31,6 +31,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ employee
       .select(
         "*, employee:employees(id, name, email, department), device:biometric_devices(id, name, location, device_type)"
       )
+      .eq("company_id", employee.company_id || "default")
       .eq("employee_id", employee_id);
 
     if (dateFrom) query = query.gte("logged_at", `${dateFrom}T00:00:00.000Z`);

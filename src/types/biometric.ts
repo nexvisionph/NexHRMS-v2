@@ -1,6 +1,6 @@
 // Biometric Integration Types
 
-export type BiometricMethod = "fingerprint" | "face" | "rfid" | "pin" | "manual";
+export type BiometricMethod = "fingerprint" | "face" | "palm" | "rfid" | "pin" | "manual";
 export type BiometricLogType = "time_in" | "time_out";
 
 export interface BiometricDevice {

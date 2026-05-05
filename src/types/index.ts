@@ -337,8 +337,8 @@ export interface AttendanceLog {
   date: string;
   checkIn?: string;
   checkOut?: string;
-  checkInMethod?: "fingerprint" | "face" | "rfid" | "pin" | "manual";
-  checkOutMethod?: "fingerprint" | "face" | "rfid" | "pin" | "manual";
+  checkInMethod?: "fingerprint" | "face" | "palm" | "rfid" | "pin" | "manual";
+  checkOutMethod?: "fingerprint" | "face" | "palm" | "rfid" | "pin" | "manual";
   checkInDeviceId?: string;
   checkOutDeviceId?: string;
   source?: "biometric" | "manual" | "mobile";

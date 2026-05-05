@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     const { data, error } = await supabase
       .from("biometric_enrollments")
       .insert({
-        company_id: employee.company_id,
+        company_id: employee.company_id || "default",
         employee_id,
         method,
         external_id: external_id || null,
