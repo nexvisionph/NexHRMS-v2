@@ -1,4 +1,4 @@
--- 027_fix_task_completion_reports_cascade_delete
+-- 029_fix_task_completion_reports_cascade_delete
 -- Migration: Without ON DELETE CASCADE, deleting a task that has a completion report
 -- throws: "update or delete on table "tasks" violates foreign key constraint
 -- task_completion_reports_task_id_fkey"
