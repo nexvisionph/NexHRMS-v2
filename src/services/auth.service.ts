@@ -506,3 +506,10 @@ export async function getCurrentUser() {
     emergencyContact: profile?.emergency_contact,
   };
 }
+
+/**
+ * Backward-compatible name used by older route handlers.
+ */
+export async function getCurrentUserFromCookie() {
+  return getCurrentUser();
+}

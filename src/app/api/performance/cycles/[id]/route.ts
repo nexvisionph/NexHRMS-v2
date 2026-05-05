@@ -4,8 +4,9 @@ import { NextResponse } from "next/server";
 
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
     const supabase = await createClient();
     const user = await getCurrentUserFromCookie();
@@ -23,21 +24,22 @@ export async function GET(
         salary_bands:performance_salary_bands(*)
       `
       )
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (error) throw error;
     return NextResponse.json(data);
   } catch (error) {
-    console.error(`GET /api/performance/cycles/${params.id}:`, error);
+    console.error(`GET /api/performance/cycles/${id}:`, error);
     return NextResponse.json({ error: "Failed to fetch cycle" }, { status: 500 });
   }
 }
 
 export async function PUT(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
     const supabase = await createClient();
     const user = await getCurrentUserFromCookie();
@@ -65,7 +67,7 @@ export async function PUT(
     const { data: oldCycle } = await supabase
       .from("performance_cycles")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     const { data, error } = await supabase
@@ -79,7 +81,7 @@ export async function PUT(
         review_end_date,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -90,7 +92,7 @@ export async function PUT(
       id: `PAL-${Date.now()}`,
       company_id: employee.company_id,
       entity_type: "cycle",
-      entity_id: params.id,
+      entity_id: id,
       action: "updated",
       changed_by: user.id,
       details: { old_cycle: oldCycle, new_cycle: data },
@@ -98,15 +100,16 @@ export async function PUT(
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error(`PUT /api/performance/cycles/${params.id}:`, error);
+    console.error(`PUT /api/performance/cycles/${id}:`, error);
     return NextResponse.json({ error: "Failed to update cycle" }, { status: 500 });
   }
 }
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
     const supabase = await createClient();
     const user = await getCurrentUserFromCookie();
@@ -133,7 +136,7 @@ export async function PATCH(
     const { data: oldCycle } = await supabase
       .from("performance_cycles")
       .select("status")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     const { data, error } = await supabase
@@ -142,7 +145,7 @@ export async function PATCH(
         status,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -153,7 +156,7 @@ export async function PATCH(
       id: `PAL-${Date.now()}`,
       company_id: employee.company_id,
       entity_type: "cycle",
-      entity_id: params.id,
+      entity_id: id,
       action: "status_changed",
       old_status: oldCycle?.status,
       new_status: status,
@@ -162,7 +165,7 @@ export async function PATCH(
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error(`PATCH /api/performance/cycles/${params.id}:`, error);
+    console.error(`PATCH /api/performance/cycles/${id}:`, error);
     return NextResponse.json({ error: "Failed to update cycle status" }, { status: 500 });
   }
 }
