@@ -2,6 +2,22 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/services/supabase-server";
 import { getCurrentUserFromCookie } from "@/services/auth.service";
 
+async function getCurrentEmployee(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
+  const { data: byId } = await supabase
+    .from("employees")
+    .select("id, role, profile_id, company_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (byId?.id) return byId;
+
+  const { data: byProfile } = await supabase
+    .from("employees")
+    .select("id, role, profile_id, company_id")
+    .eq("profile_id", userId)
+    .maybeSingle();
+  return byProfile || null;
+}
+
 export async function GET(req: Request, { params }: { params: Promise<{ employee_id: string }> }) {
   const { employee_id } = await params;
   try {
@@ -12,13 +28,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ employee
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: employee } = await supabase
-      .from("employees")
-      .select("role, company_id")
-      .eq("id", user.id)
-      .single();
+    const employee = await getCurrentEmployee(supabase, user.id);
+    const isAdminHr = !!employee && ["admin", "hr"].includes(employee.role);
 
-    if (!employee || !["admin", "hr"].includes(employee.role)) {
+    if (!employee || (!isAdminHr && employee.id !== employee_id)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
