@@ -1,5 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
-import { createClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { getSupabaseUrl, getSupabaseAnonKey, getServiceRoleKey } from "@/lib/env";
 
@@ -50,7 +50,7 @@ export async function createServerSupabaseClient() {
  * sessions, which means the user's JWT takes precedence and RLS still applies.
  */
 export async function createAdminSupabaseClient() {
-  return createClient(
+  return createSupabaseClient(
     getSupabaseUrl(),
     getServiceRoleKey(),
     {
@@ -60,4 +60,11 @@ export async function createAdminSupabaseClient() {
       },
     }
   );
+}
+
+/**
+ * Backward-compatible server helper used by older API routes.
+ */
+export async function createClient() {
+  return createAdminSupabaseClient();
 }

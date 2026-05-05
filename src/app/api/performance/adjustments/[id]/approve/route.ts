@@ -4,8 +4,9 @@ import { NextResponse } from "next/server";
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
     const supabase = await createClient();
     const user = await getCurrentUserFromCookie();
@@ -32,7 +33,7 @@ export async function POST(
     const { data: adjustment } = await supabase
       .from("performance_salary_adjustments")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (!adjustment) {
@@ -68,7 +69,7 @@ export async function POST(
         approved_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -106,7 +107,7 @@ export async function POST(
       id: `PAL-${Date.now()}`,
       company_id: employee.company_id,
       entity_type: "adjustment",
-      entity_id: params.id,
+      entity_id: id,
       action: `${action}_by_finance`,
       old_status: "pending",
       new_status: newStatus,
@@ -116,7 +117,7 @@ export async function POST(
 
     return NextResponse.json(updated);
   } catch (error) {
-    console.error(`POST /api/performance/adjustments/${params.id}/approve:`, error);
+    console.error(`POST /api/performance/adjustments/${id}/approve:`, error);
     return NextResponse.json({ error: "Failed to approve adjustment" }, { status: 500 });
   }
 }
