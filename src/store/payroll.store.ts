@@ -212,11 +212,11 @@ export const usePayrollStore = create<PayrollState>()(
                     ),
                 })),
 
-            // Record payment details (tracks payment info on published payslips, no status change)
+            // Record payment details (published OR signed payslips → paid)
             recordPayment: (id, paymentMethod, bankReferenceId) =>
                 set((s) => ({
                     payslips: s.payslips.map((p) =>
-                        p.id === id && p.status === "published"
+                        p.id === id && (p.status === "published" || p.status === "signed")
                             ? { ...p, status: "paid" as const, paidAt: new Date().toISOString(), paymentMethod, bankReferenceId }
                             : p
                     ),
