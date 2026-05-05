@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
 import { usePerformanceStore } from "@/store/performance.store";
 import { useAuthStore } from "@/store/auth.store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +13,6 @@ import { Loader2, Plus, Edit2, Trash2, CheckCircle, AlertCircle } from "lucide-r
 import type { PerformanceCycle, PerformanceCriterion, PerformanceSalaryBand } from "@/types";
 
 export default function PerformanceManagementPage() {
-  const role = useParams()?.role as string;
   const currentUser = useAuthStore((s) => s.currentUser);
   const {
     cycles,
@@ -41,33 +39,26 @@ export default function PerformanceManagementPage() {
     review_end_date: "",
   });
 
-  // Authorization check
-  if (!["admin", "hr"].includes(currentUser?.role)) {
-    return (
-      <div className="p-8">
-        <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-          <AlertCircle className="h-5 w-5 text-destructive" />
-          <p className="text-destructive">You don't have permission to access performance management.</p>
-        </div>
-      </div>
-    );
-  }
+  const canAccess = ["admin", "hr"].includes(currentUser?.role);
 
   useEffect(() => {
+    if (!canAccess) return;
     loadCycles();
-  }, []);
+  }, [canAccess]);
 
   useEffect(() => {
-    if (activeCycleId) {
+    if (canAccess && activeCycleId) {
       loadCycleDetails();
     }
-  }, [activeCycleId]);
+  }, [canAccess, activeCycleId]);
 
   const loadCycles = async () => {
     try {
       setLoading(true);
       const res = await fetch("/api/performance/cycles");
+      if (!res.ok) throw new Error("Failed to load cycles");
       const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Invalid cycles response");
       setCycles(data);
     } catch (error) {
       toast.error("Failed to load cycles");
@@ -84,11 +75,12 @@ export default function PerformanceManagementPage() {
         fetch(`/api/performance/salary-bands?cycle_id=${activeCycleId}`),
       ]);
 
+      if (!critRes.ok || !bandRes.ok) throw new Error("Failed to load cycle details");
       const crits = await critRes.json();
       const bands = await bandRes.json();
 
-      setCriteria(crits);
-      setSalaryBands(bands);
+      setCriteria(Array.isArray(crits) ? crits : []);
+      setSalaryBands(Array.isArray(bands) ? bands : []);
     } catch (error) {
       console.error(error);
     }
@@ -145,6 +137,17 @@ export default function PerformanceManagementPage() {
       console.error(error);
     }
   };
+
+  if (!canAccess) {
+    return (
+      <div className="p-8">
+        <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+          <AlertCircle className="h-5 w-5 text-destructive" />
+          <p className="text-destructive">You do not have permission to access performance management.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-6 space-y-6">

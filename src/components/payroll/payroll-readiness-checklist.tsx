@@ -201,7 +201,9 @@ export function PayrollReadinessChecklist({
 
     // Stable ref for callback — avoids infinite loop when parent passes inline arrow
     const callbackRef = useRef(onAllChecksPassed);
-    callbackRef.current = onAllChecksPassed;
+    useEffect(() => {
+        callbackRef.current = onAllChecksPassed;
+    }, [onAllChecksPassed]);
 
     // Notify parent only when readiness actually changes
     useEffect(() => {

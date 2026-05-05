@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { usePerformanceStore } from "@/store/performance.store";
 import { useAuthStore } from "@/store/auth.store";
+import { useEmployeesStore } from "@/store/employees.store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,24 +13,37 @@ import { Loader2, AlertCircle, CheckCircle2, Eye } from "lucide-react";
 import type { PerformanceReview } from "@/types";
 
 export default function MyReviewsPage() {
-  const role = useParams()?.role as string;
   const currentUser = useAuthStore((s) => s.currentUser);
-  const { reviews, setLoading, isLoading } = usePerformanceStore();
+  const employees = useEmployeesStore((s) => s.employees);
+  const { setLoading, isLoading } = usePerformanceStore();
 
   const [myReviews, setMyReviews] = useState<PerformanceReview[]>([]);
   const [selectedReview, setSelectedReview] = useState<PerformanceReview | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [acknowledging, setAcknowledging] = useState(false);
+  const currentEmployee = useMemo(
+    () =>
+      employees.find(
+        (employee) =>
+          employee.profileId === currentUser?.id ||
+          employee.id === currentUser?.id ||
+          employee.email.toLowerCase() === currentUser?.email?.toLowerCase()
+      ),
+    [employees, currentUser]
+  );
 
   useEffect(() => {
+    if (!currentEmployee) return;
     loadMyReviews();
-  }, []);
+  }, [currentEmployee]);
 
   const loadMyReviews = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/performance/reviews?employee_id=${currentUser?.id}`);
+      const res = await fetch(`/api/performance/reviews?employee_id=${currentEmployee?.id}`);
+      if (!res.ok) throw new Error("Failed to load your reviews");
       const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Invalid reviews response");
       setMyReviews(data);
     } catch (error) {
       toast.error("Failed to load your reviews");
@@ -123,7 +136,7 @@ export default function MyReviewsPage() {
                 <div className="flex justify-between items-start">
                   <div>
                     <CardTitle className="text-lg">
-                      {review.manager?.name || "Your Manager"}'s Review
+                      {review.manager?.name || "Your Manager"} Review
                     </CardTitle>
                     <p className="text-sm text-muted-foreground mt-1">
                       Rating: <span className="font-semibold">{review.overall_rating?.toFixed(2) || "N/A"} / 5.0</span>
@@ -137,7 +150,7 @@ export default function MyReviewsPage() {
               <CardContent className="space-y-4">
                 {review.manager_notes && (
                   <div>
-                    <h4 className="font-semibold text-sm mb-2">Manager's Comments</h4>
+                    <h4 className="font-semibold text-sm mb-2">Manager Comments</h4>
                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">{review.manager_notes}</p>
                   </div>
                 )}

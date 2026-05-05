@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -770,7 +770,10 @@ function RecentActivityCard() {
     const loans = useLoansStore((s) => s.loans);
     const rh = useRoleHref();
 
-    const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
+    const getEmpName = useCallback(
+        (id: string) => employees.find((e) => e.id === id)?.name || id,
+        [employees]
+    );
 
     // Build a unified activity feed from multiple data sources
     const activityItems = useMemo(() => {
@@ -852,7 +855,7 @@ function RecentActivityCard() {
         return items
             .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""))
             .slice(0, 10);
-    }, [auditLogs, leaveRequests, attendanceLogs, payslips, loans, employees]);
+    }, [auditLogs, leaveRequests, attendanceLogs, payslips, loans, getEmpName]);
 
     return (
         <Card className="border border-border/50">

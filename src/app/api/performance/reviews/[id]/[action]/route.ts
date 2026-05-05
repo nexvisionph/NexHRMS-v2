@@ -26,15 +26,19 @@ export async function POST(
       return NextResponse.json({ error: "Review not found" }, { status: 404 });
     }
 
-    const { data: employee } = await supabase
+    const { data: currentEmployee } = await supabase
       .from("employees")
-      .select("company_id")
-      .eq("id", user.id)
+      .select("company_id, id")
+      .or(`id.eq.${user.id},email.eq.${user.email}`)
       .single();
+
+    if (!currentEmployee) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     if (reviewAction === "submit") {
       // Only manager can submit
-      if (review.manager_id !== user.id) {
+      if (review.manager_id !== currentEmployee.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -60,7 +64,7 @@ export async function POST(
       // Log audit
       await supabase.from("performance_audit_logs").insert({
         id: `PAL-${Date.now()}`,
-        company_id: employee?.company_id,
+        company_id: currentEmployee.company_id,
         entity_type: "review",
         entity_id: id,
         action: "submitted",
@@ -74,7 +78,7 @@ export async function POST(
 
     if (reviewAction === "acknowledge") {
       // Only employee can acknowledge
-      if (review.employee_id !== user.id) {
+      if (review.employee_id !== currentEmployee.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -101,7 +105,7 @@ export async function POST(
       // Log audit
       await supabase.from("performance_audit_logs").insert({
         id: `PAL-${Date.now()}`,
-        company_id: employee?.company_id,
+        company_id: currentEmployee.company_id,
         entity_type: "review",
         entity_id: id,
         action: "acknowledged",
