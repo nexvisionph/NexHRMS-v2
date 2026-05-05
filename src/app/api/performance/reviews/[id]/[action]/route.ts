@@ -4,8 +4,9 @@ import { NextResponse } from "next/server";
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string; action: string } }
+  { params }: { params: Promise<{ id: string; action: string }> }
 ) {
+  const { id, action: reviewAction } = await params;
   try {
     const supabase = await createClient();
     const user = await getCurrentUserFromCookie();
@@ -18,7 +19,7 @@ export async function POST(
     const { data: review } = await supabase
       .from("performance_reviews")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (!review) {
@@ -31,7 +32,7 @@ export async function POST(
       .eq("id", user.id)
       .single();
 
-    if (params.action === "submit") {
+    if (reviewAction === "submit") {
       // Only manager can submit
       if (review.manager_id !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -50,7 +51,7 @@ export async function POST(
           status: "submitted",
           submitted_at: new Date().toISOString(),
         })
-        .eq("id", params.id)
+        .eq("id", id)
         .select()
         .single();
 
@@ -61,7 +62,7 @@ export async function POST(
         id: `PAL-${Date.now()}`,
         company_id: employee?.company_id,
         entity_type: "review",
-        entity_id: params.id,
+        entity_id: id,
         action: "submitted",
         old_status: "draft",
         new_status: "submitted",
@@ -71,7 +72,7 @@ export async function POST(
       return NextResponse.json(updated);
     }
 
-    if (params.action === "acknowledge") {
+    if (reviewAction === "acknowledge") {
       // Only employee can acknowledge
       if (review.employee_id !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -91,7 +92,7 @@ export async function POST(
           acknowledged_at: new Date().toISOString(),
           acknowledged_by: user.id,
         })
-        .eq("id", params.id)
+        .eq("id", id)
         .select()
         .single();
 
@@ -102,7 +103,7 @@ export async function POST(
         id: `PAL-${Date.now()}`,
         company_id: employee?.company_id,
         entity_type: "review",
-        entity_id: params.id,
+        entity_id: id,
         action: "acknowledged",
         old_status: "submitted",
         new_status: "acknowledged",
@@ -114,7 +115,7 @@ export async function POST(
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
-    console.error(`POST /api/performance/reviews/${params.id}/${params.action}:`, error);
+    console.error(`POST /api/performance/reviews/${id}/${reviewAction}:`, error);
     return NextResponse.json({ error: "Failed to process review" }, { status: 500 });
   }
 }

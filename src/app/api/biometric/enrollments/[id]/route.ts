@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/services/supabase-server";
 import { getCurrentUserFromCookie } from "@/services/auth.service";
 
-async function getCurrentEmployee(supabase: ReturnType<typeof createClient>, userId: string) {
+async function getCurrentEmployee(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const { data: byId } = await supabase
     .from("employees")
     .select("id, role, profile_id")
@@ -18,7 +18,8 @@ async function getCurrentEmployee(supabase: ReturnType<typeof createClient>, use
   return byProfile || null;
 }
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
     const supabase = await createClient();
     const user = await getCurrentUserFromCookie();
@@ -30,25 +31,26 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const currentEmp = await getCurrentEmployee(supabase, user.id);
     const isAdminHr = currentEmp && ["admin", "hr"].includes(currentEmp.role);
 
-    if (!isAdminHr && currentEmp?.id !== params.id) {
+    if (!isAdminHr && currentEmp?.id !== id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { data, error } = await supabase
       .from("biometric_enrollments")
       .select("*, enrolled_by_employee:employees(id, name, email)")
-      .eq("employee_id", params.id)
+      .eq("employee_id", id)
       .order("enrolled_at", { ascending: false });
 
     if (error) throw error;
     return NextResponse.json(data ?? []);
   } catch (error) {
-    console.error(`GET /api/biometric/enrollments/${params.id}:`, error);
+    console.error(`GET /api/biometric/enrollments/${id}:`, error);
     return NextResponse.json({ error: "Failed to fetch enrollments" }, { status: 500 });
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
     const supabase = await createClient();
     const user = await getCurrentUserFromCookie();
@@ -65,7 +67,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
     const { data, error } = await supabase
       .from("biometric_enrollments")
       .update({ is_active: false })
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -73,7 +75,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error(`DELETE /api/biometric/enrollments/${params.id}:`, error);
+    console.error(`DELETE /api/biometric/enrollments/${id}:`, error);
     return NextResponse.json({ error: "Failed to remove enrollment" }, { status: 500 });
   }
 }

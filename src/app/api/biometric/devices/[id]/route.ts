@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/services/supabase-server";
 import { getCurrentUserFromCookie } from "@/services/auth.service";
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
     const supabase = await createClient();
     const user = await getCurrentUserFromCookie();
@@ -33,7 +34,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const { data, error } = await supabase
       .from("biometric_devices")
       .update(updates)
-      .eq("id", params.id)
+      .eq("id", id)
       .select("id, name, location, device_type, supported_methods, is_active, last_synced_at, api_key_last4, created_at")
       .single();
 
@@ -41,7 +42,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error(`PATCH /api/biometric/devices/${params.id}:`, error);
+    console.error(`PATCH /api/biometric/devices/${id}:`, error);
     return NextResponse.json({ error: "Failed to update device" }, { status: 500 });
   }
 }

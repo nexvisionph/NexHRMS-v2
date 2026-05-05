@@ -4,8 +4,9 @@ import { NextResponse } from "next/server";
 
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
     const supabase = await createClient();
     const user = await getCurrentUserFromCookie();
@@ -27,7 +28,7 @@ export async function GET(
         )
       `
       )
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (error) throw error;
@@ -50,15 +51,16 @@ export async function GET(
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error(`GET /api/performance/reviews/${params.id}:`, error);
+    console.error(`GET /api/performance/reviews/${id}:`, error);
     return NextResponse.json({ error: "Failed to fetch review" }, { status: 500 });
   }
 }
 
 export async function PUT(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
     const supabase = await createClient();
     const user = await getCurrentUserFromCookie();
@@ -74,7 +76,7 @@ export async function PUT(
     const { data: review } = await supabase
       .from("performance_reviews")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     // Check authorization: only manager can edit draft reviews
@@ -104,7 +106,7 @@ export async function PUT(
         overall_rating: overall_rating,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -113,12 +115,12 @@ export async function PUT(
     // Update ratings if provided
     if (ratings && ratings.length > 0) {
       // Delete old ratings
-      await supabase.from("performance_ratings").delete().eq("review_id", params.id);
+      await supabase.from("performance_ratings").delete().eq("review_id", id);
 
       // Insert new ratings
       const ratingInserts = ratings.map((r: any, idx: number) => ({
         id: `PR-${Date.now()}-${idx}`,
-        review_id: params.id,
+        review_id: id,
         criterion_id: r.criterion_id,
         score: r.score,
         feedback: r.feedback,
@@ -132,7 +134,7 @@ export async function PUT(
       id: `PAL-${Date.now()}`,
       company_id: employee?.company_id,
       entity_type: "review",
-      entity_id: params.id,
+      entity_id: id,
       action: "updated",
       changed_by: user.id,
       details: { updated_fields: Object.keys(body) },
@@ -140,7 +142,7 @@ export async function PUT(
 
     return NextResponse.json(updated);
   } catch (error) {
-    console.error(`PUT /api/performance/reviews/${params.id}:`, error);
+    console.error(`PUT /api/performance/reviews/${id}:`, error);
     return NextResponse.json({ error: "Failed to update review" }, { status: 500 });
   }
 }
