@@ -213,7 +213,7 @@ export default function EmployeeTasksView() {
     ).length;
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name ?? id;
-    const getGroupName = (id: string) => groups.find((g) => g.id === id)?.name ?? id;
+    const getGroupName = (id?: string) => id ? groups.find((g) => g.id === id)?.name ?? id : "Direct assignment";
 
     // Show loading state while hydrating/fetching
     if (isLoading) {
