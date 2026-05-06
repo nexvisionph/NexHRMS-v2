@@ -46,6 +46,8 @@ const leaveStatusColors: Record<string, string> = {
 export default function ViewerProfileView() {
     const { id } = useParams<{ id: string }>();
     const employees = useEmployeesStore((s) => s.employees);
+    const addDocument = useEmployeesStore((s) => s.addDocument);
+    const getDocuments = useEmployeesStore((s) => s.getDocuments);
     const currentUser = useAuthStore((s) => s.currentUser);
     const { hasPermission } = useRolesStore();
     const canViewSalary = hasPermission(currentUser.role, "employees:view_salary");
@@ -72,12 +74,14 @@ export default function ViewerProfileView() {
 
     const [docName, setDocName] = useState("");
     const [docOpen, setDocOpen] = useState(false);
-    const [mockDocs, setMockDocs] = useState<{ name: string; uploadedAt: string }[]>([]);
+    const empDocs = useMemo(() => (id ? getDocuments(id) : []), [getDocuments, id]);
 
     const handleAddDoc = () => {
-        if (!docName) { toast.error("Enter a document name"); return; }
-        setMockDocs((prev) => [...prev, { name: docName, uploadedAt: new Date().toISOString() }]);
-        toast.success(`"${docName}" uploaded`);
+        const name = docName.trim();
+        if (!name) { toast.error("Enter a document name"); return; }
+        if (!id) return;
+        addDocument(id, name);
+        toast.success(`"${name}" uploaded`);
         setDocName("");
         setDocOpen(false);
     };
@@ -310,15 +314,15 @@ export default function ViewerProfileView() {
                 <TabsContent value="documents" className="mt-4">
                     <Card className="border border-border/50">
                         <CardContent className="p-6">
-                            {mockDocs.length === 0 ? (
+                            {empDocs.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-6">
                                     <FileText className="h-12 w-12 text-muted-foreground/40" />
                                     <p className="text-muted-foreground mt-3">No documents uploaded yet</p>
                                 </div>
                             ) : (
                                 <div className="space-y-2 mb-4">
-                                    {mockDocs.map((doc, i) => (
-                                        <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-border/50">
+                                    {empDocs.map((doc) => (
+                                        <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50">
                                             <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted-foreground" /><span className="text-sm font-medium">{doc.name}</span></div>
                                             <span className="text-xs text-muted-foreground">{new Date(doc.uploadedAt).toLocaleDateString()}</span>
                                         </div>
@@ -331,7 +335,7 @@ export default function ViewerProfileView() {
                                     <DialogHeader><DialogTitle>Upload Document</DialogTitle></DialogHeader>
                                     <div className="space-y-4 pt-2">
                                         <div><label className="text-sm font-medium">Document Name</label><Input value={docName} onChange={(e) => setDocName(e.target.value)} placeholder="e.g. Resume, ID, Contract" className="mt-1" /></div>
-                                        <p className="text-xs text-muted-foreground">File upload is simulated for MVP. Only the document label is stored.</p>
+                                        <p className="text-xs text-muted-foreground">This saves a document label to the employee profile.</p>
                                         <Button onClick={handleAddDoc} className="w-full">Upload</Button>
                                     </div>
                                 </DialogContent>
