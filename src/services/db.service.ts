@@ -514,7 +514,7 @@ export const payrollDb = {
     if (toAdd.length > 0) {
       const { error: insErr } = await supabase()
         .from("payroll_run_payslips")
-        .insert(toAdd.map((pid) => ({ run_id: run.id, payslip_id: pid })));
+        .upsert(toAdd.map((pid) => ({ run_id: run.id, payslip_id: pid })), { onConflict: "run_id,payslip_id", ignoreDuplicates: true });
       if (insErr) console.error("[db] payroll_run_payslips.insert:", insErr.message);
     }
 
@@ -1059,7 +1059,21 @@ export const tasksDb = {
   fetchComments: () => fetchAll<TaskComment>("task_comments", { order: { column: "created_at", ascending: true } }),
 
   async upsertGroup(g: TaskGroup): Promise<boolean> {
-    return upsertRow("task_groups", g as unknown as Record<string, unknown>);
+    const row: Record<string, unknown> = {
+      id: g.id,
+      name: g.name,
+      description: g.description ?? null,
+      project_id: g.projectId ?? null,
+      created_by: g.createdBy,
+      member_employee_ids: g.memberEmployeeIds,
+      announcement_permission: g.announcementPermission,
+      created_at: g.createdAt,
+    };
+    const ok = await upsertRow("task_groups", row);
+    if (!ok && row.project_id) {
+      return upsertRow("task_groups", { ...row, project_id: null });
+    }
+    return ok;
   },
 
   async deleteGroup(id: string): Promise<boolean> {
@@ -1067,15 +1081,45 @@ export const tasksDb = {
   },
 
   async upsertTask(t: Task): Promise<boolean> {
-    // Explicitly map to DB columns so unknown fields never reach Supabase
+    if (t.groupId) {
+      const { data: existingGroup } = await supabase()
+        .from("task_groups")
+        .select("id")
+        .eq("id", t.groupId)
+        .maybeSingle();
+
+      if (!existingGroup) {
+        try {
+          const { useTasksStore } = await import("@/store/tasks.store");
+          const localGroup = useTasksStore
+            .getState()
+            .groups.find((g) => g.id === t.groupId);
+          if (localGroup) {
+            const ok = await tasksDb.upsertGroup(localGroup);
+            if (!ok) {
+              console.warn(`[db] upsertTask: group ${t.groupId} upsert failed — skipping task to prevent FK violation`);
+              return false;
+            }
+          } else {
+            console.warn(`[db] upsertTask: group ${t.groupId} not found locally or in DB — skipping task`);
+            return false;
+          }
+        } catch (err) {
+          console.warn("[db] upsertTask: _ensureGroupExists failed:", err instanceof Error ? err.message : String(err));
+          return false;
+        }
+      }
+    }
+
     const row: Record<string, unknown> = {
       id: t.id,
-      group_id: t.groupId,
+      group_id: t.groupId ?? null,
       project_id: t.projectId ?? null,
       title: t.title,
       description: t.description,
       priority: t.priority,
       status: t.status,
+      start_date: t.startDate ?? null,
       due_date: t.dueDate ?? null,
       assigned_to: t.assignedTo,
       created_by: t.createdBy,
@@ -1088,6 +1132,16 @@ export const tasksDb = {
   },
 
   async deleteTask(id: string): Promise<boolean> {
+    // Migration 027 cascades task_completion_reports; migration 028 cascades task_comments.
+    // Pre-delete comments as safety net until 028 is verified live in production.
+    const { error: cmtErr } = await supabase()
+      .from("task_comments")
+      .delete()
+      .eq("task_id", id);
+    if (cmtErr && cmtErr.code !== "42501") {
+      console.error("[db] delete task_comments for task:", cmtErr.message);
+      return false;
+    }
     return deleteRow("tasks", id);
   },
 

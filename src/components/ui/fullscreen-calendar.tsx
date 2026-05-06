@@ -243,9 +243,9 @@ export function FullScreenCalendar({
             </Button>
             <Button
               onClick={goToToday}
-              className="w-full rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 md:w-auto text-xs"
+              className="w-full rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 md:w-auto px-3 text-xs"
               variant="outline"
-              size="sm"
+              size="icon"
             >
               Today
             </Button>

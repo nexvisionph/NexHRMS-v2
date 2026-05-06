@@ -3,7 +3,7 @@
 import { createAdminSupabaseClient, createServerSupabaseClient } from "./supabase-server";
 import type { Role } from "@/types";
 import { isAdministrativeRole } from "@/lib/admin-tier";
-import { deleteEmployeeByProfileId } from "./employees.service";
+import { generateUserUniqueId } from "@/lib/id-generator";
 
 function resolveUserRole(profileRole?: string | null, metadataRole?: string | null): Role {
   const resolvedRole = metadataRole ?? profileRole ?? "employee";
@@ -52,6 +52,10 @@ export async function signIn(email: string, password: string) {
 
   // Block deactivated or resigned employees before granting a session
   if (employee && (employee.status === "inactive" || employee.status === "resigned")) {
+    if (employee.job_title === "PENDING_APPROVAL") {
+      await supabase.auth.signOut();
+      return { ok: false as const, error: "pending_approval" };
+    }
     await supabase.auth.signOut();
     return {
       ok: false as const,
@@ -90,34 +94,75 @@ export async function signOut() {
  * Sign up a new user account via Supabase Auth.
  * Used only when self-service sign-up is explicitly enabled.
  */
-export async function signUp(email: string, password: string) {
-  const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { role: "employee" },
+export async function signUp(input: {
+  email: string;
+  password: string;
+  name: string;
+  role: Role;
+  department?: string;
+  phone?: string;
+  emergencyContact?: string;
+  birthday?: string;
+  address?: string;
+}) {
+  const supabase = await createAdminSupabaseClient();
+  const { data, error } = await supabase.auth.admin.createUser({
+    email: input.email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: { 
+      name: input.name,
+      role: input.role 
     },
   });
   if (error) return { ok: false as const, error: error.message };
 
-  return {
-    ok: true as const,
-    user: {
-      id: data.user?.id ?? "",
-      name: data.user?.user_metadata?.name ?? "",
-      email: data.user?.email ?? email,
-      role: resolveUserRole(data.user?.user_metadata?.role, data.user?.app_metadata?.role),
-      avatarUrl: undefined,
-      mustChangePassword: false,
-      profileComplete: false,
-      phone: undefined,
-      department: undefined,
-      birthday: undefined,
-      address: undefined,
-      emergencyContact: undefined,
-    },
-  };
+  if (data.user) {
+    const employeeId = await generateUserUniqueId(input.role);
+
+    const [profileResult, employeeResult] = await Promise.all([
+      supabase.from("profiles").update({
+        name: input.name,
+        role: input.role,
+        department: input.department ?? "",
+        profile_complete: true,
+        phone: input.phone ?? null,
+        emergency_contact: input.emergencyContact ?? null,
+        birthday: input.birthday ?? null,
+        address: input.address ?? null,
+      }).eq("id", data.user.id),
+      
+      supabase.from("employees").insert({
+        id: employeeId,
+        profile_id: data.user.id,
+        name: input.name,
+        email: input.email,
+        role: input.role,
+        department: input.department ?? "",
+        status: "inactive",
+        job_title: "PENDING_APPROVAL",
+        work_type: "WFO",
+        salary: 0,
+        join_date: new Date().toISOString().split("T")[0],
+        productivity: 0,
+        location: "",
+        phone: input.phone ?? null,
+        emergency_contact: input.emergencyContact ?? null,
+        birthday: input.birthday ?? null,
+        address: input.address ?? null,
+      }),
+    ]);
+
+    if (profileResult.error) {
+      return { ok: false as const, error: profileResult.error.message };
+    }
+
+    if (employeeResult.error) {
+      return { ok: false as const, error: employeeResult.error.message };
+    }
+  }
+
+  return { ok: true as const };
 }
 
 /**
@@ -208,7 +253,7 @@ export async function createUserAccount(input: {
     } else {
       // No employee record exists - create one linked to this profile
       // This ensures every account has a corresponding employee record
-      const employeeId = `EMP-${Date.now().toString(36).toUpperCase()}`;
+      const employeeId = await generateUserUniqueId(input.role);
       await supabase.from("employees").insert({
         id: employeeId,
         profile_id: data.user.id,
@@ -287,31 +332,9 @@ export async function adminDeleteAccount(userId: string) {
 
   const supabase = await createAdminSupabaseClient();
 
-  const { data: targetProfile, error: targetProfileError } = await supabase
-    .from("profiles")
-    .select("email")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (targetProfileError) {
-    return { ok: false as const, error: targetProfileError.message };
-  }
-
-  const employeeDeletion = await deleteEmployeeByProfileId(userId, targetProfile?.email ?? undefined);
-  if (!employeeDeletion.ok) return { ok: false as const, error: employeeDeletion.error };
-
-  const { error: createdByError } = await supabase
-    .from("profiles")
-    .update({ created_by: null })
-    .eq("created_by", userId);
-  if (createdByError) return { ok: false as const, error: createdByError.message };
-
-  const { error: profileDeleteError } = await supabase
-    .from("profiles")
-    .delete()
-    .eq("id", userId);
-  if (profileDeleteError) return { ok: false as const, error: profileDeleteError.message };
-
+  // Delete employee record first (FK constraint)
+  await supabase.from("employees").delete().eq("profile_id", userId);
+  // Auth user deletion cascades to profile via FK
   const { error } = await supabase.auth.admin.deleteUser(userId);
   if (error) return { ok: false as const, error: error.message };
 
@@ -482,4 +505,11 @@ export async function getCurrentUser() {
     address: profile?.address,
     emergencyContact: profile?.emergency_contact,
   };
+}
+
+/**
+ * Backward-compatible name used by older route handlers.
+ */
+export async function getCurrentUserFromCookie() {
+  return getCurrentUser();
 }

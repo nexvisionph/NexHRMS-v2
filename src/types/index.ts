@@ -337,6 +337,12 @@ export interface AttendanceLog {
   date: string;
   checkIn?: string;
   checkOut?: string;
+  checkInMethod?: "fingerprint" | "face" | "palm" | "rfid" | "pin" | "manual";
+  checkOutMethod?: "fingerprint" | "face" | "palm" | "rfid" | "pin" | "manual";
+  checkInDeviceId?: string;
+  checkOutDeviceId?: string;
+  source?: "biometric" | "manual" | "mobile";
+  needsReview?: boolean;
   hours?: number;
   status: AttendanceStatus;
   projectId?: string;
@@ -420,6 +426,15 @@ export interface Timesheet {
   approvedBy?: string;
   approvedAt?: string;
 }
+
+// ─── Biometric Integration ───────────────────────────────────
+export {
+  type BiometricMethod,
+  type BiometricLogType,
+  type BiometricDevice,
+  type BiometricEnrollment,
+  type BiometricLog,
+} from "./biometric";
 
 // ─── Leave Engine (§9) ───────────────────────────────────────
 
@@ -968,12 +983,13 @@ export interface TaskGroup {
 
 export interface Task {
   id: string;
-  groupId: string;
+  groupId?: string;
   projectId?: string;
   title: string;
   description: string;
   priority: TaskPriority;
   status: TaskStatus;
+  startDate?: string;
   dueDate?: string;
   assignedTo: string[];
   createdBy: string;
@@ -1157,3 +1173,25 @@ export interface AppearanceConfig {
 
 /** Alias for DemoUser — maps to profiles table */
 export type Profile = DemoUser;
+
+// ─── Performance Management Module ─────────────────────────────
+export {
+  type PerformanceCycle,
+  type PerformanceCycleStatus,
+  type PerformanceCriterion,
+  type PerformanceSalaryBand,
+  type PerformanceReview,
+  type ReviewStatus,
+  type PerformanceRating,
+  type PerformanceSalaryAdjustment,
+  type SalaryAdjustmentStatus,
+  type PerformanceAuditLog,
+  type CreateCycleInput,
+  type UpdateCycleInput,
+  type CreateCriterionInput,
+  type CreateReviewInput,
+  type SubmitReviewInput,
+  type AcknowledgeReviewInput,
+  type CreateSalaryBandInput,
+  type ApproveAdjustmentInput,
+} from "./performance";

@@ -27,7 +27,6 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
     Gift,
@@ -43,7 +42,6 @@ import {
     TrendingUp,
     Loader2,
     Info,
-    ChevronDown,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/format";
@@ -268,7 +266,7 @@ export function ThirteenthMonthModal({
 
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
-            <DialogContent className="!max-w-5xl w-full h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
+            <DialogContent className="!max-w-5xl w-full max-h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
                 {/* Header */}
                 <div className="px-6 py-4 border-b bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30">
                     <DialogHeader>
@@ -285,9 +283,9 @@ export function ThirteenthMonthModal({
                     </DialogHeader>
                 </div>
 
-                {/* Main Content - Scrollable */}
-                <ScrollArea className="flex-1 min-h-0">
-                    <div className="px-6 py-4 space-y-4">
+                {/* Main Content */}
+                <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                    <div className="px-6 py-4 space-y-4 shrink-0">
                         {/* Toolbar: Year + Filter pills — single non-wrapping row */}
                         <div className="flex items-center gap-0 rounded-lg border bg-card overflow-hidden">
                             {/* Year Selector */}
@@ -482,19 +480,19 @@ export function ThirteenthMonthModal({
                                 </p>
                             </div>
                         </div>
-
-                        {/* Employee Table */}
-                        <div className="rounded-xl border overflow-hidden bg-card">
-                            <div className="px-4 py-2.5 border-b bg-muted/30 flex items-center justify-between">
-                                <h3 className="text-sm font-semibold flex items-center gap-2">
-                                    <ChevronDown className="h-4 w-4" />
-                                    Employee Preview
-                                    <Badge variant="secondary" className="ml-2">
-                                        {filteredEmployees.length} employees
-                                    </Badge>
-                                </h3>
-                            </div>
-                            <div className="max-h-[320px] overflow-auto">
+                    </div>
+                    {/* Employee Table — fills remaining space */}
+                    <div className="flex-1 min-h-0 flex flex-col mx-6 mb-4 rounded-xl border overflow-hidden bg-card">
+                        <div className="px-4 py-2.5 border-b bg-muted/30 flex items-center justify-between shrink-0">
+                            <h3 className="text-sm font-semibold flex items-center gap-2">
+                                <Users className="h-4 w-4" />
+                                Employee Preview
+                                <Badge variant="secondary" className="ml-2">
+                                    {filteredEmployees.length} employees
+                                </Badge>
+                            </h3>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-auto">
                                 <Table className="min-w-[700px] w-full">
                                     <TableHeader className="sticky top-0 bg-card z-10">
                                         <TableRow className="hover:bg-transparent">
@@ -589,10 +587,9 @@ export function ThirteenthMonthModal({
                                         )}
                                     </TableBody>
                                 </Table>
-                            </div>
                         </div>
                     </div>
-                </ScrollArea>
+                </div>
 
                 {/* Footer */}
                 <div className="px-6 py-3 border-t bg-muted/30 shrink-0">

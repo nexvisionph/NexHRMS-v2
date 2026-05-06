@@ -78,6 +78,34 @@ const detectLocationSpoofing = (coords: GeolocationCoordinates): string | null =
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const statusColors: Record<string, string> = { present: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", absent: "bg-red-500/15 text-red-700 dark:text-red-400", on_leave: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
 const otStatusColor: Record<string, string> = { pending: "bg-amber-500/15 text-amber-700 dark:text-amber-400", approved: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", rejected: "bg-red-500/15 text-red-700 dark:text-red-400" };
+const methodColors: Record<string, { bg: string; text: string }> = {
+    fingerprint: { bg: "#22C55E", text: "#ffffff" },
+    face: { bg: "#3B82F6", text: "#ffffff" },
+    palm: { bg: "#14B8A6", text: "#ffffff" },
+    rfid: { bg: "#EAB308", text: "#111827" },
+    pin: { bg: "#F97316", text: "#ffffff" },
+    manual: { bg: "#EF4444", text: "#ffffff" },
+};
+const methodLabels: Record<string, string> = {
+    fingerprint: "Fingerprint",
+    face: "Face Scan",
+    palm: "Palm Scan",
+    rfid: "RFID",
+    pin: "PIN",
+    manual: "Manual",
+};
+
+function MethodBadge({ method }: { method?: string }) {
+    if (!method) return <span className="text-muted-foreground">—</span>;
+    const color = methodColors[method];
+    const label = methodLabels[method] || method;
+    if (!color) return <Badge variant="outline" className="text-[10px]">{label}</Badge>;
+    return (
+        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: color.bg, color: color.text }}>
+            {label}
+        </span>
+    );
+}
 
 /* ═══════════════════════════════════════════════════════════════
    ADMIN MANAGEMENT VIEW
@@ -699,7 +727,9 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                             <TableHead className="text-xs">Shift</TableHead>
                                             <TableHead className="text-xs">Project</TableHead>
                                             <TableHead className="text-xs">Check In</TableHead>
+                                            <TableHead className="text-xs">In Method</TableHead>
                                             <TableHead className="text-xs">Check Out</TableHead>
+                                            <TableHead className="text-xs">Out Method</TableHead>
                                             <TableHead className="text-xs">Hours</TableHead>
                                             <TableHead className="text-xs">Late</TableHead>
                                             <TableHead className="text-xs">Status</TableHead>
@@ -709,7 +739,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                     </TableHeader>
                                     <TableBody>
                                         {filteredLogs.length === 0 ? (
-                                            <TableRow><TableCell colSpan={canOverride ? 14 : 12} className="text-center text-sm text-muted-foreground py-8">No attendance logs</TableCell></TableRow>
+                                            <TableRow><TableCell colSpan={canOverride ? 16 : 14} className="text-center text-sm text-muted-foreground py-8">No attendance logs</TableCell></TableRow>
                                         ) : filteredLogs.map((log) => (
                                             <TableRow key={log.id} className={selectedLogIds.has(log.id) ? "bg-primary/5" : undefined}>
                                                 {canOverride && <TableCell className="w-8"><Checkbox checked={selectedLogIds.has(log.id)} onCheckedChange={() => toggleLogSelect(log.id)} aria-label="Select row" /></TableCell>}
@@ -719,7 +749,9 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                                 <TableCell className="text-xs">{(() => { const sh = getEmpShift(log.employeeId); return sh ? <Badge variant="secondary" className="text-[9px] bg-purple-500/10 text-purple-700 dark:text-purple-400 whitespace-nowrap">{sh.name} ({sh.startTime}–{sh.endTime})</Badge> : <span className="text-muted-foreground">—</span>; })()}</TableCell>
                                                 <TableCell className="text-xs text-muted-foreground">{getProjectName(log.projectId)}</TableCell>
                                                 <TableCell className="text-sm">{log.checkIn || "—"}{log.faceVerified && <ShieldCheck className="inline h-3.5 w-3.5 ml-1 text-emerald-500" />}</TableCell>
+                                                <TableCell className="text-sm"><MethodBadge method={log.checkInMethod} /></TableCell>
                                                 <TableCell className="text-sm">{log.checkOut || "—"}</TableCell>
+                                                <TableCell className="text-sm"><MethodBadge method={log.checkOutMethod} /></TableCell>
                                                 <TableCell className="text-sm">{log.hours ? `${log.hours}h` : "—"}</TableCell>
                                                 <TableCell className="text-sm">
                                                     {log.lateMinutes && log.lateMinutes > 0 ? <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400">+{log.lateMinutes}m</Badge> : <span className="text-muted-foreground">—</span>}

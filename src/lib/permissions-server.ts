@@ -90,6 +90,9 @@ const PROTECTED_ROUTES: RouteRule[] = [
     
     // Attendance
     { pattern: /^\/[^/]+\/attendance/, permissions: ["page:attendance"] },
+
+    // Employee biometric self-service
+    { pattern: /^\/[^/]+\/biometric/, permissions: ["page:attendance"] },
     
     // Leave
     { pattern: /^\/[^/]+\/leave/, permissions: ["page:leave"] },
