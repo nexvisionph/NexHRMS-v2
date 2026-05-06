@@ -25,7 +25,7 @@ import { getInitials, formatCurrency, formatDate, validatePhone } from "@/lib/fo
 import { SYSTEM_ROLES, LOCATIONS } from "@/lib/constants";
 import { useDepartmentsStore } from "@/store/departments.store";
 import { useJobTitlesStore } from "@/store/job-titles.store";
-import { Mail, MapPin, Phone, Briefcase, Calendar, DollarSign, FileText, Pencil, Banknote, UserMinus, X } from "lucide-react";
+import { Mail, MapPin, Phone, Briefcase, Calendar, DollarSign, FileText, Pencil, Banknote, UserMinus, X, CheckCircle2, Circle, Clock, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 import type { WorkType, PayFrequency } from "@/types";
@@ -50,6 +50,8 @@ const leaveStatusColors: Record<string, string> = {
     approved: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
     rejected: "bg-red-500/15 text-red-700 dark:text-red-400",
 };
+
+const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
 
 export default function AdminProfileView() {
     const { id } = useParams<{ id: string }>();
@@ -95,7 +97,34 @@ export default function AdminProfileView() {
     const [docOpen, setDocOpen] = useState(false);
     const [docFile, setDocFile] = useState<File | null>(null);
     const [docUploading, setDocUploading] = useState(false);
-    const empDocs = id ? getDocuments(id) : [];
+    const empDocs = useMemo(() => (id ? getDocuments(id) : []), [getDocuments, id]);
+
+    const lifecycleEvents = useMemo(() => {
+        if (!employee) return [];
+        const events = [
+            { id: "joined", label: "Employee joined", detail: `${employee.jobTitle || employee.role} in ${employee.department}`, date: employee.joinDate, tone: "emerald" },
+            ...(employee.profileId ? [{ id: "account", label: "Login account linked", detail: employee.email, date: employee.createdAt || employee.joinDate, tone: "blue" }] : []),
+            ...(employee.shiftId ? [{ id: "shift", label: "Shift assigned", detail: employee.shiftId, date: employee.updatedAt || employee.joinDate, tone: "blue" }] : []),
+            ...(employee.teamLeader ? [{ id: "leader", label: "Team leader assigned", detail: employees.find((e) => e.id === employee.teamLeader)?.name || employee.teamLeader, date: employee.updatedAt || employee.joinDate, tone: "blue" }] : []),
+            ...empDocs.map((doc) => ({ id: doc.id, label: "Document uploaded", detail: doc.name, date: doc.uploadedAt, tone: "violet" })),
+            ...(employee.resignedAt ? [{ id: "resigned", label: "Employee resigned", detail: "Final pay workflow should be reviewed", date: employee.resignedAt, tone: "orange" }] : []),
+        ];
+        return events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [employee, employees, empDocs]);
+
+    const lifecycleTasks = useMemo(() => {
+        if (!employee) return [];
+        const hasGovId = empDocs.some((doc) => /id|tin|sss|philhealth|pagibig|government/i.test(doc.name));
+        const hasContract = empDocs.some((doc) => /contract|agreement|offer/i.test(doc.name));
+        return [
+            { label: "Profile information complete", done: Boolean(employee.phone && employee.address && employee.emergencyContact) },
+            { label: "Login account linked", done: Boolean(employee.profileId) },
+            { label: "Department and job title assigned", done: Boolean(employee.department && (employee.jobTitle || employee.role)) },
+            { label: "Shift or work days configured", done: Boolean(employee.shiftId || employee.workDays?.length) },
+            { label: "Government ID documents uploaded", done: hasGovId },
+            { label: "Contract or offer document uploaded", done: hasContract },
+        ];
+    }, [employee, empDocs]);
 
     const openEditDialog = () => {
         if (!employee) return;
@@ -152,6 +181,10 @@ export default function AdminProfileView() {
     const handleAddDoc = async () => {
         if (!id) return;
         if (!docFile && !docName) { toast.error("Select a file or enter a document name"); return; }
+        if (docFile && docFile.size > MAX_DOCUMENT_SIZE_BYTES) {
+            toast.error("File is too large. Upload a document up to 10MB.");
+            return;
+        }
         const name = docName || (docFile?.name ?? "Document");
         setDocUploading(true);
         try {
@@ -248,6 +281,7 @@ export default function AdminProfileView() {
                     <TabsTrigger value="payslips">Payslips</TabsTrigger>
                     <TabsTrigger value="loans">Loans</TabsTrigger>
                     <TabsTrigger value="documents">Documents</TabsTrigger>
+                    <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="mt-4">
@@ -498,6 +532,60 @@ export default function AdminProfileView() {
                             </Dialog>
                         </CardContent>
                     </Card>
+                </TabsContent>
+
+                <TabsContent value="lifecycle" className="mt-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+                        <Card className="border border-border/50">
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-sm font-semibold">Employee Timeline</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                {lifecycleEvents.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                                        <Clock className="h-10 w-10 mb-2 opacity-40" />
+                                        <p className="text-sm">No lifecycle events yet</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {lifecycleEvents.map((event) => (
+                                            <div key={event.id} className="flex gap-3">
+                                                <div className="mt-0.5 h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                                    {event.id === "joined" ? <UserCheck className="h-4 w-4" /> : event.id === "resigned" ? <UserMinus className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                                                </div>
+                                                <div className="min-w-0 flex-1 border-b border-border/50 pb-4 last:border-0 last:pb-0">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <p className="text-sm font-medium">{event.label}</p>
+                                                        <span className="text-xs text-muted-foreground shrink-0">{formatDate(event.date)}</span>
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{event.detail}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        <Card className="border border-border/50">
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-sm font-semibold">Onboarding Checklist</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                {lifecycleTasks.map((task) => (
+                                    <div key={task.label} className="flex items-center gap-2">
+                                        {task.done ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className="h-4 w-4 text-muted-foreground" />}
+                                        <span className={`text-sm ${task.done ? "text-foreground" : "text-muted-foreground"}`}>{task.label}</span>
+                                    </div>
+                                ))}
+                                <div className="pt-3 border-t">
+                                    <p className="text-xs text-muted-foreground">
+                                        {lifecycleTasks.filter((task) => task.done).length} of {lifecycleTasks.length} items complete
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
                 </TabsContent>
             </Tabs>
 

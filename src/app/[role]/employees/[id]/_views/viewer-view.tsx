@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { getInitials, formatCurrency, formatDate } from "@/lib/format";
 import { Mail, MapPin, Phone, Briefcase, Calendar, DollarSign, FileText, Banknote } from "lucide-react";
 import { toast } from "sonner";
+import { AccessDenied } from "@/components/ui/access-denied";
 
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
     return (
@@ -52,8 +53,12 @@ export default function ViewerProfileView() {
     const canViewLoans = hasPermission(currentUser.role, "loans:view_all");
     const canViewAttendance = hasPermission(currentUser.role, "attendance:view_all");
     const canViewLeave = hasPermission(currentUser.role, "leave:view_all");
+    const canViewEmployees = hasPermission(currentUser.role, "employees:view") || hasPermission(currentUser.role, "page:employees");
     const employee = employees.find((e) => e.id === id);
-    const isSelf = employee?.email === currentUser.email;
+    const isSelf = !!employee && (
+        employee.profileId === currentUser.id ||
+        employee.email?.toLowerCase() === currentUser.email?.toLowerCase()
+    );
 
     const attendanceLogs = useAttendanceStore((s) => s.logs);
     const leaveRequests = useLeaveStore((s) => s.requests);
@@ -79,6 +84,10 @@ export default function ViewerProfileView() {
 
     if (!employee) {
         return <div className="flex items-center justify-center h-[60vh]"><p className="text-muted-foreground">Employee not found</p></div>;
+    }
+
+    if (!canViewEmployees && !isSelf) {
+        return <AccessDenied />;
     }
 
     return (
