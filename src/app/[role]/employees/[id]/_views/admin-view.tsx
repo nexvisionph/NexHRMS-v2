@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useState, useMemo } from "react";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
+import { useRolesStore } from "@/store/roles.store";
 import { useAttendanceStore } from "@/store/attendance.store";
 import { useLeaveStore } from "@/store/leave.store";
 import { usePayrollStore } from "@/store/payroll.store";
@@ -76,6 +77,8 @@ export default function AdminProfileView() {
     const jobTitles = useJobTitlesStore((s) => s.jobTitles);
 
     const employee = employees.find((e) => e.id === id);
+    const hasPermission = useRolesStore((s) => s.hasPermission);
+    const canDirectSetSalary = hasPermission(currentUser.role, "employees:approve_salary");
     const empAttendance = useMemo(() => attendanceLogs.filter((l) => l.employeeId === id).slice(0, 20), [attendanceLogs, id]);
     const empLeaves = useMemo(() => leaveRequests.filter((l) => l.employeeId === id), [leaveRequests, id]);
     const empPayslips = useMemo(() => payslips.filter((p) => p.employeeId === id), [payslips, id]);
@@ -163,12 +166,18 @@ export default function AdminProfileView() {
             return;
         }
         
+        const salaryValue = editSalary.trim() ? Number(editSalary) : employee.salary;
+        if (editSalary.trim() && (Number.isNaN(salaryValue) || salaryValue < 0)) {
+            toast.error("Salary must be a non-negative number");
+            return;
+        }
+
         updateEmployee(employee.id, {
             name: editName, email: editEmail, phone: formattedPhone,
             role: editRole,
             jobTitle: editJobTitle === "__none__" ? undefined : editJobTitle,
             department: editDept, workType: editWorkType,
-            salary: Number(editSalary) || employee.salary,
+            salary: canDirectSetSalary ? salaryValue : employee.salary,
             location: editLocation === "__none__" ? "" : editLocation,
             biometricId: editBiometricId.trim() || undefined,
             payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
@@ -243,9 +252,11 @@ export default function AdminProfileView() {
                         </div>
                         <div className="flex items-center gap-2">
                             <Button variant="outline" size="sm" className="gap-1.5" onClick={openEditDialog}><Pencil className="h-3.5 w-3.5" /> Edit</Button>
-                            <Button variant="outline" size="sm" onClick={() => { toggleStatus(employee.id); useAuditStore.getState().log({ entityType: "employee", entityId: employee.id, action: employee.status === "active" ? "employee_resigned" : "adjustment_applied", performedBy: currentUser.id, reason: employee.status === "active" ? "Deactivated" : "Activated" }); toast.success(`Employee ${employee.status === "active" ? "deactivated" : "activated"}`); }}>
+                            {employee.status !== "resigned" && (
+                            <Button variant="outline" size="sm" onClick={() => { toggleStatus(employee.id); useAuditStore.getState().log({ entityType: "employee", entityId: employee.id, action: employee.status === "active" ? "adjustment_applied" : "adjustment_applied", performedBy: currentUser.id, reason: employee.status === "active" ? "Deactivated" : "Activated" }); toast.success(`Employee ${employee.status === "active" ? "deactivated" : "activated"}`); }}>
                                 {employee.status === "active" ? "Deactivate" : "Activate"}
                             </Button>
+                            )}
                             {employee.status === "active" && (
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild><Button variant="outline" size="sm" className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50"><UserMinus className="h-3.5 w-3.5" /> Resign</Button></AlertDialogTrigger>
@@ -615,7 +626,7 @@ export default function AdminProfileView() {
                             <div><label className="text-sm font-medium">Work Type</label>
                                 <Select value={editWorkType} onValueChange={(v) => setEditWorkType(v as WorkType)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">WFO</SelectItem><SelectItem value="WFH">WFH</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Onsite</SelectItem></SelectContent></Select>
                             </div>
-                            <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="number" value={editSalary} onChange={(e) => setEditSalary(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="number" value={editSalary} onChange={(e) => setEditSalary(e.target.value)} className="mt-1" disabled={!canDirectSetSalary} /></div>
                             <div><label className="text-sm font-medium">Location</label>
                                 <Select value={editLocation || "__none__"} onValueChange={setEditLocation}><SelectTrigger className="mt-1"><SelectValue placeholder="Select location" /></SelectTrigger><SelectContent><SelectItem value="__none__">— Not Specified —</SelectItem>{LOCATIONS.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select>
                             </div>

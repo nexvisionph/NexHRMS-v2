@@ -75,7 +75,7 @@ const PROTECTED_ROUTES: RouteRule[] = [
     
     // Employee management
     { pattern: /^\/[^/]+\/employees\/manage/, permissions: ["page:employees"] },
-    { pattern: /^\/[^/]+\/employees(?:\/|$)/, permissions: ["page:employees", "employees:view"], anyOf: true },
+    { pattern: /^\/[^/]+\/employees(?:\/|$)/, permissions: ["page:employees", "employees:view", "payroll:view_own"], anyOf: true },
     
     // Settings - admin only
     { pattern: /^\/[^/]+\/settings/, permissions: ["page:settings"] },

@@ -126,7 +126,7 @@ export const useEmployeesStore = create<EmployeesState>()(
                 set((s) => ({
                     employees: s.employees.map((e) =>
                         e.id === id
-                            ? { ...e, status: e.status === "active" ? "inactive" : "active" }
+                            ? { ...e, status: e.status === "active" ? "inactive" : e.status === "inactive" ? "active" : e.status }
                             : e
                     ),
                 })),
