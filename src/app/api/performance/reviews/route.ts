@@ -2,6 +2,12 @@ import { createClient } from "@/services/supabase-server";
 import { getCurrentUserFromCookie } from "@/services/auth.service";
 import { NextResponse } from "next/server";
 
+type ReviewRatingInput = {
+  criterion_id: string;
+  score: number;
+  feedback?: string;
+};
+
 export async function GET(req: Request) {
   try {
     const supabase = await createClient();
@@ -52,7 +58,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await req.json() as {
+      cycle_id: string;
+      employee_id: string;
+      ratings: ReviewRatingInput[];
+      manager_notes?: string;
+    };
     const { cycle_id, employee_id, ratings, manager_notes } = body;
 
     // Get the employee row linked to the signed-in profile.
@@ -67,7 +78,7 @@ export async function POST(req: Request) {
     }
 
     // Calculate overall rating from individual ratings
-    const totalScore = ratings.reduce((sum: number, r: any) => sum + r.score, 0);
+    const totalScore = ratings.reduce((sum, r) => sum + r.score, 0);
     const overallRating = totalScore / ratings.length;
 
     // Create review
@@ -90,7 +101,7 @@ export async function POST(req: Request) {
     if (reviewError) throw reviewError;
 
     // Insert individual ratings
-    const ratingInserts = ratings.map((r: any, idx: number) => ({
+    const ratingInserts = ratings.map((r, idx) => ({
       id: `PR-${Date.now()}-${idx}`,
       review_id: reviewId,
       criterion_id: r.criterion_id,

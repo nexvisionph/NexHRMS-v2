@@ -2,6 +2,12 @@ import { createClient } from "@/services/supabase-server";
 import { getCurrentUserFromCookie } from "@/services/auth.service";
 import { NextResponse } from "next/server";
 
+type ReviewRatingInput = {
+  criterion_id: string;
+  score: number;
+  feedback?: string;
+};
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -121,7 +127,7 @@ export async function PUT(
       await supabase.from("performance_ratings").delete().eq("review_id", id);
 
       // Insert new ratings
-      const ratingInserts = ratings.map((r: any, idx: number) => ({
+      const ratingInserts = (ratings as ReviewRatingInput[]).map((r, idx) => ({
         id: `PR-${Date.now()}-${idx}`,
         review_id: id,
         criterion_id: r.criterion_id,

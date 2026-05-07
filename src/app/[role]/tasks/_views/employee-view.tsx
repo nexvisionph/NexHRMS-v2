@@ -8,9 +8,12 @@ import { tasksDb } from "@/services/db.service";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getInitials, formatDate } from "@/lib/format";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
 import Link from "next/link";
@@ -18,9 +21,11 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-    ListTodo, CheckCircle2, ArrowUpRight, Eye,
+    ListTodo, CheckCircle2, ArrowUpRight, Eye, Clock, Send, XCircle,
     AlertTriangle, Camera, ChevronRight, Search, Filter, Loader2,
+    LayoutGrid, Table2, CalendarDays, ChevronDown,
 } from "lucide-react";
+import { FullScreenCalendar, type CalendarItem, type CalendarItemColor } from "@/components/ui/fullscreen-calendar";
 import type { Task, TaskStatus, TaskPriority, TaskCompletionReport } from "@/types";
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string }> = {
@@ -130,7 +135,10 @@ export default function EmployeeTasksView() {
     const roleHref = useRoleHref();
     const [search, setSearch] = useState("");
     const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
-    
+    const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
+    const [viewMode, setViewMode] = useState<"table" | "board">("table");
+    const [activeTab, setActiveTab] = useState("all");
+
     // Loading state — show spinner until we've made at least one DB fetch
     // so the employee never sees stale seed/localStorage tasks.
     const [isLoading, setIsLoading] = useState(true);
@@ -177,6 +185,9 @@ export default function EmployeeTasksView() {
         }
     }, [fetchAttempted, employees.length, tasks.length]);
 
+    const isOverdue = (t: Task) =>
+        t.dueDate && new Date(t.dueDate) < new Date() && !["verified", "cancelled"].includes(t.status);
+
     // Filter tasks assigned to current employee and sort by createdAt descending (newest first)
     const myTasks = useMemo(
         () => tasks
@@ -187,11 +198,8 @@ export default function EmployeeTasksView() {
 
     const filteredTasks = useMemo(() => {
         let result = myTasks;
-        // Apply priority filter
-        if (priorityFilter !== "all") {
-            result = result.filter((t) => t.priority === priorityFilter);
-        }
-        // Apply search filter
+        if (statusFilter !== "all") result = result.filter((t) => t.status === statusFilter);
+        if (priorityFilter !== "all") result = result.filter((t) => t.priority === priorityFilter);
         if (search) {
             const q = search.toLowerCase();
             result = result.filter(
@@ -199,7 +207,7 @@ export default function EmployeeTasksView() {
             );
         }
         return result;
-    }, [myTasks, search, priorityFilter]);
+    }, [myTasks, search, statusFilter, priorityFilter]);
 
     const activeTasks = filteredTasks.filter((t) => ["open", "in_progress", "rejected"].includes(t.status));
     const pendingReview = filteredTasks.filter((t) => t.status === "submitted");
@@ -213,7 +221,7 @@ export default function EmployeeTasksView() {
     ).length;
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name ?? id;
-    const getGroupName = (id: string) => groups.find((g) => g.id === id)?.name ?? id;
+    const getGroupName = (id?: string) => id ? groups.find((g) => g.id === id)?.name ?? id : "Direct assignment";
 
     // Show loading state while hydrating/fetching
     if (isLoading) {
@@ -256,12 +264,12 @@ export default function EmployeeTasksView() {
             {/* Progress Bar */}
             {myTasks.length > 0 && (
                 <Card className="border border-border/50">
-                    <CardContent className="p-3 sm:p-4">
+                    <CardContent className="p-3 sm:p-2">
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-xs font-medium">Completion Progress</span>
                             <span className="text-xs text-muted-foreground">{completionRate}%</span>
                         </div>
-                        <Progress value={completionRate} className="h-2" />
+                        <Progress value={completionRate} className="h-1.5" />
                         <p className="text-[10px] text-muted-foreground mt-1.5">
                             {myTasks.filter((t) => t.status === "verified").length} of {myTasks.length} tasks verified
                         </p>
@@ -269,80 +277,202 @@ export default function EmployeeTasksView() {
                 </Card>
             )}
 
-            {/* Search & Filters */}
-            <div className="flex flex-col sm:flex-row gap-2">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search your tasks..."
-                        className="pl-9"
-                    />
-                </div>
-                <Select value={priorityFilter} onValueChange={(v) => setPriorityFilter(v as TaskPriority | "all")}>
-                    <SelectTrigger className="w-full sm:w-36">
-                        <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
-                        <SelectValue placeholder="Priority" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">All Priorities</SelectItem>
-                        <SelectItem value="urgent">Urgent</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="low">Low</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
+            {/* ── Tabs ────────────────────────────────── */}
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <TabsList className="w-full sm:w-auto">
+                        <TabsTrigger value="all" className="flex-1 sm:flex-none gap-1.5 text-xs sm:text-sm">
+                            <Table2 className="h-3.5 w-3.5" /> All Tasks
+                            <Badge variant="secondary" className="text-[10px] h-4 min-w-4 justify-center px-1">
+                                {filteredTasks.length}
+                            </Badge>
+                        </TabsTrigger>
+                        <TabsTrigger value="pending" className="flex-1 sm:flex-none gap-1.5 text-xs sm:text-sm">
+                            Pending
+                            {pendingReview.length > 0 && (
+                                <Badge variant="secondary" className="text-[10px] h-4 min-w-4 justify-center px-1">
+                                    {pendingReview.length}
+                                </Badge>
+                            )}
+                        </TabsTrigger>
+                        <TabsTrigger value="calendar" className="flex-1 sm:flex-none gap-1.5 text-xs sm:text-sm">
+                            <CalendarDays className="h-3.5 w-3.5" /> Calendar
+                        </TabsTrigger>
+                    </TabsList>
 
-            <Tabs defaultValue="active">
-                <TabsList className="w-full sm:w-auto">
-                    <TabsTrigger value="active" className="flex-1 sm:flex-none gap-1.5 text-xs sm:text-sm">
-                        Active
-                        {activeTasks.length > 0 && (
-                            <Badge variant="secondary" className="text-[10px] h-4 min-w-4 justify-center px-1">
-                                {activeTasks.length}
-                            </Badge>
-                        )}
-                    </TabsTrigger>
-                    <TabsTrigger value="pending" className="flex-1 sm:flex-none gap-1.5 text-xs sm:text-sm">
-                        <span className="hidden sm:inline">Pending </span>Review
-                        {pendingReview.length > 0 && (
-                            <Badge variant="secondary" className="text-[10px] h-4 min-w-4 justify-center px-1">
-                                {pendingReview.length}
-                            </Badge>
-                        )}
-                    </TabsTrigger>
-                    <TabsTrigger value="completed" className="flex-1 sm:flex-none gap-1.5 text-xs sm:text-sm">
-                        <span className="hidden sm:inline">Completed</span>
-                        <span className="sm:hidden">Done</span>
-                        {completedTasks.length > 0 && (
-                            <Badge variant="secondary" className="text-[10px] h-4 min-w-4 justify-center px-1">
-                                {completedTasks.length}
-                            </Badge>
-                        )}
-                    </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="active" className="mt-3">
-                    {activeTasks.length === 0 ? (
-                        <EmptyState icon={CheckCircle2} message="No active tasks. All caught up!" />
-                    ) : (
-                        <div className="grid gap-2 sm:gap-3 sm:grid-cols-2">
-                            {activeTasks.map((task) => (
-                                <TaskCard
-                                    key={task.id}
-                                    task={task}
-                                    href={roleHref(`/tasks/${task.id}`)}
-                                    groupName={getGroupName(task.groupId)}
-                                    getEmpName={getEmpName}
-                                    completionReport={task.completionRequired ? getCompletionReport(task.id) : undefined}
-                                />
-                            ))}
+                    {/* View mode toggle — only on All Tasks tab */}
+                    {activeTab === "all" && (
+                        <div className="flex items-center gap-1 border rounded-md p-0.5">
+                            <Button
+                                variant={viewMode === "table" ? "secondary" : "ghost"}
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                title="Table view"
+                                onClick={() => setViewMode("table")}
+                            >
+                                <Table2 className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                                variant={viewMode === "board" ? "secondary" : "ghost"}
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                title="Board view"
+                                onClick={() => setViewMode("board")}
+                            >
+                                <LayoutGrid className="h-3.5 w-3.5" />
+                            </Button>
                         </div>
+                    )}
+                </div>
+
+                {/* ═══════════════ ALL TASKS TAB ═══════════════ */}
+                <TabsContent value="all" className="mt-0 space-y-4">
+                    {/* Search & Filters */}
+                    <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                placeholder="Search your tasks..."
+                                className="pl-9"
+                            />
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                            {viewMode === "table" && (
+                                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as TaskStatus | "all")}>
+                                    <SelectTrigger className="w-[130px] h-9 text-xs">
+                                        <Filter className="h-3 w-3 mr-1" />
+                                        <SelectValue placeholder="Status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Status</SelectItem>
+                                        {(Object.entries(STATUS_CONFIG) as [TaskStatus, typeof STATUS_CONFIG["open"]][]).map(
+                                            ([key, cfg]) => (
+                                                <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
+                                            ),
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                            <Select value={priorityFilter} onValueChange={(v) => setPriorityFilter(v as TaskPriority | "all")}>
+                                <SelectTrigger className="w-[130px] h-9 text-xs">
+                                    <SelectValue placeholder="Priority" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Priority</SelectItem>
+                                    <SelectItem value="urgent">Urgent</SelectItem>
+                                    <SelectItem value="high">High</SelectItem>
+                                    <SelectItem value="medium">Medium</SelectItem>
+                                    <SelectItem value="low">Low</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
+                    {/* TABLE VIEW */}
+                    {viewMode === "table" && (
+                        <Card className="border border-border/50 overflow-hidden">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead className="w-[200px]">Task</TableHead>
+                                        <TableHead className="hidden lg:table-cell">Description</TableHead>
+                                        <TableHead className="w-[100px]">Status</TableHead>
+                                        <TableHead className="w-[90px]">Priority</TableHead>
+                                        <TableHead className="hidden md:table-cell w-[120px]">Assignees</TableHead>
+                                        <TableHead className="hidden sm:table-cell w-[100px]">Start</TableHead>
+                                        <TableHead className="w-[100px]">Due</TableHead>
+                                        <TableHead className="w-[50px]" />
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredTasks.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground text-sm">
+                                                No tasks match your filters.
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        filteredTasks.map((task) => {
+                                            const sc = STATUS_CONFIG[task.status];
+                                            const pc = PRIORITY_CONFIG[task.priority];
+                                            const overdue = isOverdue(task);
+                                            return (
+                                                <TableRow key={task.id}>
+                                                    <TableCell className="font-medium text-sm">{task.title}</TableCell>
+                                                    <TableCell className="hidden lg:table-cell text-xs text-muted-foreground max-w-[200px] truncate">
+                                                        {task.description || "—"}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="secondary" className={`text-[10px] ${sc.color}`}>{sc.label}</Badge>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="secondary" className={`text-[10px] ${pc.color}`}>{pc.label}</Badge>
+                                                    </TableCell>
+                                                    <TableCell className="hidden md:table-cell">
+                                                        <TooltipProvider delayDuration={200}>
+                                                            <div className="flex -space-x-1.5">
+                                                                {task.assignedTo.slice(0, 4).map((empId) => {
+                                                                    const emp = employees.find((e) => e.id === empId);
+                                                                    return (
+                                                                        <Tooltip key={empId}>
+                                                                            <TooltipTrigger asChild>
+                                                                                <Avatar className="h-6 w-6 border-2 border-card cursor-default">
+                                                                                    <AvatarFallback className="text-[7px] bg-muted">{getInitials(emp?.name ?? empId)}</AvatarFallback>
+                                                                                </Avatar>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent side="bottom" className="text-xs px-2 py-1.5">
+                                                                                <p className="font-medium">{emp?.name ?? empId}</p>
+                                                                                <p className="text-muted-foreground">{emp?.department ?? ""}</p>
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    );
+                                                                })}
+                                                                {task.assignedTo.length > 4 && (
+                                                                    <Avatar className="h-6 w-6 border-2 border-card">
+                                                                        <AvatarFallback className="text-[8px] bg-muted">+{task.assignedTo.length - 4}</AvatarFallback>
+                                                                    </Avatar>
+                                                                )}
+                                                            </div>
+                                                        </TooltipProvider>
+                                                    </TableCell>
+                                                    <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
+                                                        {task.startDate ? formatDate(task.startDate) : "—"}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs">
+                                                        {task.dueDate ? (
+                                                            <span className={overdue ? "text-red-600 font-medium" : "text-muted-foreground"}>
+                                                                {overdue && <AlertTriangle className="inline h-3 w-3 mr-0.5" />}
+                                                                {formatDate(task.dueDate)}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-muted-foreground">—</span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="View" asChild>
+                                                            <Link href={roleHref(`/tasks/${task.id}`)}>
+                                                                <Eye className="h-4 w-4" />
+                                                            </Link>
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </Card>
+                    )}
+
+                    {/* BOARD VIEW */}
+                    {viewMode === "board" && (
+                        <EmployeeBoardView tasks={filteredTasks} roleHref={roleHref} getEmpName={getEmpName} />
                     )}
                 </TabsContent>
 
+                {/* ═══════════════ PENDING TAB ═══════════════ */}
                 <TabsContent value="pending" className="mt-3">
                     {pendingReview.length === 0 ? (
                         <EmptyState icon={Eye} message="No tasks pending review" />
@@ -353,7 +483,7 @@ export default function EmployeeTasksView() {
                                     key={task.id}
                                     task={task}
                                     href={roleHref(`/tasks/${task.id}`)}
-                                    groupName={getGroupName(task.groupId)}
+                                    groupName={getGroupName(task.groupId ?? "")}
                                     getEmpName={getEmpName}
                                     completionReport={task.completionRequired ? getCompletionReport(task.id) : undefined}
                                 />
@@ -362,25 +492,191 @@ export default function EmployeeTasksView() {
                     )}
                 </TabsContent>
 
-                <TabsContent value="completed" className="mt-3">
-                    {completedTasks.length === 0 ? (
-                        <EmptyState icon={ListTodo} message="No completed tasks yet" />
-                    ) : (
-                        <div className="grid gap-2 sm:gap-3 sm:grid-cols-2">
-                            {completedTasks.map((task) => (
-                                <TaskCard
-                                    key={task.id}
-                                    task={task}
-                                    href={roleHref(`/tasks/${task.id}`)}
-                                    groupName={getGroupName(task.groupId)}
-                                    getEmpName={getEmpName}
-                                    completionReport={task.completionRequired ? getCompletionReport(task.id) : undefined}
-                                />
-                            ))}
-                        </div>
-                    )}
+                {/* ═══════════════ CALENDAR TAB ═══════════════ */}
+                <TabsContent value="calendar" className="mt-3">
+                    <EmployeeCalendarView tasks={myTasks} roleHref={roleHref} />
                 </TabsContent>
             </Tabs>
         </div>
+    );
+}
+
+// ── Board View Sub-Component ──────────────────────────────────────
+
+const BOARD_STATUSES: TaskStatus[] = ["open", "in_progress", "submitted", "rejected", "verified", "cancelled"];
+
+const STATUS_ICONS: Record<TaskStatus, typeof ListTodo> = {
+    open: ListTodo,
+    in_progress: Clock,
+    submitted: Send,
+    verified: CheckCircle2,
+    rejected: XCircle,
+    cancelled: XCircle,
+};
+
+function EmployeeBoardView({
+    tasks, roleHref, getEmpName,
+}: {
+    tasks: Task[];
+    roleHref: (path: string) => string;
+    getEmpName: (id: string) => string;
+}) {
+    const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+    const toggle = (status: string) => setCollapsed((prev) => ({ ...prev, [status]: !prev[status] }));
+
+    const renderTaskCard = (task: Task) => {
+        const pc = PRIORITY_CONFIG[task.priority];
+        return (
+            <Link key={task.id} href={roleHref(`/tasks/${task.id}`)}>
+                <Card className="border border-border/50 hover:border-border active:scale-[0.99] transition-all cursor-pointer">
+                    <CardContent className="p-3 space-y-1.5">
+                        <p className="text-sm font-medium leading-snug line-clamp-2">{task.title}</p>
+                        <div className="flex items-center gap-1.5">
+                            <Badge variant="secondary" className={`text-[10px] ${pc.color}`}>
+                                {pc.label}
+                            </Badge>
+                            {task.dueDate && (
+                                <span className="text-[10px] text-muted-foreground ml-auto">
+                                    Due {formatDate(task.dueDate)}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex -space-x-1.5">
+                            {task.assignedTo.slice(0, 3).map((empId) => (
+                                <Avatar key={empId} className="h-5 w-5 border-2 border-card">
+                                    <AvatarFallback className="text-[7px] bg-muted">{getInitials(getEmpName(empId))}</AvatarFallback>
+                                </Avatar>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            </Link>
+        );
+    };
+
+    return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {BOARD_STATUSES.map((status) => {
+                const cfg = STATUS_CONFIG[status];
+                const Icon = STATUS_ICONS[status];
+                const columnTasks = tasks.filter((t) => t.status === status);
+                const isCol = collapsed[status];
+                const behindCount = Math.min(columnTasks.length - 1, 2);
+                return (
+                    <div key={status} className="min-w-0">
+                        {/* Folder header */}
+                        <button
+                            onClick={() => toggle(status)}
+                            className="flex items-center gap-2 px-2 py-1.5 w-full text-left rounded-t-lg border border-border/50 bg-muted/40 hover:bg-muted/60 transition-colors"
+                        >
+                            <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ${isCol ? "-rotate-90" : ""}`} />
+                            <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+                                {cfg.label}
+                            </span>
+                            <Badge variant="secondary" className="text-[10px] h-4 min-w-4 px-1 ml-auto shrink-0">
+                                {columnTasks.length}
+                            </Badge>
+                        </button>
+
+                        {/* Collapsed: top card fully visible + slivers behind */}
+                        {isCol && (
+                            <div className="border-x border-b border-border/30 rounded-b-lg p-2 bg-muted/10">
+                                {columnTasks.length === 0 ? (
+                                    <div className="rounded-lg border border-dashed border-border/50 p-4 text-center">
+                                        <p className="text-xs text-muted-foreground">No tasks</p>
+                                    </div>
+                                ) : (
+                                    <div
+                                        className="relative cursor-pointer"
+                                        onClick={() => toggle(status)}
+                                        style={{ paddingBottom: `${behindCount * 6}px` }}
+                                    >
+                                        {/* Slivers behind the top card */}
+                                        {Array.from({ length: behindCount }).map((_, i) => (
+                                            <div
+                                                key={i}
+                                                className="absolute bottom-0 left-0 right-0 rounded-lg border border-border/40 bg-card"
+                                                style={{
+                                                    height: "calc(100% - 8px)",
+                                                    bottom: `${i * 6}px`,
+                                                    zIndex: behindCount - i,
+                                                    marginLeft: `${(i + 1) * 4}px`,
+                                                    marginRight: `${(i + 1) * 4}px`,
+                                                    opacity: 0.7 - i * 0.2,
+                                                }}
+                                            />
+                                        ))}
+                                        {/* Top card */}
+                                        <div className="relative" style={{ zIndex: behindCount + 1 }}>
+                                            {renderTaskCard(columnTasks[0])}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Expanded: full card list with spacing */}
+                        {!isCol && (
+                            <div className="space-y-3 border-x border-b border-border/30 rounded-b-lg p-2 bg-muted/10">
+                                {columnTasks.length === 0 ? (
+                                    <div className="rounded-lg border border-dashed border-border/50 p-4 text-center">
+                                        <p className="text-xs text-muted-foreground">No tasks</p>
+                                    </div>
+                                ) : (
+                                    columnTasks.map((task) => renderTaskCard(task))
+                                )}
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ── Calendar View Sub-Component ──────────────────────────────────
+
+const TASK_CALENDAR_COLORS: Record<TaskStatus, CalendarItemColor> = {
+    open: { bg: "bg-blue-100 dark:bg-blue-900/30", text: "text-blue-700 dark:text-blue-400", dot: "bg-blue-500" },
+    in_progress: { bg: "bg-yellow-100 dark:bg-yellow-900/30", text: "text-yellow-700 dark:text-yellow-400", dot: "bg-yellow-500" },
+    submitted: { bg: "bg-purple-100 dark:bg-purple-900/30", text: "text-purple-700 dark:text-purple-400", dot: "bg-purple-500" },
+    verified: { bg: "bg-green-100 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400", dot: "bg-green-500" },
+    rejected: { bg: "bg-red-100 dark:bg-red-900/30", text: "text-red-700 dark:text-red-400", dot: "bg-red-500" },
+    cancelled: { bg: "bg-gray-100 dark:bg-gray-900/30", text: "text-gray-700 dark:text-gray-400", dot: "bg-gray-400" },
+};
+
+function EmployeeCalendarView({
+    tasks, roleHref,
+}: {
+    tasks: Task[];
+    roleHref: (path: string) => string;
+}) {
+    const calendarItems: CalendarItem[] = useMemo(() =>
+        tasks
+            .filter((t) => t.dueDate)
+            .map((t) => ({
+                id: t.id,
+                title: t.title,
+                date: t.dueDate!,
+                status: t.status,
+                priority: t.priority,
+            })),
+        [tasks],
+    );
+
+    const handleItemClick = (item: CalendarItem) => {
+        window.location.href = roleHref(`/tasks/${item.id}`);
+    };
+
+    return (
+        <Card className="border border-border/50 overflow-hidden">
+            <FullScreenCalendar
+                items={calendarItems}
+                colorMap={TASK_CALENDAR_COLORS}
+                onItemClick={handleItemClick}
+                itemLabel="Tasks"
+            />
+        </Card>
     );
 }

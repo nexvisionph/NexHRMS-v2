@@ -77,7 +77,8 @@ export default function LoginPage() {
 
     useEffect(() => {
         if (searchParams.get("type") === "recovery") {
-            setMode("recovery");
+            const timer = setTimeout(() => setMode("recovery"), 0);
+            return () => clearTimeout(timer);
         }
     }, [searchParams]);
 

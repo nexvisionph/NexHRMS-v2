@@ -108,11 +108,16 @@ export default function QRKioskPage() {
         if (storedDate !== today) {
             sessionStorage.removeItem("kiosk-qr-activity-log");
             sessionStorage.setItem("kiosk-qr-log-date", today);
-            setKioskLog([]);
+            const timer = setTimeout(() => setKioskLog([]), 0);
+            return () => clearTimeout(timer);
         } else {
             try {
                 const saved = sessionStorage.getItem("kiosk-qr-activity-log");
-                if (saved) setKioskLog(JSON.parse(saved));
+                if (saved) {
+                    const parsed = JSON.parse(saved) as Array<{ name: string; type: "in" | "out"; time: string }>;
+                    const timer = setTimeout(() => setKioskLog(parsed), 0);
+                    return () => clearTimeout(timer);
+                }
             } catch { /* ignore parse errors */ }
         }
     }, []);
@@ -315,7 +320,9 @@ export default function QRKioskPage() {
     }, [employees, deviceId, stopQrScanner, clockEmployee, triggerFeedback]);
 
     // Keep the ref in sync so the scan interval always uses the latest callback
-    processQrPayloadRef.current = processQrPayload;
+    useEffect(() => {
+        processQrPayloadRef.current = processQrPayload;
+    }, [processQrPayload]);
 
     const startQrScanner = useCallback(async () => {
         setQrCameraError(false);
@@ -406,7 +413,9 @@ export default function QRKioskPage() {
     }, []);
 
     // Keep startQrScannerRef in sync to avoid circular dependency with triggerFeedback
-    startQrScannerRef.current = startQrScanner;
+    useEffect(() => {
+        startQrScannerRef.current = startQrScanner;
+    }, [startQrScanner]);
 
     // Auto-start scanner once on initial page load (after PIN verification).
     // Scanner stays always-on — no manual start/stop.

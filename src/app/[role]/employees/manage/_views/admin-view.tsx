@@ -23,7 +23,6 @@ import type { DemoUserLike } from "@/services/auth.service";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -560,13 +559,17 @@ export default function AdminEmployeesView() {
     const handleReject = async (emp: Employee) => {
         try {
             if (emp.profileId) {
-                await adminDeleteAccount(emp.profileId);
+                const result = await adminDeleteAccount(emp.profileId);
+                if (!result.ok) {
+                    toast.error(result.error);
+                    return;
+                }
             } else {
                 removeEmployee(emp.id);
             }
             toast.success(`Registration for ${emp.name} rejected and account removed.`);
             refreshAccounts();
-        } catch (err) {
+        } catch {
             toast.error("Failed to reject registration");
         }
     };
@@ -807,8 +810,10 @@ export default function AdminEmployeesView() {
         if (!editDept) { toast.error("Department is required"); return; }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmail.trim())) { toast.error("Please enter a valid email address"); return; }
         if (employees.some((e) => e.id !== editingEmp.id && e.email.toLowerCase() === editEmail.trim().toLowerCase())) { toast.error("An employee with this email already exists"); return; }
-        const editSalaryNum = Number(editSalary);
-        if (editSalary && (isNaN(editSalaryNum) || editSalaryNum < 0)) { toast.error("Salary must be a non-negative number"); return; }
+        const editSalaryNum = editSalary.trim() ? Number(editSalary) : editingEmp.salary;
+        if (editSalary.trim() && (isNaN(editSalaryNum) || editSalaryNum < 0)) { toast.error("Salary must be a non-negative number"); return; }
+        const editProductivityNum = editProductivity.trim() ? Number(editProductivity) : editingEmp.productivity;
+        if (editProductivity.trim() && (isNaN(editProductivityNum) || editProductivityNum < 0 || editProductivityNum > 100)) { toast.error("Productivity must be between 0 and 100"); return; }
         
         // Validate phone if provided
         let formattedPhone: string | undefined;
@@ -824,8 +829,8 @@ export default function AdminEmployeesView() {
         try {
         updateEmployee(editingEmp.id, {
             name: editName.trim(), email: editEmail.trim(), role: editRole, jobTitle: editJobTitle, department: editDept, workType: editWorkType,
-            salary: editSalaryNum || 0, phone: formattedPhone,
-            productivity: Number(editProductivity) || 80, payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
+            salary: canDirectSet ? editSalaryNum : editingEmp.salary, phone: formattedPhone,
+            productivity: editProductivityNum, payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
             birthday: editBirthday || undefined,
             teamLeader: editTeamLeader !== "none" ? editTeamLeader : undefined,
             shiftId: editShiftId !== "none" ? editShiftId : undefined,
@@ -1482,7 +1487,7 @@ export default function AdminEmployeesView() {
                                     <div><label className="text-sm font-medium">Work Type</label>
                                         <Select value={editWorkType} onValueChange={(v) => setEditWorkType(v as WorkType)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">Work From Office</SelectItem><SelectItem value="WFH">Work From Home</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Full Onsite</SelectItem></SelectContent></Select>
                                     </div>
-                                    <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="number" value={editSalary} onChange={(e) => setEditSalary(e.target.value)} className="mt-1" /></div>
+                                    <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="number" value={editSalary} onChange={(e) => setEditSalary(e.target.value)} className="mt-1" disabled={!canDirectSet} /></div>
                                     <div><label className="text-sm font-medium">Pay Frequency</label>
                                         <Select value={editPayFreq} onValueChange={setEditPayFreq}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="company">Company Default ({paySchedule.defaultFrequency.replace("_", "-")})</SelectItem><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="semi_monthly">Semi-Monthly</SelectItem><SelectItem value="bi_weekly">Bi-Weekly</SelectItem><SelectItem value="weekly">Weekly</SelectItem></SelectContent></Select>
                                     </div>
@@ -1688,7 +1693,7 @@ export default function AdminEmployeesView() {
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                     <Input placeholder="Search by name, email, or ID..." className="pl-9" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} />
                                 </div>
-                                <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v as "all" | "active" | "inactive"); setPage(1); }}>
+                                <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v as "all" | "active" | "inactive" | "resigned"); setPage(1); }}>
                                     <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="Status" /></SelectTrigger>
                                     <SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem><SelectItem value="resigned">Resigned</SelectItem></SelectContent>
                                 </Select>
@@ -1902,9 +1907,11 @@ export default function AdminEmployeesView() {
                                             <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" disabled={!canManage} onClick={() => handleOpenEdit(emp)}>
                                                 <Pencil className="h-3.5 w-3.5" /> Edit
                                             </Button>
+                                            {emp.status !== "resigned" && (
                                             <Button variant={emp.status === "active" ? "destructive" : "default"} size="sm" className="h-8 text-xs" disabled={!canManage} onClick={() => { if (!canManage) return; toggleStatus(emp.id); toast.success(`${emp.name} ${emp.status === "active" ? "deactivated" : "activated"}`); }}>
                                                 {emp.status === "active" ? "Deactivate" : "Activate"}
                                             </Button>
+                                            )}
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -1960,9 +1967,11 @@ export default function AdminEmployeesView() {
                                                                     else toast.error("No linked account found");
                                                                 }}><KeyRound className="h-3.5 w-3.5" /></Button>
                                                             )}
-                                                            <Button variant="ghost" size="sm" className="h-7 text-[10px]" disabled={!canManage} onClick={() => { if (!canManage) return; toggleStatus(emp.id); useAuditStore.getState().log({ entityType: "employee", entityId: emp.id, action: emp.status === "active" ? "employee_resigned" : "adjustment_applied", performedBy: currentUser.id, reason: emp.status === "active" ? "Deactivated" : "Activated" }); toast.success(`${emp.name} ${emp.status === "active" ? "deactivated" : "activated"}`); }}>
+                                                            {emp.status !== "resigned" && (
+                                                            <Button variant="ghost" size="sm" className="h-7 text-[10px]" disabled={!canManage} onClick={() => { if (!canManage) return; toggleStatus(emp.id); useAuditStore.getState().log({ entityType: "employee", entityId: emp.id, action: "adjustment_applied", performedBy: currentUser.id, reason: emp.status === "active" ? "Deactivated" : "Activated" }); toast.success(`${emp.name} ${emp.status === "active" ? "deactivated" : "activated"}`); }}>
                                                                 {emp.status === "active" ? "Deactivate" : emp.status === "inactive" ? "Activate" : emp.status}
                                                             </Button>
+                                                            )}
                                                             {canManage && emp.status === "active" && (
                                                                 <AlertDialog>
                                                                     <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-orange-500 hover:text-orange-700 hover:bg-orange-500/10" title="Resign"><UserMinus className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
@@ -2028,7 +2037,7 @@ export default function AdminEmployeesView() {
                             <Input placeholder="Search employees..." className="pl-9" value={dirSearch} onChange={(e) => setDirSearch(e.target.value)} />
                         </div>
                         <Select value={dirDept} onValueChange={setDirDept}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Department" /></SelectTrigger><SelectContent><SelectItem value="all">All Departments</SelectItem>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
-                        <Select value={dirStatus} onValueChange={setDirStatus}><SelectTrigger className="w-full sm:w-[130px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select>
+                        <Select value={dirStatus} onValueChange={setDirStatus}><SelectTrigger className="w-full sm:w-[130px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem><SelectItem value="resigned">Resigned</SelectItem></SelectContent></Select>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">

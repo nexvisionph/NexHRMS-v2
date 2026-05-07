@@ -36,7 +36,7 @@ export function EnrollmentReminder({ adminView = false, compact = false, employe
             (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name
         );
     const resolvedEmployeeId = employeeIdProp ?? myEmployee?.id;
-    const requiresBiometricEnrollment = !!myEmployee?.biometricId;
+    const requiresBiometricEnrollment = employeeIdProp ? true : !!myEmployee?.biometricId;
 
     // Build the enrollment link based on user role (avoids kiosk PIN gate)
     const enrollPath = `/${currentUser.role}/face-enrollment`;
@@ -45,18 +45,41 @@ export function EnrollmentReminder({ adminView = false, compact = false, employe
     const [loading, setLoading] = useState(!!resolvedEmployeeId);
 
     useEffect(() => {
-        if (!resolvedEmployeeId) return;
+        if (!resolvedEmployeeId) {
+            const timer = setTimeout(() => {
+                setLoading(false);
+                setIsEnrolled(null);
+            }, 0);
+            return () => clearTimeout(timer);
+        }
         if (!requiresBiometricEnrollment) {
-            setIsEnrolled(true);
-            setLoading(false);
-            return;
+            const timer = setTimeout(() => {
+                setIsEnrolled(true);
+                setLoading(false);
+            }, 0);
+            return () => clearTimeout(timer);
         }
 
+        let cancelled = false;
+        const loadingTimer = setTimeout(() => {
+            if (!cancelled) setLoading(true);
+        }, 0);
         fetch(`/api/face-recognition/enroll?action=status&employeeId=${encodeURIComponent(resolvedEmployeeId)}`)
             .then((r) => r.json())
-            .then((data) => setIsEnrolled(data.enrolled ?? false))
-            .catch(() => setIsEnrolled(false))
-            .finally(() => setLoading(false));
+            .then((data) => {
+                if (!cancelled) setIsEnrolled(data.enrolled ?? false);
+            })
+            .catch(() => {
+                if (!cancelled) setIsEnrolled(false);
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+
+        return () => {
+            cancelled = true;
+            clearTimeout(loadingTimer);
+        };
     }, [resolvedEmployeeId, requiresBiometricEnrollment]);
 
     if (loading) {

@@ -59,19 +59,24 @@ export function usePayrollPaymentWizard() {
             const raw = window.localStorage.getItem(STORAGE_KEY);
             if (!raw) return;
             const persisted = JSON.parse(raw) as PersistedWizard;
-            setActiveStep(persisted.activeStep || "schedule");
-            setCompletedSteps(persisted.completedSteps || []);
-            setSchedule(persisted.schedule || defaultPayrollSchedule);
-            setReportType(persisted.reportType || "payroll-summary");
+            const timer = setTimeout(() => {
+                setActiveStep(persisted.activeStep || "schedule");
+                setCompletedSteps(persisted.completedSteps || []);
+                setSchedule(persisted.schedule || defaultPayrollSchedule);
+                setReportType(persisted.reportType || "payroll-summary");
+            }, 0);
+            return () => clearTimeout(timer);
         } catch {
             window.localStorage.removeItem(STORAGE_KEY);
-            setError("Saved payroll workflow state could not be restored.");
+            const timer = setTimeout(() => setError("Saved payroll workflow state could not be restored."), 0);
+            return () => clearTimeout(timer);
         }
     }, []);
 
     useEffect(() => {
         if (componentValues.length === 0 && initialComponents.length > 0) {
-            setComponentValues(initialComponents);
+            const timer = setTimeout(() => setComponentValues(initialComponents), 0);
+            return () => clearTimeout(timer);
         }
     }, [componentValues.length, initialComponents]);
 
@@ -81,7 +86,8 @@ export function usePayrollPaymentWizard() {
             window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
         } catch {
             window.localStorage.removeItem(STORAGE_KEY);
-            setError("Payroll workflow progress could not be saved because browser storage is full.");
+            const timer = setTimeout(() => setError("Payroll workflow progress could not be saved because browser storage is full."), 0);
+            return () => clearTimeout(timer);
         }
     }, [activeStep, completedSteps, schedule, reportType]);
 

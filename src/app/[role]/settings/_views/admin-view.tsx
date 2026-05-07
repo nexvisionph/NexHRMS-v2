@@ -211,7 +211,7 @@ export default function AdminSettingsView() {
        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
     /* ── 1. GENERAL ───────────────────────────────── */
-    const GeneralTab = () => (
+    const renderGeneralTab = () => (
         <div className="space-y-6">
             {/* Appearance — Theme Toggle */}
             <Card>
@@ -259,7 +259,7 @@ export default function AdminSettingsView() {
     );
 
     /* ── 2. PAYROLL & TIME ────────────────────────── */
-    const PayrollTab = () => (
+    const renderPayrollTab = () => (
         <div className="space-y-6">
             {/* Pay Schedule */}
             <Card>
@@ -443,7 +443,7 @@ export default function AdminSettingsView() {
     );
 
     /* ── 3. COMMUNICATION ──────────────────────────── */
-    const CommunicationTab = () => (
+    const renderCommunicationTab = () => (
         <div className="space-y-6">
             {/* Email Notifications */}
             <Card>
@@ -532,7 +532,7 @@ export default function AdminSettingsView() {
     );
 
     /* ── 4. SYSTEM ──────────────────────────────────── */
-    const SystemTab = () => (
+    const renderSystemTab = () => (
         <div className="space-y-6">
             {/* Roles Summary */}
             <Card>
@@ -723,10 +723,10 @@ export default function AdminSettingsView() {
 
                 {/* Tab Content */}
                 <div className="flex-1 min-w-0 max-w-3xl">
-                    {activeTab === "general" && <GeneralTab />}
-                    {activeTab === "payroll" && <PayrollTab />}
-                    {activeTab === "communication" && <CommunicationTab />}
-                    {activeTab === "system" && <SystemTab />}
+                    {activeTab === "general" && renderGeneralTab()}
+                    {activeTab === "payroll" && renderPayrollTab()}
+                    {activeTab === "communication" && renderCommunicationTab()}
+                    {activeTab === "system" && renderSystemTab()}
                 </div>
             </div>
         </div>

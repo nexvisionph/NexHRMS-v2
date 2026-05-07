@@ -158,7 +158,7 @@ describe("Role-Based Access Control", () => {
         });
 
         it("should allow admin to manage everything", () => {
-            const criticalPerms: string[] = [
+            const criticalPerms: Parameters<typeof checkPermission>[1][] = [
                 "employees:delete",
                 "payroll:generate",
                 "payroll:lock",
@@ -168,7 +168,7 @@ describe("Role-Based Access Control", () => {
                 "audit:view",
             ];
             for (const perm of criticalPerms) {
-                expect(checkPermission("admin", perm as any)).toBe(true);
+                expect(checkPermission("admin", perm)).toBe(true);
             }
         });
     });

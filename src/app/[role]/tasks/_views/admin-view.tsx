@@ -36,7 +36,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
     ListTodo, CheckCircle2, Clock, Eye, AlertTriangle, Plus, Search, MoreHorizontal,
-    Pencil, Trash2, Users, FolderOpen, ArrowUpDown, XCircle, ChevronRight,
+    Pencil, Trash2, Users, FolderOpen, ArrowUpDown, XCircle, ChevronRight, ChevronDown,
     Layers, LayoutGrid, Table2, FolderPlus, Send, Tag, Briefcase, RefreshCw,
     ClipboardCheck, Filter, CalendarDays,
 } from "lucide-react";
@@ -812,20 +812,22 @@ export default function AdminTasksView() {
                             />
                         </div>
                         <div className="flex gap-2 flex-wrap">
-                            <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                <SelectTrigger className="w-[130px] h-9 text-xs">
-                                    <Filter className="h-3 w-3 mr-1" />
-                                    <SelectValue placeholder="Status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Status</SelectItem>
-                                    {(Object.entries(STATUS_CONFIG) as [TaskStatus, typeof STATUS_CONFIG["open"]][]).map(
-                                        ([key, cfg]) => (
-                                            <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
-                                        ),
-                                    )}
-                                </SelectContent>
-                            </Select>
+                            {taskViewMode !== "board" && (
+                                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                    <SelectTrigger className="w-[130px] h-9 text-xs">
+                                        <Filter className="h-3 w-3 mr-1" />
+                                        <SelectValue placeholder="Status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Status</SelectItem>
+                                        {(Object.entries(STATUS_CONFIG) as [TaskStatus, typeof STATUS_CONFIG["open"]][]).map(
+                                            ([key, cfg]) => (
+                                                <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
+                                            ),
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                            )}
                             <Select value={priorityFilter} onValueChange={setPriorityFilter}>
                                 <SelectTrigger className="w-[130px] h-9 text-xs">
                                     <SelectValue placeholder="Priority" />
@@ -1047,105 +1049,7 @@ export default function AdminTasksView() {
                         BOARD VIEW (Kanban)
                     ═══════════════════════════════════════════════ */}
                     {taskViewMode === "board" && (
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                {(["open", "in_progress", "submitted", "rejected"] as TaskStatus[]).map((status) => {
-                                    const cfg = STATUS_CONFIG[status];
-                                    const columnTasks = filteredTasks.filter((t) => t.status === status);
-                                    return (
-                                        <div key={status} className="space-y-2 min-w-0 overflow-hidden">
-                                            <div className="flex items-center gap-2 px-1">
-                                                <cfg.icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
-                                                    {cfg.label}
-                                                </span>
-                                                <Badge variant="secondary" className="text-[10px] h-4 min-w-4 px-1 ml-auto">
-                                                    {columnTasks.length}
-                                                </Badge>
-                                            </div>
-                                            <div className="space-y-2 min-h-[80px]">
-                                                {columnTasks.map((task) => {
-                                                    const pc = PRIORITY_CONFIG[task.priority];
-                                                    const overdue = isOverdue(task);
-                                                    return (
-                                                        <Link key={task.id} href={roleHref(`/tasks/${task.id}`)}>
-                                                            <Card className="border border-border/50 hover:border-border transition-colors cursor-pointer">
-                                                                <CardContent className="p-3 space-y-2">
-                                                                    <p className="text-sm font-medium leading-snug line-clamp-2 break-words">
-                                                                        {task.title}
-                                                                    </p>
-                                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                                        <Badge variant="secondary" className={`text-[10px] ${pc.color}`}>
-                                                                            {pc.label}
-                                                                        </Badge>
-                                                                        {overdue && (
-                                                                            <Badge variant="secondary" className="text-[10px] bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
-                                                                                Overdue
-                                                                            </Badge>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="flex items-center justify-between">
-                                                                        <div className="flex -space-x-1">
-                                                                            {task.assignedTo.slice(0, 3).map((empId) => (
-                                                                                <Avatar key={empId} className="h-5 w-5 border border-card">
-                                                                                    <AvatarFallback className="text-[7px] bg-muted">
-                                                                                        {getInitials(getEmpName(empId))}
-                                                                                    </AvatarFallback>
-                                                                                </Avatar>
-                                                                            ))}
-                                                                        </div>
-                                                                        {task.dueDate && (
-                                                                            <span className={`text-[10px] ${overdue ? "text-red-600" : "text-muted-foreground"}`}>
-                                                                                {formatDate(task.dueDate)}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                </CardContent>
-                                                            </Card>
-                                                        </Link>
-                                                    );
-                                                })}
-                                                {columnTasks.length === 0 && (
-                                                    <div className="border border-dashed border-border/50 rounded-lg p-4 text-center">
-                                                        <p className="text-[10px] text-muted-foreground">No tasks</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Completed / Cancelled — collapsed section */}
-                            {filteredTasks.some((t) => t.status === "verified" || t.status === "cancelled") && (
-                                <details className="group">
-                                    <summary className="flex items-center gap-2 text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none py-2 border-t">
-                                        <ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" />
-                                        Completed &amp; Cancelled ({filteredTasks.filter((t) => t.status === "verified" || t.status === "cancelled").length})
-                                    </summary>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                                        {filteredTasks
-                                            .filter((t) => t.status === "verified" || t.status === "cancelled")
-                                            .map((task) => {
-                                                const sc = STATUS_CONFIG[task.status];
-                                                return (
-                                                    <Link key={task.id} href={roleHref(`/tasks/${task.id}`)}>
-                                                        <Card className="border border-border/50 opacity-60 hover:opacity-100 transition-opacity cursor-pointer">
-                                                            <CardContent className="p-3 flex items-center gap-2">
-                                                                <sc.icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                                                <span className="text-sm truncate flex-1">{task.title}</span>
-                                                                <Badge variant="secondary" className={`text-[10px] ${sc.color} shrink-0`}>
-                                                                    {sc.label}
-                                                                </Badge>
-                                                            </CardContent>
-                                                        </Card>
-                                                    </Link>
-                                                );
-                                            })}
-                                    </div>
-                                </details>
-                            )}
-                        </div>
+                        <AdminBoardView tasks={filteredTasks} roleHref={roleHref} getEmpName={getEmpName} isOverdue={isOverdue} />
                     )}
                 </TabsContent>
 
@@ -1926,6 +1830,141 @@ export default function AdminTasksView() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+        </div>
+    );
+}
+
+// ── Admin Board View Sub-Component ──────────────────────────────────
+
+const ADMIN_BOARD_STATUSES: TaskStatus[] = ["open", "in_progress", "submitted", "rejected", "verified", "cancelled"];
+
+function AdminBoardView({
+    tasks, roleHref, getEmpName, isOverdue,
+}: {
+    tasks: Task[];
+    roleHref: (path: string) => string;
+    getEmpName: (id: string) => string;
+    isOverdue: (t: Task) => boolean | "" | undefined;
+}) {
+    const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+    const toggle = (status: string) => setCollapsed((prev) => ({ ...prev, [status]: !prev[status] }));
+
+    const renderTaskCard = (task: Task) => {
+        const pc = PRIORITY_CONFIG[task.priority];
+        const overdue = isOverdue(task);
+        return (
+            <Link key={task.id} href={roleHref(`/tasks/${task.id}`)}>
+                <Card className="border border-border/50 hover:border-border active:scale-[0.99] transition-all cursor-pointer">
+                    <CardContent className="p-3 space-y-1.5">
+                        <p className="text-sm font-medium leading-snug line-clamp-2">{task.title}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="secondary" className={`text-[10px] ${pc.color}`}>
+                                {pc.label}
+                            </Badge>
+                            {overdue && (
+                                <Badge variant="secondary" className="text-[10px] bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                                    Overdue
+                                </Badge>
+                            )}
+                            {task.dueDate && (
+                                <span className="text-[10px] text-muted-foreground ml-auto">
+                                    Due {formatDate(task.dueDate)}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex -space-x-1.5">
+                            {task.assignedTo.slice(0, 3).map((empId) => (
+                                <Avatar key={empId} className="h-5 w-5 border-2 border-card">
+                                    <AvatarFallback className="text-[7px] bg-muted">{getInitials(getEmpName(empId))}</AvatarFallback>
+                                </Avatar>
+                            ))}
+                            {task.assignedTo.length > 3 && (
+                                <Avatar className="h-5 w-5 border-2 border-card">
+                                    <AvatarFallback className="text-[7px] bg-muted">+{task.assignedTo.length - 3}</AvatarFallback>
+                                </Avatar>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            </Link>
+        );
+    };
+
+    return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {ADMIN_BOARD_STATUSES.map((status) => {
+                const cfg = STATUS_CONFIG[status];
+                const Icon = cfg.icon;
+                const columnTasks = tasks.filter((t) => t.status === status);
+                const isCol = collapsed[status];
+                const behindCount = Math.min(columnTasks.length - 1, 2);
+                return (
+                    <div key={status} className="min-w-0">
+                        {/* Folder header */}
+                        <button
+                            onClick={() => toggle(status)}
+                            className="flex items-center gap-2 px-2 py-1.5 w-full text-left rounded-t-lg border border-border/50 bg-muted/40 hover:bg-muted/60 transition-colors"
+                        >
+                            <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ${isCol ? "-rotate-90" : ""}`} />
+                            <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+                                {cfg.label}
+                            </span>
+                            <Badge variant="secondary" className="text-[10px] h-4 min-w-4 px-1 ml-auto shrink-0">
+                                {columnTasks.length}
+                            </Badge>
+                        </button>
+
+                        {/* Collapsed: top card fully visible + slivers behind */}
+                        {isCol && (
+                            <div className="border-x border-b border-border/30 rounded-b-lg p-2 bg-muted/10">
+                                {columnTasks.length === 0 ? (
+                                    <div className="rounded-lg border border-dashed border-border/50 p-4 text-center">
+                                        <p className="text-xs text-muted-foreground">No tasks</p>
+                                    </div>
+                                ) : (
+                                    <div
+                                        className="relative cursor-pointer"
+                                        onClick={() => toggle(status)}
+                                        style={{ paddingBottom: `${behindCount * 6}px` }}
+                                    >
+                                        {Array.from({ length: behindCount }).map((_, i) => (
+                                            <div
+                                                key={i}
+                                                className="absolute bottom-0 left-0 right-0 rounded-lg border border-border/40 bg-card"
+                                                style={{
+                                                    height: "calc(100% - 8px)",
+                                                    bottom: `${i * 6}px`,
+                                                    zIndex: behindCount - i,
+                                                    marginLeft: `${(i + 1) * 4}px`,
+                                                    marginRight: `${(i + 1) * 4}px`,
+                                                    opacity: 0.7 - i * 0.2,
+                                                }}
+                                            />
+                                        ))}
+                                        <div className="relative" style={{ zIndex: behindCount + 1 }}>
+                                            {renderTaskCard(columnTasks[0])}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Expanded: full card list with spacing */}
+                        {!isCol && (
+                            <div className="space-y-3 border-x border-b border-border/30 rounded-b-lg p-2 bg-muted/10">
+                                {columnTasks.length === 0 ? (
+                                    <div className="rounded-lg border border-dashed border-border/50 p-4 text-center">
+                                        <p className="text-xs text-muted-foreground">No tasks</p>
+                                    </div>
+                                ) : (
+                                    columnTasks.map((task) => renderTaskCard(task))
+                                )}
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
         </div>
     );
 }
