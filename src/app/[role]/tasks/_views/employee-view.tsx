@@ -279,15 +279,51 @@ export default function EmployeeTasksView() {
 
             {/* ── Tabs ────────────────────────────────── */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <TabsList className="w-full sm:w-auto">
-                        <TabsTrigger value="all" className="flex-1 sm:flex-none gap-1.5 text-xs sm:text-sm">
+                {/* Mobile: scrollable row with toggle inline */}
+                <div className="overflow-x-auto pb-0.5 sm:hidden">
+                    <div className="flex items-center gap-2 w-full">
+                        <TabsList className="flex-1">
+                            <TabsTrigger value="all" className="gap-1.5 text-xs">
+                                <Table2 className="h-3.5 w-3.5" /> All Tasks
+                                <Badge variant="secondary" className="text-[10px] h-4 min-w-4 justify-center px-1">
+                                    {filteredTasks.length}
+                                </Badge>
+                            </TabsTrigger>
+                            <TabsTrigger value="pending" className="gap-1.5 text-xs">
+                                Pending
+                                {pendingReview.length > 0 && (
+                                    <Badge variant="secondary" className="text-[10px] h-4 min-w-4 justify-center px-1">
+                                        {pendingReview.length}
+                                    </Badge>
+                                )}
+                            </TabsTrigger>
+                            <TabsTrigger value="calendar" className="gap-1.5 text-xs">
+                                <CalendarDays className="h-3.5 w-3.5" /> Calendar
+                            </TabsTrigger>
+                        </TabsList>
+                        {activeTab === "all" && (
+                            <div className="flex items-center gap-1 border rounded-md p-0.5 shrink-0">
+                                <Button variant={viewMode === "table" ? "secondary" : "ghost"} size="sm" className="h-7 w-7 p-0" title="Table view" onClick={() => setViewMode("table")}>
+                                    <Table2 className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant={viewMode === "board" ? "secondary" : "ghost"} size="sm" className="h-7 w-7 p-0" title="Board view" onClick={() => setViewMode("board")}>
+                                    <LayoutGrid className="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Desktop: tabs left, toggle right */}
+                <div className="hidden sm:flex sm:items-center justify-between gap-3">
+                    <TabsList className="w-auto">
+                        <TabsTrigger value="all" className="gap-1.5 text-sm">
                             <Table2 className="h-3.5 w-3.5" /> All Tasks
                             <Badge variant="secondary" className="text-[10px] h-4 min-w-4 justify-center px-1">
                                 {filteredTasks.length}
                             </Badge>
                         </TabsTrigger>
-                        <TabsTrigger value="pending" className="flex-1 sm:flex-none gap-1.5 text-xs sm:text-sm">
+                        <TabsTrigger value="pending" className="gap-1.5 text-sm">
                             Pending
                             {pendingReview.length > 0 && (
                                 <Badge variant="secondary" className="text-[10px] h-4 min-w-4 justify-center px-1">
@@ -295,30 +331,16 @@ export default function EmployeeTasksView() {
                                 </Badge>
                             )}
                         </TabsTrigger>
-                        <TabsTrigger value="calendar" className="flex-1 sm:flex-none gap-1.5 text-xs sm:text-sm">
+                        <TabsTrigger value="calendar" className="gap-1.5 text-sm">
                             <CalendarDays className="h-3.5 w-3.5" /> Calendar
                         </TabsTrigger>
                     </TabsList>
-
-                    {/* View mode toggle — only on All Tasks tab */}
                     {activeTab === "all" && (
                         <div className="flex items-center gap-1 border rounded-md p-0.5">
-                            <Button
-                                variant={viewMode === "table" ? "secondary" : "ghost"}
-                                size="sm"
-                                className="h-7 w-7 p-0"
-                                title="Table view"
-                                onClick={() => setViewMode("table")}
-                            >
+                            <Button variant={viewMode === "table" ? "secondary" : "ghost"} size="sm" className="h-7 w-7 p-0" title="Table view" onClick={() => setViewMode("table")}>
                                 <Table2 className="h-3.5 w-3.5" />
                             </Button>
-                            <Button
-                                variant={viewMode === "board" ? "secondary" : "ghost"}
-                                size="sm"
-                                className="h-7 w-7 p-0"
-                                title="Board view"
-                                onClick={() => setViewMode("board")}
-                            >
+                            <Button variant={viewMode === "board" ? "secondary" : "ghost"} size="sm" className="h-7 w-7 p-0" title="Board view" onClick={() => setViewMode("board")}>
                                 <LayoutGrid className="h-3.5 w-3.5" />
                             </Button>
                         </div>
@@ -338,10 +360,10 @@ export default function EmployeeTasksView() {
                                 className="pl-9"
                             />
                         </div>
-                        <div className="flex gap-2 flex-wrap">
+                        <div className={`grid gap-2 sm:flex sm:flex-wrap ${viewMode === "board" ? "grid-cols-1" : "grid-cols-2"}`}>
                             {viewMode === "table" && (
                                 <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as TaskStatus | "all")}>
-                                    <SelectTrigger className="w-[130px] h-9 text-xs">
+                                    <SelectTrigger className="w-full sm:w-[130px] h-9 text-xs">
                                         <Filter className="h-3 w-3 mr-1" />
                                         <SelectValue placeholder="Status" />
                                     </SelectTrigger>
@@ -356,7 +378,7 @@ export default function EmployeeTasksView() {
                                 </Select>
                             )}
                             <Select value={priorityFilter} onValueChange={(v) => setPriorityFilter(v as TaskPriority | "all")}>
-                                <SelectTrigger className="w-[130px] h-9 text-xs">
+                                <SelectTrigger className="w-full sm:w-[130px] h-9 text-xs">
                                     <SelectValue placeholder="Priority" />
                                 </SelectTrigger>
                                 <SelectContent>
