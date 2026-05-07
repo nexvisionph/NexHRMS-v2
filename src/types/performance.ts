@@ -114,7 +114,7 @@ export interface PerformanceAuditLog {
   new_status?: string;
   changed_by: string;
   timestamp: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
   reason?: string;
 }
 
@@ -151,7 +151,7 @@ export interface CreateReviewInput {
   manager_notes?: string;
 }
 
-export interface SubmitReviewInput extends Partial<CreateReviewInput> {}
+export type SubmitReviewInput = Partial<CreateReviewInput>;
 
 export interface AcknowledgeReviewInput {
   review_id: string;

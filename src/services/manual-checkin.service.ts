@@ -297,20 +297,24 @@ export async function getManualCheckinsByDateRange(
 
     if (!data) return [];
 
-    return data.map((row: Record<string, unknown>) => ({
+    return data.map((row: Record<string, unknown>) => {
+      const employee = row.employee as { id?: string; name?: string } | null;
+      const performer = row.performer as { name?: string } | null;
+      return {
       id: row.id as string,
-      employeeId: (row as any).employee?.id as string || row.employee_id as string,
-      employeeName: (row as any).employee?.name as string,
+      employeeId: employee?.id || row.employee_id as string,
+      employeeName: employee?.name as string,
       eventType: row.event_type as "IN" | "OUT",
       reasonId: row.reason_id as string,
       customReason: row.custom_reason as string,
       performedBy: row.performed_by as string,
-      performerName: (row as any).performer?.name as string,
+      performerName: performer?.name as string,
       timestampUtc: row.timestamp_utc as string,
       projectId: row.project_id as string,
       notes: row.notes as string,
       createdAt: row.created_at as string,
-    }));
+      };
+    });
   } catch (error) {
     console.error("[getManualCheckinsByDateRange] Error:", error);
     return [];

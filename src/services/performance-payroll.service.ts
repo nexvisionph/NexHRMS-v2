@@ -6,6 +6,20 @@
 import { createClient } from "@/services/supabase-server";
 import type { PerformanceSalaryAdjustment } from "@/types";
 
+type ApplyAdjustmentResult =
+  | {
+      adjustmentId: string;
+      employeeId: string;
+      status: "success";
+      previousSalary: number | null | undefined;
+      newSalary: number;
+    }
+  | {
+      adjustmentId: string;
+      status: "failed";
+      error: string;
+    };
+
 /**
  * Retrieves all approved salary adjustments that haven't been applied yet
  */
@@ -39,7 +53,7 @@ export async function applyAdjustmentsToPayrollRun(
   adjustmentIds: string[]
 ) {
   const supabase = await createClient();
-  const results: any[] = [];
+  const results: ApplyAdjustmentResult[] = [];
 
   for (const adjustmentId of adjustmentIds) {
     try {

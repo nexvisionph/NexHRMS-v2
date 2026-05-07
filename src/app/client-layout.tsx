@@ -157,7 +157,8 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     // Install global auth error suppression on mount (once)
     useEffect(() => {
         installAuthErrorSuppression();
-        setMounted(true);
+        const timer = setTimeout(() => setMounted(true), 0);
+        return () => clearTimeout(timer);
     }, []);
 
     useEffect(() => {

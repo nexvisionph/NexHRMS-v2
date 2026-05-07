@@ -28,7 +28,8 @@ export function PushNotificationBanner() {
     // - Not already subscribed
     // - Not previously dismissed
     if (isSupported && permission === "default" && !isSubscribed && !dismissed) {
-      setShowBanner(true);
+      const timer = setTimeout(() => setShowBanner(true), 0);
+      return () => clearTimeout(timer);
     }
   }, [isSupported, permission, isSubscribed]);
 
