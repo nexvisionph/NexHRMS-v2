@@ -31,6 +31,7 @@ import {
     Settings,
     Bell,
     ChevronLeft,
+    ChevronRight,
     LogOut,
     Building2,
     Clock3,
@@ -388,21 +389,7 @@ function SidebarComponent() {
                 </TooltipProvider>
             </div>
 
-            {/* Collapse toggle — desktop only */}
-            {!isMobile && (
-                <button
-                    onClick={toggleSidebar}
-                    className="flex h-12 w-full items-center justify-center border-t border-sidebar-border text-foreground/70 hover:text-foreground transition-colors"
-                    aria-label="Toggle sidebar"
-                >
-                    <ChevronLeft
-                        className={cn(
-                            "h-5 w-5 transition-transform duration-300",
-                            !sidebarOpen && "rotate-180"
-                        )}
-                    />
-                </button>
-            )}
+
         </>
     );
 
@@ -411,12 +398,30 @@ function SidebarComponent() {
             {/* Desktop sidebar — hidden below lg */}
             <aside
                 className={cn(
-                    "fixed left-0 top-0 z-40 hidden lg:flex h-screen flex-col border-r border-border bg-card overflow-hidden transition-all duration-300",
+                    "fixed left-0 top-0 z-40 hidden lg:flex h-screen flex-col border-r border-border bg-card overflow-visible transition-all duration-300",
                     sidebarOpen ? "w-64" : "w-[72px]",
                     sidebarVariant === "colored" && "sidebar-colored bg-primary text-primary-foreground border-primary/20"
                 )}
             >
                 {navContent(sidebarOpen, false)}
+
+                {/* Overlapping collapse button — desktop only */}
+                <button
+                    onClick={toggleSidebar}
+                    className={cn(
+                        "absolute top-[86px] -right-3.5 z-50",
+                        "h-7 w-7 rounded-full border border-border bg-card shadow-sm",
+                        "flex items-center justify-center",
+                        "text-foreground/60 hover:text-foreground hover:shadow-md",
+                        "transition-all duration-200",
+                        sidebarVariant === "colored" && "bg-primary border-primary-foreground/20 text-primary-foreground/70 hover:text-primary-foreground"
+                    )}
+                    aria-label="Toggle sidebar"
+                >
+                    {sidebarOpen
+                        ? <ChevronLeft className="h-3.5 w-3.5" />
+                        : <ChevronRight className="h-3.5 w-3.5" />}
+                </button>
             </aside>
 
             {/* Mobile sidebar overlay — shown only when mobileSidebarOpen, hidden at lg+ */}

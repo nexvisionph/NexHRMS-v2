@@ -647,13 +647,52 @@ export default function AdminTasksView() {
 
             {/* ── Main Tabs ────────────────────────────────── */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                {/* Mobile: scrollable row with toggle inline */}
+                <div className="overflow-x-auto pb-0.5 sm:hidden">
+                    <div className="flex items-center gap-2 w-full">
+                        <TabsList className="flex-1">
+                            <TabsTrigger value="tasks" className="gap-1.5 text-xs">
+                                <Table2 className="h-3.5 w-3.5" /> All Tasks
+                                <Badge variant="secondary" className="text-[10px] h-4 min-w-4 px-1">{tasks.length}</Badge>
+                            </TabsTrigger>
+                            <TabsTrigger value="review" className="gap-1.5 text-xs">
+                                <ClipboardCheck className="h-3.5 w-3.5" /> Needs Review
+                                {needsReviewTasks.length > 0 && (
+                                    <Badge variant="secondary" className="text-[10px] h-4 min-w-4 px-1 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                                        {needsReviewTasks.length}
+                                    </Badge>
+                                )}
+                            </TabsTrigger>
+                            <TabsTrigger value="groups" className="gap-1.5 text-xs">
+                                <Layers className="h-3.5 w-3.5" /> Groups
+                                <Badge variant="secondary" className="text-[10px] h-4 min-w-4 px-1">{groups.length}</Badge>
+                            </TabsTrigger>
+                            <TabsTrigger value="calendar" className="gap-1.5 text-xs">
+                                <CalendarDays className="h-3.5 w-3.5" /> Calendar
+                            </TabsTrigger>
+                            <TabsTrigger value="settings" className="gap-1.5 text-xs">
+                                <Tag className="h-3.5 w-3.5" /> Settings
+                            </TabsTrigger>
+                        </TabsList>
+                        {activeTab === "tasks" && (
+                            <div className="flex items-center gap-1 border rounded-md p-0.5 shrink-0">
+                                <Button variant={taskViewMode === "table" ? "secondary" : "ghost"} size="sm" className="h-7 w-7 p-0" title="Table view" onClick={() => setTaskViewMode("table")}>
+                                    <Table2 className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant={taskViewMode === "board" ? "secondary" : "ghost"} size="sm" className="h-7 w-7 p-0" title="Board view" onClick={() => setTaskViewMode("board")}>
+                                    <LayoutGrid className="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Desktop: tabs left, toggle right */}
+                <div className="hidden sm:flex sm:items-center justify-between gap-3">
                     <TabsList>
                         <TabsTrigger value="tasks" className="gap-1.5 text-xs sm:text-sm">
                             <Table2 className="h-3.5 w-3.5" /> All Tasks
-                            <Badge variant="secondary" className="text-[10px] h-4 min-w-4 px-1">
-                                {tasks.length}
-                            </Badge>
+                            <Badge variant="secondary" className="text-[10px] h-4 min-w-4 px-1">{tasks.length}</Badge>
                         </TabsTrigger>
                         <TabsTrigger value="review" className="gap-1.5 text-xs sm:text-sm">
                             <ClipboardCheck className="h-3.5 w-3.5" /> Needs Review
@@ -665,9 +704,7 @@ export default function AdminTasksView() {
                         </TabsTrigger>
                         <TabsTrigger value="groups" className="gap-1.5 text-xs sm:text-sm">
                             <Layers className="h-3.5 w-3.5" /> Groups
-                            <Badge variant="secondary" className="text-[10px] h-4 min-w-4 px-1">
-                                {groups.length}
-                            </Badge>
+                            <Badge variant="secondary" className="text-[10px] h-4 min-w-4 px-1">{groups.length}</Badge>
                         </TabsTrigger>
                         <TabsTrigger value="calendar" className="gap-1.5 text-xs sm:text-sm">
                             <CalendarDays className="h-3.5 w-3.5" /> Calendar
@@ -676,29 +713,15 @@ export default function AdminTasksView() {
                             <Tag className="h-3.5 w-3.5" /> Settings
                         </TabsTrigger>
                     </TabsList>
-
-                    {/* View mode toggle — only visible on All Tasks tab */}
                     {activeTab === "tasks" && (
-                    <div className="flex items-center gap-1 border rounded-md p-0.5">
-                        <Button
-                            variant={taskViewMode === "table" ? "secondary" : "ghost"}
-                            size="sm"
-                            className="h-7 w-7 p-0"
-                            title="Table view"
-                            onClick={() => setTaskViewMode("table")}
-                        >
-                            <Table2 className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                            variant={taskViewMode === "board" ? "secondary" : "ghost"}
-                            size="sm"
-                            className="h-7 w-7 p-0"
-                            title="Board view"
-                            onClick={() => setTaskViewMode("board")}
-                        >
-                            <LayoutGrid className="h-3.5 w-3.5" />
-                        </Button>
-                    </div>
+                        <div className="flex items-center gap-1 border rounded-md p-0.5">
+                            <Button variant={taskViewMode === "table" ? "secondary" : "ghost"} size="sm" className="h-7 w-7 p-0" title="Table view" onClick={() => setTaskViewMode("table")}>
+                                <Table2 className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant={taskViewMode === "board" ? "secondary" : "ghost"} size="sm" className="h-7 w-7 p-0" title="Board view" onClick={() => setTaskViewMode("board")}>
+                                <LayoutGrid className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
                     )}
                 </div>
 
@@ -811,10 +834,10 @@ export default function AdminTasksView() {
                                 className="pl-9"
                             />
                         </div>
-                        <div className="flex gap-2 flex-wrap">
+                        <div className={`grid gap-2 sm:flex sm:flex-wrap ${taskViewMode === "board" ? "grid-cols-3" : "grid-cols-2"}`}>
                             {taskViewMode !== "board" && (
                                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                    <SelectTrigger className="w-[130px] h-9 text-xs">
+                                    <SelectTrigger className="w-full sm:w-[130px] h-9 text-xs">
                                         <Filter className="h-3 w-3 mr-1" />
                                         <SelectValue placeholder="Status" />
                                     </SelectTrigger>
@@ -829,7 +852,7 @@ export default function AdminTasksView() {
                                 </Select>
                             )}
                             <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                                <SelectTrigger className="w-[130px] h-9 text-xs">
+                                <SelectTrigger className="w-full sm:w-[130px] h-9 text-xs">
                                     <SelectValue placeholder="Priority" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -842,7 +865,7 @@ export default function AdminTasksView() {
                                 </SelectContent>
                             </Select>
                             <Select value={groupFilter} onValueChange={setGroupFilter}>
-                                <SelectTrigger className="w-[150px] h-9 text-xs">
+                                <SelectTrigger className="w-full sm:w-[150px] h-9 text-xs">
                                     <SelectValue placeholder="Group" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -853,7 +876,7 @@ export default function AdminTasksView() {
                                 </SelectContent>
                             </Select>
                             <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
-                                <SelectTrigger className="w-[150px] h-9 text-xs">
+                                <SelectTrigger className="w-full sm:w-[150px] h-9 text-xs">
                                     <Users className="h-3 w-3 mr-1" />
                                     <SelectValue placeholder="Assignee" />
                                 </SelectTrigger>
@@ -865,7 +888,7 @@ export default function AdminTasksView() {
                                 </SelectContent>
                             </Select>
                             {hasActiveFilters && (
-                                <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 text-xs gap-1">
+                                <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 text-xs gap-1 col-span-full sm:col-auto">
                                     <XCircle className="h-3 w-3" /> Clear
                                 </Button>
                             )}
