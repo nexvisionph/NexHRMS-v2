@@ -18,7 +18,7 @@ import { CheckCircle, Eye, PenTool, Sparkles, Printer, AlertCircle, FileSignatur
 import { toast } from "sonner";
 import { SignaturePad } from "@/components/ui/signature-pad";
 import { PrintablePayslip } from "@/components/payroll/printable-payslip";
-import { dispatchNotification, notifyPayslipSigned } from "@/lib/notifications";
+import { notifyPayslipSigned } from "@/lib/notifications";
 import { formatCurrency } from "@/lib/format";
 import { keysToCamel } from "@/lib/db-utils";
 
@@ -31,10 +31,11 @@ const statusConfig: Record<string, { label: string; color: string; icon: typeof 
     draft:     { label: "Draft",     color: "bg-amber-500/15 text-amber-700 dark:text-amber-400",   icon: Clock,         step: 1 },
     published: { label: "Published", color: "bg-violet-500/15 text-violet-700 dark:text-violet-400", icon: FileSignature, step: 2 },
     signed:    { label: "Signed",    color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", icon: CheckCircle, step: 3 },
+    paid:      { label: "Paid",      color: "bg-blue-500/15 text-blue-700 dark:text-blue-400",       icon: ShieldCheck,   step: 4 },
 };
 
 export default function EmployeePayrollView() {
-    const { payslips, runs, updatePayslipFromServer, signatureConfig, isPayslipRunLocked } = usePayrollStore();
+    const { payslips, updatePayslipFromServer, signatureConfig, isPayslipRunLocked } = usePayrollStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
 
@@ -46,7 +47,7 @@ export default function EmployeePayrollView() {
 
     const myEmployee = useMemo(
         () => employees.find((e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name),
-        [employees, currentUser.email, currentUser.name],
+        [employees, currentUser.id, currentUser.email, currentUser.name],
     );
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
@@ -65,8 +66,11 @@ export default function EmployeePayrollView() {
     const totalEarned = useMemo(() => myPayslips.reduce((s, p) => s + p.netPay, 0), [myPayslips]);
     const latestPayslip = myPayslips[0];
     // Employees can sign only when payslip is published AND its payroll run is locked
-    const pendingSign = useMemo(() => myPayslips.filter((p) => p.status === "published" && !p.signedAt && isPayslipRunLocked(p.id)), [myPayslips, runs]);
-    const pendingAck = useMemo(() => [] as typeof myPayslips, []);
+    const pendingSign = useMemo(() => myPayslips.filter((p) => p.status === "published" && !p.signedAt && isPayslipRunLocked(p.id)), [myPayslips, isPayslipRunLocked]);
+    const pendingAck = useMemo(
+        () => myPayslips.filter((p) => (p.status === "signed" || p.status === "paid") && p.signedAt && !p.acknowledgedAt),
+        [myPayslips],
+    );
 
     // ─── E-Sign handler (calls API first, then updates store with server data) ───
     const handleSign = useCallback(async (payslipId: string, signatureDataUrl: string) => {
@@ -530,7 +534,7 @@ export default function EmployeePayrollView() {
                                                     <CheckCircle className="h-3 w-3 text-emerald-500" />
                                                     Signed on {new Date(viewedPayslip.signedAt).toLocaleString()}
                                                 </p>
-                                                {viewedPayslip.status === "published" && !viewedPayslip.acknowledgedAt && (
+                                                {(viewedPayslip.status === "signed" || viewedPayslip.status === "paid") && !viewedPayslip.acknowledgedAt && (
                                                     <Button
                                                         size="sm" className="w-full gap-1.5 mt-2"
                                                         disabled={acknowledging}

@@ -12,6 +12,9 @@ export default function LoansPage() {
         <RoleViewDispatcher
             views={{
                 admin: AdminView,
+                support_admin: AdminView,
+                finance_admin: AdminView,
+                analyst: AdminView,
                 finance: AdminView,
                 payroll_admin: ReadonlyView,
                 auditor: ReadonlyView,

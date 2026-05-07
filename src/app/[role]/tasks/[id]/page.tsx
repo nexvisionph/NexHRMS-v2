@@ -87,13 +87,21 @@ export default function TaskDetailPage() {
         // Fetch from DB as fallback
         const fetchTask = async () => {
             try {
-                const allTasks = await tasksDb.fetchTasks();
+                const [allTasks, allGroups, allReports, allComments] = await Promise.all([
+                    tasksDb.fetchTasks(),
+                    tasksDb.fetchGroups(),
+                    tasksDb.fetchCompletionReports(),
+                    tasksDb.fetchComments(),
+                ]);
                 const found = allTasks.find((t) => t.id === taskId);
                 if (found) {
                     setFetchedTask(found);
                     // Also update the store so it's available elsewhere
                     useTasksStore.setState((s) => ({
                         tasks: s.tasks.some((t) => t.id === found.id) ? s.tasks : [...s.tasks, found],
+                        groups: allGroups,
+                        completionReports: allReports,
+                        comments: allComments,
                     }));
                 }
             } catch (err) {

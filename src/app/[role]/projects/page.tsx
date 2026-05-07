@@ -11,6 +11,9 @@ export default function ProjectsPage() {
         <RoleViewDispatcher
             views={{
                 admin: AdminProjectsView,
+                support_admin: AdminProjectsView,
+                finance_admin: AdminProjectsView,
+                analyst: AdminProjectsView,
                 hr: AdminProjectsView,
                 supervisor: ReadonlyProjectsView,
             }}

@@ -77,6 +77,7 @@ export default function EmployeeLeaveView() {
     const [formReason, setFormReason] = useState("");
 
     const myEmpId = employees.find((e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name)?.id;
+    const isEmployeeResolved = Boolean(myEmpId);
 
     // Personal leave balances
     const balances = useMemo(() => {
@@ -95,7 +96,7 @@ export default function EmployeeLeaveView() {
     // My requests only
     const filteredRequests = requests.filter((r) => {
         if (statusFilter !== "all" && r.status !== statusFilter) return false;
-        if (myEmpId && r.employeeId !== myEmpId) return false;
+        if (!myEmpId || r.employeeId !== myEmpId) return false;
         return true;
     });
 
@@ -109,8 +110,11 @@ export default function EmployeeLeaveView() {
             toast.error("Half-day leave is only available for single-day requests.");
             return;
         }
-        const empId = myEmpId || "EMP001";
-        addRequest({ employeeId: empId, type: formType, startDate: formStart, endDate: formEnd, duration: formDuration, reason: formReason });
+        if (!myEmpId) {
+            toast.error("Unable to identify your employee record. Please contact HR.");
+            return;
+        }
+        addRequest({ employeeId: myEmpId, type: formType, startDate: formStart, endDate: formEnd, duration: formDuration, reason: formReason });
         toast.success("Leave request submitted!");
         setOpen(false);
         setFormStart(""); setFormEnd(""); setFormReason(""); setFormDuration("full_day");
@@ -125,7 +129,7 @@ export default function EmployeeLeaveView() {
                 </div>
                 <Dialog open={open} onOpenChange={setOpen}>
                     <DialogTrigger asChild>
-                        <Button className="gap-1.5"><Plus className="h-4 w-4" /> New Request</Button>
+                        <Button className="gap-1.5" disabled={!isEmployeeResolved}><Plus className="h-4 w-4" /> New Request</Button>
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader><DialogTitle>Submit Leave Request</DialogTitle></DialogHeader>

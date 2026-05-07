@@ -11,6 +11,9 @@ export default function LeavePage() {
         <RoleViewDispatcher
             views={{
                 admin: () => <AdminLeaveView />,
+                support_admin: () => <AdminLeaveView />,
+                finance_admin: () => <AdminLeaveView />,
+                analyst: () => <AdminLeaveView />,
                 hr: () => <AdminLeaveView />,
                 supervisor: () => <AdminLeaveView />,
                 employee: () => <EmployeeLeaveView />,

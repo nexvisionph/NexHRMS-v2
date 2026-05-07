@@ -10,7 +10,7 @@ AS $$
     SELECT 1
     FROM public.profiles
     WHERE id = auth.uid()
-      AND role = ANY(ARRAY['admin','hr','finance','payroll_admin'])
+      AND role = ANY(ARRAY['admin','support_admin','finance_admin','analyst','hr','finance','payroll_admin'])
       AND (
         target_company_id IS NULL
         OR COALESCE(company_id, 'default') = COALESCE(target_company_id, 'default')
@@ -27,7 +27,7 @@ AS $$
     SELECT 1
     FROM public.profiles
     WHERE id = auth.uid()
-      AND role = ANY(ARRAY['admin','hr'])
+      AND role = ANY(ARRAY['admin','support_admin','finance_admin','analyst','hr'])
       AND (
         target_company_id IS NULL
         OR COALESCE(company_id, 'default') = COALESCE(target_company_id, 'default')
@@ -44,7 +44,7 @@ AS $$
     SELECT 1
     FROM public.profiles
     WHERE id = auth.uid()
-      AND role = ANY(ARRAY['admin','hr','finance','payroll_admin','auditor'])
+      AND role = ANY(ARRAY['admin','support_admin','finance_admin','analyst','hr','finance','payroll_admin','auditor'])
       AND (
         target_company_id IS NULL
         OR COALESCE(company_id, 'default') = COALESCE(target_company_id, 'default')

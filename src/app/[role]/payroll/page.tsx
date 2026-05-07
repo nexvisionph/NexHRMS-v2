@@ -11,6 +11,9 @@ export default function PayrollPage() {
         <RoleViewDispatcher
             views={{
                 admin: () => <AdminPayrollView mode="admin" />,
+                support_admin: () => <AdminPayrollView mode="admin" />,
+                finance_admin: () => <AdminPayrollView mode="finance" />,
+                analyst: () => <AdminPayrollView mode="admin" />,
                 finance: () => <AdminPayrollView mode="finance" />,
                 payroll_admin: () => <AdminPayrollView mode="payroll_admin" />,
                 employee: () => <EmployeePayrollView />,

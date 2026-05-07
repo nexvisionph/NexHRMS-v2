@@ -12,6 +12,9 @@ export default function AttendancePage() {
         <RoleViewDispatcher
             views={{
                 admin: () => <AdminView mode="admin" />,
+                support_admin: () => <AdminView mode="admin" />,
+                finance_admin: () => <AdminView mode="admin" />,
+                analyst: () => <AdminView mode="admin" />,
                 hr: () => <AdminView mode="hr" />,
                 supervisor: () => <AdminView mode="supervisor" />,
                 employee: () => <EmployeeView />,

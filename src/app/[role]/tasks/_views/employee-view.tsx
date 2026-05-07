@@ -160,9 +160,19 @@ export default function EmployeeTasksView() {
 
         const timer = setTimeout(async () => {
             try {
-                const allTasks = await tasksDb.fetchTasks();
-                // Always replace store tasks with authoritative DB data
-                useTasksStore.setState({ tasks: allTasks });
+                const [allTasks, allGroups, allReports, allComments] = await Promise.all([
+                    tasksDb.fetchTasks(),
+                    tasksDb.fetchGroups(),
+                    tasksDb.fetchCompletionReports(),
+                    tasksDb.fetchComments(),
+                ]);
+                // Keep the task list and its related context in sync so cards/details do not lose group/report/comment data.
+                useTasksStore.setState({
+                    tasks: allTasks,
+                    groups: allGroups,
+                    completionReports: allReports,
+                    comments: allComments,
+                });
             } catch (err) {
                 console.error("[EmployeeTasks] Failed to fetch tasks:", err);
             } finally {
