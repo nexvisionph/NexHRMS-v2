@@ -1,5 +1,17 @@
 "use client";
 
+<<<<<<< HEAD
+import { Card, CardContent } from "@/components/ui/card";
+import { Construction } from "lucide-react";
+
+interface ImportDataDialogProps {
+    module: string;
+    onImportComplete?: () => void;
+}
+
+export function ImportDataDialog({ module, onImportComplete }: ImportDataDialogProps) {
+    return null; // Placeholder — import functionality coming soon
+=======
 import { useState, useCallback, useRef } from "react";
 import {
   downloadImportTemplate,
@@ -520,4 +532,5 @@ export function ImportDataDialog({
       </DialogContent>
     </Dialog>
   );
+>>>>>>> 3a470fc (fix: employee delete tombstone, 401 session refresh, delete API route, import dryRun validation)
 }

@@ -21,7 +21,7 @@ export function isRefreshTokenError(error: unknown): boolean {
 export async function createServerSupabaseClient() {
   const cookieStore = await cookies();
 
-  return createServerClient(
+  const client = createServerClient(
     getSupabaseUrl(),
     getSupabaseAnonKey(),
     {
@@ -41,6 +41,41 @@ export async function createServerSupabaseClient() {
       },
     }
   );
+
+  // ─── Self-healing getUser() ──────────────────────────────────────────────────
+  // @supabase/ssr creates server clients with autoRefreshToken:false by design.
+  // Refreshing is supposed to happen once in middleware (proxy.ts). However, in
+  // dev mode, Next.js does NOT hot-reload middleware — it requires a full server
+  // restart. This means the first time you run the app after a proxy.ts change,
+  // or if a user's access token expires mid-session in an edge case, all API
+  // routes will return 401 even though the user is still "logged in".
+  //
+  // Fix: intercept getUser() to add an automatic refreshSession() fallback.
+  // If getUser() returns null (expired token), call refreshSession() to use the
+  // refresh token from the cookie store, then return the refreshed user.
+  // This makes EVERY API route self-healing without changing each one individually.
+  const originalGetUser = client.auth.getUser.bind(client.auth);
+  client.auth.getUser = async (jwt?: string) => {
+    const result = await originalGetUser(jwt);
+    // If we have a user, or a JWT was explicitly provided, return as-is.
+    if (result.data.user || jwt) return result;
+
+    // getUser() returned null without an explicit JWT — access token is likely
+    // expired. Attempt a session refresh using the refresh token from cookies.
+    console.debug("[supabase-server] getUser() returned null — attempting refreshSession()");
+    const { data: { session }, error: refreshError } = await client.auth.refreshSession();
+    if (refreshError) {
+      console.debug("[supabase-server] refreshSession() failed:", refreshError.message);
+      return result; // Return original null result
+    }
+    if (session?.user) {
+      console.debug("[supabase-server] refreshSession() succeeded — session restored");
+      return { data: { user: session.user }, error: null };
+    }
+    return result;
+  };
+
+  return client;
 }
 
 /**

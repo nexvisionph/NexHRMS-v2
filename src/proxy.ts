@@ -60,12 +60,18 @@ export async function proxy(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // Public routes — skip the expensive Supabase auth round-trip entirely.
-  // This eliminates ~200-1000ms of latency for /login, /kiosk, and API routes.
-  const publicPaths = ["/login", "/kiosk", "/api/"];
+  // Page routes that never need Supabase auth — skip the expensive round-trip.
+  // NOTE: /api/ is intentionally NOT in this list. API routes need session
+  // refresh so that expired access tokens are renewed before the route handler
+  // calls auth.getUser(). Without this, any API call made after the 1-hour
+  // access token expiry returns 401 even though the user is still "logged in"
+  // (client-side Supabase refreshes independently from cookie-based SSR sessions).
+  const publicPaths = ["/login", "/kiosk"];
   const isPublic = publicPaths.some(
     (p) => request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith(p.endsWith("/") ? p : p + "/")
   );
+
+  const isApiRoute = request.nextUrl.pathname.startsWith("/api/");
 
   // If the user has no Supabase auth cookies at all, they definitely have no
   // session — skip the auth check and redirect to login immediately.
@@ -73,6 +79,8 @@ export async function proxy(request: NextRequest) {
 
   if (isPublic || !hasAuthCookies) {
     if (!isPublic && !hasAuthCookies) {
+      // API routes: let the route handler return 401 — don't redirect to /login
+      if (isApiRoute) return supabaseResponse;
       const url = request.nextUrl.clone();
       url.pathname = "/login";
       return NextResponse.redirect(url);
@@ -163,6 +171,9 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!user) {
+    // API routes: don't redirect to /login — let the route handler return 401.
+    // The session refresh above already cleared the stale cookies if needed.
+    if (isApiRoute) return supabaseResponse;
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
