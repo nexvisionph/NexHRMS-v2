@@ -24,6 +24,7 @@ interface ProjectQrDialogProps {
 
 export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: ProjectQrDialogProps) {
   const [payload, setPayload] = useState<string | null>(null);
+  const [checkinUrl, setCheckinUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -34,6 +35,7 @@ export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: 
     setLoading(true);
     setError(null);
     setPayload(null);
+    setCheckinUrl(null);
     fetch(`/api/projects/${encodeURIComponent(projectId)}/qr`)
       .then(async (res) => {
         if (!res.ok) {
@@ -45,6 +47,7 @@ export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: 
       .then((data) => {
         if (cancelled) return;
         setPayload(data.payload as string);
+        setCheckinUrl((data.checkinUrl as string) ?? null);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -79,12 +82,12 @@ export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: 
     if (!w) return toast.error("Pop-up blocked — allow pop-ups to print");
     w.document.write(`
       <html><head><title>Project QR — ${projectName}</title>
-      <style>body{font-family:sans-serif;text-align:center;padding:40px}h1{margin:0 0 8px}p{color:#555;margin:0 0 24px}img{max-width:480px}</style>
+      <style>body{font-family:sans-serif;text-align:center;padding:40px}h1{margin:0 0 8px}p{color:#555;margin:0 0 24px}img{max-width:480px}small{font-size:11px;color:#888}</style>
       </head><body>
         <h1>${projectName}</h1>
-        <p>Scan to log attendance for this project</p>
+        <p>Scan with your phone to log attendance for this project</p>
         <img src="${url}" />
-        <p style="font-size:11px;margin-top:24px">Project ID: ${projectId}</p>
+        <br/><small>Project ID: ${projectId}</small>
       </body></html>`);
     w.document.close();
     setTimeout(() => { w.focus(); w.print(); }, 200);
@@ -110,7 +113,7 @@ export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: 
             )}
             {payload && !error && (
               <QRCodeCanvas
-                value={payload}
+                value={checkinUrl ?? payload}
                 size={256}
                 level="H"
                 includeMargin
@@ -118,14 +121,14 @@ export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: 
             )}
           </div>
           <p className="text-xs text-muted-foreground text-center">
-            Permanent QR code. Print and post at the project site. Geofence verification
-            ensures workers must be physically present to check in.
+            Print this QR and post it at the project site. Employees scan it with their phone
+            to check in or out. Geofence verification ensures they must be physically present.
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={handleDownload} disabled={!payload}>
+            <Button variant="outline" className="flex-1" onClick={handleDownload} disabled={!checkinUrl}>
               <Download className="h-4 w-4 mr-1" /> Download
             </Button>
-            <Button className="flex-1" onClick={handlePrint} disabled={!payload}>
+            <Button className="flex-1" onClick={handlePrint} disabled={!checkinUrl}>
               <Printer className="h-4 w-4 mr-1" /> Print
             </Button>
           </div>

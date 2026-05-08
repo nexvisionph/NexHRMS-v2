@@ -294,6 +294,13 @@ export default function QRKioskPage() {
 
             const result = await response.json();
 
+            // Project QR codes must be scanned with the employee's phone, not the kiosk
+            if (result.qrType === "project") {
+                setErrorMessage("Project QR — please scan this code with your phone");
+                triggerFeedback("error");
+                return;
+            }
+
             if (!result.valid) {
                 setErrorMessage(result.message || "Invalid QR code");
                 triggerFeedback("error");

@@ -60,9 +60,13 @@ export async function GET(
     );
   }
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const checkinUrl = `${appUrl}/checkin?qr=${encodeURIComponent(payload)}`;
+
   return NextResponse.json({
     projectId: project.id,
     projectName: project.name,
-    payload, // safe to embed in <QRCodeCanvas value={...} />
+    payload, // raw signed JSON — kept for reference/debug
+    checkinUrl, // QR-encode THIS — phone camera opens it directly
   });
 }

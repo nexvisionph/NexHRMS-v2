@@ -36,19 +36,22 @@ import { SelfieCapture } from "@/components/attendance/selfie-capture";
 import { LocationTracker } from "@/components/attendance/location-tracker";
 import { BreakTimer } from "@/components/attendance/break-timer";
 import { EmployeeQRDisplay } from "@/components/attendance/employee-qr-display";
+import { ProjectQrScanner } from "@/components/attendance/project-qr-scanner";
 import { EnrollmentReminder } from "@/components/attendance/enrollment-reminder";
 import { stopWriteThrough, startWriteThrough, forceRehydrate } from "@/services/sync.service";
+import { findCurrentEmployee, getAttendanceEmployeeIds } from "@/lib/current-employee";
 
 type CheckInStep = "idle" | "locating" | "location_result" | "done" | "error" | "selfie" | "qr_scan";
 
-/** Format "HH:MM" time string to "h:mm AM/PM" */
+/** Format "HH:MM" or "HH:MM:SS" time string to "h:mm[:ss] AM/PM" */
 function formatTimeAmPm(time: string | undefined): string {
     if (!time) return "";
-    const [h, m] = time.split(":").map(Number);
+    const [h, m, s] = time.split(":").map(Number);
     if (isNaN(h) || isNaN(m)) return time;
     const hour12 = h % 12 || 12;
     const ampm = h >= 12 ? "PM" : "AM";
-    return `${hour12}:${String(m).padStart(2, "0")} ${ampm}`;
+    const seconds = typeof s === "number" && Number.isFinite(s) && s > 0 ? `:${String(s).padStart(2, "0")}` : "";
+    return `${hour12}:${String(m).padStart(2, "0")}${seconds} ${ampm}`;
 }
 
 /* ─── Live elapsed‑time display ────────────────────────────── */
@@ -56,8 +59,8 @@ function ElapsedTimeDisplay({ checkInTime }: { checkInTime: string }) {
     const [elapsed, setElapsed] = useState("0h 0m");
     useEffect(() => {
         const tick = () => {
-            const [h, m] = checkInTime.split(":").map(Number);
-            const start = new Date(); start.setHours(h, m, 0, 0);
+            const [h, m, s = 0] = checkInTime.split(":").map(Number);
+            const start = new Date(); start.setHours(h, m, s, 0);
             const diff = Math.max(0, Date.now() - start.getTime());
             const hrs = Math.floor(diff / 3600000);
             const mins = Math.floor((diff % 3600000) / 60000);
@@ -133,13 +136,11 @@ const detectLocationSpoofing = (coords: GeolocationCoordinates): string | null =
  * Velocity check: detect teleportation between consecutive location readings.
  * If position changed >300 km/h since last known position, it's spoofed.
  */
-const LAST_LOCATION_KEY = "nex-last-checkin-loc";
-const LEGACY_LAST_LOCATION_KEY = "sdsi-last-checkin-loc";
+const LAST_LOCATION_KEY = "sdsi-last-checkin-loc";
 
 function checkLocationVelocity(lat: number, lng: number): string | null {
     try {
-        const stored = sessionStorage.getItem(LAST_LOCATION_KEY)
-            ?? sessionStorage.getItem(LEGACY_LAST_LOCATION_KEY);
+        const stored = sessionStorage.getItem(LAST_LOCATION_KEY);
         if (!stored) return null;
         const prev = JSON.parse(stored) as { lat: number; lng: number; ts: number };
         const elapsed = (Date.now() - prev.ts) / 1000; // seconds
@@ -190,9 +191,26 @@ export default function EmployeeView() {
     const notificationsDispatch = useNotificationsStore((s) => s.dispatch);
     const notificationsAddLog = useNotificationsStore((s) => s.addLog);
 
-    const myEmployeeId = employees.find(
-        (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name
-    )?.id;
+    useEffect(() => {
+        forceRehydrate().catch(() => { /* keep local state if refresh fails */ });
+
+        const refreshOnFocus = () => {
+            if (document.visibilityState === "visible") {
+                forceRehydrate().catch(() => { /* keep local state if refresh fails */ });
+            }
+        };
+
+        window.addEventListener("focus", refreshOnFocus);
+        document.addEventListener("visibilitychange", refreshOnFocus);
+        return () => {
+            window.removeEventListener("focus", refreshOnFocus);
+            document.removeEventListener("visibilitychange", refreshOnFocus);
+        };
+    }, []);
+
+    const currentEmployee = useMemo(() => findCurrentEmployee(employees, currentUser), [employees, currentUser]);
+    const attendanceEmployeeIds = useMemo(() => getAttendanceEmployeeIds(employees, currentEmployee), [employees, currentEmployee]);
+    const myEmployeeId = currentEmployee?.id;
     const todayLog = myEmployeeId ? getTodayLog(myEmployeeId) : undefined;
     const myProject = myEmployeeId ? getProjectForEmployee(myEmployeeId) : undefined;
     const myOTRequests = overtimeRequests.filter((r) => r.employeeId === myEmployeeId);
@@ -332,7 +350,7 @@ export default function EmployeeView() {
     };
 
     const handleExportCSV = () => {
-        const myLogs = logs.filter((l) => l.employeeId === myEmployeeId).sort((a, b) => b.date.localeCompare(a.date));
+        const myLogs = logs.filter((l) => attendanceEmployeeIds.includes(l.employeeId)).sort((a, b) => b.date.localeCompare(a.date));
         const rows = [
             ["Date", "Check In", "Check Out", "Hours", "Late (min)", "Status"],
             ...myLogs.map((l) => [l.date, l.checkIn || "", l.checkOut || "", l.hours ?? "", l.lateMinutes ?? "", l.status]),
@@ -423,9 +441,27 @@ export default function EmployeeView() {
 
     const handleCheckOutFaceVerified = useCallback(() => {
         if (!myEmployeeId) return;
-        checkOut(myEmployeeId, myProject?.id);
-        setCheckOutStep("done");
-        toast.success("Checked out — see you tomorrow!");
+        (async () => {
+            try {
+                const res = await fetch("/api/attendance/self-checkin", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ deviceId: "WEB-FACE", timestampUTC: new Date().toISOString() }),
+                    credentials: "same-origin",
+                });
+                const data = await res.json();
+                if (res.ok && data.ok) {
+                    try { await forceRehydrate(); } catch { /* ignore */ }
+                    setCheckOutStep("done");
+                    toast.success("Checked out — see you tomorrow!");
+                } else {
+                    toast.error(data?.error || "Failed to record check-out");
+                }
+            } catch (err) {
+                console.error("check-out self-checkin error", err);
+                toast.error("Network error while checking out");
+            }
+        })();
     }, [myEmployeeId, myProject, checkOut]);
 
     const handleCheckOutQr = useCallback(async () => {
@@ -440,32 +476,89 @@ export default function EmployeeView() {
 
     const handleFaceVerified = useCallback(() => {
         if (!myEmployeeId) return;
-        checkIn(myEmployeeId, myProject?.id);
-        const todayStr = new Date().toISOString().split("T")[0];
-        const updatedLogs = useAttendanceStore.getState().logs.map((l) => {
-            if (l.employeeId === myEmployeeId && l.date === todayStr && l.checkIn) {
-                return { ...l, locationSnapshot: userLocation || undefined, faceVerified: true };
+        (async () => {
+            try {
+                const res = await fetch("/api/attendance/self-checkin", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ deviceId: "WEB-FACE", timestampUTC: new Date().toISOString() }),
+                    credentials: "same-origin",
+                });
+                const data = await res.json();
+                if (res.ok && data.ok) {
+                    // Refresh local attendance state from server
+                    try { await forceRehydrate(); } catch { /* ignore */ }
+                    if (selfieDataUrl && userLocation) {
+                        addPhoto({
+                            eventId: `checkin-${Date.now()}`, employeeId: myEmployeeId, photoDataUrl: selfieDataUrl,
+                            gpsLat: userLocation.lat, gpsLng: userLocation.lng, gpsAccuracyMeters: geoResult?.accuracy || 0,
+                            capturedAt: new Date().toISOString(), geofencePass: geoResult?.within ?? true, projectId: myProject?.id,
+                        });
+                    }
+                    setStep("done"); toast.success("Check-in successful!");
+                } else {
+                    toast.error(data?.error || "Check-in failed");
+                }
+            } catch (err) {
+                console.error("self-checkin error", err);
+                toast.error("Network error during check-in");
             }
-            return l;
-        });
-        useAttendanceStore.setState({ logs: updatedLogs });
-        if (selfieDataUrl && userLocation) {
-            addPhoto({
-                eventId: `checkin-${Date.now()}`, employeeId: myEmployeeId, photoDataUrl: selfieDataUrl,
-                gpsLat: userLocation.lat, gpsLng: userLocation.lng, gpsAccuracyMeters: geoResult?.accuracy || 0,
-                capturedAt: new Date().toISOString(), geofencePass: geoResult?.within ?? true, projectId: myProject?.id,
-            });
-        }
-        setStep("done"); toast.success("Check-in successful!");
+        })();
     }, [myEmployeeId, myProject, userLocation, selfieDataUrl, geoResult, checkIn, addPhoto]);
 
-    // QR scan completion — kiosk already wrote to DB via /api/attendance/validate-qr
-    // We just refresh data from DB to sync the UI
+    // Project QR scan check-in — phone scans printed QR sticker
+    const handleProjectQrCheckin = useCallback(async (payload: string) => {
+        if (!userLocation) { toast.error("Location required — please retry"); return; }
+        try {
+            const res = await fetch("/api/attendance/project-qr-checkin", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ payload, location: userLocation }),
+                credentials: "same-origin",
+            });
+            const data = await res.json();
+            if (res.ok && data.ok) {
+                setStep("done");
+                toast.success("Checked in successfully!");
+                try { await forceRehydrate(); } catch { /* ignore */ }
+            } else {
+                toast.error(data?.error || "QR check-in failed");
+            }
+        } catch (err) {
+            console.error("project-qr-checkin error", err);
+            toast.error("Network error during QR check-in");
+        }
+    }, [myEmployeeId, userLocation]);
+
+    // Project QR scan check-out — phone scans printed QR sticker
+    const handleProjectQrCheckout = useCallback(async (payload: string) => {
+        if (!userLocation) { toast.error("Location required — please retry"); return; }
+        try {
+            const res = await fetch("/api/attendance/project-qr-checkin", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ payload, location: userLocation }),
+                credentials: "same-origin",
+            });
+            const data = await res.json();
+            if (res.ok && data.ok) {
+                setCheckOutStep("done");
+                toast.success("Checked out successfully!");
+                try { await forceRehydrate(); } catch { /* ignore */ }
+            } else {
+                toast.error(data?.error || "QR check-out failed");
+            }
+        } catch (err) {
+            console.error("project-qr-checkout error", err);
+            toast.error("Network error during QR check-out");
+        }
+    }, [myEmployeeId, userLocation]);
+
+    // Legacy: kiosk already wrote to DB — just refresh
     const handleQrCheckedIn = useCallback(async () => {
         if (!myEmployeeId) return;
         setStep("done");
         toast.success("QR check-in confirmed!");
-        // Refresh attendance data from server to get the check-in the kiosk just recorded
         try { await forceRehydrate(); } catch { /* ignore */ }
     }, [myEmployeeId]);
 
@@ -477,7 +570,7 @@ export default function EmployeeView() {
         const now = new Date();
         const weekStart = new Date(now); weekStart.setDate(weekStart.getDate() - weekStart.getDay());
         const weekDates = Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return d.toISOString().split("T")[0]; });
-        const weekLogs = logs.filter((l) => l.employeeId === myEmployeeId && weekDates.includes(l.date));
+        const weekLogs = logs.filter((l) => attendanceEmployeeIds.includes(l.employeeId) && weekDates.includes(l.date));
         const daysPresent = weekLogs.filter((l) => l.status === "present").length;
         const totalHours = weekLogs.reduce((sum, l) => sum + (l.hours || 0), 0);
         const lateDays = weekLogs.filter((l) => (l.lateMinutes || 0) > 0).length;
@@ -485,12 +578,12 @@ export default function EmployeeView() {
         const scheduledDays = myEmp?.workDays?.length || 5;
         const progressPct = Math.min(100, Math.round((daysPresent / scheduledDays) * 100));
         return { daysPresent, totalHours, lateDays, scheduledDays, progressPct };
-    }, [myEmployeeId, logs, employees]);
+    }, [attendanceEmployeeIds, myEmployeeId, logs, employees]);
 
     const empRecentLogs = useMemo(() => {
         if (!myEmployeeId) return [];
-        return logs.filter((l) => l.employeeId === myEmployeeId).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7);
-    }, [myEmployeeId, logs]);
+        return logs.filter((l) => attendanceEmployeeIds.includes(l.employeeId)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7);
+    }, [attendanceEmployeeIds, myEmployeeId, logs]);
 
     const empUpcomingHolidays = useMemo(() => {
         const str = new Date().toISOString().split("T")[0];
@@ -847,11 +940,10 @@ export default function EmployeeView() {
                         {checkOutStep === "idle" && (<>
                             {myProject?.verificationMethod === "qr_only" ? (
                                 <div className="pt-1">
-                                    <p className="text-xs text-muted-foreground text-center mb-3">Scan your QR at the kiosk to check out</p>
-                                    <EmployeeQRDisplay
-                                        employeeId={myEmployeeId}
-                                        employeeName={currentUser.name}
-                                        onCheckedIn={handleCheckOutQr}
+                                    <p className="text-xs text-muted-foreground text-center mb-3">Scan the project QR code to check out</p>
+                                    <ProjectQrScanner
+                                        onScanned={handleProjectQrCheckout}
+                                        onCancel={() => setCheckOutOpen(false)}
                                     />
                                 </div>
                             ) : (
@@ -941,11 +1033,10 @@ export default function EmployeeView() {
                             )}
                             {(!locationConfig.requireSelfie || selfieDataUrl) && myProject?.verificationMethod === "qr_only" && (
                                 <div className="pt-1">
-                                    <p className="text-xs text-muted-foreground text-center mb-3">{locationConfig.requireSelfie ? "Step 3" : "Step 2"}: Scan QR at Kiosk</p>
-                                    <EmployeeQRDisplay
-                                        employeeId={myEmployeeId}
-                                        employeeName={currentUser.name}
-                                        onCheckedIn={handleQrCheckedIn}
+                                    <p className="text-xs text-muted-foreground text-center mb-3">{locationConfig.requireSelfie ? "Step 3" : "Step 2"}: Scan the project QR code</p>
+                                    <ProjectQrScanner
+                                        onScanned={handleProjectQrCheckin}
+                                        onCancel={() => setStep("idle")}
                                     />
                                 </div>
                             )}
@@ -972,10 +1063,9 @@ export default function EmployeeView() {
                             )}
                         </>)}
                         {step === "qr_scan" && myEmployeeId && (
-                            <EmployeeQRDisplay
-                                employeeId={myEmployeeId}
-                                employeeName={currentUser.name}
-                                onCheckedIn={handleQrCheckedIn}
+                            <ProjectQrScanner
+                                onScanned={handleProjectQrCheckin}
+                                onCancel={() => setStep("idle")}
                             />
                         )}
                         {step === "error" && spoofReason && (
