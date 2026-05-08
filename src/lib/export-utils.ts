@@ -111,19 +111,9 @@ export const ATTENDANCE_TEMPLATE_HEADERS = [
 export const EMPLOYEES_TEMPLATE_HEADERS = [
   "Name",
   "Email",
-  "Role",
-  "Department",
-  "Job Title",
-  "Status",
-  "Work Type",
-  "Salary",
-  "Pay Frequency",
-  "Join Date",
   "Phone",
-  "Address",
-  "Emergency Contact",
   "Birthday",
-  "Location",
+  "Address",
 ] as const;
 
 const PAYROLL_SAMPLE_ROWS: Record<string, string>[] = [
@@ -191,19 +181,16 @@ const EMPLOYEES_SAMPLE_ROWS: Record<string, string>[] = [
   {
     Name: "Juan Dela Cruz",
     Email: "juan@example.com",
-    Role: "employee",
-    Department: "Engineering",
-    "Job Title": "Software Engineer",
-    Status: "active",
-    "Work Type": "full_time",
-    Salary: "30000",
-    "Pay Frequency": "monthly",
-    "Join Date": "2024-01-15",
     Phone: "+63 917 123 4567",
-    Address: "Manila, PH",
-    "Emergency Contact": "Maria Dela Cruz +63 918 999 0000",
     Birthday: "1990-05-20",
-    Location: "Manila Office",
+    Address: "Manila, Philippines",
+  },
+  {
+    Name: "Maria Santos",
+    Email: "maria@example.com",
+    Phone: "+63 918 234 5678",
+    Birthday: "1993-11-15",
+    Address: "Quezon City, Philippines",
   },
 ];
 

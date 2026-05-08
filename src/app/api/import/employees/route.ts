@@ -5,29 +5,10 @@ import { createServerSupabaseClient } from "@/services/supabase-server";
 const TEMPLATE_HEADERS = [
   "Name",
   "Email",
-  "Role",
-  "Department",
-  "Job Title",
-  "Status",
-  "Work Type",
-  "Salary",
-  "Pay Frequency",
-  "Join Date",
   "Phone",
-  "Address",
-  "Emergency Contact",
   "Birthday",
-  "Location",
+  "Address",
 ];
-
-const VALID_ROLES = [
-  "admin", "hr", "manager", "supervisor", "employee",
-  "finance", "payroll_admin", "accountant",
-];
-const VALID_STATUSES = ["active", "on_leave", "resigned", "terminated"];
-const VALID_WORK_TYPES = ["full_time", "part_time", "contract", "intern"];
-const VALID_PAY_FREQUENCIES = ["monthly", "semi_monthly", "bi_weekly", "weekly"];
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 type RowStatus = "valid" | "duplicate" | "error";
 interface RowValidation {
@@ -61,19 +42,9 @@ export async function GET(req: Request) {
   const exampleRow: Record<string, string | number> = {
     "Name": "Juan Dela Cruz",
     "Email": "juan@example.com",
-    "Role": "employee",
-    "Department": "Engineering",
-    "Job Title": "Software Engineer",
-    "Status": "active",
-    "Work Type": "full_time",
-    "Salary": 30000,
-    "Pay Frequency": "monthly",
-    "Join Date": "2024-01-15",
     "Phone": "+63 917 123 4567",
-    "Address": "Manila, PH",
-    "Emergency Contact": "Maria Dela Cruz +63 918 999 0000",
     "Birthday": "1990-05-20",
-    "Location": "Manila Office",
+    "Address": "Manila, Philippines",
   };
 
   const ws = XLSX.utils.json_to_sheet([exampleRow], { header: TEMPLATE_HEADERS });
@@ -131,13 +102,9 @@ export async function POST(req: Request) {
 
     const name = String(row["Name"] || "").trim();
     const email = String(row["Email"] || "").trim().toLowerCase();
-    const role = String(row["Role"] || "employee").trim().toLowerCase();
-    const department = String(row["Department"] || "").trim();
-    const status = String(row["Status"] || "active").trim().toLowerCase();
-    const workType = String(row["Work Type"] || "full_time").trim().toLowerCase();
-    const salary = Number(row["Salary"]);
-    const payFreq = String(row["Pay Frequency"] || "monthly").trim().toLowerCase();
-    const joinDate = String(row["Join Date"] || "").trim();
+    const phone = String(row["Phone"] || "").trim() || null;
+    const birthday = String(row["Birthday"] || "").trim() || null;
+    const address = String(row["Address"] || "").trim() || null;
 
     if (!name) {
       const msg = "Missing Name";
@@ -151,51 +118,8 @@ export async function POST(req: Request) {
       rowValidations.push({ row: rowNum, status: "error", message: msg, name });
       continue;
     }
-    if (!VALID_ROLES.includes(role)) {
-      const msg = `Invalid Role "${role}"`;
-      errors.push(`Row ${rowNum}: ${msg}`);
-      rowValidations.push({ row: rowNum, status: "error", message: msg, name, email });
-      continue;
-    }
-    if (!department) {
-      const msg = "Missing Department";
-      errors.push(`Row ${rowNum}: ${msg}`);
-      rowValidations.push({ row: rowNum, status: "error", message: msg, name, email });
-      continue;
-    }
-    if (!VALID_STATUSES.includes(status)) {
-      const msg = `Invalid Status "${status}"`;
-      errors.push(`Row ${rowNum}: ${msg}`);
-      rowValidations.push({ row: rowNum, status: "error", message: msg, name, email });
-      continue;
-    }
-    if (!VALID_WORK_TYPES.includes(workType)) {
-      const msg = `Invalid Work Type "${workType}"`;
-      errors.push(`Row ${rowNum}: ${msg}`);
-      rowValidations.push({ row: rowNum, status: "error", message: msg, name, email });
-      continue;
-    }
-    if (!VALID_PAY_FREQUENCIES.includes(payFreq)) {
-      const msg = `Invalid Pay Frequency "${payFreq}"`;
-      errors.push(`Row ${rowNum}: ${msg}`);
-      rowValidations.push({ row: rowNum, status: "error", message: msg, name, email });
-      continue;
-    }
-    if (isNaN(salary) || salary < 0) {
-      const msg = "Invalid Salary";
-      errors.push(`Row ${rowNum}: ${msg}`);
-      rowValidations.push({ row: rowNum, status: "error", message: msg, name, email });
-      continue;
-    }
-    if (!DATE_RE.test(joinDate)) {
-      const msg = "Invalid Join Date (use YYYY-MM-DD)";
-      errors.push(`Row ${rowNum}: ${msg}`);
-      rowValidations.push({ row: rowNum, status: "error", message: msg, name, email });
-      continue;
-    }
-    const birthday = String(row["Birthday"] || "").trim();
-    if (birthday && !DATE_RE.test(birthday)) {
-      const msg = "Invalid Birthday (use YYYY-MM-DD)";
+    if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
+      const msg = "Birthday must be YYYY-MM-DD (e.g. 1990-05-20)";
       errors.push(`Row ${rowNum}: ${msg}`);
       rowValidations.push({ row: rowNum, status: "error", message: msg, name, email });
       continue;
@@ -211,24 +135,21 @@ export async function POST(req: Request) {
     rowValidations.push({ row: rowNum, status: "valid", message: "Ready to import", name, email });
     if (dryRun) continue;
 
+    const today = new Date().toISOString().split("T")[0];
     const employeeId = `EMP-IMP-${Date.now()}-${i}`;
     const record = {
       id: employeeId,
       name,
       email,
-      role,
-      department,
-      job_title: String(row["Job Title"] || "") || null,
-      status,
-      work_type: workType,
-      salary,
-      pay_frequency: payFreq,
-      join_date: joinDate,
-      phone: String(row["Phone"] || "") || null,
-      address: String(row["Address"] || "") || null,
-      emergency_contact: String(row["Emergency Contact"] || "") || null,
+      role: "employee",
+      status: "active",
+      work_type: "full_time",
+      pay_frequency: "monthly",
+      salary: 0,
+      join_date: today,
+      phone,
       birthday: birthday || null,
-      location: String(row["Location"] || "") || null,
+      address,
       productivity: 0,
       deduction_exempt: false,
       notification_preferences: {},
