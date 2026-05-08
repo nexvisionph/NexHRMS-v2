@@ -133,6 +133,7 @@ export async function POST(req: Request) {
     }
 
     rowValidations.push({ row: rowNum, status: "valid", message: "Ready to import", name, email });
+    existingEmails.add(email); // track within-batch duplicates (even in dryRun)
     if (dryRun) continue;
 
     const today = new Date().toISOString().split("T")[0];

@@ -214,7 +214,7 @@ export const usePayrollStore = create<PayrollState>()(
                 }),
 
             // DEPRECATED: no-op in simplified flow (kept for backward compat)
-            confirmPayslip: (_id) =>
+            confirmPayslip: (/* id */) =>
                 set(() => ({})),
 
             // Publish: draft → published (requires locked payroll run)
@@ -396,7 +396,7 @@ export const usePayrollStore = create<PayrollState>()(
                 }),
 
             // DEPRECATED: no-op in simplified flow (draft goes directly to locked)
-            validateRun: (_runDate) =>
+            validateRun: (/* runDate */) =>
                 set(() => ({})),
 
             // Lock run: draft → locked (freezes policy snapshot — payslips must be published first)
@@ -424,7 +424,7 @@ export const usePayrollStore = create<PayrollState>()(
                 }),
 
             // Unlock run: locked → draft (for corrections; published payslips stay published)
-            unlockRun: (runDate, _unlockedBy = "system") =>
+            unlockRun: (runDate) =>
                 set((s) => {
                     const run = s.runs.find((r) => r.periodLabel === runDate);
                     if (!run || !run.locked) return {};
