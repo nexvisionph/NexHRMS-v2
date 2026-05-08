@@ -55,11 +55,7 @@ interface OrgSettings { emailAbsenceAlerts: boolean; emailLeaveUpdates: boolean;
 const defaultOrgSettings: OrgSettings = { emailAbsenceAlerts: true, emailLeaveUpdates: true, emailPayrollAlerts: true };
 function readOrgSettings() {
     if (typeof window === "undefined") return defaultOrgSettings;
-    try {
-        const s = localStorage.getItem("nex-org-settings")
-            ?? localStorage.getItem("sdsi-org-settings");
-        if (s) return { ...defaultOrgSettings, ...JSON.parse(s) };
-    } catch { /* ignore */ }
+    try { const s = localStorage.getItem("sdsi-org-settings"); if (s) return { ...defaultOrgSettings, ...JSON.parse(s) }; } catch { /* ignore */ }
     return defaultOrgSettings;
 }
 
@@ -68,8 +64,7 @@ function useOrgSettings() {
     const update = (patch: Partial<OrgSettings>) => {
         setSettings((prev: OrgSettings) => {
             const next = { ...prev, ...patch };
-            localStorage.setItem("nex-org-settings", JSON.stringify(next));
-            try { localStorage.removeItem("sdsi-org-settings"); } catch { /* ignore */ }
+            localStorage.setItem("sdsi-org-settings", JSON.stringify(next));
             return next;
         });
     };
@@ -156,6 +151,12 @@ export default function AdminSettingsView() {
     const [editNightDiffStart, setEditNightDiffStart] = useState("22:00");
     const [editNightDiffEnd, setEditNightDiffEnd] = useState("06:00");
     const [editHolidayMultiplier, setEditHolidayMultiplier] = useState("2.0");
+    // OT multipliers (migration 055) — DOLE PH defaults
+    const [editOtRegular, setEditOtRegular] = useState("1.25");
+    const [editOtRestDay, setEditOtRestDay] = useState("1.30");
+    const [editOtSpecialHoliday, setEditOtSpecialHoliday] = useState("1.30");
+    const [editOtRegularHoliday, setEditOtRegularHoliday] = useState("2.00");
+    const [editOtNightDiff, setEditOtNightDiff] = useState("1.10");
 
     const [addRuleOpen, setAddRuleOpen] = useState(false);
     const [newName, setNewName] = useState("");
@@ -166,25 +167,51 @@ export default function AdminSettingsView() {
     const [newNightDiffStart, setNewNightDiffStart] = useState("22:00");
     const [newNightDiffEnd, setNewNightDiffEnd] = useState("06:00");
     const [newHolidayMultiplier, setNewHolidayMultiplier] = useState("2.0");
+    // OT multipliers (migration 055)
+    const [newOtRegular, setNewOtRegular] = useState("1.25");
+    const [newOtRestDay, setNewOtRestDay] = useState("1.30");
+    const [newOtSpecialHoliday, setNewOtSpecialHoliday] = useState("1.30");
+    const [newOtRegularHoliday, setNewOtRegularHoliday] = useState("2.00");
+    const [newOtNightDiff, setNewOtNightDiff] = useState("1.10");
 
     const handleOpenAdd = () => {
-        setNewName(""); setNewStandardHours("8"); setNewGraceMinutes("10"); setNewRoundingPolicy("nearest_15"); setNewOTRequired(true); setNewNightDiffStart("22:00"); setNewNightDiffEnd("06:00"); setNewHolidayMultiplier("2.0"); setAddRuleOpen(true);
+        setNewName(""); setNewStandardHours("8"); setNewGraceMinutes("10"); setNewRoundingPolicy("nearest_15"); setNewOTRequired(true); setNewNightDiffStart("22:00"); setNewNightDiffEnd("06:00"); setNewHolidayMultiplier("2.0");
+        setNewOtRegular("1.25"); setNewOtRestDay("1.30"); setNewOtSpecialHoliday("1.30"); setNewOtRegularHoliday("2.00"); setNewOtNightDiff("1.10");
+        setAddRuleOpen(true);
     };
 
     const handleCreateNew = () => {
         if (!newName || !newStandardHours || !newGraceMinutes) { toast.error("Please fill all required fields"); return; }
-        addRuleSet({ name: newName, standardHoursPerDay: Number(newStandardHours), graceMinutes: Number(newGraceMinutes), roundingPolicy: newRoundingPolicy, overtimeRequiresApproval: newOTRequired, nightDiffStart: newNightDiffStart, nightDiffEnd: newNightDiffEnd, holidayMultiplier: Number(newHolidayMultiplier) });
+        addRuleSet({ name: newName, standardHoursPerDay: Number(newStandardHours), graceMinutes: Number(newGraceMinutes), roundingPolicy: newRoundingPolicy, overtimeRequiresApproval: newOTRequired, nightDiffStart: newNightDiffStart, nightDiffEnd: newNightDiffEnd, holidayMultiplier: Number(newHolidayMultiplier),
+            otMultiplierRegular: Number(newOtRegular),
+            otMultiplierRestDay: Number(newOtRestDay),
+            otMultiplierSpecialHoliday: Number(newOtSpecialHoliday),
+            otMultiplierRegularHoliday: Number(newOtRegularHoliday),
+            otMultiplierNightDiff: Number(newOtNightDiff),
+        });
         toast.success(`Rule set "${newName}" created successfully`); setAddRuleOpen(false);
     };
 
     const handleOpenEdit = (rule: AttendanceRuleSet) => {
-        setEditingRule(rule); setEditName(rule.name); setEditStandardHours(String(rule.standardHoursPerDay)); setEditGraceMinutes(String(rule.graceMinutes)); setEditRoundingPolicy(rule.roundingPolicy); setEditOTRequired(rule.overtimeRequiresApproval); setEditNightDiffStart(rule.nightDiffStart || "22:00"); setEditNightDiffEnd(rule.nightDiffEnd || "06:00"); setEditHolidayMultiplier(String(rule.holidayMultiplier)); setEditRuleOpen(true);
+        setEditingRule(rule); setEditName(rule.name); setEditStandardHours(String(rule.standardHoursPerDay)); setEditGraceMinutes(String(rule.graceMinutes)); setEditRoundingPolicy(rule.roundingPolicy); setEditOTRequired(rule.overtimeRequiresApproval); setEditNightDiffStart(rule.nightDiffStart || "22:00"); setEditNightDiffEnd(rule.nightDiffEnd || "06:00"); setEditHolidayMultiplier(String(rule.holidayMultiplier));
+        setEditOtRegular(String(rule.otMultiplierRegular ?? 1.25));
+        setEditOtRestDay(String(rule.otMultiplierRestDay ?? 1.30));
+        setEditOtSpecialHoliday(String(rule.otMultiplierSpecialHoliday ?? 1.30));
+        setEditOtRegularHoliday(String(rule.otMultiplierRegularHoliday ?? 2.00));
+        setEditOtNightDiff(String(rule.otMultiplierNightDiff ?? 1.10));
+        setEditRuleOpen(true);
     };
 
     const handleSaveEdit = () => {
         if (!editingRule) return;
         if (!editName || !editStandardHours || !editGraceMinutes) { toast.error("Please fill all required fields"); return; }
-        updateRuleSet(editingRule.id, { name: editName, standardHoursPerDay: Number(editStandardHours), graceMinutes: Number(editGraceMinutes), roundingPolicy: editRoundingPolicy, overtimeRequiresApproval: editOTRequired, nightDiffStart: editNightDiffStart, nightDiffEnd: editNightDiffEnd, holidayMultiplier: Number(editHolidayMultiplier) });
+        updateRuleSet(editingRule.id, { name: editName, standardHoursPerDay: Number(editStandardHours), graceMinutes: Number(editGraceMinutes), roundingPolicy: editRoundingPolicy, overtimeRequiresApproval: editOTRequired, nightDiffStart: editNightDiffStart, nightDiffEnd: editNightDiffEnd, holidayMultiplier: Number(editHolidayMultiplier),
+            otMultiplierRegular: Number(editOtRegular),
+            otMultiplierRestDay: Number(editOtRestDay),
+            otMultiplierSpecialHoliday: Number(editOtSpecialHoliday),
+            otMultiplierRegularHoliday: Number(editOtRegularHoliday),
+            otMultiplierNightDiff: Number(editOtNightDiff),
+        });
         toast.success("Rule set updated successfully"); setEditRuleOpen(false); setEditingRule(null);
     };
 
@@ -211,7 +238,7 @@ export default function AdminSettingsView() {
        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
     /* ── 1. GENERAL ───────────────────────────────── */
-    const renderGeneralTab = () => (
+    const GeneralTab = () => (
         <div className="space-y-6">
             {/* Appearance — Theme Toggle */}
             <Card>
@@ -259,7 +286,7 @@ export default function AdminSettingsView() {
     );
 
     /* ── 2. PAYROLL & TIME ────────────────────────── */
-    const renderPayrollTab = () => (
+    const PayrollTab = () => (
         <div className="space-y-6">
             {/* Pay Schedule */}
             <Card>
@@ -443,7 +470,7 @@ export default function AdminSettingsView() {
     );
 
     /* ── 3. COMMUNICATION ──────────────────────────── */
-    const renderCommunicationTab = () => (
+    const CommunicationTab = () => (
         <div className="space-y-6">
             {/* Email Notifications */}
             <Card>
@@ -532,7 +559,7 @@ export default function AdminSettingsView() {
     );
 
     /* ── 4. SYSTEM ──────────────────────────────────── */
-    const renderSystemTab = () => (
+    const SystemTab = () => (
         <div className="space-y-6">
             {/* Roles Summary */}
             <Card>
@@ -723,10 +750,10 @@ export default function AdminSettingsView() {
 
                 {/* Tab Content */}
                 <div className="flex-1 min-w-0 max-w-3xl">
-                    {activeTab === "general" && renderGeneralTab()}
-                    {activeTab === "payroll" && renderPayrollTab()}
-                    {activeTab === "communication" && renderCommunicationTab()}
-                    {activeTab === "system" && renderSystemTab()}
+                    {activeTab === "general" && <GeneralTab />}
+                    {activeTab === "payroll" && <PayrollTab />}
+                    {activeTab === "communication" && <CommunicationTab />}
+                    {activeTab === "system" && <SystemTab />}
                 </div>
             </div>
         </div>
@@ -756,6 +783,18 @@ export default function AdminSettingsView() {
                             <div><label className="text-xs text-muted-foreground">Until</label><Input type="time" value={editNightDiffEnd} onChange={(e) => setEditNightDiffEnd(e.target.value)} className="mt-1" /></div>
                         </div>
                     </div>
+                    {/* ─── OT Multipliers (migration 055) ─── */}
+                    <div className="p-3 rounded-lg border border-border/50 space-y-2">
+                        <p className="text-sm font-medium">Overtime Multipliers (DOLE PH)</p>
+                        <p className="text-xs text-muted-foreground">Pay = OT hours × hourly rate × multiplier</p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            <div><label className="text-xs">Regular Day</label><Input type="number" min="1" max="5" step="0.05" value={editOtRegular} onChange={(e) => setEditOtRegular(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-xs">Rest Day</label><Input type="number" min="1" max="5" step="0.05" value={editOtRestDay} onChange={(e) => setEditOtRestDay(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-xs">Special Holiday</label><Input type="number" min="1" max="5" step="0.05" value={editOtSpecialHoliday} onChange={(e) => setEditOtSpecialHoliday(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-xs">Regular Holiday</label><Input type="number" min="1" max="5" step="0.05" value={editOtRegularHoliday} onChange={(e) => setEditOtRegularHoliday(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-xs">Night Diff</label><Input type="number" min="1" max="5" step="0.05" value={editOtNightDiff} onChange={(e) => setEditOtNightDiff(e.target.value)} className="mt-1" /></div>
+                        </div>
+                    </div>
                     <Button onClick={handleSaveEdit} className="w-full">Save Changes</Button>
                 </div>
             </DialogContent>
@@ -782,6 +821,17 @@ export default function AdminSettingsView() {
                         <div className="grid grid-cols-2 gap-3">
                             <div><label className="text-xs text-muted-foreground">From</label><Input type="time" value={newNightDiffStart} onChange={(e) => setNewNightDiffStart(e.target.value)} className="mt-1" /></div>
                             <div><label className="text-xs text-muted-foreground">Until</label><Input type="time" value={newNightDiffEnd} onChange={(e) => setNewNightDiffEnd(e.target.value)} className="mt-1" /></div>
+                        </div>
+                    </div>
+                    {/* ─── OT Multipliers (migration 055) ─── */}
+                    <div className="p-3 rounded-lg border border-border/50 space-y-2">
+                        <p className="text-sm font-medium">Overtime Multipliers (DOLE PH)</p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            <div><label className="text-xs">Regular Day</label><Input type="number" min="1" max="5" step="0.05" value={newOtRegular} onChange={(e) => setNewOtRegular(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-xs">Rest Day</label><Input type="number" min="1" max="5" step="0.05" value={newOtRestDay} onChange={(e) => setNewOtRestDay(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-xs">Special Holiday</label><Input type="number" min="1" max="5" step="0.05" value={newOtSpecialHoliday} onChange={(e) => setNewOtSpecialHoliday(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-xs">Regular Holiday</label><Input type="number" min="1" max="5" step="0.05" value={newOtRegularHoliday} onChange={(e) => setNewOtRegularHoliday(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-xs">Night Diff</label><Input type="number" min="1" max="5" step="0.05" value={newOtNightDiff} onChange={(e) => setNewOtNightDiff(e.target.value)} className="mt-1" /></div>
                         </div>
                     </div>
                     <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">

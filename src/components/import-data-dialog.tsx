@@ -1,17 +1,5 @@
 "use client";
 
-<<<<<<< HEAD
-import { Card, CardContent } from "@/components/ui/card";
-import { Construction } from "lucide-react";
-
-interface ImportDataDialogProps {
-    module: string;
-    onImportComplete?: () => void;
-}
-
-export function ImportDataDialog({ module, onImportComplete }: ImportDataDialogProps) {
-    return null; // Placeholder — import functionality coming soon
-=======
 import { useState, useCallback, useRef } from "react";
 import {
   downloadImportTemplate,
@@ -19,6 +7,7 @@ import {
   type ExportFormat,
   PAYROLL_TEMPLATE_HEADERS,
   ATTENDANCE_TEMPLATE_HEADERS,
+  EMPLOYEES_TEMPLATE_HEADERS,
 } from "@/lib/export-utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +33,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-type ImportModule = "payroll" | "attendance";
+type ImportModule = "payroll" | "attendance" | "employees";
 type RowStatus = "valid" | "duplicate" | "error";
 
 interface RowValidation {
@@ -106,7 +95,11 @@ export function ImportDataDialog({
   const fileRef = useRef<HTMLInputElement>(null);
 
   const expectedHeaders =
-    module === "payroll" ? PAYROLL_TEMPLATE_HEADERS : ATTENDANCE_TEMPLATE_HEADERS;
+    module === "payroll"
+      ? PAYROLL_TEMPLATE_HEADERS
+      : module === "attendance"
+      ? ATTENDANCE_TEMPLATE_HEADERS
+      : EMPLOYEES_TEMPLATE_HEADERS;
 
   const reset = useCallback(() => {
     setFile(null);
@@ -532,5 +525,4 @@ export function ImportDataDialog({
       </DialogContent>
     </Dialog>
   );
->>>>>>> 3a470fc (fix: employee delete tombstone, 401 session refresh, delete API route, import dryRun validation)
 }

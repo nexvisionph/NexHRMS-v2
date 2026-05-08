@@ -13,6 +13,7 @@ import type { QRTokenRow } from "@/types";
 import { nanoid } from "nanoid";
 import { isWithinGeofence } from "@/lib/geofence";
 import { parseDailyQRPayload, parseEmployeeQRPayload, detectQRType } from "@/lib/qr-utils";
+import { verifyProjectQr } from "@/lib/project-qr";
 
 // Token configuration
 const TOKEN_EXPIRY_SECONDS = 30; // 30 seconds
@@ -32,12 +33,6 @@ export async function generateQRToken(
     // Generate unique token
     const token = `SDS-DYN-${nanoid(TOKEN_LENGTH)}`;
     const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_SECONDS * 1000).toISOString();
-
-    // Ensure the device exists in kiosk_devices (FK requirement).
-    await supabase.from("kiosk_devices").upsert(
-      { id: deviceId, name: deviceId },
-      { onConflict: "id", ignoreDuplicates: true },
-    );
 
     // Insert token into database
     const tokenId = `QRT-${nanoid(8)}`;
@@ -532,8 +527,97 @@ export async function validateAnyQR(
       const token = payload;
       return { ...(await validateQRToken(token, kioskId, location)), qrType: "dynamic" };
     }
+    case "project":
+      return { ...(await validateProjectQR(payload, kioskId, location)), qrType: "project" };
     default:
       return { ok: true, valid: false, message: "Unrecognized QR format", qrType: "unknown" };
+  }
+}
+
+/**
+ * Validate a project QR scan.
+ *
+ * Unlike employee-bound QRs, a project QR identifies a LOCATION, not a person.
+ * The kiosk must combine the result with employee identity from another step
+ * (face recognition, PIN, etc.). This validator:
+ *   1. Verifies the HMAC against the project's per-row qr_secret.
+ *   2. Enforces a MANDATORY geofence check — the scanner must physically be
+ *      within the project's geofence radius. This prevents QR-photo replay.
+ *   3. Returns projectId so the caller can record the attendance event with
+ *      the correct project context.
+ */
+export async function validateProjectQR(
+  payload: string,
+  _kioskId: string,
+  location?: { lat: number; lng: number; accuracy?: number },
+): Promise<{
+  ok: boolean;
+  valid: boolean;
+  projectId?: string;
+  message?: string;
+  geofencePass?: boolean;
+  distanceMeters?: number;
+}> {
+  try {
+    const supabase = await createAdminSupabaseClient();
+
+    // 1. HMAC verify (lookup secret only when project is qr_enabled=true)
+    const verifyResult = await verifyProjectQr(payload, async (projectId) => {
+      const { data } = await supabase
+        .from("projects")
+        .select("qr_secret, qr_enabled")
+        .eq("id", projectId)
+        .single();
+      if (!data || !data.qr_enabled) return null;
+      return (data.qr_secret as string) ?? null;
+    });
+
+    if (!verifyResult.ok) {
+      return { ok: true, valid: false, message: `Invalid project QR: ${verifyResult.reason}` };
+    }
+
+    // 2. Mandatory geofence check
+    if (!location) {
+      return { ok: true, valid: false, projectId: verifyResult.projectId, message: "Location required for project QR" };
+    }
+    const { data: project } = await supabase
+      .from("projects")
+      .select("location_lat, location_lng, geofence_radius_meters")
+      .eq("id", verifyResult.projectId)
+      .single();
+    if (!project || project.location_lat == null || project.location_lng == null) {
+      return { ok: true, valid: false, projectId: verifyResult.projectId, message: "Project missing geofence configuration" };
+    }
+    const radius = (project.geofence_radius_meters as number) ?? 100;
+    const geo = isWithinGeofence(
+      location.lat,
+      location.lng,
+      project.location_lat as number,
+      project.location_lng as number,
+      radius,
+    );
+    if (!geo.within) {
+      return {
+        ok: true,
+        valid: false,
+        projectId: verifyResult.projectId,
+        message: `Outside geofence (${geo.distanceMeters}m, max ${radius}m)`,
+        geofencePass: false,
+        distanceMeters: geo.distanceMeters,
+      };
+    }
+
+    return {
+      ok: true,
+      valid: true,
+      projectId: verifyResult.projectId,
+      message: "Project QR validated",
+      geofencePass: true,
+      distanceMeters: geo.distanceMeters,
+    };
+  } catch (err) {
+    console.error("[validateProjectQR] Error:", err);
+    return { ok: false, valid: false, message: "Project QR validation failed" };
   }
 }
 

@@ -8,9 +8,7 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Save, CalendarDays, Info } from "lucide-react";
-import { toast } from "sonner";
-
-interface PayScheduleSettingsProps {
+import { toast } from "sonner";interface PayScheduleSettingsProps {
     schedule: PayScheduleConfig;
     onUpdate: (patch: Partial<PayScheduleConfig>) => void;
 }
@@ -192,6 +190,80 @@ export function PayScheduleSettings({ schedule, onUpdate }: PayScheduleSettingsP
                     </Card>
                 )}
             </div>
+
+            {/* ─── Auto-Deduction Toggles (migration 055) ─────────────── */}
+            <Card className="border border-border/50">
+                <CardContent className="p-4 space-y-4">
+                    <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Automatic Payslip Adjustments</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">When enabled, payslip issuance pulls these from attendance logs and applies them automatically.</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label className="flex items-start gap-2 p-3 border rounded-md cursor-pointer hover:bg-muted/40">
+                            <input
+                                type="checkbox"
+                                className="mt-1"
+                                checked={schedule.autoDeductLate}
+                                onChange={(e) => onUpdate({ autoDeductLate: e.target.checked })}
+                            />
+                            <div className="flex-1">
+                                <p className="text-sm font-medium">Auto-deduct Late</p>
+                                <p className="text-[11px] text-muted-foreground">Late minutes × hourly rate (after grace period)</p>
+                            </div>
+                        </label>
+                        <label className="flex items-start gap-2 p-3 border rounded-md cursor-pointer hover:bg-muted/40">
+                            <input
+                                type="checkbox"
+                                className="mt-1"
+                                checked={schedule.autoDeductAbsent}
+                                onChange={(e) => onUpdate({ autoDeductAbsent: e.target.checked })}
+                            />
+                            <div className="flex-1">
+                                <p className="text-sm font-medium">Auto-deduct Absent</p>
+                                <p className="text-[11px] text-muted-foreground">Absent days × daily rate</p>
+                            </div>
+                        </label>
+                        <label className="flex items-start gap-2 p-3 border rounded-md cursor-pointer hover:bg-muted/40">
+                            <input
+                                type="checkbox"
+                                className="mt-1"
+                                checked={schedule.autoDeductUndertime}
+                                onChange={(e) => onUpdate({ autoDeductUndertime: e.target.checked })}
+                            />
+                            <div className="flex-1">
+                                <p className="text-sm font-medium">Auto-deduct Undertime</p>
+                                <p className="text-[11px] text-muted-foreground">(Shift hours − actual hours) × hourly rate</p>
+                            </div>
+                        </label>
+                        <label className="flex items-start gap-2 p-3 border rounded-md cursor-pointer hover:bg-muted/40">
+                            <input
+                                type="checkbox"
+                                className="mt-1"
+                                checked={schedule.autoAddOvertime}
+                                onChange={(e) => onUpdate({ autoAddOvertime: e.target.checked })}
+                            />
+                            <div className="flex-1">
+                                <p className="text-sm font-medium">Auto-add Overtime</p>
+                                <p className="text-[11px] text-muted-foreground">Approved OT × hourly rate × multiplier</p>
+                            </div>
+                        </label>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t">
+                        <div>
+                            <label className="text-xs font-medium">Work Days per Month</label>
+                            <Input
+                                type="number"
+                                min={1}
+                                max={31}
+                                value={schedule.workDaysPerMonth}
+                                onChange={(e) => onUpdate({ workDaysPerMonth: parseInt(e.target.value) || 22 })}
+                                className="mt-1"
+                            />
+                            <p className="text-[10px] text-muted-foreground mt-0.5">Used to compute daily rate from monthly salary (default 22)</p>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
             {/* Save confirmation */}
             <div className="flex justify-end">

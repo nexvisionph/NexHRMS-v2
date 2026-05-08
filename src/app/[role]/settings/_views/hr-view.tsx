@@ -98,7 +98,22 @@ export default function HrSettingsView() {
 
     const handleCreateNew = () => {
         if (!newName || !newStandardHours || !newGraceMinutes) { toast.error("Please fill all required fields"); return; }
-        addRuleSet({ name: newName, standardHoursPerDay: Number(newStandardHours), graceMinutes: Number(newGraceMinutes), roundingPolicy: newRoundingPolicy, overtimeRequiresApproval: newOTRequired, nightDiffStart: newNightDiffStart, nightDiffEnd: newNightDiffEnd, holidayMultiplier: Number(newHolidayMultiplier) });
+        addRuleSet({
+            name: newName,
+            standardHoursPerDay: Number(newStandardHours),
+            graceMinutes: Number(newGraceMinutes),
+            roundingPolicy: newRoundingPolicy,
+            overtimeRequiresApproval: newOTRequired,
+            nightDiffStart: newNightDiffStart,
+            nightDiffEnd: newNightDiffEnd,
+            holidayMultiplier: Number(newHolidayMultiplier),
+            // DOLE PH defaults — HR view does not yet edit these individually
+            otMultiplierRegular: 1.25,
+            otMultiplierRestDay: 1.30,
+            otMultiplierSpecialHoliday: 1.30,
+            otMultiplierRegularHoliday: 2.00,
+            otMultiplierNightDiff: 1.10,
+        });
         toast.success(`Rule set "${newName}" created successfully`); setAddRuleOpen(false);
     };
 

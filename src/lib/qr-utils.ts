@@ -13,7 +13,7 @@
  *    Kept for backward compatibility only.
  */
 
-const QR_SECRET = process.env.QR_HMAC_SECRET || "nexhrms-qr-attendance-2025";
+const QR_SECRET = process.env.QR_HMAC_SECRET || "soren-qr-attendance-2025";
 const QR_PREFIX = "SDS-QR:";
 const DAILY_PREFIX = "SDS-DAY:";
 
@@ -136,12 +136,14 @@ export async function parseEmployeeQRPayload(
 
 /* ─── Detect QR type ─────────────────────────────────────────── */
 
-export type QRType = "daily" | "static" | "dynamic" | "unknown";
+export type QRType = "daily" | "static" | "dynamic" | "project" | "unknown";
 
 export function detectQRType(payload: string): QRType {
     if (payload.startsWith(DAILY_PREFIX)) return "daily";
     if (payload.startsWith(QR_PREFIX)) return "static";
     if (payload.startsWith("SDS-DYN-")) return "dynamic";
+    // Project QR is JSON: {"v":1,"type":"project",...}
+    if (payload.startsWith("{") && payload.includes('"type":"project"')) return "project";
     return "unknown";
 }
 

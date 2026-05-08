@@ -51,6 +51,12 @@ const DEFAULT_RULE_SET: AttendanceRuleSet = {
     nightDiffStart: "22:00",
     nightDiffEnd: "06:00",
     holidayMultiplier: 2.0,
+    // OT multipliers (migration 055) — DOLE PH defaults
+    otMultiplierRegular: 1.25,
+    otMultiplierRestDay: 1.30,
+    otMultiplierSpecialHoliday: 1.30,
+    otMultiplierRegularHoliday: 2.00,
+    otMultiplierNightDiff: 1.10,
 };
 
 function parseTime(t: string): number {
@@ -242,6 +248,25 @@ export const useTimesheetStore = create<TimesheetState>()(
                 get().timesheets.filter((t) => t.status === "submitted"),
             resetToSeed: () => set({ timesheets: [] }),
         }),
-        { name: "nexhrms-timesheet", version: 1, storage: safePersistStorage }
+        { name: "soren-timesheet", version: 2, storage: safePersistStorage,
+          migrate: (persistedState: unknown, version: number) => {
+            // v1 → v2 (migration 055): back-fill OT multipliers on existing rule sets
+            const s = (persistedState ?? {}) as { ruleSets?: AttendanceRuleSet[] };
+            if (version < 2 && Array.isArray(s.ruleSets)) {
+              s.ruleSets = s.ruleSets.map((rs) => {
+                const r = rs as Partial<AttendanceRuleSet>;
+                return {
+                  ...rs,
+                  otMultiplierRegular: r.otMultiplierRegular ?? 1.25,
+                  otMultiplierRestDay: r.otMultiplierRestDay ?? 1.30,
+                  otMultiplierSpecialHoliday: r.otMultiplierSpecialHoliday ?? 1.30,
+                  otMultiplierRegularHoliday: r.otMultiplierRegularHoliday ?? 2.00,
+                  otMultiplierNightDiff: r.otMultiplierNightDiff ?? 1.10,
+                } as AttendanceRuleSet;
+              });
+            }
+            return s as TimesheetState;
+          },
+        }
     )
 );

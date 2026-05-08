@@ -108,6 +108,24 @@ export const ATTENDANCE_TEMPLATE_HEADERS = [
   "Mock Location",
 ] as const;
 
+export const EMPLOYEES_TEMPLATE_HEADERS = [
+  "Name",
+  "Email",
+  "Role",
+  "Department",
+  "Job Title",
+  "Status",
+  "Work Type",
+  "Salary",
+  "Pay Frequency",
+  "Join Date",
+  "Phone",
+  "Address",
+  "Emergency Contact",
+  "Birthday",
+  "Location",
+] as const;
+
 const PAYROLL_SAMPLE_ROWS: Record<string, string>[] = [
   {
     "Employee Name": "Juan Dela Cruz",
@@ -169,25 +187,58 @@ const ATTENDANCE_SAMPLE_ROWS: Record<string, string>[] = [
   },
 ];
 
+const EMPLOYEES_SAMPLE_ROWS: Record<string, string>[] = [
+  {
+    Name: "Juan Dela Cruz",
+    Email: "juan@example.com",
+    Role: "employee",
+    Department: "Engineering",
+    "Job Title": "Software Engineer",
+    Status: "active",
+    "Work Type": "full_time",
+    Salary: "30000",
+    "Pay Frequency": "monthly",
+    "Join Date": "2024-01-15",
+    Phone: "+63 917 123 4567",
+    Address: "Manila, PH",
+    "Emergency Contact": "Maria Dela Cruz +63 918 999 0000",
+    Birthday: "1990-05-20",
+    Location: "Manila Office",
+  },
+];
+
 /**
- * Download an import template file (XLSX or CSV) for payroll or attendance.
+ * Download an import template file (XLSX or CSV) for payroll, attendance, or employees.
  * Includes headers + 1-2 sample rows so users know the expected format.
  */
 export function downloadImportTemplate(
-  module: "payroll" | "attendance",
+  module: "payroll" | "attendance" | "employees",
   format: ExportFormat
 ) {
   const headers =
-    module === "payroll" ? PAYROLL_TEMPLATE_HEADERS : ATTENDANCE_TEMPLATE_HEADERS;
+    module === "payroll"
+      ? PAYROLL_TEMPLATE_HEADERS
+      : module === "attendance"
+      ? ATTENDANCE_TEMPLATE_HEADERS
+      : EMPLOYEES_TEMPLATE_HEADERS;
   const sampleRows =
-    module === "payroll" ? PAYROLL_SAMPLE_ROWS : ATTENDANCE_SAMPLE_ROWS;
+    module === "payroll"
+      ? PAYROLL_SAMPLE_ROWS
+      : module === "attendance"
+      ? ATTENDANCE_SAMPLE_ROWS
+      : EMPLOYEES_SAMPLE_ROWS;
 
   exportToFile({
     filename: `${module}-import-template`,
     format,
     sheets: [
       {
-        name: module === "payroll" ? "Payroll Import" : "Attendance Import",
+        name:
+          module === "payroll"
+            ? "Payroll Import"
+            : module === "attendance"
+            ? "Attendance Import"
+            : "Employees Import",
         data: sampleRows.map((row) => {
           const ordered: Record<string, unknown> = {};
           for (const h of headers) {

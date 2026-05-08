@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { sendNotification } from "@/lib/notifications";
 import { FolderKanban, Plus, MapPin, UserPlus, Trash2, ScanFace, QrCode, UserCheck, Pencil, Search } from "lucide-react";
 import type { Project, VerificationMethod } from "@/types";
+import { ProjectQrDialog } from "@/components/projects/project-qr-dialog";
 
 const MapSelector = dynamic(
     () => import("@/components/projects/map-selector").then((m) => m.MapSelector),
@@ -47,6 +48,7 @@ export default function AdminProjectsView() {
     const [assignOpen, setAssignOpen] = useState(false);
     const [assignProjectId, setAssignProjectId] = useState<string | null>(null);
     const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
+    const [qrProject, setQrProject] = useState<{ id: string; name: string } | null>(null);
     const [assignSearch, setAssignSearch] = useState("");
 
     // ── Edit project state ──────────────────────────────────────
@@ -188,18 +190,18 @@ export default function AdminProjectsView() {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Location</h1>
-                    <p className="text-sm text-muted-foreground mt-0.5">{projects.length} locations</p>
+                    <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
+                    <p className="text-sm text-muted-foreground mt-0.5">{projects.length} projects</p>
                 </div>
                 <Dialog open={addOpen} onOpenChange={setAddOpen}>
                     <DialogTrigger asChild>
-                        <Button className="gap-1.5"><Plus className="h-4 w-4" /> New Location</Button>
+                        <Button className="gap-1.5"><Plus className="h-4 w-4" /> New Project</Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader><DialogTitle>Create Location</DialogTitle></DialogHeader>
+                        <DialogHeader><DialogTitle>Create Project</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
                             <div>
-                                <label className="text-sm font-medium">Location Name *</label>
+                                <label className="text-sm font-medium">Project Name *</label>
                                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nexvision" className="mt-1" />
                             </div>
                             <div>
@@ -235,7 +237,7 @@ export default function AdminProjectsView() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead className="text-xs">ID</TableHead>
-                                    <TableHead className="text-xs">Location Name</TableHead>
+                                    <TableHead className="text-xs">Project Name</TableHead>
                                     <TableHead className="text-xs">Location</TableHead>
                                     <TableHead className="text-xs">Radius</TableHead>
                                     <TableHead className="text-xs">Status</TableHead>
@@ -279,9 +281,9 @@ export default function AdminProjectsView() {
                                             <Select value={project.status || "active"} onValueChange={(v) => updateProject(project.id, { status: v as "active" | "completed" | "on_hold" })}>
                                                 <SelectTrigger className="h-7 w-full sm:w-[110px] text-xs border-0 bg-transparent"><SelectValue /></SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="active">Active</SelectItem>
-                                                    <SelectItem value="completed">Completed</SelectItem>
-                                                    <SelectItem value="on_hold">On Hold</SelectItem>
+                                                    <SelectItem value="active">🟢 Active</SelectItem>
+                                                    <SelectItem value="completed">🔵 Completed</SelectItem>
+                                                    <SelectItem value="on_hold">🟡 On Hold</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </TableCell>
@@ -306,6 +308,9 @@ export default function AdminProjectsView() {
                                                 <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => openAssignDialog(project.id)}>
                                                     <UserPlus className="h-3.5 w-3.5" /> Assign
                                                 </Button>
+                                                <Button variant="ghost" size="icon" className="h-7 w-7" title="View QR" onClick={() => setQrProject({ id: project.id, name: project.name })}>
+                                                    <QrCode className="h-3.5 w-3.5" />
+                                                </Button>
                                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(project)}>
                                                     <Pencil className="h-3.5 w-3.5" />
                                                 </Button>
@@ -324,8 +329,8 @@ export default function AdminProjectsView() {
 
             <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
                 <DialogContent className="max-w-lg">
-                    <DialogHeader><DialogTitle>Assign Employees to Location</DialogTitle></DialogHeader>
-                    <p className="text-xs text-muted-foreground -mt-1">Each employee can only be assigned to one location at a time.</p>
+                    <DialogHeader><DialogTitle>Assign Employees to Project</DialogTitle></DialogHeader>
+                    <p className="text-xs text-muted-foreground -mt-1">Each employee can only be assigned to one project at a time.</p>
                     <div className="relative">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                         <Input
@@ -376,10 +381,10 @@ export default function AdminProjectsView() {
             {/* ── Edit Project Dialog ───────────────────────────────── */}
             <Dialog open={editOpen} onOpenChange={setEditOpen}>
                 <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader><DialogTitle>Edit Location</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>Edit Project</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
                         <div>
-                            <label className="text-sm font-medium">Location Name *</label>
+                            <label className="text-sm font-medium">Project Name *</label>
                             <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nexvision" className="mt-1" />
                         </div>
                         <div>
@@ -418,6 +423,14 @@ export default function AdminProjectsView() {
                     </div>
                 </DialogContent>
             </Dialog>
+            {qrProject && (
+                <ProjectQrDialog
+                    open={!!qrProject}
+                    onOpenChange={(o) => !o && setQrProject(null)}
+                    projectId={qrProject.id}
+                    projectName={qrProject.name}
+                />
+            )}
         </div>
     );
 }
