@@ -15,7 +15,7 @@ import { useAppearanceStore } from "@/store/appearance.store";
 import { useMessagingStore } from "@/store/messaging.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useProjectsStore } from "@/store/projects.store";
-import { NAV_ITEMS } from "@/lib/constants";
+import { NAV_ITEMS, NAV_GROUPS } from "@/lib/constants";
 import { isAdministrativeRole } from "@/lib/admin-tier";
 import {
     LayoutDashboard,
@@ -48,6 +48,9 @@ import {
     ScanFace,
     UserCircle,
     Fingerprint,
+    Briefcase,
+    Palette,
+    Calculator,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEffect, useMemo, useCallback, memo } from "react";
@@ -80,7 +83,206 @@ const iconMap: Record<string, React.ElementType> = {
     ScanFace,
     UserCircle,
     Fingerprint,
+    Briefcase,
+    Palette,
+    Calculator,
 };
+
+/* ---------- Grouped Navigation Sub-Component ---------- */
+
+interface NavItemData {
+    label: string;
+    href: string;
+    icon: string;
+    absolute?: boolean;
+    group?: string;
+    order?: number;
+    [key: string]: unknown;
+}
+
+interface GroupedNavProps {
+    items: NavItemData[];
+    customItems: { label: string; href: string; icon: string }[];
+    pathname: string;
+    rolePrefix: string;
+    showLabel: boolean;
+    isMobile: boolean;
+    totalUnreadMsgs: number;
+    totalUnreadNotifications: number;
+}
+
+function GroupedNav({ items, customItems, pathname, rolePrefix, showLabel, isMobile, totalUnreadMsgs, totalUnreadNotifications }: GroupedNavProps) {
+    const collapsed = !showLabel && !isMobile;
+
+    // Group items by their group field
+    const groupedItems = useMemo(() => {
+        const groups: { id: string; label: string; items: NavItemData[] }[] = [];
+        const groupMap = new Map<string, NavItemData[]>();
+
+        for (const item of items) {
+            const groupId = item.group || "top";
+            if (!groupMap.has(groupId)) groupMap.set(groupId, []);
+            groupMap.get(groupId)!.push(item);
+        }
+
+        // Render in NAV_GROUPS order
+        for (const group of NAV_GROUPS) {
+            const groupItems = groupMap.get(group.id);
+            if (groupItems && groupItems.length > 0) {
+                groups.push({ id: group.id, label: group.label, items: groupItems });
+            }
+        }
+
+        // Any items without a matching group go at the end
+        for (const [id, groupItems] of groupMap) {
+            if (!NAV_GROUPS.some((g) => g.id === id)) {
+                groups.push({ id, label: "", items: groupItems });
+            }
+        }
+
+        return groups;
+    }, [items]);
+
+    const renderNavItem = (item: NavItemData) => {
+        const Icon = iconMap[item.icon];
+        const fullHref = item.absolute ? item.href : `${rolePrefix}${item.href}`;
+        const exactMatch = pathname === fullHref;
+        const prefixMatch = pathname.startsWith(fullHref + "/");
+        const moreSpecificExists = prefixMatch && items.some(
+            (other) => other.href !== item.href && (pathname === `${rolePrefix}${other.href}` || pathname.startsWith(`${rolePrefix}${other.href}/`)) && other.href.startsWith(item.href)
+        );
+        const isActive = exactMatch || (prefixMatch && !moreSpecificExists);
+
+        return (
+            <Tooltip key={item.href}>
+                <TooltipTrigger asChild>
+                    <Link
+                        href={fullHref}
+                        className={cn(
+                            "group relative flex items-center rounded-lg text-sm font-medium transition-all duration-200",
+                            collapsed
+                                ? "h-10 w-10 mx-auto justify-center"
+                                : "gap-3 px-3 py-2",
+                            isActive
+                                ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+                                : "text-foreground/80 hover:bg-muted hover:text-foreground"
+                        )}
+                    >
+                        {Icon && <Icon className="h-[18px] w-[18px] shrink-0" />}
+                        {!collapsed && <span className="truncate">{item.label}</span>}
+                        {/* Badge counts — expanded mode */}
+                        {!collapsed && item.href === "/messages" && totalUnreadMsgs > 0 && (
+                            <span className="ml-auto text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 rounded-full px-2 py-0.5 min-w-[20px] text-center border border-blue-200/50 dark:border-blue-800/30 shadow-sm leading-none">
+                                {totalUnreadMsgs}
+                            </span>
+                        )}
+                        {!collapsed && item.href === "/notifications" && totalUnreadNotifications > 0 && (
+                            <span className="ml-auto text-[10px] font-semibold bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400 rounded-full px-2 py-0.5 min-w-[20px] text-center border border-rose-200/50 dark:border-rose-800/30 shadow-sm leading-none">
+                                {totalUnreadNotifications}
+                            </span>
+                        )}
+                        {/* Dot indicators — collapsed mode */}
+                        {collapsed && item.href === "/messages" && totalUnreadMsgs > 0 && (
+                            <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-blue-500 ring-1 ring-background" />
+                        )}
+                        {collapsed && item.href === "/notifications" && totalUnreadNotifications > 0 && (
+                            <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-rose-500 ring-1 ring-background" />
+                        )}
+                    </Link>
+                </TooltipTrigger>
+                {collapsed && (
+                    <TooltipContent side="right" sideOffset={8}>{item.label}</TooltipContent>
+                )}
+            </Tooltip>
+        );
+    };
+
+    return (
+        <>
+            {groupedItems.map((group, groupIndex) => {
+                const hasLabel = group.label && group.id !== "top" && group.id !== "bottom";
+
+                // For collapsed sidebar, don't show group headers — just show icons
+                if (collapsed) {
+                    return (
+                        <div key={group.id} className="space-y-0.5">
+                            {group.items.map(renderNavItem)}
+                        </div>
+                    );
+                }
+
+                // Top-level and bottom items render without a group header
+                if (!hasLabel) {
+                    return (
+                        <div key={group.id} className="space-y-0.5">
+                            {group.items.map(renderNavItem)}
+                        </div>
+                    );
+                }
+
+                // Group with static label and top separator (matches screenshot)
+                return (
+                    <div key={group.id} className="pt-4 first:pt-0">
+                        <div className="border-t border-border/40 mb-2" />
+                        <div className="px-3 pb-1">
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/45">
+                                {group.label}
+                            </span>
+                        </div>
+                        <div className="space-y-0.5">
+                            {group.items.map(renderNavItem)}
+                        </div>
+                    </div>
+                );
+            })}
+
+            {/* Custom pages */}
+            {customItems.length > 0 && (
+                <div className="pt-4">
+                    {!collapsed && (
+                        <>
+                            <div className="border-t border-border/40 mb-2" />
+                            <div className="px-3 pb-1">
+                                <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/45">Custom Pages</span>
+                            </div>
+                        </>
+                    )}
+                    <div className="space-y-0.5">
+                        {customItems.map((item) => {
+                            const Icon = iconMap[item.icon] || Puzzle;
+                            const fullCustomHref = `${rolePrefix}${item.href}`;
+                            const isActive = pathname === fullCustomHref;
+                            return (
+                                <Tooltip key={item.href}>
+                                    <TooltipTrigger asChild>
+                                        <Link
+                                            href={fullCustomHref}
+                                            className={cn(
+                                                "group relative flex items-center rounded-lg text-sm font-medium transition-all duration-200",
+                                                collapsed
+                                                    ? "h-10 w-10 mx-auto justify-center"
+                                                    : "gap-3 px-3 py-2",
+                                                isActive
+                                                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+                                                    : "text-foreground/80 hover:bg-muted hover:text-foreground"
+                                            )}
+                                        >
+                                            <Icon className="h-[18px] w-[18px] shrink-0" />
+                                            {!collapsed && <span className="truncate">{item.label}</span>}
+                                        </Link>
+                                    </TooltipTrigger>
+                                    {collapsed && (
+                                        <TooltipContent side="right" sideOffset={8}>{item.label}</TooltipContent>
+                                    )}
+                                </Tooltip>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+        </>
+    );
+}
 
 function SidebarComponent() {
     const pathname = usePathname();
@@ -262,101 +464,17 @@ function SidebarComponent() {
 
             {/* Navigation */}
             <TooltipProvider delayDuration={600} disableHoverableContent>
-            <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto thin-scrollbar">
-                {filtered.systemItems.map((item) => {
-                    const Icon = iconMap[item.icon];
-                    const fullHref = item.absolute ? item.href : `${rolePrefix}${item.href}`;
-                    const exactMatch = pathname === fullHref;
-                    const prefixMatch = pathname.startsWith(fullHref + "/");
-                    const moreSpecificExists = prefixMatch && filtered.systemItems.some(
-                        (other) => other.href !== item.href && (pathname === `${rolePrefix}${other.href}` || pathname.startsWith(`${rolePrefix}${other.href}/`)) && other.href.startsWith(item.href)
-                    );
-                    const isActive = exactMatch || (prefixMatch && !moreSpecificExists);
-                    const collapsed = !showLabel && !isMobile;
-                    return (
-                        <Tooltip key={item.href}>
-                            <TooltipTrigger asChild>
-                                <Link
-                                    href={fullHref}
-                                    className={cn(
-                                        "group relative flex items-center rounded-lg text-sm font-medium transition-all duration-200",
-                                        collapsed
-                                            ? "h-10 w-10 mx-auto justify-center"
-                                            : "gap-3 px-3 py-2.5",
-                                        isActive
-                                            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                                            : "text-foreground/80 hover:bg-muted hover:text-foreground"
-                                    )}
-                                >
-                                    {Icon && <Icon className="h-5 w-5 shrink-0" />}
-                                    {!collapsed && <span className="truncate">{item.label}</span>}
-                                    {/* Badge counts — expanded mode */}
-                                    {!collapsed && item.href === "/messages" && totalUnreadMsgs > 0 && (
-                                        <span className="ml-auto text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 rounded-full px-2 py-0.5 min-w-[20px] text-center border border-blue-200/50 dark:border-blue-800/30 shadow-sm leading-none">
-                                            {totalUnreadMsgs}
-                                        </span>
-                                    )}
-                                    {!collapsed && item.href === "/notifications" && totalUnreadNotifications > 0 && (
-                                        <span className="ml-auto text-[10px] font-semibold bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400 rounded-full px-2 py-0.5 min-w-[20px] text-center border border-rose-200/50 dark:border-rose-800/30 shadow-sm leading-none">
-                                            {totalUnreadNotifications}
-                                        </span>
-                                    )}
-                                    {/* Dot indicators — collapsed mode */}
-                                    {collapsed && item.href === "/messages" && totalUnreadMsgs > 0 && (
-                                        <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-blue-500 ring-1 ring-background" />
-                                    )}
-                                    {collapsed && item.href === "/notifications" && totalUnreadNotifications > 0 && (
-                                        <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-rose-500 ring-1 ring-background" />
-                                    )}
-                                </Link>
-                            </TooltipTrigger>
-                            {collapsed && (
-                                <TooltipContent side="right" sideOffset={8}>{item.label}</TooltipContent>
-                            )}
-                        </Tooltip>
-                    );
-                })}
-
-                {/* Custom pages */}
-                {filtered.customNavItems.length > 0 && (
-                    <>
-                        {showLabel && (
-                            <div className="pt-3 pb-1 px-3">
-                                <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground/60">Custom Pages</span>
-                            </div>
-                        )}
-                        {filtered.customNavItems.map((item) => {
-                            const Icon = iconMap[item.icon] || Puzzle;
-                            const fullCustomHref = `${rolePrefix}${item.href}`;
-                            const isActive = pathname === fullCustomHref;
-                            const collapsed = !showLabel && !isMobile;
-                            return (
-                                <Tooltip key={item.href}>
-                                    <TooltipTrigger asChild>
-                                        <Link
-                                            href={fullCustomHref}
-                                            className={cn(
-                                                "group relative flex items-center rounded-lg text-sm font-medium transition-all duration-200",
-                                                collapsed
-                                                    ? "h-10 w-10 mx-auto justify-center"
-                                                    : "gap-3 px-3 py-2.5",
-                                                isActive
-                                                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                                                    : "text-foreground/80 hover:bg-muted hover:text-foreground"
-                                            )}
-                                        >
-                                            <Icon className="h-5 w-5 shrink-0" />
-                                            {!collapsed && <span className="truncate">{item.label}</span>}
-                                        </Link>
-                                    </TooltipTrigger>
-                                    {collapsed && (
-                                        <TooltipContent side="right" sideOffset={8}>{item.label}</TooltipContent>
-                                    )}
-                                </Tooltip>
-                            );
-                        })}
-                    </>
-                )}
+            <nav className="flex-1 space-y-0.5 px-3 py-4 overflow-y-auto thin-scrollbar">
+                <GroupedNav
+                    items={filtered.systemItems}
+                    customItems={filtered.customNavItems}
+                    pathname={pathname}
+                    rolePrefix={rolePrefix}
+                    showLabel={showLabel}
+                    isMobile={isMobile}
+                    totalUnreadMsgs={totalUnreadMsgs}
+                    totalUnreadNotifications={totalUnreadNotifications}
+                />
             </nav>
             </TooltipProvider>
 

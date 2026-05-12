@@ -62,7 +62,7 @@ export async function proxy(request: NextRequest) {
 
   // Public routes — skip the expensive Supabase auth round-trip entirely.
   // This eliminates ~200-1000ms of latency for /login, /kiosk, and API routes.
-  const publicPaths = ["/login", "/kiosk", "/api/"];
+  const publicPaths = ["/login", "/kiosk", "/checkin", "/api/"];
   const isPublic = publicPaths.some(
     (p) => request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith(p.endsWith("/") ? p : p + "/")
   );

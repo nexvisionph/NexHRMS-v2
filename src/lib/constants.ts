@@ -110,6 +110,24 @@ export const POLICY_VERSIONS = {
     ruleSet: "RS-DEFAULT-v1",
 } as const;
 
+// ─── Sidebar Navigation Groups ───────────────────────────────────────────────
+export interface NavGroup {
+  id: string;
+  label: string;
+  collapsible?: boolean;
+}
+
+export const NAV_GROUPS: NavGroup[] = [
+  { id: "top", label: "" },
+  { id: "hr", label: "HR", collapsible: true },
+  { id: "attendance", label: "Attendance", collapsible: true },
+  { id: "payroll", label: "Payroll", collapsible: true },
+  { id: "workflow", label: "Workflow", collapsible: true },
+  { id: "reports", label: "Reports", collapsible: true },
+  { id: "admin", label: "Admin", collapsible: true },
+  { id: "bottom", label: "" },
+];
+
 export const NAV_ITEMS: {
     label: string;
     href: string;
@@ -121,6 +139,8 @@ export const NAV_ITEMS: {
     moduleFlag?: string;
     /** If true, href is used as-is (not prefixed with role segment) */
     absolute?: boolean;
+    /** Navigation group ID (for grouped sidebar) */
+    group?: string;
 }[] = [
         {
             label: "Dashboard",
@@ -128,6 +148,7 @@ export const NAV_ITEMS: {
             icon: "LayoutDashboard",
             roles: ["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"],
             permission: "page:dashboard",
+            group: "top",
         },
         {
             label: "Employees",
@@ -135,14 +156,32 @@ export const NAV_ITEMS: {
             icon: "Users",
             roles: ["admin", "hr", "finance", "supervisor", "auditor"],
             permission: "page:employees",
+            group: "hr",
         },
         {
-            label: "Location",
+            label: "201 Files",
+            href: "/employees/201-files",
+            icon: "FileText",
+            roles: ["admin", "hr"],
+            permission: "page:employees",
+            group: "hr",
+        },
+        {
+            label: "Jobs",
+            href: "/jobs",
+            icon: "Briefcase",
+            roles: ["admin", "hr"],
+            permission: "page:employees",
+            group: "hr",
+        },
+        {
+            label: "Projects",
             href: "/projects",
             icon: "FolderKanban",
             roles: ["admin", "hr", "supervisor"],
             permission: "page:projects",
             moduleFlag: "projects",
+            group: "hr",
         },
         {
             label: "Tasks",
@@ -151,6 +190,15 @@ export const NAV_ITEMS: {
             roles: ["admin", "hr", "supervisor", "employee"],
             permission: "page:tasks",
             moduleFlag: "tasks",
+            group: "hr",
+        },
+        {
+            label: "Disciplinary",
+            href: "/disciplinary",
+            icon: "Shield",
+            roles: ["admin", "hr"],
+            permission: "page:employees",
+            group: "hr",
         },
         {
             label: "Messages",
@@ -159,6 +207,7 @@ export const NAV_ITEMS: {
             roles: ["admin", "hr", "supervisor", "employee"],
             permission: "page:messages",
             moduleFlag: "messages",
+            group: "workflow",
         },
         {
             label: "Events",
@@ -167,6 +216,7 @@ export const NAV_ITEMS: {
             roles: ["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"],
             permission: "page:events",
             moduleFlag: "events",
+            group: "attendance",
         },
         {
             label: "Attendance",
@@ -175,6 +225,7 @@ export const NAV_ITEMS: {
             roles: ["admin", "hr", "supervisor", "employee"],
             permission: "page:attendance",
             moduleFlag: "attendance",
+            group: "attendance",
         },
         {
             label: "My Biometrics",
@@ -183,6 +234,7 @@ export const NAV_ITEMS: {
             roles: ["employee", "supervisor"],
             permission: "page:attendance",
             moduleFlag: "attendance",
+            group: "attendance",
         },
         {
             label: "Leave",
@@ -191,14 +243,25 @@ export const NAV_ITEMS: {
             roles: ["admin", "hr", "supervisor", "employee"],
             permission: "page:leave",
             moduleFlag: "leave",
+            group: "workflow",
         },
         {
-            label: "Payroll",
+            label: "Payroll Runs",
             href: "/payroll",
             icon: "Wallet",
             roles: ["admin", "finance", "payroll_admin", "employee"],
             permission: "page:payroll",
             moduleFlag: "payroll",
+            group: "payroll",
+        },
+        {
+            label: "My Payslips",
+            href: "/my-payslips",
+            icon: "FileText",
+            roles: ["employee", "supervisor"],
+            permission: "payroll:view_own",
+            moduleFlag: "payroll",
+            group: "payroll",
         },
         {
             label: "Loans",
@@ -207,6 +270,16 @@ export const NAV_ITEMS: {
             roles: ["admin", "finance", "payroll_admin"],
             permission: "page:loans",
             moduleFlag: "loans",
+            group: "payroll",
+        },
+        {
+            label: "Gov. Contributions",
+            href: "/reports/government",
+            icon: "Building2",
+            roles: ["admin", "finance", "payroll_admin"],
+            permission: "reports:government",
+            moduleFlag: "payroll",
+            group: "payroll",
         },
         {
             label: "Reports",
@@ -215,6 +288,7 @@ export const NAV_ITEMS: {
             roles: ["admin", "hr", "finance", "payroll_admin", "auditor"],
             permission: "page:reports",
             moduleFlag: "reports",
+            group: "reports",
         },
         {
             label: "Timesheets",
@@ -223,6 +297,7 @@ export const NAV_ITEMS: {
             roles: ["admin", "hr", "supervisor", "payroll_admin"],
             permission: "page:timesheets",
             moduleFlag: "timesheets",
+            group: "attendance",
         },
         {
             label: "Shifts",
@@ -230,6 +305,7 @@ export const NAV_ITEMS: {
             icon: "AlarmClock",
             roles: ["admin", "hr"],
             permission: "settings:shifts",
+            group: "attendance",
         },
         {
             label: "Audit Log",
@@ -238,6 +314,7 @@ export const NAV_ITEMS: {
             roles: ["admin", "auditor"],
             permission: "page:audit",
             moduleFlag: "audit",
+            group: "reports",
         },
         {
             label: "Notifications",
@@ -246,6 +323,7 @@ export const NAV_ITEMS: {
             roles: ["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"],
             permission: "page:notifications",
             moduleFlag: "notifications",
+            group: "workflow",
         },
         {
             label: "Kiosk (QR)",
@@ -255,6 +333,7 @@ export const NAV_ITEMS: {
             permission: "page:kiosk",
             moduleFlag: "kiosk",
             absolute: true,
+            group: "attendance",
         },
         {
             label: "Kiosk (Face)",
@@ -264,6 +343,7 @@ export const NAV_ITEMS: {
             permission: "page:kiosk",
             moduleFlag: "kiosk",
             absolute: true,
+            group: "attendance",
         },
         {
             label: "My Profile",
@@ -271,6 +351,7 @@ export const NAV_ITEMS: {
             icon: "UserCircle",
             roles: ["hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"],
             permission: "page:dashboard",
+            group: "bottom",
         },
         {
             label: "Face Enrollment",
@@ -278,6 +359,7 @@ export const NAV_ITEMS: {
             icon: "ScanFace",
             roles: ["employee", "supervisor"],
             permission: "page:attendance",
+            group: "attendance",
         },
         {
             label: "Settings",
@@ -285,6 +367,39 @@ export const NAV_ITEMS: {
             icon: "Settings",
             roles: ["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"],
             permission: "page:dashboard",
+            group: "admin",
+        },
+        {
+            label: "Roles & Permissions",
+            href: "/settings/roles",
+            icon: "Shield",
+            roles: ["admin"],
+            permission: "settings:roles",
+            group: "admin",
+        },
+        {
+            label: "Organization",
+            href: "/settings/organization",
+            icon: "Building2",
+            roles: ["admin", "hr"],
+            permission: "settings:organization",
+            group: "admin",
+        },
+        {
+            label: "Appearance",
+            href: "/settings/appearance",
+            icon: "Palette",
+            roles: ["admin"],
+            permission: "settings:organization",
+            group: "admin",
+        },
+        {
+            label: "Tax Rules",
+            href: "/payroll/settings",
+            icon: "Calculator",
+            roles: ["admin", "finance", "payroll_admin"],
+            permission: "page:payroll",
+            group: "admin",
         },
     ];
 
@@ -389,9 +504,9 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
         "/kiosk",
         "/custom",
     ],
-    hr: ["/dashboard", "/employees", "/projects", "/tasks", "/messages", "/attendance", "/leave", "/reports", "/notifications", "/timesheets", "/settings/shifts", "/kiosk", "/profile"],
+    hr: ["/dashboard", "/employees", "/employees/201-files", "/disciplinary", "/jobs", "/projects", "/tasks", "/messages", "/attendance", "/leave", "/reports", "/notifications", "/timesheets", "/settings/shifts", "/kiosk", "/profile"],
     finance: ["/dashboard", "/payroll", "/payroll/settings", "/loans", "/reports", "/reports/government", "/employees/directory", "/employees/manage", "/notifications", "/profile"],
-    employee: ["/dashboard", "/attendance", "/biometric", "/leave", "/payroll", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings"],
+    employee: ["/dashboard", "/attendance", "/biometric", "/leave", "/payroll", "/my-payslips", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings"],
     supervisor: ["/dashboard", "/attendance", "/biometric", "/leave", "/timesheets", "/employees", "/projects", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings"],
     payroll_admin: ["/dashboard", "/payroll", "/payroll/settings", "/loans", "/reports", "/reports/government", "/timesheets", "/notifications", "/profile"],
     auditor: ["/dashboard", "/audit", "/reports", "/employees", "/notifications", "/profile", "/settings"],
@@ -430,4 +545,8 @@ export const PATH_TO_PERMISSION: Record<string, Permission> = {
     "/audit": "page:audit",
     "/kiosk": "page:kiosk",
     "/profile": "page:dashboard",
+    "/jobs": "page:employees",
+    "/disciplinary": "page:employees",
+    "/employees/201-files": "page:employees",
+    "/my-payslips": "payroll:view_own",
 };
