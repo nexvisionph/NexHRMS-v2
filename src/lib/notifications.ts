@@ -27,6 +27,7 @@ const TYPE_LINK_MAP: Record<string, string> = {
     task_submitted: "/tasks",
     task_verified: "/tasks",
     task_rejected: "/tasks",
+    payslip_on_hold: "/payroll",
 };
 
 interface SendNotificationParams {
@@ -256,4 +257,19 @@ export function notifyLocationDisabled(params: {
     admins.forEach((admin) => {
         dispatchNotification("location_disabled", vars, admin.id, admin.email ?? undefined);
     });
+}
+
+export function notifyPayslipOnHold(params: {
+    employeeId: string;
+    employeeName: string;
+    employeeEmail?: string;
+    employeePhone?: string;
+    period: string;
+    reason: string;
+}): void {
+    dispatchNotification("payslip_on_hold", {
+        name: params.employeeName,
+        period: params.period,
+        reason: params.reason,
+    }, params.employeeId, params.employeeEmail, params.employeePhone);
 }

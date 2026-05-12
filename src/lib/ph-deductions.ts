@@ -32,10 +32,13 @@ export function computePhilHealth(monthlyGross: number): number {
 }
 
 // ─── Pag-IBIG 2026 ──────────────────────────────────────────
-// Employee share: 2% if salary > ₱1,500, capped at ₱100/month
+// Employee share: 1% if salary ≤ ₱1,500; 2% if > ₱1,500
+// Maximum compensation for computation: ₱10,000 → EE cap = ₱200/month
 export function computePagIBIG(monthlyGross: number): number {
     if (monthlyGross <= 1500) return Math.round(monthlyGross * 0.01);
-    return 100; // max ₱100 employee share
+    // 2% of salary, but compensation ceiling is ₱10,000 → max EE share = ₱200
+    const base = Math.min(monthlyGross, 10000);
+    return Math.round(base * 0.02);
 }
 
 // ─── BIR Withholding Tax (TRAIN Law — RA 10963, 2023+) ──────

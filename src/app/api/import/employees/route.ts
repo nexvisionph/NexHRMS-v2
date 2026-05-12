@@ -1,108 +1,190 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import * as XLSX from "xlsx";
+import { createServerSupabaseClient } from "@/services/supabase-server";
+
+const TEMPLATE_HEADERS = [
+  "Name",
+  "Email",
+  "Phone",
+  "Birthday",
+  "Address",
+];
+
+type RowStatus = "valid" | "duplicate" | "error";
+interface RowValidation {
+  row: number;
+  status: RowStatus;
+  message: string;
+  name?: string;
+  email?: string;
+}
 
 /**
- * Employee Import API
- * Accepts XLSX/CSV data for bulk employee import with dry-run validation.
+ * GET /api/import/employees?template=true
+ * Returns an XLSX template with the expected columns + one example row.
  */
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  if (url.searchParams.get("template") !== "true") {
+    return NextResponse.json({ error: "Use ?template=true to download template" }, { status: 400 });
+  }
 
-interface ImportRow {
-  name: string;
-  email: string;
-  role?: string;
-  department?: string;
-  salary?: number;
-  joinDate?: string;
-  phone?: string;
-  workType?: string;
-  jobTitle?: string;
+  // Auth
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { data: emp } = await supabase
+    .from("employees").select("role").eq("profile_id", user.id).single();
+  if (!emp || !["admin", "hr"].includes(emp.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const exampleRow: Record<string, string | number> = {
+    "Name": "Juan Dela Cruz",
+    "Email": "juan@example.com",
+    "Phone": "+63 917 123 4567",
+    "Birthday": "1990-05-20",
+    "Address": "Manila, Philippines",
+  };
+
+  const ws = XLSX.utils.json_to_sheet([exampleRow], { header: TEMPLATE_HEADERS });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Employees");
+  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+
+  return new NextResponse(new Uint8Array(buf), {
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": 'attachment; filename="employees-import-template.xlsx"',
+    },
+  });
 }
 
-interface ImportError {
-  row: number;
-  field: string;
-  message: string;
-}
+/**
+ * POST /api/import/employees
+ * Body: { rows: Record<string, unknown>[], dryRun?: boolean }
+ * Admin/HR only. Max 500 rows. Detects duplicates by email.
+ */
+export async function POST(req: Request) {
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-function validateRow(row: ImportRow, index: number): ImportError[] {
-  const errors: ImportError[] = [];
-
-  if (!row.name || row.name.trim().length < 2) {
-    errors.push({ row: index, field: "name", message: "Name is required (min 2 characters)" });
+  const { data: emp } = await supabase
+    .from("employees").select("id, role").eq("profile_id", user.id).single();
+  if (!emp || !["admin", "hr"].includes(emp.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  if (!row.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
-    errors.push({ row: index, field: "email", message: "Valid email is required" });
+  const body = await req.json();
+  const rows: Record<string, unknown>[] = body.rows;
+  const dryRun: boolean = body.dryRun === true;
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return NextResponse.json({ error: "No rows provided" }, { status: 400 });
+  }
+  if (rows.length > 500) {
+    return NextResponse.json({ error: "Maximum 500 rows per import" }, { status: 400 });
   }
 
-  if (row.salary !== undefined && (isNaN(Number(row.salary)) || Number(row.salary) < 0)) {
-    errors.push({ row: index, field: "salary", message: "Salary must be a positive number" });
-  }
+  // Existing email lookup for duplicate detection
+  const { data: existing } = await supabase.from("employees").select("email");
+  const existingEmails = new Set((existing || []).map((e) => (e.email as string).toLowerCase()));
 
-  if (row.joinDate && isNaN(Date.parse(row.joinDate))) {
-    errors.push({ row: index, field: "joinDate", message: "Invalid date format" });
-  }
+  const rowValidations: RowValidation[] = [];
+  const imported: string[] = [];
+  const duplicates: string[] = [];
+  const errors: string[] = [];
 
-  const validWorkTypes = ["WFH", "WFO", "HYBRID", "ONSITE"];
-  if (row.workType && !validWorkTypes.includes(row.workType.toUpperCase())) {
-    errors.push({ row: index, field: "workType", message: `Work type must be one of: ${validWorkTypes.join(", ")}` });
-  }
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const rowNum = i + 1;
 
-  return errors;
-}
+    const name = String(row["Name"] || "").trim();
+    const email = String(row["Email"] || "").trim().toLowerCase();
+    const phone = String(row["Phone"] || "").trim() || null;
+    const birthday = String(row["Birthday"] || "").trim() || null;
+    const address = String(row["Address"] || "").trim() || null;
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { rows, dryRun = true } = body as { rows: ImportRow[]; dryRun?: boolean };
-
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return NextResponse.json({ ok: false, error: "No data rows provided" }, { status: 400 });
+    if (!name) {
+      const msg = "Missing Name";
+      errors.push(`Row ${rowNum}: ${msg}`);
+      rowValidations.push({ row: rowNum, status: "error", message: msg });
+      continue;
+    }
+    if (!email || !email.includes("@")) {
+      const msg = "Missing or invalid Email";
+      errors.push(`Row ${rowNum}: ${msg}`);
+      rowValidations.push({ row: rowNum, status: "error", message: msg, name });
+      continue;
+    }
+    if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
+      const msg = "Birthday must be YYYY-MM-DD (e.g. 1990-05-20)";
+      errors.push(`Row ${rowNum}: ${msg}`);
+      rowValidations.push({ row: rowNum, status: "error", message: msg, name, email });
+      continue;
     }
 
-    // Validate all rows
-    const allErrors: ImportError[] = [];
-    const validRows: ImportRow[] = [];
+    if (existingEmails.has(email)) {
+      const msg = `Email already exists: ${email}`;
+      duplicates.push(`Row ${rowNum}: ${msg}`);
+      rowValidations.push({ row: rowNum, status: "duplicate", message: msg, name, email });
+      continue;
+    }
 
-    rows.forEach((row, index) => {
-      const rowErrors = validateRow(row, index + 1); // 1-indexed for user display
-      if (rowErrors.length > 0) {
-        allErrors.push(...rowErrors);
-      } else {
-        validRows.push(row);
-      }
+    rowValidations.push({ row: rowNum, status: "valid", message: "Ready to import", name, email });
+    existingEmails.add(email); // track within-batch duplicates (even in dryRun)
+    if (dryRun) continue;
+
+    const today = new Date().toISOString().split("T")[0];
+    const employeeId = `EMP-IMP-${Date.now()}-${i}`;
+    const record = {
+      id: employeeId,
+      name,
+      email,
+      role: "employee",
+      status: "active",
+      work_type: "full_time",
+      pay_frequency: "monthly",
+      salary: 0,
+      join_date: today,
+      phone,
+      birthday: birthday || null,
+      address,
+      productivity: 0,
+      deduction_exempt: false,
+      notification_preferences: {},
+    };
+
+    const { error: insertErr } = await supabase.from("employees").insert(record);
+    if (insertErr) {
+      errors.push(`Row ${rowNum}: ${insertErr.message}`);
+      rowValidations[rowValidations.length - 1] = {
+        row: rowNum, status: "error", message: insertErr.message, name, email,
+      };
+    } else {
+      existingEmails.add(email);
+      imported.push(employeeId);
+    }
+  }
+
+  if (!dryRun) {
+    await supabase.from("audit_logs").insert({
+      id: `AL-EMP-IMP-${Date.now()}`,
+      entity_type: "employees",
+      entity_id: "bulk-import",
+      action: "import",
+      performed_by: emp.id,
+      reason: `Imported ${imported.length} employees, ${duplicates.length} duplicates, ${errors.length} errors`,
     });
-
-    if (dryRun) {
-      return NextResponse.json({
-        ok: true,
-        dryRun: true,
-        totalRows: rows.length,
-        validRows: validRows.length,
-        errorRows: rows.length - validRows.length,
-        errors: allErrors,
-        preview: validRows.slice(0, 5),
-      });
-    }
-
-    // In production, insert valid rows into Supabase
-    if (allErrors.length > 0) {
-      return NextResponse.json({
-        ok: false,
-        error: "Validation errors found",
-        totalRows: rows.length,
-        validRows: validRows.length,
-        errorRows: rows.length - validRows.length,
-        errors: allErrors,
-      }, { status: 422 });
-    }
-
-    // Success — in production, batch insert into employees table
-    return NextResponse.json({
-      ok: true,
-      imported: validRows.length,
-      message: `Successfully imported ${validRows.length} employees`,
-    });
-  } catch {
-    return NextResponse.json({ ok: false, error: "Invalid request body" }, { status: 400 });
   }
+
+  return NextResponse.json({
+    dryRun,
+    imported: dryRun ? 0 : imported.length,
+    valid: rowValidations.filter((r) => r.status === "valid").length,
+    duplicates: duplicates.length,
+    errors: errors.length,
+    rowValidations,
+  });
 }

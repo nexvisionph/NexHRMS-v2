@@ -1,190 +1,237 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import { validateProjectQR, type ProjectQRPayload } from "@/lib/project-qr";
-import { useProjectsStore } from "@/store/projects.store";
-import { useAttendanceStore } from "@/store/attendance.store";
-import { getDistanceMeters } from "@/lib/geofence";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { QrCode, Camera, CheckCircle, XCircle, MapPin, AlertTriangle } from "lucide-react";
+/**
+ * ProjectQrScanner
+ *
+ * A mobile-first QR scanner for project attendance check-in.
+ * Uses BarcodeDetector API (Chrome/Safari) with jsQR canvas-loop fallback.
+ *
+ * When a QR is decoded:
+ *  - If the value looks like a URL (starts with "http"), it extracts the `qr`
+ *    search param so the handler receives the raw signed payload.
+ *  - Otherwise passes the raw decoded string to onScanned.
+ */
 
-interface ProjectQRScannerProps {
-  employeeId: string;
-  onSuccess?: (projectId: string) => void;
-  onError?: (error: string) => void;
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Camera, Loader2, XCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import jsQR from "jsqr";
+import { canUseCamera, cameraHttpsHint } from "@/lib/camera-context";
+
+interface ProjectQrScannerProps {
+  onScanned: (payload: string) => void;
+  onCancel: () => void;
 }
 
-export function ProjectQRScanner({ employeeId, onSuccess, onError }: ProjectQRScannerProps) {
+type ScannerState = "requesting" | "scanning" | "error";
+
+export function ProjectQrScanner({ onScanned, onCancel }: ProjectQrScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [scanning, setScanning] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; message: string; projectName?: string } | null>(null);
-  const [location, setLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const calledRef = useRef(false); // prevent double-fire
 
-  const projects = useProjectsStore((s) => s.projects);
-  const appendEvent = useAttendanceStore((s) => s.appendEvent);
+  const [scannerState, setScannerState] = useState<ScannerState>("requesting");
+  const [errorMsg, setErrorMsg] = useState<string>("");
 
-  // Get GPS location
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-        () => {} // Silently fail — geofence check will handle it
-      );
+  const stopStream = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
     }
   }, []);
 
-  const startScanning = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setScanning(true);
+  const handleDecoded = useCallback(
+    (raw: string) => {
+      if (calledRef.current) return;
+      calledRef.current = true;
+      stopStream();
+
+      // Extract payload from URL if the QR encodes a deep-link
+      let payload = raw;
+      if (raw.startsWith("http")) {
+        try {
+          const url = new URL(raw);
+          const qrParam = url.searchParams.get("qr");
+          if (qrParam) payload = qrParam;
+        } catch {
+          // not a valid URL — use raw
+        }
       }
-    } catch {
-      setResult({ success: false, message: "Camera access denied" });
-    }
-  }, []);
+      onScanned(payload);
+    },
+    [onScanned, stopStream],
+  );
 
-  const stopScanning = useCallback(() => {
-    if (videoRef.current?.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach((t) => t.stop());
-      videoRef.current.srcObject = null;
-    }
-    setScanning(false);
-  }, []);
+  // jsQR canvas-loop fallback
+  const startJsQrLoop = useCallback(
+    (video: HTMLVideoElement, canvas: HTMLCanvasElement) => {
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
 
-  // Simulate QR scan (in production, use BarcodeDetector API or jsQR)
-  const handleManualScan = async (qrData: string) => {
-    stopScanning();
+      const tick = () => {
+        if (video.readyState >= video.HAVE_ENOUGH_DATA) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          if (code?.data) {
+            handleDecoded(code.data);
+            return;
+          }
+        }
+        rafRef.current = requestAnimationFrame(tick);
+      };
 
-    const validation = await validateProjectQR(qrData);
+      rafRef.current = requestAnimationFrame(tick);
+    },
+    [handleDecoded],
+  );
 
-    if (!validation.valid || !validation.payload) {
-      setResult({ success: false, message: validation.error || "Invalid QR code" });
-      onError?.(validation.error || "Invalid QR code");
-      return;
-    }
+  // BarcodeDetector (modern) — with jsQR fallback
+  const startBarcodeDetectorLoop = useCallback(
+    (video: HTMLVideoElement, canvas: HTMLCanvasElement) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const BD = (window as any).BarcodeDetector as {
+        new (init: { formats: string[] }): {
+          detect(source: HTMLVideoElement): Promise<{ rawValue: string }[]>;
+        };
+      } | undefined;
 
-    const payload = validation.payload;
-
-    // Find the project
-    const project = projects.find((p) => p.id === payload.projectId);
-    if (!project) {
-      setResult({ success: false, message: "Project not found in system" });
-      onError?.("Project not found");
-      return;
-    }
-
-    // Check if employee is assigned to this project
-    if (!project.assignedEmployeeIds.includes(employeeId)) {
-      setResult({ success: false, message: "You are not assigned to this project" });
-      onError?.("Not assigned to project");
-      return;
-    }
-
-    // Geofence check (if location available and project has geofence)
-    if (location && project.location) {
-      const distance = getDistanceMeters(
-        location.lat,
-        location.lng,
-        project.location.lat,
-        project.location.lng
-      );
-      const radius = project.geofenceRadiusMeters || project.location.radius || 100;
-
-      if (distance > radius) {
-        setResult({
-          success: false,
-          message: `Outside geofence (${Math.round(distance)}m away, max ${radius}m)`,
-        });
-        onError?.("Outside geofence");
+      if (!BD) {
+        startJsQrLoop(video, canvas);
         return;
       }
-    }
 
-    // Record attendance event
-    appendEvent({
-      employeeId,
-      eventType: "IN",
-      timestampUTC: new Date().toISOString(),
-      projectId: project.id,
-      description: `Project QR check-in: ${project.name}`,
-      metadata: location ? { gpsLat: location.lat, gpsLng: location.lng, gpsAccuracy: location.accuracy } : undefined,
-    });
+      const detector = new BD({ formats: ["qr_code"] });
 
-    setResult({ success: true, message: "Check-in successful!", projectName: project.name });
-    onSuccess?.(project.id);
-  };
+      const tick = async () => {
+        if (video.readyState >= video.HAVE_ENOUGH_DATA) {
+          try {
+            const results = await detector.detect(video);
+            if (results.length > 0 && results[0].rawValue) {
+              handleDecoded(results[0].rawValue);
+              return;
+            }
+          } catch {
+            // BarcodeDetector failed — fall back to jsQR
+            startJsQrLoop(video, canvas);
+            return;
+          }
+        }
+        rafRef.current = requestAnimationFrame(tick);
+      };
+
+      rafRef.current = requestAnimationFrame(tick);
+    },
+    [handleDecoded, startJsQrLoop],
+  );
 
   useEffect(() => {
-    return () => stopScanning();
-  }, [stopScanning]);
+    let cancelled = false;
+
+    async function initCamera() {
+      try {
+        if (!canUseCamera(window)) {
+          throw new Error(cameraHttpsHint());
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        const video = videoRef.current!;
+        const canvas = canvasRef.current!;
+        video.srcObject = stream;
+        await video.play();
+        setScannerState("scanning");
+        startBarcodeDetectorLoop(video, canvas);
+      } catch (err) {
+        if (cancelled) return;
+        const msg =
+          err instanceof Error && err.message.includes("HTTPS")
+            ? err.message
+            : err instanceof DOMException && err.name === "NotAllowedError"
+            ? "Camera permission denied. Allow camera access to scan the QR code."
+            : "Could not access camera. Please ensure no other app is using it.";
+        setErrorMsg(msg);
+        setScannerState("error");
+      }
+    }
+
+    void initCamera();
+
+    return () => {
+      cancelled = true;
+      stopStream();
+    };
+  }, [startBarcodeDetectorLoop, stopStream]);
+
+  const handleCancel = () => {
+    stopStream();
+    onCancel();
+  };
 
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <QrCode className="h-5 w-5" />
-          Project QR Scanner
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Camera View */}
-        <div className="relative aspect-square bg-muted rounded-lg overflow-hidden">
-          <video
-            ref={videoRef}
-            className="w-full h-full object-cover"
-            playsInline
-            muted
-          />
-          {!scanning && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Camera className="h-12 w-12 text-muted-foreground" />
-            </div>
-          )}
-          {scanning && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-48 h-48 border-2 border-primary rounded-lg animate-pulse" />
-            </div>
-          )}
+    <div className="flex flex-col items-center gap-3 w-full">
+      {scannerState === "requesting" && (
+        <div className="flex flex-col items-center gap-2 py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Requesting camera access…</p>
         </div>
+      )}
 
-        {/* Location Status */}
-        <div className="flex items-center gap-2 text-sm">
-          <MapPin className="h-4 w-4" />
-          {location ? (
-            <span className="text-green-600">GPS active (±{Math.round(location.accuracy)}m)</span>
-          ) : (
-            <span className="text-yellow-600">Acquiring GPS...</span>
-          )}
+      {scannerState === "error" && (
+        <div className="flex flex-col items-center gap-2 py-8">
+          <XCircle className="h-8 w-8 text-destructive" />
+          <p className="text-sm text-destructive text-center">{errorMsg}</p>
         </div>
+      )}
 
-        {/* Controls */}
-        {!scanning ? (
-          <Button onClick={startScanning} className="w-full">
-            <Camera className="h-4 w-4 mr-2" />Start Scanning
-          </Button>
-        ) : (
-          <Button onClick={stopScanning} variant="outline" className="w-full">
-            Stop Scanning
-          </Button>
-        )}
-
-        {/* Result */}
-        {result && (
-          <div className={`flex items-center gap-2 p-3 rounded-lg ${result.success ? "bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300" : "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300"}`}>
-            {result.success ? <CheckCircle className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
-            <div>
-              <p className="font-medium">{result.message}</p>
-              {result.projectName && <p className="text-sm opacity-80">Project: {result.projectName}</p>}
-            </div>
+      {/* Video element — always rendered so the ref is valid */}
+      <div className={`relative w-full max-w-xs ${scannerState !== "scanning" ? "hidden" : ""}`}>
+        {/* Corner guide overlay */}
+        <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
+          <div className="relative w-48 h-48">
+            {/* TL */}
+            <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-primary rounded-tl-sm" />
+            {/* TR */}
+            <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-primary rounded-tr-sm" />
+            {/* BL */}
+            <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-primary rounded-bl-sm" />
+            {/* BR */}
+            <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-primary rounded-br-sm" />
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </div>
+
+        <video
+          ref={videoRef}
+          className="w-full rounded-lg object-cover aspect-square bg-black"
+          playsInline
+          muted
+        />
+        <canvas ref={canvasRef} className="hidden" />
+
+        <div className="absolute bottom-0 left-0 right-0 text-center pb-2">
+          <span className="text-xs text-white drop-shadow bg-black/40 px-2 py-0.5 rounded-full">
+            <Camera className="inline h-3 w-3 mr-1" />
+            Point at the QR code
+          </span>
+        </div>
+      </div>
+
+      <Button variant="outline" size="sm" onClick={handleCancel}>
+        Cancel
+      </Button>
+    </div>
   );
 }

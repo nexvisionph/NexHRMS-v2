@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import {
     ListTodo, CheckCircle2, ArrowUpRight, Eye, Clock, Send, XCircle,
-    AlertTriangle, Camera, ChevronRight, Search, Filter, Loader2,
+    AlertTriangle, Camera, ChevronRight, ChevronLeft, Search, Filter, Loader2,
     LayoutGrid, Table2, CalendarDays, ChevronDown,
 } from "lucide-react";
 import { FullScreenCalendar, type CalendarItem, type CalendarItemColor } from "@/components/ui/fullscreen-calendar";
@@ -138,6 +138,8 @@ export default function EmployeeTasksView() {
     const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
     const [viewMode, setViewMode] = useState<"table" | "board">("table");
     const [activeTab, setActiveTab] = useState("all");
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [currentPage, setCurrentPage] = useState(1);
 
     // Loading state — show spinner until we've made at least one DB fetch
     // so the employee never sees stale seed/localStorage tasks.
@@ -160,19 +162,9 @@ export default function EmployeeTasksView() {
 
         const timer = setTimeout(async () => {
             try {
-                const [allTasks, allGroups, allReports, allComments] = await Promise.all([
-                    tasksDb.fetchTasks(),
-                    tasksDb.fetchGroups(),
-                    tasksDb.fetchCompletionReports(),
-                    tasksDb.fetchComments(),
-                ]);
-                // Keep the task list and its related context in sync so cards/details do not lose group/report/comment data.
-                useTasksStore.setState({
-                    tasks: allTasks,
-                    groups: allGroups,
-                    completionReports: allReports,
-                    comments: allComments,
-                });
+                const allTasks = await tasksDb.fetchTasks();
+                // Always replace store tasks with authoritative DB data
+                useTasksStore.setState({ tasks: allTasks });
             } catch (err) {
                 console.error("[EmployeeTasks] Failed to fetch tasks:", err);
             } finally {
@@ -218,6 +210,18 @@ export default function EmployeeTasksView() {
         }
         return result;
     }, [myTasks, search, statusFilter, priorityFilter]);
+
+    // ── Pagination computed ───────────────────────────────────
+    const totalPages = Math.max(1, Math.ceil(filteredTasks.length / rowsPerPage));
+    const paginatedTasks = filteredTasks.length > 10
+        ? filteredTasks.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage)
+        : filteredTasks;
+
+    useEffect(() => {
+        if (currentPage > totalPages) setCurrentPage(1);
+    }, [currentPage, totalPages]);
+
+    useEffect(() => { setCurrentPage(1); }, [search, statusFilter, priorityFilter]);
 
     const activeTasks = filteredTasks.filter((t) => ["open", "in_progress", "rejected"].includes(t.status));
     const pendingReview = filteredTasks.filter((t) => t.status === "submitted");
@@ -275,12 +279,12 @@ export default function EmployeeTasksView() {
             {myTasks.length > 0 && (
                 <Card className="border border-border/50">
                     <CardContent className="p-3 sm:p-2">
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center justify-between mb-1">
                             <span className="text-xs font-medium">Completion Progress</span>
                             <span className="text-xs text-muted-foreground">{completionRate}%</span>
                         </div>
-                        <Progress value={completionRate} className="h-1.5" />
-                        <p className="text-[10px] text-muted-foreground mt-1.5">
+                        <Progress value={completionRate} className="h-1" />
+                        <p className="text-[10px] text-muted-foreground mt-1">
                             {myTasks.filter((t) => t.status === "verified").length} of {myTasks.length} tasks verified
                         </p>
                     </CardContent>
@@ -409,13 +413,13 @@ export default function EmployeeTasksView() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="w-[200px]">Task</TableHead>
-                                        <TableHead className="hidden lg:table-cell">Description</TableHead>
+                                        <TableHead className="hidden lg:table-cell w-[200px]">Description</TableHead>
                                         <TableHead className="w-[100px]">Status</TableHead>
                                         <TableHead className="w-[90px]">Priority</TableHead>
                                         <TableHead className="hidden md:table-cell w-[120px]">Assignees</TableHead>
                                         <TableHead className="hidden sm:table-cell w-[100px]">Start</TableHead>
                                         <TableHead className="w-[100px]">Due</TableHead>
-                                        <TableHead className="w-[50px]" />
+                                        <TableHead className="w-[50px]">Action</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -426,7 +430,7 @@ export default function EmployeeTasksView() {
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        filteredTasks.map((task) => {
+                                        paginatedTasks.map((task) => {
                                             const sc = STATUS_CONFIG[task.status];
                                             const pc = PRIORITY_CONFIG[task.priority];
                                             const overdue = isOverdue(task);
@@ -495,6 +499,33 @@ export default function EmployeeTasksView() {
                                     )}
                                 </TableBody>
                             </Table>
+                            <div className="px-4 py-1.5 border-t flex items-center justify-between text-xs text-muted-foreground">
+                                <span>Showing {paginatedTasks.length} of {filteredTasks.length} tasks</span>
+                                {filteredTasks.length > 10 && (
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-1.5">
+                                            <span>Rows per page</span>
+                                            <Select value={String(rowsPerPage)} onValueChange={(v) => { setRowsPerPage(Number(v)); setCurrentPage(1); }}>
+                                                <SelectTrigger className="h-7 w-[65px] text-xs"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="10">10</SelectItem>
+                                                    <SelectItem value="20">20</SelectItem>
+                                                    <SelectItem value="50">50</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <span>Page {currentPage} of {Math.ceil(filteredTasks.length / rowsPerPage)}</span>
+                                        <div className="flex items-center gap-1">
+                                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => p - 1)}>
+                                                <ChevronLeft className="h-4 w-4" />
+                                            </Button>
+                                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={currentPage >= Math.ceil(filteredTasks.length / rowsPerPage)} onClick={() => setCurrentPage((p) => p + 1)}>
+                                                <ChevronRight className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </Card>
                     )}
 
@@ -611,9 +642,9 @@ function EmployeeBoardView({
                             </Badge>
                         </button>
 
-                        {/* Collapsed: top card fully visible + slivers behind */}
+                        {/* Collapsed: stacked cards showing depth */}
                         {isCol && (
-                            <div className="border-x border-b border-border/30 rounded-b-lg p-2 bg-muted/10">
+                            <div className="border-x border-b border-border/30 rounded-b-lg p-2 pr-4 bg-muted/10">
                                 {columnTasks.length === 0 ? (
                                     <div className="rounded-lg border border-dashed border-border/50 p-4 text-center">
                                         <p className="text-xs text-muted-foreground">No tasks</p>
@@ -622,25 +653,35 @@ function EmployeeBoardView({
                                     <div
                                         className="relative cursor-pointer"
                                         onClick={() => toggle(status)}
-                                        style={{ paddingBottom: `${behindCount * 6}px` }}
+                                        style={{ marginBottom: `${behindCount * 8}px` }}
                                     >
-                                        {/* Slivers behind the top card */}
-                                        {Array.from({ length: behindCount }).map((_, i) => (
+                                        {/* Stacked cards behind — offset down-right for depth */}
+                                        {behindCount >= 2 && (
                                             <div
-                                                key={i}
-                                                className="absolute bottom-0 left-0 right-0 rounded-lg border border-border/40 bg-card"
+                                                className="absolute rounded-lg border border-border/30 bg-card shadow-sm dark:border-border/20 dark:bg-card/80"
                                                 style={{
-                                                    height: "calc(100% - 8px)",
-                                                    bottom: `${i * 6}px`,
-                                                    zIndex: behindCount - i,
-                                                    marginLeft: `${(i + 1) * 4}px`,
-                                                    marginRight: `${(i + 1) * 4}px`,
-                                                    opacity: 0.7 - i * 0.2,
+                                                    top: "16px",
+                                                    left: "8px",
+                                                    right: "-8px",
+                                                    bottom: "-16px",
+                                                    zIndex: 1,
                                                 }}
                                             />
-                                        ))}
+                                        )}
+                                        {behindCount >= 1 && (
+                                            <div
+                                                className="absolute rounded-lg border border-border/40 bg-card shadow-sm dark:border-border/30 dark:bg-card/90"
+                                                style={{
+                                                    top: "8px",
+                                                    left: "4px",
+                                                    right: "-4px",
+                                                    bottom: "-8px",
+                                                    zIndex: 2,
+                                                }}
+                                            />
+                                        )}
                                         {/* Top card */}
-                                        <div className="relative" style={{ zIndex: behindCount + 1 }}>
+                                        <div className="relative" style={{ zIndex: 3 }}>
                                             {renderTaskCard(columnTasks[0])}
                                         </div>
                                     </div>
@@ -650,7 +691,7 @@ function EmployeeBoardView({
 
                         {/* Expanded: full card list with spacing */}
                         {!isCol && (
-                            <div className="space-y-3 border-x border-b border-border/30 rounded-b-lg p-2 bg-muted/10">
+                            <div className="flex flex-col gap-2 border-x border-b border-border/30 rounded-b-lg p-2 bg-muted/10 max-h-[calc(3*7rem+2*0.75rem+1rem)] overflow-y-auto">
                                 {columnTasks.length === 0 ? (
                                     <div className="rounded-lg border border-dashed border-border/50 p-4 text-center">
                                         <p className="text-xs text-muted-foreground">No tasks</p>

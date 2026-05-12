@@ -53,8 +53,8 @@ export async function updatePayslip(id: string, patch: Partial<Payslip>): Promis
 }
 
 export async function confirmPayslip(id: string): Promise<ServiceResult<Payslip>> {
-  // Simplified flow: confirm is a true no-op — fetch and return without modifying
-  return getPayslipById(id) as Promise<ServiceResult<Payslip>>;
+  // Simplified flow: confirm is now a no-op, payslips go directly from draft to published
+  return updatePayslip(id, { status: "draft" });
 }
 
 export async function publishPayslip(id: string): Promise<ServiceResult<Payslip>> {
@@ -120,7 +120,8 @@ export async function lockPayrollRun(id: string, _lockedBy: string): Promise<Ser
 }
 
 export async function publishPayrollRun(id: string): Promise<ServiceResult<PayrollRun>> {
-  return updatePayrollRun(id, { status: "published", publishedAt: new Date().toISOString() });
+  // In simplified flow, publishing is part of locking. This is now a no-op.
+  return updatePayrollRun(id, { publishedAt: new Date().toISOString() });
 }
 
 export async function markPayrollRunPaid(id: string): Promise<ServiceResult<PayrollRun>> {

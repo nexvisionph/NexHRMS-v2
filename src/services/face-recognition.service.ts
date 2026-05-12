@@ -43,15 +43,6 @@ const EMBEDDING_PREFILTER_THRESHOLD = 0.50;
 const EMBEDDING_HIGH_CONFIDENCE_THRESHOLD = 0.25;
 
 /**
- * Stricter high-confidence threshold for SINGLE-ENROLLMENT mode.
- * With only one face in the DB there is no second-best to compare against,
- * so the fast-path threshold must be tighter to prevent false matches
- * against a generic / similar-looking face. Genuine same-person, same-session
- * face-api.js distances are routinely below 0.18.
- */
-const SINGLE_ENROLLMENT_HIGH_CONFIDENCE_THRESHOLD = 0.18;
-
-/**
  * Embedding-only threshold (fallback when AI is unavailable).
  * face-api.js same-person distances across sessions (L2-normalized): 0.15–0.40.
  * Different-person distances: typically >0.45.
@@ -63,9 +54,8 @@ const EMBEDDING_STRICT_THRESHOLD = 0.42;
  * Extra-strict threshold used when there is only 1 enrolled face in the system.
  * With a single enrollment, any probe within the threshold matches — so we
  * require a stronger match to compensate for the lack of relative comparison.
- * Tightened from 0.40 → 0.32 to reduce false positives reported in the field.
  */
-const SINGLE_ENROLLMENT_THRESHOLD = 0.32;
+const SINGLE_ENROLLMENT_THRESHOLD = 0.40;
 
 /**
  * Minimum margin between best and second-best match distances.
@@ -389,13 +379,13 @@ export async function verifyFace(
 
     // If distance is very large, reject immediately
     if (distance > EMBEDDING_PREFILTER_THRESHOLD) {
-      console.log(`[verifyFace] REJECTED by pre-filter (distance ${distance.toFixed(4)} > ${EMBEDDING_PREFILTER_THRESHOLD})`);
+      console.log(`[verifyFace] ❌ REJECTED by pre-filter (distance ${distance.toFixed(4)} > ${EMBEDDING_PREFILTER_THRESHOLD})`);
       return { ok: true, verified: false, distance };
     }
 
     // ── Fast path: high-confidence embedding match → skip AI entirely ──
     if (distance < EMBEDDING_HIGH_CONFIDENCE_THRESHOLD) {
-      console.log(`[verifyFace] VERIFIED (high-confidence fast path, distance=${distance.toFixed(4)} < ${EMBEDDING_HIGH_CONFIDENCE_THRESHOLD})`);
+      console.log(`[verifyFace] ✅ VERIFIED (high-confidence fast path, distance=${distance.toFixed(4)} < ${EMBEDDING_HIGH_CONFIDENCE_THRESHOLD})`);
       await updateVerificationStats(supabase, employeeId, data.verification_count as number);
       return { ok: true, verified: true, distance };
     }
@@ -409,10 +399,10 @@ export async function verifyFace(
       if (aiResult.isError) {
         console.log(`[verifyFace] AI unavailable, falling back to embedding-only`);
       } else if (!aiResult.match) {
-        console.log(`[verifyFace] REJECTED by AI (confidence=${aiResult.confidence})`);
+        console.log(`[verifyFace] ❌ REJECTED by AI (confidence=${aiResult.confidence})`);
         return { ok: true, verified: false, distance, aiConfidence: aiResult.confidence };
       } else {
-        console.log(`[verifyFace] VERIFIED by AI (distance=${distance.toFixed(4)}, AI confidence=${aiResult.confidence})`);
+        console.log(`[verifyFace] ✅ VERIFIED by AI (distance=${distance.toFixed(4)}, AI confidence=${aiResult.confidence})`);
         await updateVerificationStats(supabase, employeeId, data.verification_count as number);
         return { ok: true, verified: true, distance, aiConfidence: aiResult.confidence };
       }
@@ -420,7 +410,7 @@ export async function verifyFace(
 
     // ── Fallback: embedding-only with calibrated threshold ──
     const verified = distance < EMBEDDING_STRICT_THRESHOLD;
-    console.log(`[verifyFace] Embedding-only fallback: distance=${distance.toFixed(4)} threshold=${EMBEDDING_STRICT_THRESHOLD} → ${verified ? "VERIFIED" : "REJECTED"}`);
+    console.log(`[verifyFace] Embedding-only fallback: distance=${distance.toFixed(4)} threshold=${EMBEDDING_STRICT_THRESHOLD} → ${verified ? "✅ VERIFIED" : "❌ REJECTED"}`);
     if (verified) {
       await updateVerificationStats(supabase, employeeId, data.verification_count as number);
     }
@@ -543,35 +533,29 @@ export async function matchFace(
       return { ok: true };
     }
 
-    // ── Select effective thresholds based on number of enrollments ──
-    const isSingleEnrollment = totalEnrollments === 1;
-    const effectiveStrictThreshold = isSingleEnrollment ? SINGLE_ENROLLMENT_THRESHOLD : EMBEDDING_STRICT_THRESHOLD;
-    const effectiveFastPathThreshold = isSingleEnrollment
-      ? SINGLE_ENROLLMENT_HIGH_CONFIDENCE_THRESHOLD
-      : EMBEDDING_HIGH_CONFIDENCE_THRESHOLD;
-    console.log(`[matchFace] Using thresholds: fast-path<${effectiveFastPathThreshold} strict<${effectiveStrictThreshold} (${isSingleEnrollment ? "single-enrollment mode" : "multi-enrollment mode"})`);
-
     // ── Margin check: if multiple enrollments, best must be significantly closer than 2nd ──
-    // Skip margin check for HIGH-CONFIDENCE matches — these are definitive.
+    // Skip margin check for HIGH-CONFIDENCE matches (distance < 0.25) — these are definitive.
     // Margin ambiguity only matters in the uncertain zone where distances could be borderline.
-    if (secondBest && secondBest.distance < EMBEDDING_PREFILTER_THRESHOLD && best.distance >= effectiveFastPathThreshold) {
+    if (secondBest && secondBest.distance < EMBEDDING_PREFILTER_THRESHOLD && best.distance >= EMBEDDING_HIGH_CONFIDENCE_THRESHOLD) {
       const margin = secondBest.distance - best.distance;
       console.log(`[matchFace] Margin check: best=${best.distance.toFixed(4)} 2nd=${secondBest.distance.toFixed(4)} margin=${margin.toFixed(4)} required=${MIN_MATCH_MARGIN}`);
       if (margin < MIN_MATCH_MARGIN) {
         console.log(`[matchFace] REJECTED: insufficient margin between best (${best.employeeId}) and 2nd (${secondBest.employeeId}) — ambiguous match`);
         return { ok: true };
       }
-    } else if (secondBest && best.distance < effectiveFastPathThreshold) {
-      console.log(`[matchFace] Margin check SKIPPED: best distance ${best.distance.toFixed(4)} is high-confidence (< ${effectiveFastPathThreshold})`);
+    } else if (secondBest && best.distance < EMBEDDING_HIGH_CONFIDENCE_THRESHOLD) {
+      console.log(`[matchFace] Margin check SKIPPED: best distance ${best.distance.toFixed(4)} is high-confidence (< ${EMBEDDING_HIGH_CONFIDENCE_THRESHOLD})`);
     }
+
+    // ── Select effective threshold based on number of enrollments ──
+    const effectiveStrictThreshold = totalEnrollments === 1 ? SINGLE_ENROLLMENT_THRESHOLD : EMBEDDING_STRICT_THRESHOLD;
+    console.log(`[matchFace] Using threshold: ${effectiveStrictThreshold} (${totalEnrollments === 1 ? "single-enrollment mode" : "multi-enrollment mode"})`);
 
     console.log(`[matchFace] Best match: ${best.employeeId} distance=${best.distance.toFixed(4)}`);
 
     // ── Fast path: high-confidence match → skip AI entirely ──
-    // In single-enrollment mode, the fast-path threshold is much stricter (0.18)
-    // because there is no second-best candidate to enforce a margin check.
-    if (best.distance < effectiveFastPathThreshold) {
-      console.log(`[matchFace] ✅ MATCHED (high-confidence fast path, distance=${best.distance.toFixed(4)} < ${effectiveFastPathThreshold})`);
+    if (best.distance < EMBEDDING_HIGH_CONFIDENCE_THRESHOLD) {
+      console.log(`[matchFace] ✅ MATCHED (high-confidence fast path, distance=${best.distance.toFixed(4)} < ${EMBEDDING_HIGH_CONFIDENCE_THRESHOLD})`);
       return { ok: true, employeeId: best.employeeId, distance: best.distance };
     }
 
@@ -636,14 +620,12 @@ export async function getFaceEnrollmentStatus(
   try {
     const supabase = await createAdminSupabaseClient();
 
-    const enrollmentResult = await supabase
+    let { data: enrollment, error } = await supabase
       .from("face_enrollments")
       .select("*")
       .eq("employee_id", employeeId)
       .eq("is_active", true)
       .single();
-    let enrollment = enrollmentResult.data;
-    const error = enrollmentResult.error;
 
     if (error?.message?.includes("reference_image")) {
       const fallback = await supabase

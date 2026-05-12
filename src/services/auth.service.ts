@@ -2,14 +2,6 @@
 
 import { createAdminSupabaseClient, createServerSupabaseClient } from "./supabase-server";
 import type { Role } from "@/types";
-import { isAdministrativeRole } from "@/lib/admin-tier";
-import { generateUserUniqueId } from "@/lib/id-generator";
-
-function resolveUserRole(profileRole?: string | null, metadataRole?: string | null): Role {
-  const resolvedRole = metadataRole ?? profileRole ?? "employee";
-  if (isAdministrativeRole(resolvedRole)) return resolvedRole;
-  return resolvedRole as Role;
-}
 
 /**
  * Sign in with email/password via Supabase Auth.
@@ -37,8 +29,8 @@ export async function signIn(email: string, password: string) {
       .ilike("email", data.user.email)
       .single();
 
-    if (empByEmail && !empByEmail.profile_id) {
-      // Link the employee to this profile
+    if (empByEmail && (!empByEmail.profile_id || empByEmail.profile_id !== data.user.id)) {
+      // Link the employee to this profile (also fixes stale seed profile_ids like "U001")
       const adminSupabase = await createAdminSupabaseClient();
       await adminSupabase
         .from("employees")
@@ -52,10 +44,6 @@ export async function signIn(email: string, password: string) {
 
   // Block deactivated or resigned employees before granting a session
   if (employee && (employee.status === "inactive" || employee.status === "resigned")) {
-    if (employee.job_title === "PENDING_APPROVAL") {
-      await supabase.auth.signOut();
-      return { ok: false as const, error: "pending_approval" };
-    }
     await supabase.auth.signOut();
     return {
       ok: false as const,
@@ -69,7 +57,7 @@ export async function signIn(email: string, password: string) {
       id: employee?.id ?? data.user.id,
       name: profile?.name ?? data.user.user_metadata?.name ?? "",
       email: data.user.email ?? "",
-      role: resolveUserRole(profile?.role, data.user.user_metadata?.role ?? data.user.app_metadata?.role),
+      role: (profile?.role ?? data.user.user_metadata?.role ?? "employee") as Role,
       avatarUrl: profile?.avatar_url,
       mustChangePassword: profile?.must_change_password ?? false,
       profileComplete: profile?.profile_complete ?? false,
@@ -91,81 +79,6 @@ export async function signOut() {
 }
 
 /**
- * Sign up a new user account via Supabase Auth.
- * Used only when self-service sign-up is explicitly enabled.
- */
-export async function signUp(input: {
-  email: string;
-  password: string;
-  name: string;
-  role: Role;
-  department?: string;
-  phone?: string;
-  emergencyContact?: string;
-  birthday?: string;
-  address?: string;
-}) {
-  const supabase = await createAdminSupabaseClient();
-  const { data, error } = await supabase.auth.admin.createUser({
-    email: input.email,
-    password: input.password,
-    email_confirm: true,
-    user_metadata: { 
-      name: input.name,
-      role: input.role 
-    },
-  });
-  if (error) return { ok: false as const, error: error.message };
-
-  if (data.user) {
-    const employeeId = await generateUserUniqueId(input.role);
-
-    const [profileResult, employeeResult] = await Promise.all([
-      supabase.from("profiles").update({
-        name: input.name,
-        role: input.role,
-        department: input.department ?? "",
-        profile_complete: true,
-        phone: input.phone ?? null,
-        emergency_contact: input.emergencyContact ?? null,
-        birthday: input.birthday ?? null,
-        address: input.address ?? null,
-      }).eq("id", data.user.id),
-      
-      supabase.from("employees").insert({
-        id: employeeId,
-        profile_id: data.user.id,
-        name: input.name,
-        email: input.email,
-        role: input.role,
-        department: input.department ?? "",
-        status: "inactive",
-        job_title: "PENDING_APPROVAL",
-        work_type: "WFO",
-        salary: 0,
-        join_date: new Date().toISOString().split("T")[0],
-        productivity: 0,
-        location: "",
-        phone: input.phone ?? null,
-        emergency_contact: input.emergencyContact ?? null,
-        birthday: input.birthday ?? null,
-        address: input.address ?? null,
-      }),
-    ]);
-
-    if (profileResult.error) {
-      return { ok: false as const, error: profileResult.error.message };
-    }
-
-    if (employeeResult.error) {
-      return { ok: false as const, error: employeeResult.error.message };
-    }
-  }
-
-  return { ok: true as const };
-}
-
-/**
  * Admin-only: Create a new user account.
  * Requires SUPABASE_SERVICE_ROLE_KEY env var.
  * Caller must be an authenticated admin.
@@ -180,6 +93,7 @@ export async function createUserAccount(input: {
   department?: string;
   mustChangePassword?: boolean;
   phone?: string;
+  biometricId?: string;
   birthday?: string;
   address?: string;
   emergencyContact?: string;
@@ -200,7 +114,7 @@ export async function createUserAccount(input: {
     .eq("id", callerUser.id)
     .single();
 
-  if (!isAdministrativeRole(callerProfile?.role)) {
+  if (callerProfile?.role !== "admin") {
     return { ok: false as const, error: "Only admins can create accounts" };
   }
 
@@ -219,20 +133,24 @@ export async function createUserAccount(input: {
 
   if (error) return { ok: false as const, error: error.message };
 
-  // Run profile update and employee lookup in parallel
+  const desiredRole = input.role;
+
+  // Run profile upsert and employee lookup in parallel
   if (data.user) {
-    const [, employeeResult] = await Promise.all([
-      // Update profile with additional fields
-      supabase.from("profiles").update({
+    const [profileUpsertResult, employeeResult] = await Promise.all([
+      // Upsert profile fields to guarantee role persistence even if trigger metadata is missing.
+      supabase.from("profiles").upsert({
+        id: data.user.id,
         name: input.name,
-        role: input.role,
+        email: input.email,
+        role: desiredRole,
         department: input.department ?? "",
         must_change_password: input.mustChangePassword ?? true,
         phone: input.phone ?? null,
         birthday: input.birthday ?? null,
         address: input.address ?? null,
         emergency_contact: input.emergencyContact ?? null,
-      }).eq("id", data.user.id),
+      }, { onConflict: "id" }),
       
       // Check if employee with this email already exists (created via addEmployee first)
       supabase.from("employees")
@@ -241,25 +159,52 @@ export async function createUserAccount(input: {
         .maybeSingle(),
     ]);
 
+    if (profileUpsertResult.error) {
+      return { ok: false as const, error: `Failed to persist profile role: ${profileUpsertResult.error.message}` };
+    }
+
+    // Verify final profile role so access permissions are always correct on first login.
+    const { data: persistedProfile, error: persistedProfileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", data.user.id)
+      .single();
+
+    if (persistedProfileError) {
+      return { ok: false as const, error: `Failed to verify profile role: ${persistedProfileError.message}` };
+    }
+    if (persistedProfile?.role !== desiredRole) {
+      return {
+        ok: false as const,
+        error: `Profile role mismatch after create (expected ${desiredRole}, got ${persistedProfile?.role ?? "unknown"})`,
+      };
+    }
+
     if (employeeResult.data?.id) {
       // Link existing employee to profile
-      await supabase.from("employees").update({
+      const { error: employeeUpdateError } = await supabase.from("employees").update({
         profile_id: data.user.id,
+        role: desiredRole,
         phone: input.phone ?? null,
+        biometric_id: input.biometricId?.trim() || null,
         birthday: input.birthday ?? null,
         address: input.address ?? null,
         emergency_contact: input.emergencyContact ?? null,
       }).eq("id", employeeResult.data.id);
+
+      if (employeeUpdateError) {
+        return { ok: false as const, error: `Failed to sync employee role: ${employeeUpdateError.message}` };
+      }
     } else {
       // No employee record exists - create one linked to this profile
       // This ensures every account has a corresponding employee record
-      const employeeId = await generateUserUniqueId(input.role);
-      await supabase.from("employees").insert({
+      const employeeId = `EMP-${Date.now().toString(36).toUpperCase()}`;
+      const { error: employeeInsertError } = await supabase.from("employees").insert({
         id: employeeId,
         profile_id: data.user.id,
         name: input.name,
         email: input.email,
-        role: input.role,
+        role: desiredRole,
         department: input.department ?? "",
         status: "active",
         work_type: "WFO",
@@ -268,10 +213,15 @@ export async function createUserAccount(input: {
         productivity: 0,
         location: "",
         phone: input.phone ?? null,
+        biometric_id: input.biometricId?.trim() || null,
         birthday: input.birthday ?? null,
         address: input.address ?? null,
         emergency_contact: input.emergencyContact ?? null,
       });
+
+      if (employeeInsertError) {
+        return { ok: false as const, error: `Failed to create employee record: ${employeeInsertError.message}` };
+      }
     }
   }
 
@@ -292,7 +242,7 @@ export async function adminResetPassword(userId: string, newPassword: string) {
     .eq("id", callerUser.id)
     .single();
 
-  if (!isAdministrativeRole(callerProfile?.role)) {
+  if (callerProfile?.role !== "admin") {
     return { ok: false as const, error: "Only admins can reset passwords" };
   }
 
@@ -326,7 +276,7 @@ export async function adminDeleteAccount(userId: string) {
     .eq("id", callerUser.id)
     .single();
 
-  if (!isAdministrativeRole(callerProfile?.role)) {
+  if (callerProfile?.role !== "admin") {
     return { ok: false as const, error: "Only admins can delete accounts" };
   }
 
@@ -375,7 +325,7 @@ export async function listUserAccounts() {
     .eq("id", callerUser.id)
     .single();
 
-  if (!callerProfile || (!isAdministrativeRole(callerProfile.role) && callerProfile.role !== "hr")) {
+  if (!callerProfile || !["admin", "hr"].includes(callerProfile.role)) {
     return { ok: false as const, error: "Insufficient permissions", accounts: [] as DemoUserLike[] };
   }
 
@@ -505,11 +455,4 @@ export async function getCurrentUser() {
     address: profile?.address,
     emergencyContact: profile?.emergency_contact,
   };
-}
-
-/**
- * Backward-compatible name used by older route handlers.
- */
-export async function getCurrentUserFromCookie() {
-  return getCurrentUser();
 }

@@ -179,35 +179,35 @@ export function FullScreenCalendar({
   return (
     <div className="flex flex-1 flex-col">
       {/* ─── Calendar Header ─────────────────────────────── */}
-        <div className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between md:gap-0 lg:flex-none">
-          <div className="flex flex-auto">
-            <div className="flex items-center gap-4">
-              <div className="hidden w-20 flex-col items-center justify-center rounded-lg border bg-muted p-0.5 md:flex">
-                <h1 className="p-1 text-xs uppercase text-muted-foreground">
-                  {format(today, "MMM")}
-                </h1>
-                <div className="flex w-full items-center justify-center rounded-lg border bg-background p-0.5 text-lg font-bold">
-                  <span>{format(today, "d")}</span>
-                </div>
-              </div>
-              <div className="flex flex-col">
-                <h2 className="text-lg font-semibold text-foreground">
-                  {headerLabel}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  {viewMode === "month" && (
-                    <>{format(firstDayCurrentMonth, "MMM d, yyyy")} – {format(endOfMonth(firstDayCurrentMonth), "MMM d, yyyy")}</>
-                  )}
-                  {viewMode === "week" && (
-                    <>Week {getWeek(selectedDay)}</>
-                  )}
-                  {viewMode === "year" && (
-                    <>{format(startOfYear(firstDayCurrentMonth), "MMM d")} – {format(endOfYear(firstDayCurrentMonth), "MMM d, yyyy")}</>
-                  )}
-                </p>
+      <div className="flex flex-col space-y-4 p-4 md:flex-row md:items-center md:justify-between md:space-y-0 lg:flex-none">
+        <div className="flex flex-auto">
+          <div className="flex items-center gap-4">
+            <div className="hidden w-20 flex-col items-center justify-center rounded-lg border bg-muted p-0.5 md:flex">
+              <h1 className="p-1 text-xs uppercase text-muted-foreground">
+                {format(today, "MMM")}
+              </h1>
+              <div className="flex w-full items-center justify-center rounded-lg border bg-background p-0.5 text-lg font-bold">
+                <span>{format(today, "d")}</span>
               </div>
             </div>
+            <div className="flex flex-col">
+              <h2 className="text-lg font-semibold text-foreground">
+                {headerLabel}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {viewMode === "month" && (
+                  <>{format(firstDayCurrentMonth, "MMM d, yyyy")} – {format(endOfMonth(firstDayCurrentMonth), "MMM d, yyyy")}</>
+                )}
+                {viewMode === "week" && (
+                  <>Week {getWeek(selectedDay)}</>
+                )}
+                {viewMode === "year" && (
+                  <>{format(startOfYear(firstDayCurrentMonth), "MMM d")} – {format(endOfYear(firstDayCurrentMonth), "MMM d, yyyy")}</>
+                )}
+              </p>
+            </div>
           </div>
+        </div>
 
           {/* Mobile: single scrollable row with view toggle + nav together */}
           <div className="flex items-center gap-2 overflow-x-auto md:hidden">

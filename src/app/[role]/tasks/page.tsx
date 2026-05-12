@@ -11,9 +11,6 @@ export default function TasksPage() {
         <RoleViewDispatcher
             views={{
                 admin: AdminTasksView,
-                support_admin: AdminTasksView,
-                finance_admin: AdminTasksView,
-                analyst: AdminTasksView,
                 hr: AdminTasksView,
                 supervisor: AdminTasksView,
                 employee: EmployeeTasksView,

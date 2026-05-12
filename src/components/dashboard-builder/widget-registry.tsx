@@ -20,6 +20,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { getInitials, formatCurrency } from "@/lib/format";
+import { forceRehydrate } from "@/services/sync.service";
 import {
     Users, UserCheck, UserX, CalendarOff, TrendingUp, Calendar, Cake, Eye, Plus,
     Clock, Banknote, Pencil, Trash2, FileText, CheckCircle, Shield, Activity,
@@ -168,6 +169,9 @@ function KpiActiveEmployees() {
 function KpiPresentToday() {
     const logs = useAttendanceStore((s) => s.logs);
     const [today] = useState(() => new Date().toISOString().split("T")[0]);
+    useEffect(() => {
+        forceRehydrate().catch(() => { /* keep current widget state if refresh fails */ });
+    }, []);
     const val = useMemo(() => today ? logs.filter((l) => l.date === today && l.status === "present").length : 0, [logs, today]);
     return <KpiCard label="Present Today" value={val} icon={UserCheck} color="text-emerald-500" bg="bg-emerald-500/10" href="/attendance" />;
 }
@@ -648,7 +652,7 @@ function MyLatestPayslip() {
     }, [payslips, empRecord]);
 
     return (
-        <Link href={rh("/payroll")} className="block h-full">
+        <Link href={rh("/my-payslips")} className="block h-full">
             <Card className="border border-border/50 cursor-pointer hover:shadow-md hover:border-primary/40 transition-all h-full">
                 <CardContent className="p-5">
                     <div className="flex items-center gap-3">

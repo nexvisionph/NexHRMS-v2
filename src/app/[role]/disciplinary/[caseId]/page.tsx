@@ -1,272 +1,372 @@
 "use client";
 
-import { useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { useDisciplinaryStore, type NODDecision } from "@/store/disciplinary.store";
+import { use, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useDisciplinaryStore } from "@/store/disciplinary.store";
+import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
+import { useRoleHref } from "@/lib/hooks/use-role-href";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, FileText, AlertTriangle, CheckCircle, Clock, Scale } from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
+import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { ArrowLeft, Gavel, Mail, MessageSquare, ShieldAlert, CheckCircle2, FileText, X } from "lucide-react";
+import { toast } from "sonner";
+import type { NODDecision } from "@/types";
 
-const NOD_DECISIONS: { value: NODDecision; label: string }[] = [
-  { value: "no_violation", label: "No Violation Found" },
-  { value: "verbal_warning", label: "Verbal Warning" },
-  { value: "written_warning", label: "Written Warning" },
-  { value: "final_warning", label: "Final Warning" },
-  { value: "suspension", label: "Suspension" },
-  { value: "termination", label: "Termination" },
-  { value: "salary_deduction", label: "Salary Deduction" },
-  { value: "training_required", label: "Training Required" },
-  { value: "pip", label: "Performance Improvement Plan" },
-];
+export default function DisciplinaryCasePage({ params }: { params: Promise<{ role: string; caseId: string }> }) {
+    const { role, caseId } = use(params);
+    const router = useRouter();
+    const rh = useRoleHref();
 
-export default function CaseDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const role = params.role as string;
-  const caseId = params.caseId as string;
+    const c = useDisciplinaryStore((s) => s.getCase(caseId));
+    const nte = useDisciplinaryStore((s) => s.getNTEByCase(caseId));
+    const nod = useDisciplinaryStore((s) => s.getNODByCase(caseId));
+    const issueNTE = useDisciplinaryStore((s) => s.issueNTE);
+    const acknowledgeNTE = useDisciplinaryStore((s) => s.acknowledgeNTE);
+    const submitExplanation = useDisciplinaryStore((s) => s.submitExplanation);
+    const markNoResponse = useDisciplinaryStore((s) => s.markNoResponse);
+    const moveToReview = useDisciplinaryStore((s) => s.moveToReview);
+    const issueNOD = useDisciplinaryStore((s) => s.issueNOD);
+    const acknowledgeNOD = useDisciplinaryStore((s) => s.acknowledgeNOD);
+    const closeCase = useDisciplinaryStore((s) => s.closeCase);
 
-  const { getCaseById, getNTEForCase, getNODForCase, issueNTE, acknowledgeNTE, submitExplanation, markNoResponse, moveToReview, issueNOD, acknowledgeNOD, closeCase } = useDisciplinaryStore();
-  const currentUser = useAuthStore((s) => s.currentUser);
+    const employees = useEmployeesStore((s) => s.employees);
+    const currentUser = useAuthStore((s) => s.currentUser);
 
-  const disciplinaryCase = getCaseById(caseId);
-  const nte = getNTEForCase(caseId);
-  const nod = getNODForCase(caseId);
+    const [nteOpen, setNteOpen] = useState(false);
+    const [nteDeadline, setNteDeadline] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 5);
+        return d.toISOString().slice(0, 10);
+    });
+    const [explanationOpen, setExplanationOpen] = useState(false);
+    const [explanationText, setExplanationText] = useState("");
 
-  // NTE form
-  const [nteAllegations, setNteAllegations] = useState("");
-  const [nteDeadline, setNteDeadline] = useState("");
+    const [nodOpen, setNodOpen] = useState(false);
+    const [nodForm, setNodForm] = useState<{ decision: NODDecision; details: string; start: string; end: string; rtw: string }>({
+        decision: "written_warning",
+        details: "",
+        start: "",
+        end: "",
+        rtw: "",
+    });
 
-  // Explanation form
-  const [explanation, setExplanation] = useState("");
+    if (!c) {
+        return (
+            <div className="p-6">
+                <Card><CardContent className="p-8 text-center space-y-3">
+                    <p className="text-muted-foreground">Case not found.</p>
+                    <Link href={rh("/disciplinary")}>
+                        <Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4 mr-2" /> Back to cases</Button>
+                    </Link>
+                </CardContent></Card>
+            </div>
+        );
+    }
 
-  // NOD form
-  const [nodDecision, setNodDecision] = useState<NODDecision>("verbal_warning");
-  const [nodFindings, setNodFindings] = useState("");
-  const [sanctionStart, setSanctionStart] = useState("");
-  const [sanctionEnd, setSanctionEnd] = useState("");
+    const emp = employees.find((e) => e.id === c.employeeId);
+    void role;
 
-  if (!disciplinaryCase) {
+    const handleIssueNTE = () => {
+        const r = issueNTE(c.id, { responseDeadline: nteDeadline, issuedBy: currentUser.id });
+        if (!r) { toast.error("NTE could not be issued"); return; }
+        toast.success("NTE issued");
+        setNteOpen(false);
+    };
+
+    const handleSubmitExplanation = () => {
+        if (!nte) return;
+        if (!explanationText.trim()) { toast.error("Explanation cannot be empty"); return; }
+        submitExplanation(nte.id, explanationText.trim());
+        toast.success("Explanation recorded");
+        setExplanationOpen(false);
+        setExplanationText("");
+    };
+
+    const handleIssueNOD = () => {
+        if (!nodForm.details.trim()) { toast.error("Decision details are required"); return; }
+        const r = issueNOD(c.id, {
+            decision: nodForm.decision,
+            decisionDetails: nodForm.details.trim(),
+            issuedBy: currentUser.id,
+            sanctionStartDate: nodForm.start || undefined,
+            sanctionEndDate: nodForm.end || undefined,
+            returnToWorkDate: nodForm.rtw || undefined,
+        });
+        if (!r) { toast.error("NOD could not be issued"); return; }
+        toast.success(nodForm.decision === "no_violation" ? "Case closed — no violation" : "NOD issued");
+        setNodOpen(false);
+    };
+
     return (
-      <div className="p-6">
-        <p className="text-muted-foreground">Case not found.</p>
-        <Link href={`/${role}/disciplinary`}>
-          <Button variant="outline" className="mt-4"><ArrowLeft className="h-4 w-4 mr-2" />Back to Cases</Button>
-        </Link>
-      </div>
-    );
-  }
+        <div className="space-y-6 p-4 md:p-6 max-w-5xl mx-auto">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                    <Button variant="ghost" size="sm" onClick={() => router.push(rh("/disciplinary"))}>
+                        <ArrowLeft className="h-4 w-4 mr-2" /> Back
+                    </Button>
+                    <h1 className="text-2xl font-bold flex items-center gap-2">
+                        <Gavel className="h-6 w-6 text-primary" /> {c.caseNumber}
+                    </h1>
+                    <p className="text-sm text-muted-foreground">{emp?.name ?? c.employeeId} · {c.violationType}</p>
+                </div>
+                <Badge className="capitalize">{c.status.replace(/_/g, " ")}</Badge>
+            </div>
 
-  const handleIssueNTE = () => {
-    if (!nteAllegations || !nteDeadline) return;
-    issueNTE({
-      caseId,
-      employeeId: disciplinaryCase.employeeId,
-      issuedBy: currentUser.name || "Admin",
-      issuedAt: new Date().toISOString(),
-      responseDeadline: nteDeadline,
-      allegations: nteAllegations,
-    });
-    setNteAllegations("");
-    setNteDeadline("");
-  };
-
-  const handleSubmitExplanation = () => {
-    if (!nte || !explanation) return;
-    submitExplanation(nte.id, explanation);
-    setExplanation("");
-  };
-
-  const handleIssueNOD = () => {
-    if (!nodFindings) return;
-    issueNOD({
-      caseId,
-      employeeId: disciplinaryCase.employeeId,
-      issuedBy: currentUser.name || "Admin",
-      issuedAt: new Date().toISOString(),
-      decision: nodDecision,
-      findings: nodFindings,
-      sanctionStartDate: sanctionStart || undefined,
-      sanctionEndDate: sanctionEnd || undefined,
-    });
-  };
-
-  // Timeline events
-  const timeline = useMemo(() => {
-    const events: { date: string; label: string; icon: React.ReactNode; color: string }[] = [];
-    events.push({ date: disciplinaryCase.reportedAt, label: "Case opened — incident reported", icon: <AlertTriangle className="h-4 w-4" />, color: "text-blue-500" });
-    if (nte) {
-      events.push({ date: nte.issuedAt, label: "NTE issued", icon: <FileText className="h-4 w-4" />, color: "text-yellow-500" });
-      if (nte.acknowledgedAt) events.push({ date: nte.acknowledgedAt, label: "NTE acknowledged by employee", icon: <CheckCircle className="h-4 w-4" />, color: "text-green-500" });
-      if (nte.explanationSubmittedAt) events.push({ date: nte.explanationSubmittedAt, label: "Explanation submitted", icon: <FileText className="h-4 w-4" />, color: "text-purple-500" });
-      if (nte.noResponseMarkedAt) events.push({ date: nte.noResponseMarkedAt, label: "No response — moved to review", icon: <Clock className="h-4 w-4" />, color: "text-orange-500" });
-    }
-    if (nod) {
-      events.push({ date: nod.issuedAt, label: `NOD issued — Decision: ${nod.decision.replace(/_/g, " ")}`, icon: <Scale className="h-4 w-4" />, color: "text-red-500" });
-      if (nod.acknowledgedAt) events.push({ date: nod.acknowledgedAt, label: "NOD acknowledged by employee", icon: <CheckCircle className="h-4 w-4" />, color: "text-green-500" });
-    }
-    if (disciplinaryCase.closedAt) events.push({ date: disciplinaryCase.closedAt, label: "Case closed", icon: <CheckCircle className="h-4 w-4" />, color: "text-gray-500" });
-    return events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [disciplinaryCase, nte, nod]);
-
-  return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center gap-4">
-        <Link href={`/${role}/disciplinary`}>
-          <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold">Case: {disciplinaryCase.employeeName}</h1>
-          <p className="text-muted-foreground">Status: <Badge className="ml-1">{disciplinaryCase.status.replace(/_/g, " ")}</Badge></p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Timeline */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader><CardTitle>Case Timeline</CardTitle></CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {timeline.map((event, i) => (
-                  <div key={i} className="flex gap-3 items-start">
-                    <div className={`mt-0.5 ${event.color}`}>{event.icon}</div>
+            {/* Case details */}
+            <Card>
+                <CardHeader><CardTitle className="text-base">Case Details</CardTitle></CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                    <Row label="Employee" value={emp?.name ?? c.employeeId} />
+                    <Row label="Department" value={emp?.department ?? "—"} />
+                    <Row label="Violation" value={c.violationType} />
+                    <Row label="Policy Reference" value={c.policyReference ?? "—"} />
+                    <Row label="Incident Date" value={new Date(c.incidentDate).toLocaleDateString()} />
+                    <Row label="Location" value={c.incidentLocation ?? "—"} />
                     <div>
-                      <p className="text-sm font-medium">{event.label}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(event.date).toLocaleString()}</p>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Description</div>
+                        <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3">{c.description}</p>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Incident Details */}
-          <Card>
-            <CardHeader><CardTitle>Incident Details</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              <p><strong>Date:</strong> {disciplinaryCase.incidentDate}</p>
-              <p><strong>Severity:</strong> <Badge variant="outline" className="capitalize">{disciplinaryCase.severity}</Badge></p>
-              {disciplinaryCase.category && <p><strong>Category:</strong> {disciplinaryCase.category}</p>}
-              <p><strong>Description:</strong></p>
-              <p className="text-sm bg-muted p-3 rounded-md">{disciplinaryCase.incidentDescription}</p>
-            </CardContent>
-          </Card>
-
-          {/* NTE Details */}
-          {nte && (
-            <Card>
-              <CardHeader><CardTitle>Notice to Explain (NTE)</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                <p><strong>Allegations:</strong></p>
-                <p className="text-sm bg-muted p-3 rounded-md">{nte.allegations}</p>
-                <p><strong>Response Deadline:</strong> {nte.responseDeadline}</p>
-                {nte.explanationText && (
-                  <>
-                    <p><strong>Employee Explanation:</strong></p>
-                    <p className="text-sm bg-muted p-3 rounded-md">{nte.explanationText}</p>
-                  </>
-                )}
-              </CardContent>
+                </CardContent>
             </Card>
-          )}
 
-          {/* NOD Details */}
-          {nod && (
+            {/* Timeline / actions */}
             <Card>
-              <CardHeader><CardTitle>Notice of Decision (NOD)</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                <p><strong>Decision:</strong> <Badge>{nod.decision.replace(/_/g, " ")}</Badge></p>
-                <p><strong>Findings:</strong></p>
-                <p className="text-sm bg-muted p-3 rounded-md">{nod.findings}</p>
-                {nod.sanctionStartDate && <p><strong>Sanction Start:</strong> {nod.sanctionStartDate}</p>}
-                {nod.sanctionEndDate && <p><strong>Sanction End:</strong> {nod.sanctionEndDate}</p>}
-              </CardContent>
+                <CardHeader><CardTitle className="text-base">Timeline & Actions</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                    {/* Step: Issue NTE */}
+                    <Step
+                        active={c.status === "open"}
+                        done={!!nte}
+                        title="1. Issue Notice to Explain (NTE)"
+                        icon={Mail}
+                        body={
+                            nte ? (
+                                <div className="text-sm space-y-1">
+                                    <div>Deadline: <span className="font-medium">{new Date(nte.responseDeadline).toLocaleDateString()}</span></div>
+                                    <div>Issued: <span className="text-muted-foreground">{new Date(nte.issuedAt).toLocaleString()}</span></div>
+                                    {nte.acknowledgedAt && <div>Acknowledged: <span className="text-muted-foreground">{new Date(nte.acknowledgedAt).toLocaleString()}</span></div>}
+                                </div>
+                            ) : (
+                                <Button size="sm" onClick={() => setNteOpen(true)}>Issue NTE</Button>
+                            )
+                        }
+                    />
+
+                    {/* Step: Acknowledge NTE */}
+                    {nte && (
+                        <Step
+                            active={c.status === "nte_issued"}
+                            done={c.status !== "nte_issued" && c.status !== "open"}
+                            title="2. Employee Acknowledges NTE"
+                            icon={CheckCircle2}
+                            body={
+                                nte.acknowledgedAt ? (
+                                    <p className="text-sm text-muted-foreground">Acknowledged on {new Date(nte.acknowledgedAt).toLocaleString()}</p>
+                                ) : (
+                                    <Button size="sm" variant="outline" onClick={() => { acknowledgeNTE(nte.id); toast.success("Marked as acknowledged"); }}>
+                                        Mark Acknowledged
+                                    </Button>
+                                )
+                            }
+                        />
+                    )}
+
+                    {/* Step: Submit Explanation */}
+                    {nte && nte.acknowledgedAt && (
+                        <Step
+                            active={c.status === "nte_acknowledged"}
+                            done={["explanation_submitted", "no_response", "under_review", "nod_issued", "nod_acknowledged", "sanction_active", "closed"].includes(c.status)}
+                            title="3. Employee Submits Explanation"
+                            icon={MessageSquare}
+                            body={
+                                nte.employeeExplanation ? (
+                                    <div className="text-sm">
+                                        <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3 mb-1">{nte.employeeExplanation}</p>
+                                        <p className="text-xs text-muted-foreground">Submitted {new Date(nte.explanationSubmittedAt!).toLocaleString()}</p>
+                                    </div>
+                                ) : nte.status === "no_response" ? (
+                                    <p className="text-sm text-orange-700">Marked as no-response.</p>
+                                ) : (
+                                    <div className="flex gap-2">
+                                        <Button size="sm" onClick={() => setExplanationOpen(true)}>Record Explanation</Button>
+                                        <Button size="sm" variant="outline" onClick={() => { markNoResponse(nte.id); toast.success("Marked as no-response"); }}>
+                                            Mark No-Response
+                                        </Button>
+                                    </div>
+                                )
+                            }
+                        />
+                    )}
+
+                    {/* Step: Move to Review */}
+                    {(c.status === "explanation_submitted" || c.status === "no_response") && (
+                        <Step active done={false} title="4. Review by HR" icon={FileText}
+                            body={<Button size="sm" variant="outline" onClick={() => { moveToReview(c.id); toast.success("Moved to under review"); }}>Move to Under Review</Button>}
+                        />
+                    )}
+
+                    {/* Step: Issue NOD */}
+                    {!nod && (c.status === "under_review" || c.status === "explanation_submitted" || c.status === "no_response") && (
+                        <Step active done={false} title="5. Issue Notice of Decision (NOD)" icon={ShieldAlert}
+                            body={<Button size="sm" onClick={() => setNodOpen(true)}>Issue NOD</Button>}
+                        />
+                    )}
+
+                    {/* Step: NOD details */}
+                    {nod && (
+                        <Step active={c.status === "nod_issued"} done={c.status !== "nod_issued"}
+                            title="5. Notice of Decision Issued" icon={ShieldAlert}
+                            body={
+                                <div className="text-sm space-y-1">
+                                    <div>Decision: <Badge variant="secondary" className="capitalize">{nod.decision.replace(/_/g, " ")}</Badge></div>
+                                    <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3">{nod.decisionDetails}</p>
+                                    {nod.sanctionStartDate && <div>Sanction: {nod.sanctionStartDate} → {nod.sanctionEndDate ?? "—"}</div>}
+                                    {!nod.acknowledgedAt && nod.decision !== "no_violation" && (
+                                        <Button size="sm" variant="outline" onClick={() => { acknowledgeNOD(nod.id); toast.success("Marked as acknowledged"); }}>
+                                            Mark Acknowledged
+                                        </Button>
+                                    )}
+                                    {nod.acknowledgedAt && <p className="text-xs text-muted-foreground">Acknowledged {new Date(nod.acknowledgedAt).toLocaleString()}</p>}
+                                </div>
+                            }
+                        />
+                    )}
+
+                    {/* Close case */}
+                    {c.status !== "closed" && (
+                        <div className="pt-4 border-t">
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="outline" size="sm"><X className="h-4 w-4 mr-2" /> Close Case</Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Close this case?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            This marks {c.caseNumber} as closed. You can still view it in audit logs.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => { closeCase(c.id, currentUser.id); toast.success("Case closed"); }}>
+                                            Close Case
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        </div>
+                    )}
+                </CardContent>
             </Card>
-          )}
+
+            {/* Issue NTE dialog */}
+            <Dialog open={nteOpen} onOpenChange={setNteOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Issue NTE</DialogTitle></DialogHeader>
+                    <div>
+                        <Label>Response Deadline</Label>
+                        <Input type="date" value={nteDeadline} onChange={(e) => setNteDeadline(e.target.value)} />
+                        <p className="text-xs text-muted-foreground mt-1">Standard: 5 calendar days from issuance.</p>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setNteOpen(false)}>Cancel</Button>
+                        <Button onClick={handleIssueNTE}>Issue</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Explanation dialog */}
+            <Dialog open={explanationOpen} onOpenChange={setExplanationOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Record Employee Explanation</DialogTitle></DialogHeader>
+                    <Textarea rows={5} value={explanationText} onChange={(e) => setExplanationText(e.target.value)}
+                        placeholder="Type or paste the employee's written explanation…" />
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setExplanationOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSubmitExplanation}>Submit</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Issue NOD dialog */}
+            <Dialog open={nodOpen} onOpenChange={setNodOpen}>
+                <DialogContent className="max-w-xl">
+                    <DialogHeader><DialogTitle>Issue Notice of Decision</DialogTitle></DialogHeader>
+                    <div className="space-y-3">
+                        <div>
+                            <Label>Decision</Label>
+                            <Select value={nodForm.decision} onValueChange={(v) => setNodForm((f) => ({ ...f, decision: v as NODDecision }))}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="no_violation">No Violation (close case)</SelectItem>
+                                    <SelectItem value="verbal_warning">Verbal Warning</SelectItem>
+                                    <SelectItem value="written_warning">Written Warning</SelectItem>
+                                    <SelectItem value="final_warning">Final Warning</SelectItem>
+                                    <SelectItem value="suspension">Suspension</SelectItem>
+                                    <SelectItem value="termination">Termination</SelectItem>
+                                    <SelectItem value="salary_deduction">Salary Deduction</SelectItem>
+                                    <SelectItem value="training_required">Training Required</SelectItem>
+                                    <SelectItem value="pip">Performance Improvement Plan</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
+                            <Label>Decision Details</Label>
+                            <Textarea rows={4} value={nodForm.details} onChange={(e) => setNodForm((f) => ({ ...f, details: e.target.value }))} />
+                        </div>
+                        {(nodForm.decision === "suspension" || nodForm.decision === "training_required" || nodForm.decision === "pip") && (
+                            <div className="grid grid-cols-3 gap-3">
+                                <div><Label>Start</Label><Input type="date" value={nodForm.start} onChange={(e) => setNodForm((f) => ({ ...f, start: e.target.value }))} /></div>
+                                <div><Label>End</Label><Input type="date" value={nodForm.end} onChange={(e) => setNodForm((f) => ({ ...f, end: e.target.value }))} /></div>
+                                <div><Label>Return to Work</Label><Input type="date" value={nodForm.rtw} onChange={(e) => setNodForm((f) => ({ ...f, rtw: e.target.value }))} /></div>
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setNodOpen(false)}>Cancel</Button>
+                        <Button onClick={handleIssueNOD}>Issue NOD</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
+    );
+}
 
-        {/* Action Panel */}
-        <div className="space-y-4">
-          <Card>
-            <CardHeader><CardTitle>Actions</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              {/* Issue NTE */}
-              {disciplinaryCase.status === "open" && (
-                <div className="space-y-3">
-                  <h4 className="font-medium text-sm">Issue NTE</h4>
-                  <Textarea placeholder="Allegations..." value={nteAllegations} onChange={(e) => setNteAllegations(e.target.value)} rows={3} />
-                  <div>
-                    <Label className="text-xs">Response Deadline</Label>
-                    <Input type="date" value={nteDeadline} onChange={(e) => setNteDeadline(e.target.value)} />
-                  </div>
-                  <Button onClick={handleIssueNTE} className="w-full" size="sm">Issue NTE</Button>
-                </div>
-              )}
-
-              {/* Acknowledge NTE (employee action) */}
-              {disciplinaryCase.status === "nte_issued" && nte && !nte.acknowledgedAt && (
-                <Button onClick={() => acknowledgeNTE(nte.id)} className="w-full" variant="outline">Acknowledge NTE</Button>
-              )}
-
-              {/* Submit Explanation */}
-              {(disciplinaryCase.status === "nte_issued" || disciplinaryCase.status === "nte_acknowledged") && nte && !nte.explanationText && (
-                <div className="space-y-3">
-                  <h4 className="font-medium text-sm">Submit Explanation</h4>
-                  <Textarea placeholder="Employee explanation..." value={explanation} onChange={(e) => setExplanation(e.target.value)} rows={3} />
-                  <Button onClick={handleSubmitExplanation} className="w-full" size="sm">Submit</Button>
-                  <Button onClick={() => markNoResponse(nte.id)} variant="outline" className="w-full" size="sm">Mark No Response</Button>
-                </div>
-              )}
-
-              {/* Move to Review */}
-              {disciplinaryCase.status === "explanation_submitted" && (
-                <Button onClick={() => moveToReview(caseId)} className="w-full">Move to Review</Button>
-              )}
-
-              {/* Issue NOD */}
-              {disciplinaryCase.status === "under_review" && (
-                <div className="space-y-3">
-                  <h4 className="font-medium text-sm">Issue NOD</h4>
-                  <Select value={nodDecision} onValueChange={(v) => setNodDecision(v as NODDecision)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {NOD_DECISIONS.map((d) => (
-                        <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Textarea placeholder="Findings..." value={nodFindings} onChange={(e) => setNodFindings(e.target.value)} rows={3} />
-                  {(nodDecision === "suspension" || nodDecision === "termination") && (
-                    <>
-                      <Input type="date" placeholder="Sanction start" value={sanctionStart} onChange={(e) => setSanctionStart(e.target.value)} />
-                      <Input type="date" placeholder="Sanction end" value={sanctionEnd} onChange={(e) => setSanctionEnd(e.target.value)} />
-                    </>
-                  )}
-                  <Button onClick={handleIssueNOD} className="w-full" size="sm">Issue NOD</Button>
-                </div>
-              )}
-
-              {/* Acknowledge NOD */}
-              {disciplinaryCase.status === "nod_issued" && nod && !nod.acknowledgedAt && (
-                <Button onClick={() => acknowledgeNOD(nod.id)} className="w-full" variant="outline">Acknowledge NOD</Button>
-              )}
-
-              {/* Close Case */}
-              {disciplinaryCase.status !== "closed" && (
-                <Button onClick={() => closeCase(caseId, currentUser.name || "Admin")} variant="outline" className="w-full text-gray-600">Close Case</Button>
-              )}
-            </CardContent>
-          </Card>
+function Row({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="flex justify-between gap-4 py-1 border-b last:border-0">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
+            <span className="text-sm font-medium">{value}</span>
         </div>
-      </div>
-    </div>
-  );
+    );
+}
+
+function Step({ active, done, title, icon: Icon, body }: { active: boolean; done: boolean; title: string; icon: typeof Mail; body: React.ReactNode }) {
+    const tone = done ? "border-emerald-300 bg-emerald-50/40" : active ? "border-primary/40 bg-primary/5" : "border-muted bg-muted/30 opacity-70";
+    return (
+        <div className={`rounded-md border ${tone} p-3`}>
+            <div className="flex items-center gap-2 mb-2">
+                <Icon className={`h-4 w-4 ${done ? "text-emerald-600" : active ? "text-primary" : "text-muted-foreground"}`} />
+                <h3 className="font-medium text-sm">{title}</h3>
+            </div>
+            <div className="pl-6">{body}</div>
+        </div>
+    );
 }

@@ -1,5 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/services/supabase-server";
+import { createAdminSupabaseClient, createServerSupabaseClient } from "@/services/supabase-server";
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
+const ALLOWED_BUCKETS = {
+  avatars: {
+    public: true,
+    roles: null,
+  },
+  "payment-proofs": {
+    public: true,
+    roles: ["admin", "finance", "payroll_admin"],
+  },
+} as const;
+
+type AllowedBucket = keyof typeof ALLOWED_BUCKETS;
+
+function isAllowedBucket(bucket: string): bucket is AllowedBucket {
+  return bucket in ALLOWED_BUCKETS;
+}
+
+function safePathSegment(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80);
+}
+
+function extensionFor(file: File) {
+  const byType: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+  };
+  return byType[file.type] ?? "jpg";
+}
+
+async function ensureBucket(bucket: AllowedBucket) {
+  const admin = await createAdminSupabaseClient();
+  const config = ALLOWED_BUCKETS[bucket];
+  const { error: getError } = await admin.storage.getBucket(bucket);
+
+  if (!getError) return admin;
+
+  const { error: createError } = await admin.storage.createBucket(bucket, {
+    public: config.public,
+    fileSizeLimit: MAX_FILE_SIZE,
+    allowedMimeTypes: [...ALLOWED_IMAGE_TYPES],
+  });
+
+  if (createError && !createError.message.toLowerCase().includes("already exists")) {
+    throw new Error(`Could not prepare "${bucket}" storage bucket: ${createError.message}`);
+  }
+
+  return admin;
+}
 
 /**
  * POST /api/upload
@@ -30,18 +83,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file type for image uploads
-    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-    if (!allowedTypes.includes(file.type)) {
+    if (!isAllowedBucket(bucket)) {
       return NextResponse.json(
-        { error: "Invalid file type. Only images are allowed." },
+        { error: "Invalid upload destination" },
+        { status: 400 }
+      );
+    }
+
+    const bucketConfig = ALLOWED_BUCKETS[bucket];
+    if (bucketConfig.roles) {
+      const admin = await createAdminSupabaseClient();
+      const { data: profile, error: profileError } = await admin
+        .from("employees")
+        .select("role")
+        .eq("profile_id", user.id)
+        .single();
+
+      if (profileError || !profile || !bucketConfig.roles.includes(profile.role)) {
+        return NextResponse.json(
+          { error: "Forbidden" },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Validate file type for image uploads
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number])) {
+      return NextResponse.json(
+        { error: "Invalid file type. Please upload a JPG, PNG, GIF, or WebP image." },
         { status: 400 }
       );
     }
 
     // Max file size: 5MB
-    const maxSize = 5 * 1024 * 1024;
-    if (file.size > maxSize) {
+    if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
         { error: "File too large. Maximum size is 5MB." },
         { status: 400 }
@@ -49,10 +124,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate unique filename
-    const ext = file.name.split(".").pop();
-    const timestamp = Date.now();
+    const ext = extensionFor(file);
+    const timestamp = `${Date.now()}-${crypto.randomUUID()}`;
     const fileName = folder 
-      ? `${folder}/${timestamp}.${ext}`
+      ? `${safePathSegment(folder)}/${timestamp}.${ext}`
       : `${timestamp}.${ext}`;
 
     // Convert File to ArrayBuffer (Supabase Storage expects this)
@@ -60,7 +135,9 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
 
     // Upload to Supabase Storage
-    const { data, error: uploadError } = await supabase.storage
+    const storageClient = await ensureBucket(bucket);
+
+    const { data, error: uploadError } = await storageClient.storage
       .from(bucket)
       .upload(fileName, buffer, {
         contentType: file.type,
@@ -76,7 +153,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get public URL
-    const { data: { publicUrl } } = supabase.storage
+    const { data: { publicUrl } } = storageClient.storage
       .from(bucket)
       .getPublicUrl(data.path);
 

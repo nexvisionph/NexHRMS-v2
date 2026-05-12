@@ -26,7 +26,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-001",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 50000,
                     monthlyDeduction: 5000,
                     status: "active",
@@ -49,7 +49,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-001",
-                    type: "cash_advance",
+                    type: "emergency",
                     amount: 20000,
                     monthlyDeduction: 2000,
                     status: "active",
@@ -67,7 +67,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-001",
-                    type: "other",
+                    type: "housing",
                     amount: 100000,
                     monthlyDeduction: 8000,
                     status: "active",
@@ -92,7 +92,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-DEDUCT",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 10000,
                     monthlyDeduction: 2000,
                     status: "active",
@@ -115,7 +115,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-SETTLE",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 5000,
                     monthlyDeduction: 5000,
                     status: "active",
@@ -139,7 +139,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-OVERPAY",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 3000,
                     monthlyDeduction: 5000,
                     status: "active",
@@ -162,7 +162,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-HIST",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 20000,
                     monthlyDeduction: 5000,
                     status: "active",
@@ -196,7 +196,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-CAP",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 50000,
                     monthlyDeduction: 10000, // wants ₱10K/mo
                     status: "active",
@@ -216,7 +216,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-LOWDEDUCT",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 50000,
                     monthlyDeduction: 2000,
                     status: "active",
@@ -236,7 +236,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-LASTPAY",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 1000, // small remaining
                     monthlyDeduction: 5000,
                     status: "active",
@@ -256,7 +256,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-FROZEN",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 30000,
                     monthlyDeduction: 5000,
                     status: "active",
@@ -281,7 +281,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-RECORD-CAP",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 50000,
                     monthlyDeduction: 10000,
                     status: "active",
@@ -314,7 +314,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-LIFE",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 30000,
                     monthlyDeduction: 3000,
                     status: "active",
@@ -337,7 +337,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-LIFE",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 30000,
                     monthlyDeduction: 3000,
                     status: "active",
@@ -361,7 +361,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-LIFE",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 30000,
                     monthlyDeduction: 3000,
                     status: "active",
@@ -385,7 +385,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-LIFE",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 30000,
                     monthlyDeduction: 3000,
                     status: "active",
@@ -410,7 +410,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-LIFE",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 30000,
                     monthlyDeduction: 3000,
                     status: "active",
@@ -439,7 +439,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-SCHED",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 10000,
                     monthlyDeduction: 2500,
                     status: "active",
@@ -462,7 +462,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-SCHED",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 7000,
                     monthlyDeduction: 3000,
                     status: "active",
@@ -501,7 +501,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-QUERY",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 10000,
                     monthlyDeduction: 2000,
                     status: "active",
@@ -531,7 +531,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-ALLDED",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 20000,
                     monthlyDeduction: 5000,
                     status: "active",
@@ -562,7 +562,7 @@ describe("Loans Store", () => {
             act(() => {
                 result.current.createLoan({
                     employeeId: "EMP-RESET",
-                    type: "salary_loan",
+                    type: "salary",
                     amount: 99999,
                     monthlyDeduction: 9999,
                     status: "active",

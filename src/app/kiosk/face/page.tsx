@@ -51,10 +51,10 @@ export default function FaceKioskPage() {
     // Persistent device identifier (same pattern as QR kiosk)
     const [deviceId] = useState(() => {
         if (typeof window === "undefined") return "";
-        const stored = localStorage.getItem("nexhrms-kiosk-face-device-id");
+        const stored = localStorage.getItem("soren-kiosk-face-device-id");
         if (stored) return stored;
         const id = `KIOSK-FACE-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-        localStorage.setItem("nexhrms-kiosk-face-device-id", id);
+        localStorage.setItem("soren-kiosk-face-device-id", id);
         return id;
     });
 
@@ -416,7 +416,7 @@ export default function FaceKioskPage() {
                 setTrackingStatus("matched");
                 setTrackingBox(null);
                 setGuidanceHint("");
-                console.log(`[kiosk-face] MATCH: ${name} (distance=${matchData.distance?.toFixed(4)})`);
+                console.log(`[kiosk-face] ✅ MATCH: ${name} (distance=${matchData.distance?.toFixed(4)})`);
                 toast.success(`Matched: ${name} (distance: ${matchData.distance?.toFixed(3)})`);
 
                 // Auto-confirm after 3s countdown
@@ -439,7 +439,7 @@ export default function FaceKioskPage() {
                 const errorMsg = serverError
                     ? `Recognition failed: ${serverError}`
                     : "Face not recognized. Please ensure you have enrolled your face and try again.";
-                console.log(`[kiosk-face] NO MATCH: ${serverError || "face not recognized"}`);
+                console.log(`[kiosk-face] ❌ NO MATCH: ${serverError || "face not recognized"}`);
                 toast.error(errorMsg);
                 setGuidanceHint("Try again — look straight at the camera");
                 setScanState("idle");
@@ -666,7 +666,7 @@ export default function FaceKioskPage() {
                         />
                     ) : (
                         <span className="font-semibold text-white/40" style={{ fontSize: "clamp(0.75rem, 1.2vw, 0.875rem)" }}>
-                            {companyName || "NexHRMS"}
+                            {companyName || "Soren Data Solutions Inc."}
                         </span>
                     )}
                 </div>
@@ -1142,7 +1142,7 @@ export default function FaceKioskPage() {
                         className="h-1.5 w-1.5 rounded-full animate-pulse"
                         style={{ backgroundColor: NEON_GREEN }}
                     />
-                    <span>{companyName || "NexHRMS"} • Face Recognition Kiosk</span>
+                    <span>{companyName || "Soren Data Solutions Inc."} • Face Recognition Kiosk</span>
                 </div>
             </footer>
         </div>

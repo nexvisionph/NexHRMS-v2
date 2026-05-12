@@ -6,7 +6,6 @@
  */
 
 import type { Permission } from "@/types";
-import { isAdministrativeRole } from "@/lib/admin-tier";
 
 // ─── Role Permission Mappings (Server-side mirror of roles.store.ts) ─────────
 // These are the default permissions per role. For custom roles, we'd need to
@@ -21,12 +20,14 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
         "employees:view", "employees:create", "employees:edit", "employees:delete",
         "attendance:view_all", "attendance:edit", "leave:view_all", "leave:approve",
         "timesheets:view_all", "timesheets:approve", "reports:view",
+        "payroll:view_own",
     ],
     finance: [
         "page:dashboard", "page:payroll", "page:loans", "page:reports", "page:employees",
         "page:settings", "page:messages",
         "payroll:view_all", "payroll:generate", "loans:view_all", "loans:approve", "reports:view",
         "employees:view",
+        "payroll:view_own",
     ],
     payroll_admin: [
         "page:dashboard", "page:payroll", "page:loans", "page:reports", "page:employees",
@@ -34,6 +35,7 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
         "payroll:view_all", "payroll:generate", "payroll:lock", "payroll:issue",
         "loans:view_all", "loans:approve", "employees:view", "reports:view",
         "timesheets:view_all",
+        "payroll:view_own",
     ],
     supervisor: [
         "page:dashboard", "page:employees", "page:attendance", "page:leave",
@@ -41,10 +43,12 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
         "attendance:view_all", "leave:view_all", "leave:approve", "timesheets:view_all", "timesheets:approve",
         "projects:manage", "tasks:view", "tasks:create", "tasks:assign",
         "employees:view",
+        "payroll:view_own",
     ],
     auditor: [
         "page:dashboard", "page:audit", "page:reports", "page:employees", "page:loans", "page:settings",
         "audit:view", "employees:view", "reports:view", "loans:view_all",
+        "payroll:view_own",
     ],
     employee: [
         "page:dashboard", "page:attendance", "page:leave", "page:payroll",
@@ -64,8 +68,10 @@ interface RouteRule {
 }
 
 const PROTECTED_ROUTES: RouteRule[] = [
-    // Payroll routes — any role with page:payroll OR payroll:view_own can access
-    { pattern: /^\/[^/]+\/payroll/, permissions: ["page:payroll", "payroll:view_own"], anyOf: true },
+    // Payroll management — admin roles only
+    { pattern: /^\/[^/]+\/payroll/, permissions: ["page:payroll"] },
+    // My Payslips — all authenticated users
+    { pattern: /^\/[^/]+\/my-payslips/, permissions: ["payroll:view_own"] },
     
     // Loans routes — any role with page:loans OR loans:view_own can access
     { pattern: /^\/[^/]+\/loans/, permissions: ["page:loans", "loans:view_own"], anyOf: true },
@@ -75,7 +81,6 @@ const PROTECTED_ROUTES: RouteRule[] = [
     
     // Employee management
     { pattern: /^\/[^/]+\/employees\/manage/, permissions: ["page:employees"] },
-    { pattern: /^\/[^/]+\/employees(?:\/|$)/, permissions: ["page:employees", "employees:view", "payroll:view_own"], anyOf: true },
     
     // Settings - admin only
     { pattern: /^\/[^/]+\/settings/, permissions: ["page:settings"] },
@@ -91,9 +96,6 @@ const PROTECTED_ROUTES: RouteRule[] = [
     
     // Attendance
     { pattern: /^\/[^/]+\/attendance/, permissions: ["page:attendance"] },
-
-    // Employee biometric self-service
-    { pattern: /^\/[^/]+\/biometric/, permissions: ["page:attendance"] },
     
     // Leave
     { pattern: /^\/[^/]+\/leave/, permissions: ["page:leave"] },
@@ -114,7 +116,6 @@ const PROTECTED_ROUTES: RouteRule[] = [
  * Check if a role has a specific permission.
  */
 export function hasPermissionServer(role: string, permission: Permission): boolean {
-    if (isAdministrativeRole(role)) return true;
     const rolePerms = ROLE_PERMISSIONS[role];
     if (!rolePerms) return false;
     
@@ -146,9 +147,6 @@ export function canAccessRoute(
     role: string,
     pathname: string
 ): { allowed: true } | { allowed: false; requiredPermissions: Permission[] } {
-    if (isAdministrativeRole(role)) {
-        return { allowed: true };
-    }
     // Find matching route rule
     for (const rule of PROTECTED_ROUTES) {
         if (rule.pattern.test(pathname)) {

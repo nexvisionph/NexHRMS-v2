@@ -9,7 +9,7 @@ import { useEmployeesStore } from "@/store/employees.store";
 // ─── Default Rules ────────────────────────────────────────────
 
 const DEFAULT_RULES: NotificationRule[] = [
-    { id: "NR-01", trigger: "payslip_published", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Payslip Ready: {period}", bodyTemplate: "Hi {name}, your payslip for {period} is ready. Net pay: {amount}. Please sign in NexHRMS.", smsTemplate: "Your payslip for {period} is ready. Net: {amount}." },
+    { id: "NR-01", trigger: "payslip_published", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Payslip Ready: {period}", bodyTemplate: "Hi {name}, your payslip for {period} is ready. Net pay: {amount}. Please sign in Soren Data Solutions.", smsTemplate: "Your payslip for {period} is ready. Net: {amount}." },
     { id: "NR-02", trigger: "leave_submitted", enabled: true, channel: "email", recipientRoles: ["admin", "hr"], timing: "immediate", subjectTemplate: "Leave Request: {name}", bodyTemplate: "{name} submitted a {leaveType} leave request ({dates})." },
     { id: "NR-03", trigger: "leave_approved", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Leave {status}: {dates}", bodyTemplate: "Hi {name}, your {leaveType} leave ({dates}) has been {status}.", smsTemplate: "Your {leaveType} leave ({dates}) has been {status}." },
     { id: "NR-04", trigger: "leave_rejected", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Leave Rejected: {dates}", bodyTemplate: "Hi {name}, your {leaveType} leave ({dates}) has been rejected." },
@@ -30,6 +30,7 @@ const DEFAULT_RULES: NotificationRule[] = [
     { id: "NR-18", trigger: "task_submitted", enabled: true, channel: "both", recipientRoles: ["admin", "hr"], timing: "immediate", subjectTemplate: "Task Submitted: {title}", bodyTemplate: "{name} has submitted \"{title}\" for your review." },
     { id: "NR-19", trigger: "task_verified", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Task Approved: {title}", bodyTemplate: "Your task \"{title}\" has been verified and approved." },
     { id: "NR-20", trigger: "task_rejected", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Task Rejected: {title}", bodyTemplate: "Your task \"{title}\" was rejected: {reason}." },
+    { id: "NR-22", trigger: "payslip_on_hold", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Payslip On Hold: {period}", bodyTemplate: "Hi {name}, your payslip for {period} has been placed on hold. Reason: {reason}. Please coordinate with the payroll team to resolve this issue.", smsTemplate: "Your payslip for {period} is on hold. Contact payroll team." },
 ];
 
 // ─── Provider config (MVP — simulated) ───────────────────────
@@ -47,7 +48,7 @@ const DEFAULT_PROVIDER: NotificationProviderConfig = {
     emailProvider: "simulated",
     smsEnabled: true,
     emailEnabled: true,
-    defaultSenderName: "NexHRMS",
+    defaultSenderName: "Soren Data Solutions",
 };
 
 // ─── Store ────────────────────────────────────────────────────
@@ -117,7 +118,8 @@ export function prefKeyForTrigger(trigger: NotificationTrigger | string): keyof 
         trigger === "payslip_published" ||
         trigger === "payment_confirmed" ||
         trigger === "payslip_unsigned_reminder" ||
-        trigger === "payslip_signed"
+        trigger === "payslip_signed" ||
+        trigger === "payslip_on_hold"
     ) return "payrollAlerts";
     return null;
 }
@@ -140,6 +142,10 @@ export function isPushAllowed(employeeId: string): boolean {
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
     return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
+}
+
+function isLegacyIosAltitudeFalsePositiveNotification(log: { type: string; body?: string }): boolean {
+    return log.type === "cheat_detected" && /ios altitude.*missing/i.test(log.body ?? "");
 }
 
 /** Get default navigation link based on notification type (without role prefix) */
@@ -168,6 +174,7 @@ function getDefaultLinkForTrigger(trigger: NotificationTrigger): string {
         task_verified: "/tasks",
         task_rejected: "/tasks",
         cheat_detected: "/attendance",
+        payslip_on_hold: "/payroll",
     };
     return linkMap[trigger] || "/notifications";
 }
@@ -210,6 +217,8 @@ export const useNotificationsStore = create<NotificationsState>()(
             },
 
             addLog: (data) => {
+                if (isLegacyIosAltitudeFalsePositiveNotification(data)) return;
+
                 // Check per-employee category opt-out
                 const empPrefs = { ...DEFAULT_EMPLOYEE_PREFS, ...get().employeePrefs[data.employeeId] };
                 const prefKey = prefKeyForTrigger(data.type);
@@ -391,6 +400,8 @@ export const useNotificationsStore = create<NotificationsState>()(
                         ? renderTemplate(rule.smsTemplate, vars)
                         : body;
 
+                if (isLegacyIosAltitudeFalsePositiveNotification({ type: trigger, body: logBody })) return;
+
                 set((s) => ({
                     logs: [
                         {
@@ -454,14 +465,14 @@ export const useNotificationsStore = create<NotificationsState>()(
             },
         }),
         {
-            name: "nexhrms-notifications",
-            version: 5,
+            name: "soren-notifications",
+            version: 6,
             storage: safePersistStorage,
             migrate: (persisted: unknown) => {
                 // Carry over rules and logs from previous versions; reset everything else.
                 const p = persisted as Partial<NotificationsState> | null;
                 return {
-                    logs: p?.logs ?? [],
+                    logs: (p?.logs ?? []).filter((l) => !isLegacyIosAltitudeFalsePositiveNotification({ type: l.type, body: l.body })),
                     rules: p?.rules ?? [...DEFAULT_RULES],
                     providerConfig: p?.providerConfig ?? { ...DEFAULT_PROVIDER },
                     employeePrefs: (p as Record<string, unknown>)?.employeePrefs as Record<string, EmployeeNotifPrefs> ?? {},

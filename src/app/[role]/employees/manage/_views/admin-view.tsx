@@ -18,7 +18,6 @@ import {
     adminDeleteAccount,
     listUserAccounts,
 } from "@/services/auth.service";
-import { createClient } from "@/services/supabase-browser";
 import type { DemoUserLike } from "@/services/auth.service";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +45,7 @@ import { nanoid } from "nanoid";
 import { Search, SlidersHorizontal, Eye, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, UserMinus, Pencil, Mail, MapPin, Phone, Cake, DollarSign, RefreshCw, KeyRound, ShieldCheck, Briefcase, User, FolderKanban, Users, Tag, Crown, Building2, Receipt, Calculator, XCircle } from "lucide-react";
 import { getInitials, formatCurrency, formatDate, validatePhone } from "@/lib/format";
 import Link from "next/link";
+import { ImportDataDialog } from "@/components/import-data-dialog";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
 import { sendNotification } from "@/lib/notifications";
 import { toast } from "sonner";
@@ -53,10 +53,9 @@ import { useAuditStore } from "@/store/audit.store";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Employee, WorkType, PayFrequency, Role, JobTitle, Department, DeductionType, DeductionOverrideMode } from "@/types";
+import { forceRehydrate } from "@/services/sync.service";
 
 const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-
-const ADMINISTRATIVE_TIER_ROLES: Role[] = ["admin", "hr", "finance", "supervisor", "payroll_admin", "auditor"];
 
 /* ═══════════════════════════════════════════════════════════════
    ADMIN / HR VIEW — Full Employee Management
@@ -93,18 +92,7 @@ export default function AdminEmployeesView() {
     const canSetSalary = hasPermission(currentUser.role, "employees:view_salary");
     const canDirectSet = hasPermission(currentUser.role, "employees:approve_salary");
     const isHR = canSetSalary && !canDirectSet;
-    const canAccessAdministrativeTier = ADMINISTRATIVE_TIER_ROLES.includes(currentUser.role);
-
-    useEffect(() => {
-        if (canAccessAdministrativeTier) return;
-        console.warn("[AdminEmployeesView] Access denied for administrative user-management controls", {
-            userId: currentUser.id,
-            userRole: currentUser.role,
-            userEmail: currentUser.email,
-            route: rh("/employees/manage"),
-            allowedRoles: ADMINISTRATIVE_TIER_ROLES,
-        });
-    }, [canAccessAdministrativeTier, currentUser.email, currentUser.id, currentUser.role, rh]);
+    const canManageRoles = hasPermission(currentUser.role, "settings:roles");
 
     // ─── User Accounts (production: real DB, demo: Zustand store) ───
     const [realAccounts, setRealAccounts] = useState<DemoUserLike[]>([]);
@@ -117,6 +105,36 @@ export default function AdminEmployeesView() {
         if (result.ok) setRealAccounts(result.accounts);
         setAccountsLoading(false);
     }, []);
+
+    const handleDeleteEmployee = async (emp: Employee) => {
+        if (!canManage) return;
+
+        try {
+            const res = await fetch(`/api/employees/${encodeURIComponent(emp.id)}`, {
+                method: "DELETE",
+                credentials: "same-origin",
+            });
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok || data.ok === false) {
+                toast.error(data.error || "Failed to delete employee from database");
+                return;
+            }
+
+            removeEmployee(emp.id);
+            useAuditStore.getState().log({
+                entityType: "employee",
+                entityId: emp.id,
+                action: "employee_deleted",
+                performedBy: currentUser.id,
+            });
+            toast.success(`${emp.name} removed`);
+            try { await forceRehydrate(); } catch { /* keep local state if refresh fails */ }
+        } catch (error) {
+            console.error("[employees] delete failed:", error);
+            toast.error("Network error while deleting employee");
+        }
+    };
 
     useEffect(() => {
         if (USE_DEMO_MODE) return;
@@ -370,7 +388,7 @@ export default function AdminEmployeesView() {
     const [pageSize, setPageSize] = useState(10);
     const [salaryRange, setSalaryRange] = useState([0, 200000]);
     const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({
-        id: true, name: true, status: true, role: true, department: false, project: true, teamLeader: true, productivity: true, joinDate: true, salary: true, workType: true,
+        id: true, biometricId: true, name: true, status: true, role: true, department: false, project: true, teamLeader: true, productivity: true, joinDate: true, salary: true, workType: true,
     });
 
     // Add Employee Dialog
@@ -382,6 +400,7 @@ export default function AdminEmployeesView() {
     const [newWorkType, setNewWorkType] = useState<WorkType>("WFO");
     const [newSalary, setNewSalary] = useState("");
     const [newPhone, setNewPhone] = useState("");
+    const [newBiometricId, setNewBiometricId] = useState("");
     const [newPayFreq, setNewPayFreq] = useState<string>("company");
     const [newSystemRole, setNewSystemRole] = useState<Role>("employee");
     const [newPassword, setNewPassword] = useState("");
@@ -429,6 +448,7 @@ export default function AdminEmployeesView() {
     const [editWorkType, setEditWorkType] = useState<WorkType>("WFO");
     const [editSalary, setEditSalary] = useState("");
     const [editPhone, setEditPhone] = useState("");
+    const [editBiometricId, setEditBiometricId] = useState("");
     const [editProductivity, setEditProductivity] = useState("80");
     const [editWorkDays, setEditWorkDays] = useState<string[]>(["Mon", "Tue", "Wed", "Thu", "Fri"]);
     const [editProjectId, setEditProjectId] = useState<string>("");
@@ -459,123 +479,9 @@ export default function AdminEmployeesView() {
     const [dirStatus, setDirStatus] = useState("all");
 
     const salaryDialogEmp = salaryDialogEmpId ? employees.find((e) => e.id === salaryDialogEmpId) : null;
-    
-    // Approval state
-    const [approvalOpen, setApprovalOpen] = useState(false);
-    const [approvingEmp, setApprovingEmp] = useState<Employee | null>(null);
-    const [approveRole, setApproveRole] = useState<Role>("employee");
-    const [approveJobTitle, setApproveJobTitle] = useState("");
-    const [approveSalary, setApproveSalary] = useState("");
-    const [approveDept, setApproveDept] = useState("");
-    const [approveWorkType, setApproveWorkType] = useState<WorkType>("WFO");
-    const [approvePayFreq, setApprovePayFreq] = useState<PayFrequency | "company">("company");
-    const [approveTeamLeader, setApproveTeamLeader] = useState("none");
-    const [approveShiftId, setApproveShiftId] = useState("none");
-    const [approveWorkDays, setApproveWorkDays] = useState<string[]>(["Mon","Tue","Wed","Thu","Fri"]);
-    const [approveProjectId, setApproveProjectId] = useState("none");
-    const [approveDeductionTemplateIds, setApproveDeductionTemplateIds] = useState<string[]>([]);
-    
-    const [approveSssMode, setApproveSssMode] = useState<DeductionOverrideMode>("auto");
-    const [approveSssValue, setApproveSssValue] = useState("");
-    const [approvePhilhealthMode, setApprovePhilhealthMode] = useState<DeductionOverrideMode>("auto");
-    const [approvePhilhealthValue, setApprovePhilhealthValue] = useState("");
-    const [approvePagibigMode, setApprovePagibigMode] = useState<DeductionOverrideMode>("auto");
-    const [approvePagibigValue, setApprovePagibigValue] = useState("");
-    const [approveBirMode, setApproveBirMode] = useState<DeductionOverrideMode>("auto");
-    const [approveBirValue, setApproveBirValue] = useState("");
-
-    const pendingAccounts = useMemo(() => {
-        return employees.filter(e => e.status === "inactive" && e.jobTitle === "PENDING_APPROVAL");
-    }, [employees]);
-
-    const handleApprove = async () => {
-        if (!approvingEmp) return;
-        const id = approvingEmp.id;
-        try {
-            updateEmployee(id, {
-                status: "active",
-                role: approveRole,
-                jobTitle: approveJobTitle,
-                department: approveDept,
-                salary: Number(approveSalary) || 0,
-                workType: approveWorkType,
-                payFrequency: approvePayFreq === "company" ? undefined : approvePayFreq,
-                teamLeader: approveTeamLeader,
-                shiftId: approveShiftId,
-                workDays: approveWorkDays,
-            });
-
-            // Handle project and shift assignments
-            if (approveProjectId && approveProjectId !== "none") assignToProject(approveProjectId, id);
-            if (approveShiftId && approveShiftId !== "none") assignShift(id, approveShiftId);
-
-            // Handle deduction template assignments
-            if (approveDeductionTemplateIds.length > 0) {
-                approveDeductionTemplateIds.forEach(templateId => {
-                    assignDeductionToEmployee({ employeeId: id, templateId }).catch(() => {});
-                });
-            }
-
-            // Handle tax overrides
-            const taxOverrides = [
-                { type: "sss" as const, mode: approveSssMode, value: approveSssValue },
-                { type: "philhealth" as const, mode: approvePhilhealthMode, value: approvePhilhealthValue },
-                { type: "pagibig" as const, mode: approvePagibigMode, value: approvePagibigValue },
-                { type: "bir" as const, mode: approveBirMode, value: approveBirValue },
-            ];
-            taxOverrides.forEach(({ type, mode, value }) => {
-                if (mode !== "auto") {
-                    setDeductionOverride({
-                        id: `DO-${id}-${type}`,
-                        employeeId: id,
-                        deductionType: type,
-                        mode,
-                        percentage: mode === "percentage" ? parseFloat(value) || 0 : undefined,
-                        fixedAmount: mode === "fixed" ? parseFloat(value) || 0 : undefined,
-                        updatedAt: new Date().toISOString(),
-                    });
-                }
-            });
-
-            // Update the profile role via Supabase
-            if (approvingEmp.profileId) {
-                const supabase = createClient();
-                await supabase.from("profiles").update({ 
-                    role: approveRole,
-                    department: approveDept,
-                    profile_complete: true
-                }).eq("id", approvingEmp.profileId);
-            }
-            toast.success(`Account for ${approvingEmp.name} approved as ${approveRole}`);
-            setApprovalOpen(false);
-            setApprovingEmp(null);
-            refreshAccounts();
-        } catch (err) {
-            console.error(err);
-            toast.error("Failed to approve account");
-        }
-    };
-
-    const handleReject = async (emp: Employee) => {
-        try {
-            if (emp.profileId) {
-                const result = await adminDeleteAccount(emp.profileId);
-                if (!result.ok) {
-                    toast.error(result.error);
-                    return;
-                }
-            } else {
-                removeEmployee(emp.id);
-            }
-            toast.success(`Registration for ${emp.name} rejected and account removed.`);
-            refreshAccounts();
-        } catch {
-            toast.error("Failed to reject registration");
-        }
-    };
 
     const dirFiltered = useMemo(() => employees.filter((e) => {
-        const matchSearch = !dirSearch || e.name.toLowerCase().includes(dirSearch.toLowerCase()) || e.email.toLowerCase().includes(dirSearch.toLowerCase());
+        const matchSearch = !dirSearch || e.name.toLowerCase().includes(dirSearch.toLowerCase()) || e.email.toLowerCase().includes(dirSearch.toLowerCase()) || e.biometricId?.toLowerCase().includes(dirSearch.toLowerCase());
         const matchDept = dirDept === "all" || e.department === dirDept;
         const matchStatus = dirStatus === "all" || e.status === dirStatus;
         return matchSearch && matchDept && matchStatus;
@@ -608,7 +514,7 @@ export default function AdminEmployeesView() {
 
     const filtered = useMemo(() => {
         const result = employees.filter((e) => {
-            const matchSearch = !searchQuery || e.name.toLowerCase().includes(searchQuery.toLowerCase()) || e.email.toLowerCase().includes(searchQuery.toLowerCase()) || e.id.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchSearch = !searchQuery || e.name.toLowerCase().includes(searchQuery.toLowerCase()) || e.email.toLowerCase().includes(searchQuery.toLowerCase()) || e.id.toLowerCase().includes(searchQuery.toLowerCase()) || e.biometricId?.toLowerCase().includes(searchQuery.toLowerCase());
             const matchStatus = statusFilter === "all" || e.status === statusFilter;
             const matchWork = workTypeFilter === "all" || e.workType === workTypeFilter;
             const matchRole = roleFilter === "all" || e.role === roleFilter;
@@ -645,6 +551,7 @@ export default function AdminEmployeesView() {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) { toast.error("Please enter a valid email address"); return; }
         if (!newPassword || newPassword.length < 8) { toast.error("Password is required and must be at least 8 characters"); return; }
         if (employees.some((e) => e.email.toLowerCase() === newEmail.trim().toLowerCase())) { toast.error("An employee with this email already exists"); return; }
+        if (newBiometricId.trim() && employees.some((e) => e.biometricId === newBiometricId.trim())) { toast.error("This biometric ID is already assigned to another employee"); return; }
         const salaryVal = Number(newSalary);
         if (newSalary && (isNaN(salaryVal) || salaryVal < 0)) { toast.error("Salary must be a non-negative number"); return; }
         
@@ -666,7 +573,7 @@ export default function AdminEmployeesView() {
         const addResult = addEmployee({
             id, name: newName.trim(), email: newEmail.trim(), role: newSystemRole, jobTitle: newJobTitle, department: newDept, workType: newWorkType,
             salary: salaryVal || 0, joinDate: new Date().toISOString().split("T")[0], productivity: 0,
-            status: "active", location: "", phone: formattedPhone,
+            status: "active", location: "", phone: formattedPhone, biometricId: newBiometricId.trim() || undefined,
             workDays: newWorkDays.length ? newWorkDays : undefined,
             birthday: newBirthday || undefined,
             teamLeader: newTeamLeader !== "none" ? newTeamLeader : undefined,
@@ -687,7 +594,7 @@ export default function AdminEmployeesView() {
         
         // Reset form fields
         const resetForm = () => {
-            setNewName(""); setNewEmail(""); setNewJobTitle(""); setNewDept(""); setNewWorkType("WFO"); setNewSalary(""); setNewPhone(""); setNewPayFreq("company"); setNewSystemRole("employee"); setNewPassword(""); setNewMustChange(true); setNewWorkDays(["Mon", "Tue", "Wed", "Thu", "Fri"]); setNewProjectId("none"); setNewBirthday(""); setNewTeamLeader("none"); setNewShiftId("none"); setNewEmergencyContact(""); setNewAddress("");
+            setNewName(""); setNewEmail(""); setNewJobTitle(""); setNewDept(""); setNewWorkType("WFO"); setNewSalary(""); setNewPhone(""); setNewBiometricId(""); setNewPayFreq("company"); setNewSystemRole("employee"); setNewPassword(""); setNewMustChange(true); setNewWorkDays(["Mon", "Tue", "Wed", "Thu", "Fri"]); setNewProjectId("none"); setNewBirthday(""); setNewTeamLeader("none"); setNewShiftId("none"); setNewEmergencyContact(""); setNewAddress("");
             // Reset deduction/tax fields
             setNewDeductionTemplateIds([]); setNewSssMode("auto"); setNewSssValue(""); setNewPhilhealthMode("auto"); setNewPhilhealthValue(""); setNewPagibigMode("auto"); setNewPagibigValue(""); setNewBirMode("auto"); setNewBirValue("");
         };
@@ -747,6 +654,7 @@ export default function AdminEmployeesView() {
                     department: newDept,
                     mustChangePassword: newMustChange,
                     phone: formattedPhone,
+                    biometricId: newBiometricId.trim() || undefined,
                     birthday: newBirthday || undefined,
                     address: newAddress || undefined,
                     emergencyContact: newEmergencyContact || undefined,
@@ -772,7 +680,7 @@ export default function AdminEmployeesView() {
 
     const handleOpenEdit = (emp: Employee) => {
         setEditingEmp(emp); setEditName(emp.name); setEditEmail(emp.email); setEditRole(emp.role); setEditJobTitle(emp.jobTitle || ""); setEditDept(emp.department);
-        setEditWorkType(emp.workType); setEditSalary(String(emp.salary)); setEditPhone(emp.phone || "");
+        setEditWorkType(emp.workType); setEditSalary(String(emp.salary)); setEditPhone(emp.phone || ""); setEditBiometricId(emp.biometricId || "");
         setEditProductivity(String(emp.productivity)); setEditPayFreq(emp.payFrequency || "company");
         setEditWorkDays(emp.workDays || ["Mon", "Tue", "Wed", "Thu", "Fri"]);
         setEditBirthday(emp.birthday || ""); setEditTeamLeader(emp.teamLeader || "none"); setEditShiftId(emp.shiftId || "none");
@@ -810,10 +718,9 @@ export default function AdminEmployeesView() {
         if (!editDept) { toast.error("Department is required"); return; }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmail.trim())) { toast.error("Please enter a valid email address"); return; }
         if (employees.some((e) => e.id !== editingEmp.id && e.email.toLowerCase() === editEmail.trim().toLowerCase())) { toast.error("An employee with this email already exists"); return; }
-        const editSalaryNum = editSalary.trim() ? Number(editSalary) : editingEmp.salary;
-        if (editSalary.trim() && (isNaN(editSalaryNum) || editSalaryNum < 0)) { toast.error("Salary must be a non-negative number"); return; }
-        const editProductivityNum = editProductivity.trim() ? Number(editProductivity) : editingEmp.productivity;
-        if (editProductivity.trim() && (isNaN(editProductivityNum) || editProductivityNum < 0 || editProductivityNum > 100)) { toast.error("Productivity must be between 0 and 100"); return; }
+        if (editBiometricId.trim() && employees.some((e) => e.id !== editingEmp.id && e.biometricId === editBiometricId.trim())) { toast.error("This biometric ID is already assigned to another employee"); return; }
+        const editSalaryNum = Number(editSalary);
+        if (editSalary && (isNaN(editSalaryNum) || editSalaryNum < 0)) { toast.error("Salary must be a non-negative number"); return; }
         
         // Validate phone if provided
         let formattedPhone: string | undefined;
@@ -829,8 +736,8 @@ export default function AdminEmployeesView() {
         try {
         updateEmployee(editingEmp.id, {
             name: editName.trim(), email: editEmail.trim(), role: editRole, jobTitle: editJobTitle, department: editDept, workType: editWorkType,
-            salary: canDirectSet ? editSalaryNum : editingEmp.salary, phone: formattedPhone,
-            productivity: editProductivityNum, payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
+            salary: editSalaryNum || 0, phone: formattedPhone, biometricId: editBiometricId.trim() || undefined,
+            productivity: Number(editProductivity) || 80, payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
             birthday: editBirthday || undefined,
             teamLeader: editTeamLeader !== "none" ? editTeamLeader : undefined,
             shiftId: editShiftId !== "none" ? editShiftId : undefined,
@@ -910,275 +817,34 @@ export default function AdminEmployeesView() {
                 <p className="text-sm text-muted-foreground mt-0.5">{employees.length} total employees</p>
             </div>
 
-            {/* Approval Dialog */}
-            <Dialog open={approvalOpen} onOpenChange={setApprovalOpen}>
-                <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
-                    <div className="px-6 pt-5 pb-4 border-b">
-                        <DialogTitle className="text-base font-semibold">Approve User Registration</DialogTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">Assign a system role and job details for {approvingEmp?.name}.</p>
-                    </div>
-                    <div className="overflow-y-auto max-h-[calc(85vh-160px)] px-6 py-4 space-y-4">
-                        {/* Login Account / Role */}
-                        <div className="rounded-lg border bg-card">
-                            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/40 rounded-t-lg">
-                                <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">System Access</span>
-                            </div>
-                            <div className="p-4">
-                                <label className="text-xs font-medium text-muted-foreground">System Role</label>
-                                <Select value={approveRole} onValueChange={(v) => setApproveRole(v as Role)}>
-                                    <SelectTrigger className="mt-1 h-8 text-sm capitalize">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="employee">Employee</SelectItem>
-                                        <SelectItem value="supervisor">Supervisor</SelectItem>
-                                        <SelectItem value="hr">HR</SelectItem>
-                                        <SelectItem value="finance">Finance</SelectItem>
-                                        <SelectItem value="payroll_admin">Payroll Admin</SelectItem>
-                                        <SelectItem value="auditor">Auditor</SelectItem>
-                                        <SelectItem value="admin">Admin</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-
-                        {/* Job Details */}
-                        <div className="rounded-lg border bg-card">
-                            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/40 rounded-t-lg">
-                                <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Job Details</span>
-                            </div>
-                            <div className="p-4 space-y-3">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="text-xs font-medium text-muted-foreground">Job Title <span className="text-destructive">*</span></label>
-                                        <Select value={approveJobTitle} onValueChange={setApproveJobTitle}>
-                                            <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select job title" /></SelectTrigger>
-                                            <SelectContent>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div><label className="text-xs font-medium text-muted-foreground">Department <span className="text-destructive">*</span></label>
-                                        <Select value={approveDept} onValueChange={setApproveDept}>
-                                            <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select dept" /></SelectTrigger>
-                                            <SelectContent>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="text-xs font-medium text-muted-foreground">Work Arrangement</label>
-                                        <Select value={approveWorkType} onValueChange={(v) => setApproveWorkType(v as WorkType)}>
-                                            <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
-                                            <SelectContent><SelectItem value="WFO">Work From Office</SelectItem><SelectItem value="WFH">Work From Home</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Full Onsite</SelectItem></SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div><label className="text-xs font-medium text-muted-foreground">Monthly Salary (₱)</label>
-                                        <Input type="number" value={approveSalary} onChange={(e) => setApproveSalary(e.target.value)} placeholder="e.g. 25000" className="mt-1 h-8 text-sm" />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="text-xs font-medium text-muted-foreground">Pay Frequency</label>
-                                        <Select value={approvePayFreq} onValueChange={(value) => setApprovePayFreq(value as PayFrequency | "company")}>
-                                            <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
-                                            <SelectContent><SelectItem value="company">Company Default</SelectItem><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="semi_monthly">Semi-Monthly</SelectItem><SelectItem value="bi_weekly">Bi-Weekly</SelectItem><SelectItem value="weekly">Weekly</SelectItem></SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="text-xs font-medium text-muted-foreground">Team Leader</label>
-                                        <Select value={approveTeamLeader} onValueChange={setApproveTeamLeader}>
-                                            <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select leader" /></SelectTrigger>
-                                            <SelectContent><SelectItem value="none">None</SelectItem>{[...new Map(employees.filter((e) => e.status === "active" && e.id && e.role !== "admin").map((e) => [e.id, e])).values()].map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div><label className="text-xs font-medium text-muted-foreground">Shift Schedule</label>
-                                        <Select value={approveShiftId} onValueChange={setApproveShiftId}>
-                                            <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select shift" /></SelectTrigger>
-                                            <SelectContent><SelectItem value="none">Default</SelectItem>{shiftTemplates.filter((s) => s.id).map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.startTime}–{s.endTime})</SelectItem>)}</SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                                {/* Work Days */}
-                                <div>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <label className="text-xs font-medium text-muted-foreground">Work Days</label>
-                                        <div className="flex items-center gap-1">
-                                            {[{ label: "Mon–Fri", days: ["Mon","Tue","Wed","Thu","Fri"] }, { label: "Mon–Sat", days: ["Mon","Tue","Wed","Thu","Fri","Sat"] }, { label: "All 7", days: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"] }].map(({ label, days }) => (
-                                                <button key={label} type="button" onClick={() => setApproveWorkDays(days)} className="px-2 py-0.5 text-[10px] font-medium rounded border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">{label}</button>
-                                            ))}
-                                            <button type="button" onClick={() => setApproveWorkDays([])} className="px-2 py-0.5 text-[10px] font-medium rounded border border-dashed border-muted-foreground/30 text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors">Clear</button>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-1.5">
-                                        {WEEK_DAYS.map((day) => (
-                                            <button key={day} type="button" onClick={() => {
-                                                if (approveWorkDays.includes(day)) setApproveWorkDays(approveWorkDays.filter(d => d !== day));
-                                                else setApproveWorkDays([...approveWorkDays, day]);
-                                            }} className={`flex-1 py-1.5 rounded-md text-xs font-semibold border transition-all ${approveWorkDays.includes(day) ? "bg-primary text-primary-foreground border-primary shadow-sm" : "bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"}`}>{day}</button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Project Assignment */}
-                        <div className="rounded-lg border bg-card">
-                            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/40 rounded-t-lg">
-                                <FolderKanban className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Project Assignment</span>
-                            </div>
-                            <div className="p-4">
-                                <label className="text-xs font-medium text-muted-foreground">Assign to Project</label>
-                                <Select value={approveProjectId} onValueChange={setApproveProjectId}>
-                                    <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="No project — assign later" /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="none">No project</SelectItem>
-                                        {projects.filter((p) => p.status !== "completed" && p.id).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-
-                        {/* Deduction/Allowance Templates */}
-                        <div className="rounded-lg border bg-card">
-                            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/40 rounded-t-lg">
-                                <Receipt className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Deduction/Allowance</span>
-                            </div>
-                            <div className="p-4 space-y-2">
-                                {activeTemplates.length === 0 ? (
-                                    <p className="text-xs text-muted-foreground">No active templates available.</p>
-                                ) : (
-                                    activeTemplates.map((t) => (
-                                        <label key={t.id} className="flex items-center gap-2 cursor-pointer">
-                                            <Checkbox
-                                                checked={approveDeductionTemplateIds.includes(t.id)}
-                                                onCheckedChange={(checked) => {
-                                                    if (checked) setApproveDeductionTemplateIds([...approveDeductionTemplateIds, t.id]);
-                                                    else setApproveDeductionTemplateIds(approveDeductionTemplateIds.filter(id => id !== t.id));
-                                                }}
-                                            />
-                                            <span className="text-sm">{t.name}</span>
-                                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.type === "allowance" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                                                {t.type}
-                                            </span>
-                                            <span className="text-xs text-muted-foreground ml-auto">
-                                                {t.calculationMode === "percentage" ? `${t.value}%` : `₱${t.value.toLocaleString()}`}
-                                            </span>
-                                        </label>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Tax Settings */}
-                        <div className="rounded-lg border bg-card">
-                            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/40 rounded-t-lg">
-                                <Calculator className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax Settings</span>
-                            </div>
-                            <div className="p-4 grid grid-cols-2 gap-4">
-                                {/* SSS */}
-                                <div>
-                                    <label className="text-xs font-medium text-muted-foreground">SSS</label>
-                                    <Select value={approveSssMode} onValueChange={(v: DeductionOverrideMode) => setApproveSssMode(v)}>
-                                        <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="auto">Auto-compute</SelectItem>
-                                            <SelectItem value="exempt">Exempt</SelectItem>
-                                            <SelectItem value="percentage">Custom %</SelectItem>
-                                            <SelectItem value="fixed">Fixed Amount</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    {(approveSssMode === "percentage" || approveSssMode === "fixed") && (
-                                        <Input type="number" value={approveSssValue} onChange={(e) => setApproveSssValue(e.target.value)} className="mt-1 h-8 text-sm" />
-                                    )}
-                                </div>
-                                {/* PhilHealth */}
-                                <div>
-                                    <label className="text-xs font-medium text-muted-foreground">PhilHealth</label>
-                                    <Select value={approvePhilhealthMode} onValueChange={(v: DeductionOverrideMode) => setApprovePhilhealthMode(v)}>
-                                        <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="auto">Auto-compute</SelectItem>
-                                            <SelectItem value="exempt">Exempt</SelectItem>
-                                            <SelectItem value="percentage">Custom %</SelectItem>
-                                            <SelectItem value="fixed">Fixed Amount</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    {(approvePhilhealthMode === "percentage" || approvePhilhealthMode === "fixed") && (
-                                        <Input type="number" value={approvePhilhealthValue} onChange={(e) => setApprovePhilhealthValue(e.target.value)} className="mt-1 h-8 text-sm" />
-                                    )}
-                                </div>
-                                {/* Pag-IBIG */}
-                                <div>
-                                    <label className="text-xs font-medium text-muted-foreground">Pag-IBIG</label>
-                                    <Select value={approvePagibigMode} onValueChange={(v: DeductionOverrideMode) => setApprovePagibigMode(v)}>
-                                        <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="auto">Auto-compute</SelectItem>
-                                            <SelectItem value="exempt">Exempt</SelectItem>
-                                            <SelectItem value="percentage">Custom %</SelectItem>
-                                            <SelectItem value="fixed">Fixed Amount</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    {(approvePagibigMode === "percentage" || approvePagibigMode === "fixed") && (
-                                        <Input type="number" value={approvePagibigValue} onChange={(e) => setApprovePagibigValue(e.target.value)} className="mt-1 h-8 text-sm" />
-                                    )}
-                                </div>
-                                {/* BIR */}
-                                <div>
-                                    <label className="text-xs font-medium text-muted-foreground">Withholding Tax (BIR)</label>
-                                    <Select value={approveBirMode} onValueChange={(v: DeductionOverrideMode) => setApproveBirMode(v)}>
-                                        <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="auto">Auto-compute</SelectItem>
-                                            <SelectItem value="exempt">Exempt</SelectItem>
-                                            <SelectItem value="percentage">Custom %</SelectItem>
-                                            <SelectItem value="fixed">Fixed Amount</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    {(approveBirMode === "percentage" || approveBirMode === "fixed") && (
-                                        <Input type="number" value={approveBirValue} onChange={(e) => setApproveBirValue(e.target.value)} className="mt-1 h-8 text-sm" />
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t bg-muted/20">
-                        <Button variant="outline" onClick={() => setApprovalOpen(false)} className="h-8 text-sm">Cancel</Button>
-                        <Button onClick={handleApprove} className="gap-1.5 h-8 text-sm">
-                            <ShieldCheck className="h-3.5 w-3.5" />
-                            Approve & Link Profile
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
             <Tabs defaultValue="management">
                 <TabsList>
                     <TabsTrigger value="management">Employee Management</TabsTrigger>
                     <TabsTrigger value="directory">Directory &amp; Salary</TabsTrigger>
-                    {canAccessAdministrativeTier && <TabsTrigger value="pending" className="relative">
-                        Pending Accounts
-                        {pendingAccounts.length > 0 && (
-                            <Badge className="ml-2 bg-destructive text-destructive-foreground hover:bg-destructive px-1.5 py-0 min-w-[1.2rem] flex justify-center">
-                                {pendingAccounts.length}
-                            </Badge>
-                        )}
-                    </TabsTrigger>}
-                    {canAccessAdministrativeTier && <TabsTrigger value="accounts">User Accounts</TabsTrigger>}
-                    {canAccessAdministrativeTier && <TabsTrigger value="job-titles">Job Titles</TabsTrigger>}
-                    {canAccessAdministrativeTier && <TabsTrigger value="departments">Departments</TabsTrigger>}
+                    {canManageRoles && <TabsTrigger value="accounts">User Accounts</TabsTrigger>}
+                    {canManageRoles && <TabsTrigger value="job-titles">Job Titles</TabsTrigger>}
+                    {canManageRoles && <TabsTrigger value="departments">Departments</TabsTrigger>}
                 </TabsList>
 
                 {/* ─── Management Tab ─── */}
                 <TabsContent value="management" className="mt-4 space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <p className="text-sm text-muted-foreground">{filtered.length} employees found</p>
-                        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-                            <DialogTrigger asChild>
-                                <Button className="gap-1.5" disabled={!canManage}><Plus className="h-4 w-4" /> Add Employee</Button>
-                            </DialogTrigger>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {canManage && <ImportDataDialog module="employees" />}
+                            {canManage && (
+                                <Button
+                                    variant="outline"
+                                    className="gap-1.5"
+                                    onClick={() => { window.location.href = "/api/export/employees"; }}
+                                >
+                                    Export
+                                </Button>
+                            )}
+                            <Dialog open={addOpen} onOpenChange={setAddOpen}>
+                                <DialogTrigger asChild>
+                                    <Button className="gap-1.5" disabled={!canManage}><Plus className="h-4 w-4" /> Add Employee</Button>
+                                </DialogTrigger>
                             <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
                                 <div className="px-6 pt-5 pb-4 border-b">
                                     <DialogTitle className="text-base font-semibold">Add New Employee</DialogTitle>
@@ -1201,6 +867,10 @@ export default function AdminEmployeesView() {
                                                 <div><label className="text-xs font-medium text-muted-foreground">Emergency Contact</label><Input value={newEmergencyContact} onChange={(e) => setNewEmergencyContact(e.target.value)} placeholder="Name / Phone" className="mt-1 h-8 text-sm" /></div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
+                                                <div><label className="text-xs font-medium text-muted-foreground">Biometric Scanner ID</label><Input value={newBiometricId} onChange={(e) => setNewBiometricId(e.target.value)} placeholder="e.g. 1001" className="mt-1 h-8 text-sm" /></div>
+                                                <div className="flex items-end"><p className="text-[11px] text-muted-foreground pb-1">Use the user ID created directly on the biometric scanner.</p></div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
                                                 <div><label className="text-xs font-medium text-muted-foreground">Birthday</label><Input type="date" value={newBirthday} onChange={(e) => setNewBirthday(e.target.value)} className="mt-1 h-8 text-sm" /></div>
                                                 <div><label className="text-xs font-medium text-muted-foreground">Address</label><Input value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="Home address" className="mt-1 h-8 text-sm" /></div>
                                             </div>
@@ -1215,11 +885,11 @@ export default function AdminEmployeesView() {
                                         </div>
                                         <div className="p-4 space-y-3">
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div><label className="text-xs font-medium text-muted-foreground">Job Title <span className="text-destructive">*</span></label>
-                                                    <Select value={newJobTitle} onValueChange={(val) => { setNewJobTitle(val); const jt = jobTitles.find((j) => j.name === val); if (jt?.department) setNewDept(jt.department); }}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select job title" /></SelectTrigger><SelectContent>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
-                                                </div>
                                                 <div><label className="text-xs font-medium text-muted-foreground">Department <span className="text-destructive">*</span></label>
-                                                    <Select value={newDept} onValueChange={setNewDept}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select dept" /></SelectTrigger><SelectContent>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
+                                                    <Select value={newDept} onValueChange={(v) => { setNewDept(v); setNewJobTitle(""); }}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select dept" /></SelectTrigger><SelectContent>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
+                                                </div>
+                                                <div><label className="text-xs font-medium text-muted-foreground">Job Title <span className="text-destructive">*</span></label>
+                                                    <Select value={newJobTitle} onValueChange={setNewJobTitle} disabled={!newDept}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder={newDept ? "Select job title" : "Select dept first"} /></SelectTrigger><SelectContent>{jobTitles.filter((jt) => jt.isActive && jt.department === newDept).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
@@ -1457,7 +1127,8 @@ export default function AdminEmployeesView() {
                                     <Button onClick={handleAddEmployee} disabled={addingEmployee || !newPassword || newPassword.length < 8} className="gap-1.5 h-8 text-sm"><Plus className="h-3.5 w-3.5" /> {addingEmployee ? "Adding…" : "Add Employee"}</Button>
                                 </div>
                             </DialogContent>
-                        </Dialog>
+                            </Dialog>
+                        </div>
                     </div>
 
                     {/* Edit Employee Dialog */}
@@ -1487,7 +1158,7 @@ export default function AdminEmployeesView() {
                                     <div><label className="text-sm font-medium">Work Type</label>
                                         <Select value={editWorkType} onValueChange={(v) => setEditWorkType(v as WorkType)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">Work From Office</SelectItem><SelectItem value="WFH">Work From Home</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Full Onsite</SelectItem></SelectContent></Select>
                                     </div>
-                                    <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="number" value={editSalary} onChange={(e) => setEditSalary(e.target.value)} className="mt-1" disabled={!canDirectSet} /></div>
+                                    <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="number" value={editSalary} onChange={(e) => setEditSalary(e.target.value)} className="mt-1" /></div>
                                     <div><label className="text-sm font-medium">Pay Frequency</label>
                                         <Select value={editPayFreq} onValueChange={setEditPayFreq}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="company">Company Default ({paySchedule.defaultFrequency.replace("_", "-")})</SelectItem><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="semi_monthly">Semi-Monthly</SelectItem><SelectItem value="bi_weekly">Bi-Weekly</SelectItem><SelectItem value="weekly">Weekly</SelectItem></SelectContent></Select>
                                     </div>
@@ -1495,6 +1166,10 @@ export default function AdminEmployeesView() {
                                 <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-sm font-medium">Phone</label><Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} className="mt-1" /></div>
                                     <div><label className="text-sm font-medium">Emergency Contact</label><Input value={editEmergencyContact} onChange={(e) => setEditEmergencyContact(e.target.value)} placeholder="Name / Phone" className="mt-1" /></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-sm font-medium">Biometric Scanner ID</label><Input value={editBiometricId} onChange={(e) => setEditBiometricId(e.target.value)} placeholder="e.g. 1001" className="mt-1" /></div>
+                                    <div className="flex items-end"><p className="text-xs text-muted-foreground pb-2">Must match the user ID stored in the scanner.</p></div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-sm font-medium">Productivity (%)</label><Input type="number" min="0" max="100" value={editProductivity} onChange={(e) => setEditProductivity(e.target.value)} className="mt-1" /></div>
@@ -1691,9 +1366,9 @@ export default function AdminEmployeesView() {
                             <div className="flex flex-wrap items-center gap-3">
                                 <div className="relative flex-1 min-w-[200px]">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                    <Input placeholder="Search by name, email, or ID..." className="pl-9" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} />
+                                    <Input placeholder="Search by name, email, user ID, or biometric ID..." className="pl-9" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} />
                                 </div>
-                                <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v as "all" | "active" | "inactive" | "resigned"); setPage(1); }}>
+                                <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v as "all" | "active" | "inactive"); setPage(1); }}>
                                     <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="Status" /></SelectTrigger>
                                     <SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem><SelectItem value="resigned">Resigned</SelectItem></SelectContent>
                                 </Select>
@@ -1764,7 +1439,7 @@ export default function AdminEmployeesView() {
                                                 onClick={() => {
                                                     setDepartmentFilter("all");
                                                     setSalaryRange([0, 200000]);
-                                                    setVisibleCols({ id: true, name: true, status: true, role: true, department: false, project: true, teamLeader: true, productivity: true, joinDate: true, salary: true, workType: true });
+                                                    setVisibleCols({ id: true, biometricId: true, name: true, status: true, role: true, department: false, project: true, teamLeader: true, productivity: true, joinDate: true, salary: true, workType: true });
                                                 }}
                                             >
                                                 Reset all
@@ -1892,6 +1567,8 @@ export default function AdminEmployeesView() {
                                             </Badge>
                                         </div>
                                         <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                                            <div><span className="text-muted-foreground">User ID:</span> <span className="font-medium">{emp.id}</span></div>
+                                            <div><span className="text-muted-foreground">Bio ID:</span> <span className="font-medium">{emp.biometricId || "—"}</span></div>
                                             <div><span className="text-muted-foreground">Role:</span> <span className="font-medium">{emp.role}</span></div>
                                             <div><span className="text-muted-foreground">Dept:</span> <span className="font-medium">{emp.department}</span></div>
                                             <div><span className="text-muted-foreground">Type:</span> <Badge variant="outline" className="text-[10px] ml-1">{emp.workType}</Badge></div>
@@ -1907,11 +1584,9 @@ export default function AdminEmployeesView() {
                                             <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" disabled={!canManage} onClick={() => handleOpenEdit(emp)}>
                                                 <Pencil className="h-3.5 w-3.5" /> Edit
                                             </Button>
-                                            {emp.status !== "resigned" && (
                                             <Button variant={emp.status === "active" ? "destructive" : "default"} size="sm" className="h-8 text-xs" disabled={!canManage} onClick={() => { if (!canManage) return; toggleStatus(emp.id); toast.success(`${emp.name} ${emp.status === "active" ? "deactivated" : "activated"}`); }}>
                                                 {emp.status === "active" ? "Deactivate" : "Activate"}
                                             </Button>
-                                            )}
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -1927,6 +1602,7 @@ export default function AdminEmployeesView() {
                                     <TableHeader>
                                         <TableRow>
                                             {visibleCols.id && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("id")}>ID{si("id")}</TableHead>}
+                                            {visibleCols.biometricId && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("biometricId")}>Biometric ID{si("biometricId")}</TableHead>}
                                             {visibleCols.name && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("name")}>Name{si("name")}</TableHead>}
                                             {visibleCols.status && <TableHead className="text-xs">Status</TableHead>}
                                             {visibleCols.role && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("role")}>Role{si("role")}</TableHead>}
@@ -1946,6 +1622,7 @@ export default function AdminEmployeesView() {
                                             return (
                                                 <TableRow key={emp.id} className="group">
                                                     {visibleCols.id && <TableCell className="text-xs text-muted-foreground">{emp.id}</TableCell>}
+                                                    {visibleCols.biometricId && <TableCell className="text-xs font-mono text-muted-foreground">{emp.biometricId || "—"}</TableCell>}
                                                     {visibleCols.name && <TableCell><div className="flex items-center gap-2"><Avatar className="h-8 w-8"><AvatarFallback className="text-[10px] bg-muted">{getInitials(emp.name)}</AvatarFallback></Avatar><div><p className="text-sm font-medium">{emp.name}</p><p className="text-xs text-muted-foreground">{emp.email}</p></div></div></TableCell>}
                                                     {visibleCols.status && <TableCell><Badge variant="secondary" className={emp.status === "active" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : emp.status === "resigned" ? "bg-orange-500/15 text-orange-700 dark:text-orange-400" : "bg-red-500/15 text-red-700 dark:text-red-400"}>{emp.status}</Badge></TableCell>}
                                                     {visibleCols.role && <TableCell className="text-xs">{emp.role}</TableCell>}
@@ -1967,11 +1644,9 @@ export default function AdminEmployeesView() {
                                                                     else toast.error("No linked account found");
                                                                 }}><KeyRound className="h-3.5 w-3.5" /></Button>
                                                             )}
-                                                            {emp.status !== "resigned" && (
-                                                            <Button variant="ghost" size="sm" className="h-7 text-[10px]" disabled={!canManage} onClick={() => { if (!canManage) return; toggleStatus(emp.id); useAuditStore.getState().log({ entityType: "employee", entityId: emp.id, action: "adjustment_applied", performedBy: currentUser.id, reason: emp.status === "active" ? "Deactivated" : "Activated" }); toast.success(`${emp.name} ${emp.status === "active" ? "deactivated" : "activated"}`); }}>
+                                                            <Button variant="ghost" size="sm" className="h-7 text-[10px]" disabled={!canManage} onClick={() => { if (!canManage) return; toggleStatus(emp.id); useAuditStore.getState().log({ entityType: "employee", entityId: emp.id, action: emp.status === "active" ? "employee_resigned" : "adjustment_applied", performedBy: currentUser.id, reason: emp.status === "active" ? "Deactivated" : "Activated" }); toast.success(`${emp.name} ${emp.status === "active" ? "deactivated" : "activated"}`); }}>
                                                                 {emp.status === "active" ? "Deactivate" : emp.status === "inactive" ? "Activate" : emp.status}
                                                             </Button>
-                                                            )}
                                                             {canManage && emp.status === "active" && (
                                                                 <AlertDialog>
                                                                     <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-orange-500 hover:text-orange-700 hover:bg-orange-500/10" title="Resign"><UserMinus className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
@@ -1999,7 +1674,7 @@ export default function AdminEmployeesView() {
                                                                         <AlertDialogHeader><AlertDialogTitle>Delete Employee</AlertDialogTitle><AlertDialogDescription>Are you sure you want to permanently remove <strong>{emp.name}</strong>{emp.status === "active" ? " (currently active)" : ""}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
                                                                         <AlertDialogFooter>
                                                                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => { removeEmployee(emp.id); useAuditStore.getState().log({ entityType: "employee", entityId: emp.id, action: "employee_deleted", performedBy: currentUser.id }); toast.success(`${emp.name} removed`); }}>Delete</AlertDialogAction>
+                                                                            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => { void handleDeleteEmployee(emp); }}>Delete</AlertDialogAction>
                                                                         </AlertDialogFooter>
                                                                     </AlertDialogContent>
                                                                 </AlertDialog>
@@ -2037,7 +1712,7 @@ export default function AdminEmployeesView() {
                             <Input placeholder="Search employees..." className="pl-9" value={dirSearch} onChange={(e) => setDirSearch(e.target.value)} />
                         </div>
                         <Select value={dirDept} onValueChange={setDirDept}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Department" /></SelectTrigger><SelectContent><SelectItem value="all">All Departments</SelectItem>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
-                        <Select value={dirStatus} onValueChange={setDirStatus}><SelectTrigger className="w-full sm:w-[130px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem><SelectItem value="resigned">Resigned</SelectItem></SelectContent></Select>
+                        <Select value={dirStatus} onValueChange={setDirStatus}><SelectTrigger className="w-full sm:w-[130px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">
@@ -2109,77 +1784,8 @@ export default function AdminEmployeesView() {
                     )}
                 </TabsContent>
 
-                {/* ─── Pending Accounts Tab ─── */}
-                <TabsContent value="pending" className="mt-4 space-y-4">
-                    <Card>
-                        <CardContent className="p-0">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>User</TableHead>
-                                        <TableHead>Email</TableHead>
-                                        <TableHead>Applied Date</TableHead>
-                                        <TableHead className="text-right">Actions</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {pendingAccounts.length === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                                                No pending registrations at the moment.
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : (
-                                        pendingAccounts.map((emp) => (
-                                            <TableRow key={emp.id}>
-                                                <TableCell className="font-medium">
-                                                    <div className="flex items-center gap-2">
-                                                        <Avatar className="h-8 w-8">
-                                                            <AvatarFallback>{getInitials(emp.name)}</AvatarFallback>
-                                                        </Avatar>
-                                                        {emp.name}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>{emp.email}</TableCell>
-                                                <TableCell>{emp.joinDate}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="flex justify-end gap-2">
-                                                        <Button 
-                                                            variant="outline" 
-                                                            size="sm"
-                                                            className="text-destructive hover:bg-destructive/10"
-                                                            onClick={() => handleReject(emp)}
-                                                        >
-                                                            <XCircle className="h-4 w-4 mr-1.5" />
-                                                            Deny
-                                                        </Button>
-                                                        <Button 
-                                                            size="sm"
-                                                            onClick={() => {
-                                                                setApprovingEmp(emp);
-                                                                setApproveDept(emp.department || "");
-                                                                setApproveRole("employee");
-                                                                setApproveJobTitle("");
-                                                                setApproveSalary("");
-                                                                setApprovalOpen(true);
-                                                            }}
-                                                        >
-                                                            <ShieldCheck className="h-4 w-4 mr-1.5" />
-                                                            Confirm Credentials
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
                 {/* ─── User Accounts Tab ─── */}
-                {canAccessAdministrativeTier && (
+                {canManageRoles && (
                 <TabsContent value="accounts" className="mt-4 space-y-4">
                     {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -2362,7 +1968,7 @@ export default function AdminEmployeesView() {
                 )}
 
                 {/* ─── Job Titles Tab ─── */}
-                {canAccessAdministrativeTier && (
+                {canManageRoles && (
                 <TabsContent value="job-titles" className="mt-4 space-y-4">
                     {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -2558,7 +2164,7 @@ export default function AdminEmployeesView() {
                 )}
 
                 {/* ─── Departments Tab ─── */}
-                {canAccessAdministrativeTier && (
+                {canManageRoles && (
                 <TabsContent value="departments" className="mt-4 space-y-4">
                     {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

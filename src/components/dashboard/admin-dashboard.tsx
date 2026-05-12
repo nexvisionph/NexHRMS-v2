@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -12,6 +12,7 @@ import { useEventsStore } from "@/store/events.store";
 import { useAuditStore } from "@/store/audit.store";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
 import { formatCurrency, getInitials, formatDate } from "@/lib/format";
+import { forceRehydrate } from "@/services/sync.service";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -39,10 +40,10 @@ export function AdminDashboard() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">
+                    <h1 className="text-2xl font-bold tracking-tight">
                         Welcome back, {currentUser.name.split(" ")[0]}!
                     </h1>
-                    <p className="text-muted-foreground text-base mt-1">
+                    <p className="text-muted-foreground text-sm mt-0.5">
                         Full system overview — employees, attendance, payroll, and financials.
                     </p>
                 </div>
@@ -98,6 +99,23 @@ function KpiStatsRow() {
     const leaveRequests = useLeaveStore((s) => s.requests);
     const overtimeRequests = useAttendanceStore((s) => s.overtimeRequests);
     const rh = useRoleHref();
+
+    useEffect(() => {
+        forceRehydrate().catch(() => { /* keep current dashboard state if refresh fails */ });
+
+        const refreshOnFocus = () => {
+            if (document.visibilityState === "visible") {
+                forceRehydrate().catch(() => { /* keep current dashboard state if refresh fails */ });
+            }
+        };
+
+        window.addEventListener("focus", refreshOnFocus);
+        document.addEventListener("visibilitychange", refreshOnFocus);
+        return () => {
+            window.removeEventListener("focus", refreshOnFocus);
+            document.removeEventListener("visibilitychange", refreshOnFocus);
+        };
+    }, []);
 
     const activeEmployees = employees.filter((e) => e.status === "active").length;
 
@@ -179,9 +197,9 @@ function KpiStatsRow() {
     ];
 
     return (
-        <div className="space-y-1.5">
-            <p className="text-sm text-muted-foreground">
-                Attendance data as of: <span className="font-semibold text-foreground">{(() => { try { return format(parseISO(reportingDate), "MMMM d, yyyy"); } catch { return reportingDate; } })()}</span>
+        <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">
+                Attendance data as of: <span className="font-medium text-foreground">{(() => { try { return format(parseISO(reportingDate), "MMMM d, yyyy"); } catch { return reportingDate; } })()}</span>
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {stats.map((stat) => (
@@ -190,17 +208,17 @@ function KpiStatsRow() {
                             <CardContent className="p-5">
                                 <div className="flex items-start justify-between">
                                     <div className="space-y-2">
-                                        <p className="text-base text-muted-foreground font-semibold">{stat.label}</p>
-                                        <p className="text-4xl font-bold tracking-tight">{stat.value}</p>
-                                        <div className="flex items-center gap-1 text-sm font-medium">
-                                            {stat.changeType === "positive" && <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />}
-                                            {stat.changeType === "negative" && <ArrowDownRight className="h-3.5 w-3.5 text-red-500" />}
-                                            {stat.changeType === "warning" && <AlertCircle className="h-3.5 w-3.5 text-amber-500" />}
+                                        <p className="text-sm text-muted-foreground font-medium">{stat.label}</p>
+                                        <p className="text-3xl font-bold tracking-tight">{stat.value}</p>
+                                        <div className="flex items-center gap-1 text-xs">
+                                            {stat.changeType === "positive" && <ArrowUpRight className="h-3 w-3 text-emerald-500" />}
+                                            {stat.changeType === "negative" && <ArrowDownRight className="h-3 w-3 text-red-500" />}
+                                            {stat.changeType === "warning" && <AlertCircle className="h-3 w-3 text-amber-500" />}
                                             <span className={
                                                 stat.changeType === "positive" ? "text-emerald-600 dark:text-emerald-400" :
-                                                stat.changeType === "negative" ? "text-red-600 dark:text-red-400" :
-                                                stat.changeType === "warning" ? "text-amber-600 dark:text-amber-400" :
-                                                "text-muted-foreground"
+                                                    stat.changeType === "negative" ? "text-red-600 dark:text-red-400" :
+                                                        stat.changeType === "warning" ? "text-amber-600 dark:text-amber-400" :
+                                                            "text-muted-foreground"
                                             }>
                                                 {stat.change}
                                             </span>
@@ -725,9 +743,8 @@ function BirthdaysCard() {
                             return (
                                 <div
                                     key={emp.id}
-                                    className={`flex items-center gap-3 p-2.5 rounded-lg transition-colors ${
-                                        isToday_ ? "bg-pink-500/5 ring-1 ring-pink-500/20" : "hover:bg-muted/50"
-                                    }`}
+                                    className={`flex items-center gap-3 p-2.5 rounded-lg transition-colors ${isToday_ ? "bg-pink-500/5 ring-1 ring-pink-500/20" : "hover:bg-muted/50"
+                                        }`}
                                 >
                                     <Avatar className="h-8 w-8">
                                         {emp.avatarUrl && <AvatarImage src={emp.avatarUrl} alt={emp.name} />}
@@ -770,10 +787,7 @@ function RecentActivityCard() {
     const loans = useLoansStore((s) => s.loans);
     const rh = useRoleHref();
 
-    const getEmpName = useCallback(
-        (id: string) => employees.find((e) => e.id === id)?.name || id,
-        [employees]
-    );
+    const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
 
     // Build a unified activity feed from multiple data sources
     const activityItems = useMemo(() => {
@@ -855,7 +869,7 @@ function RecentActivityCard() {
         return items
             .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""))
             .slice(0, 10);
-    }, [auditLogs, leaveRequests, attendanceLogs, payslips, loans, getEmpName]);
+    }, [auditLogs, leaveRequests, attendanceLogs, payslips, loans, employees]);
 
     return (
         <Card className="border border-border/50">
@@ -866,7 +880,7 @@ function RecentActivityCard() {
                         <p className="text-xs text-muted-foreground mt-0.5">Latest system actions across all modules</p>
                     </div>
                     <Button variant="ghost" size="sm" className="text-xs gap-1" asChild>
-                        <Link href={rh("/audit-log")}>
+                        <Link href={rh("/audit")}>
                             View All <ChevronRight className="h-3 w-3" />
                         </Link>
                     </Button>

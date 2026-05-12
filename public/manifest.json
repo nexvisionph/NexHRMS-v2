@@ -3,6 +3,7 @@
   "short_name": "NexHRMS",
   "description": "Human Resource Management System",
   "start_url": "/login",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0f172a",

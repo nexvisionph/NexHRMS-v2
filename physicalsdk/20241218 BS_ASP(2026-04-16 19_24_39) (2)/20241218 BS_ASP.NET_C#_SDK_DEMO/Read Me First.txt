@@ -1,0 +1,21 @@
+﻿1_Source code_Asp.Net_v2
+
+DEMO SOUCE CODE
+
+
+2_Compiled file_Asp.Net_Demo
+
+The Demo program has been compiled and can run
+
+
+3_Microsoft ASP.NET 2.0 AJAX Extensions 1.0
+
+Demo Running environment patch
+
+
+4_ HTTP BS protocol
+
+
+5_20241218 BS_DEMO deloyment User guide.docx
+
+

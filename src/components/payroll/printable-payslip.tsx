@@ -20,13 +20,15 @@ interface PrintablePayslipProps {
 }
 
 export function PrintablePayslip({
-    payslip, employeeName, department, companyName = "NexHRMS", authorizedSignature, open, onClose,
+    payslip, employeeName, department, companyName = "Soren Data Solutions Inc.", authorizedSignature, open, onClose,
 }: PrintablePayslipProps) {
     const printRef = useRef<HTMLDivElement>(null);
 
     const totalDeductions = (payslip.sssDeduction || 0) + (payslip.philhealthDeduction || 0) +
         (payslip.pagibigDeduction || 0) + (payslip.taxDeduction || 0) +
-        (payslip.otherDeductions || 0) + (payslip.loanDeduction || 0);
+        (payslip.otherDeductions || 0) + (payslip.loanDeduction || 0) +
+        (payslip.customDeductions || 0) +
+        (payslip.lateDeduction || 0) + (payslip.absentDeduction || 0) + (payslip.undertimeDeduction || 0);
 
     const totalEarnings = (payslip.grossPay || 0) + (payslip.allowances || 0) + (payslip.holidayPay || 0);
 
@@ -198,6 +200,30 @@ export function PrintablePayslip({
                                     <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.loanDeduction)}</td>
                                 </tr>
                             )}
+                            {(payslip.customDeductions || 0) > 0 && (
+                                <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
+                                    <td style={{ padding: "6px 8px" }}>Custom Deductions</td>
+                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.customDeductions)}</td>
+                                </tr>
+                            )}
+                            {(payslip.lateDeduction || 0) > 0 && (
+                                <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
+                                    <td style={{ padding: "6px 8px" }}>Late Penalty{payslip.attendanceLateMinutes ? ` (${payslip.attendanceLateMinutes} min)` : ""}</td>
+                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.lateDeduction)}</td>
+                                </tr>
+                            )}
+                            {(payslip.absentDeduction || 0) > 0 && (
+                                <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
+                                    <td style={{ padding: "6px 8px" }}>Absent Deduction{payslip.attendanceDaysAbsent ? ` (${payslip.attendanceDaysAbsent} day${payslip.attendanceDaysAbsent > 1 ? "s" : ""})` : ""}</td>
+                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.absentDeduction)}</td>
+                                </tr>
+                            )}
+                            {(payslip.undertimeDeduction || 0) > 0 && (
+                                <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
+                                    <td style={{ padding: "6px 8px" }}>Undertime Deduction{payslip.attendanceUndertimeHours ? ` (${payslip.attendanceUndertimeHours.toFixed(1)} hrs)` : ""}</td>
+                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.undertimeDeduction)}</td>
+                                </tr>
+                            )}
                             <tr style={{ borderBottom: "2px solid #1a1a1a", fontWeight: 700 }}>
                                 <td style={{ padding: "6px 8px" }}>Total Deductions</td>
                                 <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(totalDeductions)}</td>
@@ -214,6 +240,33 @@ export function PrintablePayslip({
                     {payslip.notes && (
                         <div style={{ marginBottom: "16px", padding: "8px", background: "#f5f5f5", borderRadius: "4px", fontSize: "11px", color: "#666" }}>
                             <strong>Notes:</strong> {payslip.notes}
+                        </div>
+                    )}
+
+                    {/* Attendance Summary */}
+                    {(payslip.attendanceDaysPresent !== undefined || payslip.attendanceDaysAbsent !== undefined || payslip.attendanceLateMinutes !== undefined) && (
+                        <div style={{ marginBottom: "16px", padding: "8px", background: "#f9fafb", border: "1px solid #e5e5e5", borderRadius: "4px", fontSize: "11px" }}>
+                            <p style={{ fontWeight: 700, textTransform: "uppercase", fontSize: "10px", color: "#666", marginBottom: "6px" }}>Attendance Summary</p>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+                                {payslip.attendanceDaysPresent !== undefined && (
+                                    <div><span style={{ color: "#666" }}>Days Present</span><br /><strong>{payslip.attendanceDaysPresent}</strong></div>
+                                )}
+                                {payslip.attendanceDaysAbsent !== undefined && (
+                                    <div><span style={{ color: "#666" }}>Days Absent</span><br /><strong style={{ color: payslip.attendanceDaysAbsent > 0 ? "#dc2626" : "inherit" }}>{payslip.attendanceDaysAbsent}</strong></div>
+                                )}
+                                {payslip.attendanceLateMinutes !== undefined && (
+                                    <div><span style={{ color: "#666" }}>Late (min)</span><br /><strong style={{ color: payslip.attendanceLateMinutes > 0 ? "#d97706" : "inherit" }}>{payslip.attendanceLateMinutes}</strong></div>
+                                )}
+                                {payslip.attendanceUndertimeHours !== undefined && payslip.attendanceUndertimeHours > 0 && (
+                                    <div><span style={{ color: "#666" }}>Undertime</span><br /><strong style={{ color: "#d97706" }}>{payslip.attendanceUndertimeHours.toFixed(1)} hrs</strong></div>
+                                )}
+                                {payslip.dailyRate ? (
+                                    <div><span style={{ color: "#666" }}>Daily Rate</span><br /><span>{formatCurrency(payslip.dailyRate)}</span></div>
+                                ) : null}
+                                {payslip.hourlyRate ? (
+                                    <div><span style={{ color: "#666" }}>Hourly Rate</span><br /><span>{formatCurrency(payslip.hourlyRate)}</span></div>
+                                ) : null}
+                            </div>
                         </div>
                     )}
 

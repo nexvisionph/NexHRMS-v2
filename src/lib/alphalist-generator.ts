@@ -1,173 +1,118 @@
 /**
- * BIR Alphalist Generator
- * Generates the alphabetical list of employees for BIR annual filing (Form 1604-CF).
- * The alphalist contains compensation data for all employees during the taxable year.
+ * Alphalist Generator
+ * --------------------------------------------------------------
+ * Builds BIR Alphalist rows from finalized AnnualTaxSummaries.
+ *
+ *   Schedule 1 — present employees (status active at year end)
+ *   Schedule 2 — separated employees (separation_date in target year)
+ *
+ * Reference: bir_alphalist.md §5
  */
 
-import type { Employee, Payslip } from "@/types";
-import type { AlphalistEntry } from "@/store/bir-compliance.store";
-import { NON_TAXABLE_LIMITS } from "./annual-tax-engine";
+import type {
+    Employee,
+    EmployeeTaxProfile,
+    AnnualTaxSummary,
+    AlphalistRow,
+    AlphalistScheduleType,
+} from "@/types";
 
-// ─── Alphalist Schedule Types ────────────────────────────────
-
-export type AlphalistSchedule =
-  | "7.1"   // Employees with tax withheld
-  | "7.2"   // Employees with no tax withheld (MWE)
-  | "7.3"   // Employees terminated before Dec 31
-  | "7.4"   // Employees with previous employer
-  | "7.5";  // Minimum wage earners
-
-export interface AlphalistConfig {
-  year: number;
-  companyName: string;
-  companyTIN: string;
-  companyAddress: string;
-  companyZipCode: string;
-  rdoCode: string;
-  categoryOfAgent: string;
+export interface BuildAlphalistInput {
+    year: number;
+    schedule: AlphalistScheduleType;
+    employees: Employee[];
+    profiles: EmployeeTaxProfile[];
+    summaries: AnnualTaxSummary[];
 }
 
-export interface AlphalistOutput {
-  schedule: AlphalistSchedule;
-  entries: AlphalistEntry[];
-  totalCompensation: number;
-  totalNonTaxable: number;
-  totalTaxable: number;
-  totalTaxWithheld: number;
-  employeeCount: number;
+export interface BuildAlphalistResult {
+    schedule1: AlphalistRow[];
+    schedule2: AlphalistRow[];
+    totals: {
+        employeeCount: number;
+        totalTaxableComp: number;
+        totalTaxWithheld: number;
+    };
 }
 
-// ─── Generator Functions ─────────────────────────────────────
+export function buildAlphalist(input: BuildAlphalistInput): BuildAlphalistResult {
+    const empById = new Map(input.employees.map((e) => [e.id, e]));
+    const profileByEmp = new Map(input.profiles.map((p) => [p.employeeId, p]));
 
-/**
- * Generate alphalist entries from employee and payslip data
- */
-export function generateAlphalist(
-  employees: Employee[],
-  payslips: Payslip[],
-  config: AlphalistConfig
-): AlphalistOutput[] {
-  const results: AlphalistOutput[] = [];
+    const schedule1: AlphalistRow[] = [];
+    const schedule2: AlphalistRow[] = [];
 
-  // Group payslips by employee
-  const payslipsByEmployee = new Map<string, Payslip[]>();
-  for (const ps of payslips) {
-    const year = new Date(ps.periodStart).getFullYear();
-    if (year !== config.year) continue;
-    const existing = payslipsByEmployee.get(ps.employeeId) || [];
-    existing.push(ps);
-    payslipsByEmployee.set(ps.employeeId, existing);
-  }
+    let seq1 = 1;
+    let seq2 = 1;
 
-  // Build entries for each employee
-  const allEntries: AlphalistEntry[] = [];
+    for (const s of input.summaries) {
+        const emp = empById.get(s.employeeId);
+        const profile = profileByEmp.get(s.employeeId);
+        if (!emp || !profile) continue;
 
-  for (const emp of employees) {
-    const empPayslips = payslipsByEmployee.get(emp.id) || [];
-    if (empPayslips.length === 0) continue;
+        const isSeparated =
+            !!profile.separationDate &&
+            new Date(profile.separationDate).getFullYear() === input.year;
 
-    const totalGross = empPayslips.reduce((sum, ps) => sum + ps.grossPay, 0);
-    const totalSSS = empPayslips.reduce((sum, ps) => sum + ps.sssDeduction, 0);
-    const totalPhilHealth = empPayslips.reduce((sum, ps) => sum + ps.philhealthDeduction, 0);
-    const totalPagIBIG = empPayslips.reduce((sum, ps) => sum + ps.pagibigDeduction, 0);
-    const totalTax = empPayslips.reduce((sum, ps) => sum + ps.taxDeduction, 0);
+        const grossCompensation = s.totalTaxableComp + s.totalNonTaxableComp;
 
-    // Compute non-taxable (13th month + mandatory contributions)
-    const mandatoryContributions = totalSSS + totalPhilHealth + totalPagIBIG;
-    const thirteenthMonthExempt = Math.min(
-      emp.salary, // Approximate 13th month as 1 month salary
-      NON_TAXABLE_LIMITS.thirteenthMonthAndBenefits
-    );
-    const nonTaxableIncome = mandatoryContributions + thirteenthMonthExempt;
-    const taxableIncome = Math.max(0, totalGross - nonTaxableIncome);
+        const { lastName, firstName, middleName } = splitName(emp.name);
 
-    // Determine tax category
-    const isMWE = emp.deductionExempt && emp.deductionExemptReason?.includes("Minimum wage");
-    const taxCategory = isMWE ? "exempt" as const : "compensation" as const;
+        const baseRow: Omit<AlphalistRow, "sequenceNumber"> = {
+            tin: profile.tin ?? "",
+            lastName,
+            firstName,
+            middleName,
+            employmentClassification: profile.employmentClassification,
+            taxStatus: profile.taxStatus,
+            isMWE: profile.isMWE,
+            grossCompensation: round2(grossCompensation),
+            nonTaxableCompensation: round2(s.totalNonTaxableComp),
+            taxableCompensation: round2(s.totalTaxableComp),
+            taxWithheld: round2(s.totalTaxWithheld),
+            taxDue: round2(s.annualTaxDue ?? 0),
+            overUnderWithheld: round2(s.adjustmentAmount ?? 0),
+            prevEmployerIncome: round2(s.prevEmployerIncome),
+            prevEmployerTax: round2(s.prevEmployerTax),
+            separationDate: profile.separationDate,
+            separationType: profile.separationType,
+        };
 
-    allEntries.push({
-      employeeId: emp.id,
-      employeeName: emp.name,
-      tin: "", // TIN should come from employee profile
-      totalCompensation: Math.round(totalGross * 100) / 100,
-      nonTaxableIncome: Math.round(nonTaxableIncome * 100) / 100,
-      taxableIncome: Math.round(taxableIncome * 100) / 100,
-      taxWithheld: Math.round(totalTax * 100) / 100,
-      taxCategory,
-    });
-  }
+        if (isSeparated) {
+            if (input.schedule === "schedule_1") continue;
+            schedule2.push({ sequenceNumber: seq2++, ...baseRow });
+        } else {
+            if (input.schedule === "schedule_2") continue;
+            schedule1.push({ sequenceNumber: seq1++, ...baseRow });
+        }
+    }
 
-  // Sort alphabetically
-  allEntries.sort((a, b) => a.employeeName.localeCompare(b.employeeName));
-
-  // Schedule 7.1 — Employees with tax withheld
-  const withTax = allEntries.filter((e) => e.taxWithheld > 0 && e.taxCategory !== "exempt");
-  if (withTax.length > 0) {
-    results.push({
-      schedule: "7.1",
-      entries: withTax,
-      totalCompensation: withTax.reduce((s, e) => s + e.totalCompensation, 0),
-      totalNonTaxable: withTax.reduce((s, e) => s + e.nonTaxableIncome, 0),
-      totalTaxable: withTax.reduce((s, e) => s + e.taxableIncome, 0),
-      totalTaxWithheld: withTax.reduce((s, e) => s + e.taxWithheld, 0),
-      employeeCount: withTax.length,
-    });
-  }
-
-  // Schedule 7.2 — Employees with no tax withheld (non-MWE)
-  const noTaxNonMWE = allEntries.filter((e) => e.taxWithheld === 0 && e.taxCategory !== "exempt");
-  if (noTaxNonMWE.length > 0) {
-    results.push({
-      schedule: "7.2",
-      entries: noTaxNonMWE,
-      totalCompensation: noTaxNonMWE.reduce((s, e) => s + e.totalCompensation, 0),
-      totalNonTaxable: noTaxNonMWE.reduce((s, e) => s + e.nonTaxableIncome, 0),
-      totalTaxable: noTaxNonMWE.reduce((s, e) => s + e.taxableIncome, 0),
-      totalTaxWithheld: 0,
-      employeeCount: noTaxNonMWE.length,
-    });
-  }
-
-  // Schedule 7.5 — Minimum wage earners
-  const mwe = allEntries.filter((e) => e.taxCategory === "exempt");
-  if (mwe.length > 0) {
-    results.push({
-      schedule: "7.5",
-      entries: mwe,
-      totalCompensation: mwe.reduce((s, e) => s + e.totalCompensation, 0),
-      totalNonTaxable: mwe.reduce((s, e) => s + e.nonTaxableIncome, 0),
-      totalTaxable: 0,
-      totalTaxWithheld: 0,
-      employeeCount: mwe.length,
-    });
-  }
-
-  return results;
+    const all = [...schedule1, ...schedule2];
+    return {
+        schedule1,
+        schedule2,
+        totals: {
+            employeeCount: all.length,
+            totalTaxableComp: round2(all.reduce((a, r) => a + r.taxableCompensation, 0)),
+            totalTaxWithheld: round2(all.reduce((a, r) => a + r.taxWithheld, 0)),
+        },
+    };
 }
 
-/**
- * Export alphalist data to CSV format
- */
-export function exportAlphalistToCSV(output: AlphalistOutput): string {
-  const headers = [
-    "Employee Name",
-    "TIN",
-    "Total Compensation",
-    "Non-Taxable Income",
-    "Taxable Income",
-    "Tax Withheld",
-    "Tax Category",
-  ];
+function splitName(full: string): {
+    lastName: string;
+    firstName: string;
+    middleName: string;
+} {
+    const parts = full.trim().split(/\s+/);
+    if (parts.length === 1) return { lastName: parts[0], firstName: "", middleName: "" };
+    if (parts.length === 2) return { lastName: parts[1], firstName: parts[0], middleName: "" };
+    const lastName = parts[parts.length - 1];
+    const firstName = parts[0];
+    const middleName = parts.slice(1, -1).join(" ");
+    return { lastName, firstName, middleName };
+}
 
-  const rows = output.entries.map((e) => [
-    `"${e.employeeName}"`,
-    e.tin || "N/A",
-    e.totalCompensation.toFixed(2),
-    e.nonTaxableIncome.toFixed(2),
-    e.taxableIncome.toFixed(2),
-    e.taxWithheld.toFixed(2),
-    e.taxCategory,
-  ]);
-
-  return [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+function round2(n: number): number {
+    return Math.round((n ?? 0) * 100) / 100;
 }

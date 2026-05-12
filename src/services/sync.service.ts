@@ -54,6 +54,28 @@ let _subscriptions: (() => void)[] = [];
 let _realtimeChannel: ReturnType<ReturnType<typeof createClient>["channel"]> | null = null;
 
 /**
+ * When true, all write-through subscription callbacks are a no-op.
+ * Used by `handleResetAll` to prevent seed data from being pushed to Supabase
+ * during a bulk store reset. Subscribers re-enable after force-rehydration.
+ */
+let _writePaused = false;
+
+/**
+ * Pause all write-through subscriptions. Call before bulk store resets to
+ * prevent seed/local data from overwriting real Supabase rows.
+ */
+export function pauseWriteThrough(): void {
+  _writePaused = true;
+}
+
+/**
+ * Resume write-through subscriptions after a bulk reset + rehydration.
+ */
+export function resumeWriteThrough(): void {
+  _writePaused = false;
+}
+
+/**
  * Pull all data from Supabase and replace Zustand store state.
  * Call this once after successful login or on app mount.
  */
@@ -190,14 +212,22 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
     // Fetch employee-shift assignments separately (returns a mapping, not an array)
     const employeeShiftsMap = await attendanceDb.fetchEmployeeShifts();
 
-    // Hydrate employees store
-    if (employees.length > 0) {
-      useEmployeesStore.setState({
-        employees,
-        salaryRequests,
-        salaryHistory,
-      });
+    // Hydrate employees store. Always replace from Supabase so DB-side deletes
+    // clear local state instead of leaving stale rows around.
+    const deletedEmployeeIds = useEmployeesStore.getState().deletedEmployeeIds ?? [];
+    const deletedEmployeeIdSet = new Set(deletedEmployeeIds);
+    for (const employee of employees) {
+      if (deletedEmployeeIdSet.has(employee.id)) {
+        employeesDb.remove(employee.id).catch((error) => {
+          console.warn("[sync] Failed to purge tombstoned employee:", employee.id, error);
+        });
+      }
     }
+    useEmployeesStore.setState({
+      employees: employees.filter((employee) => !deletedEmployeeIdSet.has(employee.id)),
+      salaryRequests,
+      salaryHistory,
+    });
 
     // Hydrate leave store
     if (leavePolicies.length > 0 || leaveRequests.length > 0 || leaveBalances.length > 0) {
@@ -344,26 +374,22 @@ export function startWriteThrough(): void {
   // Clean up previous subscriptions
   stopWriteThrough();
 
+  // Determine write scope — only admin/hr manage HR data (employees meta, leave balances, attendance logs)
+  const role = useAuthStore.getState().currentUser?.role ?? "";
+  const isAdminOrHr = ["admin", "hr"].includes(role);
   // Kiosk mode syncs all attendance data (used by all employees without individual login)
   const isKioskMode = typeof window !== "undefined" && window.location.pathname.startsWith("/kiosk");
-
-  // Outer role snapshot — used by all subscription callbacks below.
-  // NOTE: the employees callback re-reads this dynamically to avoid a
-  // stale-closure RLS race condition (see below).
-  const outerRole = useAuthStore.getState().currentUser?.role ?? "";
-  const isAdminOrHr = ["admin", "hr"].includes(outerRole);
 
   // ─── Employees write-through ──────────────────────────────
   _subscriptions.push(
     useEmployeesStore.subscribe(
       (state, prevState) => {
-        // Re-read role dynamically on every tick — never rely on a captured value
-        // from when startWriteThrough() was called (stale-closure RLS race condition).
-        const currentRole = useAuthStore.getState().currentUser?.role ?? "";
-        const isAdminOrHr = ["admin", "hr"].includes(currentRole);
+        if (_writePaused) return;
         // Detect changed employees — only admin/hr can write employee records
         if (isAdminOrHr) {
+          const deletedIds = new Set(state.deletedEmployeeIds ?? []);
           for (const emp of state.employees) {
+            if (deletedIds.has(emp.id)) continue;
             const prev = prevState.employees.find((e) => e.id === emp.id);
             if (!prev || JSON.stringify(prev) !== JSON.stringify(emp)) {
               employeesDb.upsert(emp);
@@ -397,6 +423,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useLeaveStore.subscribe(
       (state, prevState) => {
+        if (_writePaused) return;
         // Leave requests: any authenticated user can submit/update their own
         for (const req of state.requests) {
           const prev = prevState.requests.find((r) => r.id === req.id);
@@ -432,6 +459,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useAttendanceStore.subscribe(
       (state, prevState) => {
+        if (_writePaused) return;
         // Logs: admin/hr/kiosk sync all logs; employees sync only their own log entries
         const currentUserState = useAuthStore.getState().currentUser;
         const currentEmployees = useEmployeesStore.getState().employees;
@@ -536,6 +564,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     usePayrollStore.subscribe(
       (state, prevState) => {
+        if (_writePaused) return;
         // Only roles with payroll write access may push mutations through the browser
         // client. Employees, supervisors, and auditors are read-only on payslips —
         // their mutations go through API routes (admin client) to bypass RLS.
@@ -621,6 +650,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useLoansStore.subscribe(
       (state, prevState) => {
+        if (_writePaused) return;
         for (const loan of state.loans) {
           const prev = prevState.loans.find((l) => l.id === loan.id);
           if (!prev || JSON.stringify(prev) !== JSON.stringify(loan)) {
@@ -669,6 +699,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useProjectsStore.subscribe(
       (state, prevState) => {
+        if (_writePaused) return;
         for (const proj of state.projects) {
           const prev = prevState.projects.find((p) => p.id === proj.id);
           if (!prev || JSON.stringify(prev) !== JSON.stringify(proj)) {
@@ -688,6 +719,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useAuditStore.subscribe(
       (state, prevState) => {
+        if (_writePaused) return;
         for (const entry of state.logs) {
           if (!prevState.logs.find((l) => l.id === entry.id)) {
             auditDb.insert(entry);
@@ -701,6 +733,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useEventsStore.subscribe(
       (state, prevState) => {
+        if (_writePaused) return;
         for (const evt of state.events) {
           const prev = prevState.events.find((e) => e.id === evt.id);
           if (!prev || JSON.stringify(prev) !== JSON.stringify(evt)) {
@@ -720,6 +753,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useMessagingStore.subscribe(
       (state, prevState) => {
+        if (_writePaused) return;
         // Use an async IIFE so channels are fully committed to Supabase before
         // any message insert runs. This prevents the FK constraint violation
         // (channel_messages_channel_id_fkey) that occurs when a seed-only channel
@@ -775,6 +809,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useTasksStore.subscribe(
       (state, prevState) => {
+        if (_writePaused) return;
         void (async () => {
           // Task groups — await all upserts/deletes before tasks
           for (const g of state.groups) {
@@ -788,14 +823,11 @@ export function startWriteThrough(): void {
               await tasksDb.deleteGroup(prev.id);
             }
           }
-          // Tasks — safe to run now that groups are committed.
-          // Collect promises so child rows (comments, completion reports) can wait
-          // for their parent task insert to commit (FK: task_id).
-          const taskUpsertPromises: Promise<boolean>[] = [];
+          // Tasks — safe to run now that groups are committed
           for (const t of state.tasks) {
             const prev = prevState.tasks.find((pt) => pt.id === t.id);
             if (!prev || JSON.stringify(prev) !== JSON.stringify(t)) {
-              taskUpsertPromises.push(tasksDb.upsertTask(t));
+              tasksDb.upsertTask(t);
             }
           }
           for (const prev of prevState.tasks) {
@@ -803,15 +835,14 @@ export function startWriteThrough(): void {
               tasksDb.deleteTask(prev.id);
             }
           }
-          await Promise.all(taskUpsertPromises);
-          // Completion reports — FK to tasks
+          // Completion reports
           for (const r of state.completionReports) {
             const prev = prevState.completionReports.find((pr) => pr.id === r.id);
             if (!prev || JSON.stringify(prev) !== JSON.stringify(r)) {
               tasksDb.upsertCompletionReport(r);
             }
           }
-          // Comments (append-only) — FK to tasks
+          // Comments (append-only)
           for (const c of state.comments) {
             if (!prevState.comments.find((pc) => pc.id === c.id)) {
               tasksDb.insertComment(c);
@@ -838,6 +869,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useTimesheetStore.subscribe(
       (state, prevState) => {
+        if (_writePaused) return;
         for (const ts of state.timesheets) {
           const prev = prevState.timesheets.find((pt) => pt.id === ts.id);
           if (!prev || JSON.stringify(prev) !== JSON.stringify(ts)) {
@@ -863,6 +895,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useNotificationsStore.subscribe(
       (state, prevState) => {
+        if (_writePaused) return;
         // Logs: insert new logs OR upsert changed logs (e.g. read status)
         for (const log of state.logs) {
           const prev = prevState.logs.find((pl) => pl.id === log.id);
@@ -888,6 +921,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useLocationStore.subscribe(
       (state, prevState) => {
+        if (_writePaused) return;
         // Pings (append-only)
         for (const ping of state.pings) {
           if (!prevState.pings.find((pp) => pp.id === ping.id)) {
@@ -951,7 +985,7 @@ export function startRealtime(): void {
 
   const supabase = createClient();
   const channel = supabase
-    .channel("nexhrms-realtime")
+    .channel("soren-realtime")
     // ── attendance_logs ──────────────────────────────────────
     .on(
       "postgres_changes",
@@ -970,11 +1004,13 @@ export function startRealtime(): void {
       safe(({ new: row }: { new: Record<string, unknown> }) => {
         const log = keysToCamel(row) as Record<string, unknown>;
         useAttendanceStore.setState((s) => ({
-          logs: s.logs.map((l) =>
-            l.id === log.id
-              ? (JSON.stringify(l) !== JSON.stringify(log) ? { ...l, ...log } as typeof l : l)
-              : l
-          ),
+          logs: s.logs.find((l) => l.id === log.id)
+            ? s.logs.map((l) =>
+              l.id === log.id
+                ? (JSON.stringify(l) !== JSON.stringify(log) ? { ...l, ...log } as typeof l : l)
+                : l
+            )
+            : [...s.logs, log as unknown as typeof s.logs[0]],
         }));
       })
     )
@@ -1049,6 +1085,7 @@ export function startRealtime(): void {
       safe(({ new: row }: { new: Record<string, unknown> }) => {
         const emp = employeeFromDb(row);
         useEmployeesStore.setState((s) => {
+          if (s.deletedEmployeeIds?.includes(emp.id)) return s;
           if (s.employees.find((e) => e.id === emp.id)) return s;
           return { employees: [...s.employees, emp] };
         });
@@ -1060,11 +1097,24 @@ export function startRealtime(): void {
       safe(({ new: row }: { new: Record<string, unknown> }) => {
         const emp = employeeFromDb(row);
         useEmployeesStore.setState((s) => ({
-          employees: s.employees.map((e) =>
-            e.id === emp.id
-              ? (JSON.stringify(e) !== JSON.stringify(emp) ? { ...e, ...emp } : e)
-              : e
-          ),
+          employees: s.deletedEmployeeIds?.includes(emp.id)
+            ? s.employees.filter((e) => e.id !== emp.id)
+            : s.employees.map((e) =>
+              e.id === emp.id
+                ? (JSON.stringify(e) !== JSON.stringify(emp) ? { ...e, ...emp } : e)
+                : e
+            ),
+        }));
+      })
+    )
+    .on(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "employees" },
+      safe(({ old: row }: { old: Record<string, unknown> }) => {
+        const id = row?.id as string;
+        if (!id) return;
+        useEmployeesStore.setState((s) => ({
+          employees: s.employees.filter((e) => e.id !== id),
         }));
       })
     )

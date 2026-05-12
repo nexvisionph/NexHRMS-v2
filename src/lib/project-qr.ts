@@ -1,115 +1,127 @@
 /**
- * Project QR Code Generation & Validation
- * Each project gets a permanent QR code with HMAC signature for attendance verification.
+ * Project QR signing & verification.
+ *
+ * Each project has a server-only `qrSecret` (base64 nonce, set in migration 055).
+ * The QR payload is a JSON string the kiosk scans. Format:
+ *
+ *   { "v": 1, "type": "project", "projectId": "P-xyz", "sig": "<base64url-hmac>" }
+ *
+ * The signature is HMAC-SHA256 of `${projectId}.${qrSecret}` keyed with
+ * `process.env.QR_HMAC_SECRET` (must be set, ≥32 chars). Both the per-project
+ * nonce and the global server secret must match for the signature to verify,
+ * so a stolen `qrSecret` alone is insufficient — and a stolen server secret
+ * alone is insufficient too.
+ *
+ * Static (no rotation) by design — the QR sticker is permanently posted
+ * on-site. Geofence + face verification at scan-time provide the freshness
+ * guarantee (you must physically be at the project location to use it).
+ *
+ * SECURITY:
+ *   - Never log `qrSecret` or `QR_HMAC_SECRET`.
+ *   - Never return `qrSecret` in any response that's not behind `projects:manage`.
+ *   - Always verify on the SERVER. The client only renders the QR.
  */
 
-// ─── QR Payload Structure ────────────────────────────────────
+import { createHmac, timingSafeEqual } from "node:crypto";
 
-export interface ProjectQRPayload {
-  type: "project_qr";
+export const QR_PAYLOAD_VERSION = 1;
+export const QR_PAYLOAD_TYPE = "project" as const;
+
+export interface ProjectQrPayload {
+  v: typeof QR_PAYLOAD_VERSION;
+  type: typeof QR_PAYLOAD_TYPE;
   projectId: string;
-  projectName: string;
-  /** HMAC signature for tamper detection */
-  signature: string;
-  /** Version for future-proofing */
-  version: number;
+  sig: string;
 }
 
-// ─── HMAC Signing ────────────────────────────────────────────
+function getServerSecret(): string {
+  const secret = process.env.QR_HMAC_SECRET;
+  if (secret && secret.length >= 32) return secret;
 
-const QR_SECRET = process.env.NEXT_PUBLIC_QR_SECRET || "nexhrms-project-qr-secret-2026";
+  // Fall back to SUPABASE_SERVICE_ROLE_KEY — it's always present in production,
+  // server-only, and is a strong enough key (200+ char JWT).
+  const fallback = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (fallback && fallback.length >= 32) {
+    if (process.env.NODE_ENV !== "test") {
+      console.warn(
+        "[qr-utils] QR_HMAC_SECRET not set — falling back to SUPABASE_SERVICE_ROLE_KEY. " +
+          "Add QR_HMAC_SECRET to your environment variables for explicit configuration.",
+      );
+    }
+    return fallback;
+  }
 
-/**
- * Generate HMAC-SHA256 signature for a project QR code
- */
-async function generateHMAC(data: string): Promise<string> {
-  if (typeof window !== "undefined" && window.crypto?.subtle) {
-    const encoder = new TextEncoder();
-    const key = await window.crypto.subtle.importKey(
-      "raw",
-      encoder.encode(QR_SECRET),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-    const signature = await window.crypto.subtle.sign("HMAC", key, encoder.encode(data));
-    return Array.from(new Uint8Array(signature))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("")
-      .slice(0, 16); // Truncate to 16 chars for QR readability
-  }
-  // Fallback for server-side or environments without SubtleCrypto
-  let hash = 0;
-  const str = QR_SECRET + data;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(16).padStart(16, "0").slice(0, 16);
+  throw new Error(
+    "QR_HMAC_SECRET env is missing or shorter than 32 chars. " +
+      "Set it in .env (production must use a strong random value).",
+  );
+}
+
+function base64url(buf: Buffer): string {
+  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function fromBase64url(s: string): Buffer {
+  const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - (s.length % 4));
+  return Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/") + pad, "base64");
+}
+
+function computeSignature(projectId: string, qrSecret: string): string {
+  const serverSecret = getServerSecret();
+  const message = `${projectId}.${qrSecret}`;
+  const hmac = createHmac("sha256", serverSecret).update(message).digest();
+  return base64url(hmac);
 }
 
 /**
- * Generate a permanent QR code payload for a project
+ * Build the QR payload string that gets encoded into the QR image.
+ * Returns a stable JSON string suitable for `<QRCodeCanvas value={...} />`.
  */
-export async function generateProjectQR(projectId: string, projectName: string): Promise<string> {
-  const dataToSign = `project:${projectId}:${projectName}`;
-  const signature = await generateHMAC(dataToSign);
-
-  const payload: ProjectQRPayload = {
-    type: "project_qr",
+export function signProjectQr(projectId: string, qrSecret: string): string {
+  if (!projectId || !qrSecret) throw new Error("signProjectQr: projectId and qrSecret are required");
+  const payload: ProjectQrPayload = {
+    v: QR_PAYLOAD_VERSION,
+    type: QR_PAYLOAD_TYPE,
     projectId,
-    projectName,
-    signature,
-    version: 1,
+    sig: computeSignature(projectId, qrSecret),
   };
-
   return JSON.stringify(payload);
 }
 
+export type QrVerifyResult =
+  | { ok: true; projectId: string }
+  | { ok: false; reason: string };
+
 /**
- * Parse and validate a scanned project QR code
+ * Parse and HMAC-verify a scanned QR payload string.
+ * `lookupSecret(projectId)` is called to fetch the project's qrSecret from DB.
  */
-export async function validateProjectQR(qrData: string): Promise<{
-  valid: boolean;
-  payload?: ProjectQRPayload;
-  error?: string;
-}> {
+export async function verifyProjectQr(
+  raw: string,
+  lookupSecret: (projectId: string) => Promise<string | null>,
+): Promise<QrVerifyResult> {
+  let parsed: unknown;
   try {
-    const payload = JSON.parse(qrData) as ProjectQRPayload;
-
-    if (payload.type !== "project_qr") {
-      return { valid: false, error: "Not a project QR code" };
-    }
-
-    if (!payload.projectId || !payload.signature) {
-      return { valid: false, error: "Invalid QR payload structure" };
-    }
-
-    // Verify HMAC signature
-    const dataToSign = `project:${payload.projectId}:${payload.projectName}`;
-    const expectedSignature = await generateHMAC(dataToSign);
-
-    if (payload.signature !== expectedSignature) {
-      return { valid: false, error: "QR signature verification failed" };
-    }
-
-    return { valid: true, payload };
+    parsed = JSON.parse(raw);
   } catch {
-    return { valid: false, error: "Failed to parse QR data" };
+    return { ok: false, reason: "invalid_json" };
   }
-}
+  if (typeof parsed !== "object" || parsed === null) return { ok: false, reason: "not_an_object" };
+  const p = parsed as Partial<ProjectQrPayload>;
+  if (p.v !== QR_PAYLOAD_VERSION) return { ok: false, reason: "unsupported_version" };
+  if (p.type !== QR_PAYLOAD_TYPE) return { ok: false, reason: "wrong_type" };
+  if (typeof p.projectId !== "string" || !p.projectId) return { ok: false, reason: "missing_project_id" };
+  if (typeof p.sig !== "string" || !p.sig) return { ok: false, reason: "missing_signature" };
 
-/**
- * Generate a QR code data URL for display/download
- * Uses a simple SVG-based QR representation (actual QR generation should use a library like qrcode)
- */
-export function getProjectQRDisplayData(projectId: string, projectName: string): {
-  label: string;
-  subtitle: string;
-} {
-  return {
-    label: projectName,
-    subtitle: `Project ID: ${projectId.slice(0, 8)}...`,
-  };
+  const qrSecret = await lookupSecret(p.projectId);
+  if (!qrSecret) return { ok: false, reason: "unknown_project_or_qr_disabled" };
+
+  const expected = computeSignature(p.projectId, qrSecret);
+  // Constant-time comparison to defeat timing attacks.
+  const a = fromBase64url(p.sig);
+  const b = fromBase64url(expected);
+  if (a.length !== b.length) return { ok: false, reason: "signature_mismatch" };
+  if (!timingSafeEqual(a, b)) return { ok: false, reason: "signature_mismatch" };
+
+  return { ok: true, projectId: p.projectId };
 }

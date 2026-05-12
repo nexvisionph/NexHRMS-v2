@@ -36,7 +36,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
     ListTodo, CheckCircle2, Clock, Eye, AlertTriangle, Plus, Search, MoreHorizontal,
-    Pencil, Trash2, Users, FolderOpen, ArrowUpDown, XCircle, ChevronRight, ChevronDown,
+    Pencil, Trash2, Users, FolderOpen, ArrowUpDown, XCircle, ChevronRight, ChevronLeft, ChevronDown,
     Layers, LayoutGrid, Table2, FolderPlus, Send, Tag, Briefcase, RefreshCw,
     ClipboardCheck, Filter, CalendarDays,
 } from "lucide-react";
@@ -157,6 +157,10 @@ export default function AdminTasksView() {
     const [sortField, setSortField] = useState<"title" | "priority" | "dueDate" | "status" | "createdAt">("createdAt");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
+    // ── Pagination ────────────────────────────────────────────
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [currentPage, setCurrentPage] = useState(1);
+
     // ── Helpers ───────────────────────────────────────────────
     const getEmpName = useCallback(
         (id: string) => employees.find((e) => e.id === id)?.name ?? id,
@@ -228,6 +232,9 @@ export default function AdminTasksView() {
         });
     }, [tasks, completionReports]);
 
+    const isOverdue = (t: Task) =>
+        t.dueDate && new Date(t.dueDate) < new Date() && !["verified", "cancelled"].includes(t.status);
+
     // ── Filtered tasks (for table/board) ──────────────────────
     const filteredTasks = useMemo(() => {
         let list = [...tasks];
@@ -240,7 +247,8 @@ export default function AdminTasksView() {
                     t.id.toLowerCase().includes(q),
             );
         }
-        if (statusFilter !== "all") list = list.filter((t) => t.status === statusFilter);
+        if (statusFilter === "overdue") list = list.filter((t) => isOverdue(t));
+        else if (statusFilter !== "all") list = list.filter((t) => t.status === statusFilter);
         if (priorityFilter !== "all") list = list.filter((t) => t.priority === priorityFilter);
         if (groupFilter !== "all") list = list.filter((t) => t.groupId === groupFilter);
         if (assigneeFilter !== "all") list = list.filter((t) => t.assignedTo.includes(assigneeFilter));
@@ -510,17 +518,15 @@ export default function AdminTasksView() {
         }));
     };
 
-    // ── Sort toggle ───────────────────────────────────────────
     const toggleSort = (field: typeof sortField) => {
         if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
         else { setSortField(field); setSortDir("asc"); }
     };
 
-    const isOverdue = (t: Task) =>
-        t.dueDate && new Date(t.dueDate) < new Date() && !["verified", "cancelled"].includes(t.status);
-
+    const EXCLUDED_ROLES = ["admin", "hr", "finance", "auditor", "payroll_admin", "supervisor"];
     const activeEmployees = useMemo(
-        () => employees.filter((e) => e.status === "active"),
+        () => employees.filter((e) => e.status === "active" && !EXCLUDED_ROLES.includes(e.role?.toLowerCase() ?? "")),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [employees],
     );
 
@@ -575,12 +581,13 @@ export default function AdminTasksView() {
         setPriorityFilter("all");
         setGroupFilter("all");
         setAssigneeFilter("all");
+        setCurrentPage(1);
     };
 
     // This week verified count
     const thisWeekVerified = useMemo(() => {
         const now = new Date();
-        const startOfWeek = new Date(now); 
+        const startOfWeek = new Date(now);
         startOfWeek.setDate(now.getDate() - now.getDay());
         startOfWeek.setHours(0, 0, 0, 0);
         return tasks.filter((t) => t.status === "verified" && t.updatedAt && new Date(t.updatedAt) >= startOfWeek).length;
@@ -610,6 +617,17 @@ export default function AdminTasksView() {
     const tagFormDialogOpen = tagCreateOpen || !!editTag;
     const tagFormOnClose = () => { setTagCreateOpen(false); setEditTag(null); setTagForm({ name: "", color: "#6366f1" }); };
 
+    // ── Pagination computed ────────────────────────────────────
+    const totalPages = Math.max(1, Math.ceil(filteredTasks.length / rowsPerPage));
+    const paginatedTasks = filteredTasks.length > 10
+        ? filteredTasks.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage)
+        : filteredTasks;
+
+    // Reset to page 1 when filtered list shrinks below current page
+    useEffect(() => {
+        if (currentPage > totalPages) setCurrentPage(1);
+    }, [currentPage, totalPages]);
+
     return (
         <div className="space-y-6 pb-8">
             {/* ── Header ───────────────────────────────────── */}
@@ -628,7 +646,7 @@ export default function AdminTasksView() {
             {/* ── Stats (4 KPIs) ──────────────────────────── */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                 {([
-                    { label: "Total Open", value: tasks.filter((t) => t.status === "open" || t.status === "in_progress").length, icon: ListTodo, color: "text-blue-600" },
+                    { label: "Total Open", value: tasks.filter((t) => t.status === "open" || t.status === "in_progress" || isOverdue(t)).length, icon: ListTodo, color: "text-blue-600" },
                     { label: "Pending Review", value: tasks.filter((t) => t.status === "submitted").length, icon: ClipboardCheck, color: tasks.some((t) => t.status === "submitted") ? "text-purple-600" : "text-muted-foreground" },
                     { label: "Overdue", value: stats.overdue, icon: AlertTriangle, color: stats.overdue > 0 ? "text-red-600" : "text-muted-foreground" },
                     { label: "Completed this Week", value: thisWeekVerified, icon: CheckCircle2, color: "text-green-600" },
@@ -837,12 +855,13 @@ export default function AdminTasksView() {
                         <div className={`grid gap-2 sm:flex sm:flex-wrap ${taskViewMode === "board" ? "grid-cols-3" : "grid-cols-2"}`}>
                             {taskViewMode !== "board" && (
                                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                    <SelectTrigger className="w-full sm:w-[130px] h-9 text-xs">
+                                    <SelectTrigger className="w-full sm:w-[160px] h-9 text-xs">
                                         <Filter className="h-3 w-3 mr-1" />
                                         <SelectValue placeholder="Status" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">All Status</SelectItem>
+                                        <SelectItem value="overdue">Overdue</SelectItem>
                                         {(Object.entries(STATUS_CONFIG) as [TaskStatus, typeof STATUS_CONFIG["open"]][]).map(
                                             ([key, cfg]) => (
                                                 <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
@@ -913,7 +932,7 @@ export default function AdminTasksView() {
                             <div className="overflow-x-auto">
                                 <Table>
                                     <TableHeader>
-                                        <TableRow>
+                                        <TableRow className="[&>th]:py-2">
                                             <TableHead>Task</TableHead>
                                             <TableHead className="hidden sm:table-cell">Group</TableHead>
                                             <TableHead
@@ -945,8 +964,8 @@ export default function AdminTasksView() {
                                             <TableHead className="w-28 text-right">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
-                                    <TableBody>
-                                        {filteredTasks.map((task) => {
+                                    <TableBody className="[&_tr:last-child_td]:pb-2">
+                                        {paginatedTasks.map((task) => {
                                             const sc = STATUS_CONFIG[task.status];
                                             const pc = PRIORITY_CONFIG[task.priority];
                                             const overdue = isOverdue(task);
@@ -955,12 +974,9 @@ export default function AdminTasksView() {
                                             return (
                                                 <TableRow key={task.id} className="group">
                                                     <TableCell className="max-w-[180px] sm:max-w-[240px] xl:max-w-xs">
-                                                        <Link
-                                                            href={roleHref(`/tasks/${task.id}`)}
-                                                            className="font-medium text-sm hover:underline line-clamp-2 break-words block"
-                                                        >
+                                                        <span className="font-medium text-sm line-clamp-2 break-words block">
                                                             {task.title}
-                                                        </Link>
+                                                        </span>
                                                         <p className="text-xs text-muted-foreground font-mono truncate">{task.id}</p>
                                                     </TableCell>
                                                     <TableCell className="hidden sm:table-cell max-w-[120px]">
@@ -1062,8 +1078,32 @@ export default function AdminTasksView() {
                                     </TableBody>
                                 </Table>
                             </div>
-                            <div className="px-4 py-2 border-t text-xs text-muted-foreground">
-                                Showing {filteredTasks.length} of {tasks.length} tasks
+                            <div className="px-4 py-1.5 border-t flex items-center justify-between text-xs text-muted-foreground">
+                                <span>Showing {paginatedTasks.length} of {filteredTasks.length} tasks</span>
+                                {filteredTasks.length > 10 && (
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-1.5">
+                                            <span>Rows per page</span>
+                                            <Select value={String(rowsPerPage)} onValueChange={(v) => { setRowsPerPage(Number(v)); setCurrentPage(1); }}>
+                                                <SelectTrigger className="h-7 w-[65px] text-xs"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="10">10</SelectItem>
+                                                    <SelectItem value="20">20</SelectItem>
+                                                    <SelectItem value="50">50</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <span>Page {currentPage} of {Math.ceil(filteredTasks.length / rowsPerPage)}</span>
+                                        <div className="flex items-center gap-1">
+                                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => p - 1)}>
+                                                <ChevronLeft className="h-4 w-4" />
+                                            </Button>
+                                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={currentPage >= Math.ceil(filteredTasks.length / rowsPerPage)} onClick={() => setCurrentPage((p) => p + 1)}>
+                                                <ChevronRight className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </Card>
                     )}
@@ -1113,100 +1153,100 @@ export default function AdminTasksView() {
                                 {groups
                                     .filter((g) => !groupSearch || g.name.toLowerCase().includes(groupSearch.toLowerCase()) || g.description?.toLowerCase().includes(groupSearch.toLowerCase()))
                                     .map((group) => {
-                                    const groupTasks = tasks.filter((t) => t.groupId === group.id);
-                                    const openCount = groupTasks.filter((t) => t.status === "open").length;
-                                    const inProgressCount = groupTasks.filter((t) => t.status === "in_progress").length;
-                                    const doneCount = groupTasks.filter((t) => t.status === "verified").length;
-                                    const linkedProject = projects.find((p) => p.id === group.projectId);
+                                        const groupTasks = tasks.filter((t) => t.groupId === group.id);
+                                        const openCount = groupTasks.filter((t) => t.status === "open").length;
+                                        const inProgressCount = groupTasks.filter((t) => t.status === "in_progress").length;
+                                        const doneCount = groupTasks.filter((t) => t.status === "verified").length;
+                                        const linkedProject = projects.find((p) => p.id === group.projectId);
 
-                                    return (
-                                        <Card key={group.id} className="border border-border/50">
-                                            <CardHeader className="pb-2">
-                                                <div className="flex items-start justify-between">
-                                                    <div className="min-w-0 flex-1">
-                                                        <CardTitle className="text-sm font-semibold truncate">
-                                                            {group.name}
-                                                        </CardTitle>
-                                                        {group.description && (
-                                                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                                                                {group.description}
-                                                            </p>
+                                        return (
+                                            <Card key={group.id} className="border border-border/50">
+                                                <CardHeader className="pb-2">
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="min-w-0 flex-1">
+                                                            <CardTitle className="text-sm font-semibold truncate">
+                                                                {group.name}
+                                                            </CardTitle>
+                                                            {group.description && (
+                                                                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                                                                    {group.description}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0">
+                                                                    <MoreHorizontal className="h-4 w-4" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end">
+                                                                <DropdownMenuItem onClick={() => openGroupEdit(group)}>
+                                                                    <Pencil className="h-4 w-4 mr-2" /> Edit
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuSeparator />
+                                                                <DropdownMenuItem
+                                                                    className="text-destructive focus:text-destructive"
+                                                                    onClick={() => setDeleteGroupId(group.id)}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
+                                                </CardHeader>
+                                                <CardContent className="space-y-3">
+                                                    {linkedProject && (
+                                                        <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                                            <FolderOpen className="h-3 w-3" /> {linkedProject.name}
+                                                        </div>
+                                                    )}
+                                                    <div className="flex gap-2 flex-wrap">
+                                                        <Badge variant="secondary" className="text-[10px]">
+                                                            {groupTasks.length} tasks
+                                                        </Badge>
+                                                        {openCount > 0 && (
+                                                            <Badge variant="secondary" className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                                                {openCount} open
+                                                            </Badge>
+                                                        )}
+                                                        {inProgressCount > 0 && (
+                                                            <Badge variant="secondary" className="text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                                                                {inProgressCount} active
+                                                            </Badge>
+                                                        )}
+                                                        {doneCount > 0 && (
+                                                            <Badge variant="secondary" className="text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                                                {doneCount} done
+                                                            </Badge>
                                                         )}
                                                     </div>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0">
-                                                                <MoreHorizontal className="h-4 w-4" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuItem onClick={() => openGroupEdit(group)}>
-                                                                <Pencil className="h-4 w-4 mr-2" /> Edit
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuSeparator />
-                                                            <DropdownMenuItem
-                                                                className="text-destructive focus:text-destructive"
-                                                                onClick={() => setDeleteGroupId(group.id)}
-                                                            >
-                                                                <Trash2 className="h-4 w-4 mr-2" /> Delete
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </div>
-                                            </CardHeader>
-                                            <CardContent className="space-y-3">
-                                                {linkedProject && (
-                                                    <div className="text-xs text-muted-foreground flex items-center gap-1">
-                                                        <FolderOpen className="h-3 w-3" /> {linkedProject.name}
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Users className="h-3 w-3 text-muted-foreground" />
+                                                        <div className="flex -space-x-1">
+                                                            {group.memberEmployeeIds.slice(0, 5).map((empId) => (
+                                                                <Avatar key={empId} className="h-5 w-5 border border-card">
+                                                                    <AvatarFallback className="text-[7px] bg-muted">
+                                                                        {getInitials(getEmpName(empId))}
+                                                                    </AvatarFallback>
+                                                                </Avatar>
+                                                            ))}
+                                                        </div>
+                                                        {group.memberEmployeeIds.length > 5 && (
+                                                            <span className="text-[10px] text-muted-foreground ml-1">
+                                                                +{group.memberEmployeeIds.length - 5}
+                                                            </span>
+                                                        )}
+                                                        {group.memberEmployeeIds.length === 0 && (
+                                                            <span className="text-[10px] text-muted-foreground">No members</span>
+                                                        )}
                                                     </div>
-                                                )}
-                                                <div className="flex gap-2 flex-wrap">
-                                                    <Badge variant="secondary" className="text-[10px]">
-                                                        {groupTasks.length} tasks
-                                                    </Badge>
-                                                    {openCount > 0 && (
-                                                        <Badge variant="secondary" className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                                                            {openCount} open
-                                                        </Badge>
-                                                    )}
-                                                    {inProgressCount > 0 && (
-                                                        <Badge variant="secondary" className="text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
-                                                            {inProgressCount} active
-                                                        </Badge>
-                                                    )}
-                                                    {doneCount > 0 && (
-                                                        <Badge variant="secondary" className="text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                                                            {doneCount} done
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-1.5">
-                                                    <Users className="h-3 w-3 text-muted-foreground" />
-                                                    <div className="flex -space-x-1">
-                                                        {group.memberEmployeeIds.slice(0, 5).map((empId) => (
-                                                            <Avatar key={empId} className="h-5 w-5 border border-card">
-                                                                <AvatarFallback className="text-[7px] bg-muted">
-                                                                    {getInitials(getEmpName(empId))}
-                                                                </AvatarFallback>
-                                                            </Avatar>
-                                                        ))}
-                                                    </div>
-                                                    {group.memberEmployeeIds.length > 5 && (
-                                                        <span className="text-[10px] text-muted-foreground ml-1">
-                                                            +{group.memberEmployeeIds.length - 5}
-                                                        </span>
-                                                    )}
-                                                    {group.memberEmployeeIds.length === 0 && (
-                                                        <span className="text-[10px] text-muted-foreground">No members</span>
-                                                    )}
-                                                </div>
-                                                <p className="text-[10px] text-muted-foreground">
-                                                    Created {formatDate(group.createdAt)}
-                                                </p>
-                                            </CardContent>
-                                        </Card>
-                                    );
-                                })}
+                                                    <p className="text-[10px] text-muted-foreground">
+                                                        Created {formatDate(group.createdAt)}
+                                                    </p>
+                                                </CardContent>
+                                            </Card>
+                                        );
+                                    })}
                             </div>
                         )}
                     </div>
@@ -1299,20 +1339,28 @@ export default function AdminTasksView() {
                     <DialogHeader className="shrink-0">
                         <DialogTitle>{editTask ? "Edit Task" : "Create New Task"}</DialogTitle>
                     </DialogHeader>
-                    <div className="flex-1 overflow-y-auto space-y-4 py-2 pr-1">
+                    <div className="flex-1 overflow-y-auto space-y-4 py-2 px-1">
                         {editTask && (
                             <div className="text-xs text-muted-foreground font-mono bg-muted/50 rounded px-3 py-1.5">
                                 {editTask.id}
                             </div>
                         )}
-                        <div className="grid gap-2">
+                        <div className="grid gap-1.5">
                             <label className="text-sm font-medium">Title</label>
                             <Input
                                 value={taskForm.title ?? ""}
-                                onChange={(e) => setTaskForm((p) => ({ ...p, title: e.target.value }))}
+                                onChange={(e) => {
+                                    if (e.target.value.length <= 50) {
+                                        setTaskForm((p) => ({ ...p, title: e.target.value }));
+                                    }
+                                }}
                                 placeholder="What needs to be done?"
+                                maxLength={50}
                                 autoFocus
                             />
+                            <p className={`text-xs ${(50 - (taskForm.title?.length ?? 0)) <= 0 ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                                {50 - (taskForm.title?.length ?? 0)} characters remaining
+                            </p>
                         </div>
                         <div className="grid gap-2">
                             <label className="text-sm font-medium">Description</label>
@@ -1320,7 +1368,8 @@ export default function AdminTasksView() {
                                 value={taskForm.description ?? ""}
                                 onChange={(e) => setTaskForm((p) => ({ ...p, description: e.target.value }))}
                                 placeholder="Add a detailed description of the task"
-                                rows={3}
+                                rows={6}
+                                className="resize-none max-h-[9rem] overflow-y-auto"
                             />
                         </div>
 
@@ -1342,7 +1391,7 @@ export default function AdminTasksView() {
                                         }));
                                     }}
                                 >
-                                    <SelectTrigger><SelectValue placeholder="No group" /></SelectTrigger>
+                                    <SelectTrigger className="w-full"><SelectValue placeholder="No group" /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="none">No Group</SelectItem>
                                         {groups.map((g) => (
@@ -1357,7 +1406,7 @@ export default function AdminTasksView() {
                                     value={taskForm.priority}
                                     onValueChange={(v) => setTaskForm((p) => ({ ...p, priority: v as TaskPriority }))}
                                 >
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         {(["low", "medium", "high", "urgent"] as TaskPriority[]).map((p) => (
                                             <SelectItem key={p} value={p}>
@@ -1384,12 +1433,14 @@ export default function AdminTasksView() {
                                 />
                             </div>
                             <div className="grid gap-2">
-                                <label className="text-sm font-medium">Due Date</label>
+                                <label className={`text-sm font-medium ${!taskForm.startDate ? "text-muted-foreground" : ""}`}>Due Date</label>
                                 <Input
                                     type="date"
                                     value={taskForm.dueDate ?? ""}
                                     min={taskForm.startDate || new Date().toISOString().split("T")[0]}
                                     onChange={(e) => setTaskForm((p) => ({ ...p, dueDate: e.target.value }))}
+                                    disabled={!taskForm.startDate}
+                                    className={!taskForm.startDate ? "opacity-50 cursor-not-allowed" : ""}
                                 />
                             </div>
                         </div>
@@ -1702,8 +1753,8 @@ export default function AdminTasksView() {
                                     if (grpDeptFilter !== "all" && e.department !== grpDeptFilter) return false;
                                     return true;
                                 }).length === 0 && (
-                                    <p className="text-xs text-muted-foreground text-center py-4">No employees match.</p>
-                                )}
+                                        <p className="text-xs text-muted-foreground text-center py-4">No employees match.</p>
+                                    )}
                             </div>
                         </div>
                     </div>
@@ -1794,7 +1845,7 @@ export default function AdminTasksView() {
                                 <span className="text-xs text-muted-foreground font-mono">{tagForm.color}</span>
                             </div>
                             <div className="flex gap-2 flex-wrap mt-1">
-                                {["#6366f1","#ec4899","#f59e0b","#10b981","#3b82f6","#ef4444","#8b5cf6","#06b6d4","#84cc16","#f97316"].map((c) => (
+                                {["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#ef4444", "#8b5cf6", "#06b6d4", "#84cc16", "#f97316"].map((c) => (
                                     <button
                                         key={c}
                                         type="button"
@@ -1918,7 +1969,9 @@ function AdminBoardView({
             {ADMIN_BOARD_STATUSES.map((status) => {
                 const cfg = STATUS_CONFIG[status];
                 const Icon = cfg.icon;
-                const columnTasks = tasks.filter((t) => t.status === status);
+                const columnTasks = tasks
+                    .filter((t) => t.status === status)
+                    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
                 const isCol = collapsed[status];
                 const behindCount = Math.min(columnTasks.length - 1, 2);
                 return (
@@ -1938,9 +1991,9 @@ function AdminBoardView({
                             </Badge>
                         </button>
 
-                        {/* Collapsed: top card fully visible + slivers behind */}
+                        {/* Collapsed: stacked cards showing depth */}
                         {isCol && (
-                            <div className="border-x border-b border-border/30 rounded-b-lg p-2 bg-muted/10">
+                            <div className="border-x border-b border-border/30 rounded-b-lg p-2 pr-4 bg-muted/10">
                                 {columnTasks.length === 0 ? (
                                     <div className="rounded-lg border border-dashed border-border/50 p-4 text-center">
                                         <p className="text-xs text-muted-foreground">No tasks</p>
@@ -1949,23 +2002,35 @@ function AdminBoardView({
                                     <div
                                         className="relative cursor-pointer"
                                         onClick={() => toggle(status)}
-                                        style={{ paddingBottom: `${behindCount * 6}px` }}
+                                        style={{ marginBottom: `${behindCount * 8}px` }}
                                     >
-                                        {Array.from({ length: behindCount }).map((_, i) => (
+                                        {/* Stacked cards behind — offset down-right for depth */}
+                                        {behindCount >= 2 && (
                                             <div
-                                                key={i}
-                                                className="absolute bottom-0 left-0 right-0 rounded-lg border border-border/40 bg-card"
+                                                className="absolute rounded-lg border border-border/30 bg-card shadow-sm dark:border-border/20 dark:bg-card/80"
                                                 style={{
-                                                    height: "calc(100% - 8px)",
-                                                    bottom: `${i * 6}px`,
-                                                    zIndex: behindCount - i,
-                                                    marginLeft: `${(i + 1) * 4}px`,
-                                                    marginRight: `${(i + 1) * 4}px`,
-                                                    opacity: 0.7 - i * 0.2,
+                                                    top: "16px",
+                                                    left: "8px",
+                                                    right: "-8px",
+                                                    bottom: "-16px",
+                                                    zIndex: 1,
                                                 }}
                                             />
-                                        ))}
-                                        <div className="relative" style={{ zIndex: behindCount + 1 }}>
+                                        )}
+                                        {behindCount >= 1 && (
+                                            <div
+                                                className="absolute rounded-lg border border-border/40 bg-card shadow-sm dark:border-border/30 dark:bg-card/90"
+                                                style={{
+                                                    top: "8px",
+                                                    left: "4px",
+                                                    right: "-4px",
+                                                    bottom: "-8px",
+                                                    zIndex: 2,
+                                                }}
+                                            />
+                                        )}
+                                        {/* Top card */}
+                                        <div className="relative" style={{ zIndex: 3 }}>
                                             {renderTaskCard(columnTasks[0])}
                                         </div>
                                     </div>
@@ -1975,7 +2040,7 @@ function AdminBoardView({
 
                         {/* Expanded: full card list with spacing */}
                         {!isCol && (
-                            <div className="space-y-3 border-x border-b border-border/30 rounded-b-lg p-2 bg-muted/10">
+                            <div className="flex flex-col gap-2 border-x border-b border-border/30 rounded-b-lg p-2 bg-muted/10 max-h-[calc(3*7rem+2*0.75rem+1rem)] overflow-y-auto">
                                 {columnTasks.length === 0 ? (
                                     <div className="rounded-lg border border-dashed border-border/50 p-4 text-center">
                                         <p className="text-xs text-muted-foreground">No tasks</p>

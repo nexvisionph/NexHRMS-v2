@@ -63,7 +63,6 @@ export default function ReadonlyEmployeesView() {
                         <SelectItem value="all">All Status</SelectItem>
                         <SelectItem value="active">Active</SelectItem>
                         <SelectItem value="inactive">Inactive</SelectItem>
-                        <SelectItem value="resigned">Resigned</SelectItem>
                     </SelectContent>
                 </Select>
             </div>

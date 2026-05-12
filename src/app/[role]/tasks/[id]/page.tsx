@@ -87,21 +87,13 @@ export default function TaskDetailPage() {
         // Fetch from DB as fallback
         const fetchTask = async () => {
             try {
-                const [allTasks, allGroups, allReports, allComments] = await Promise.all([
-                    tasksDb.fetchTasks(),
-                    tasksDb.fetchGroups(),
-                    tasksDb.fetchCompletionReports(),
-                    tasksDb.fetchComments(),
-                ]);
+                const allTasks = await tasksDb.fetchTasks();
                 const found = allTasks.find((t) => t.id === taskId);
                 if (found) {
                     setFetchedTask(found);
                     // Also update the store so it's available elsewhere
                     useTasksStore.setState((s) => ({
                         tasks: s.tasks.some((t) => t.id === found.id) ? s.tasks : [...s.tasks, found],
-                        groups: allGroups,
-                        completionReports: allReports,
-                        comments: allComments,
                     }));
                 }
             } catch (err) {
@@ -294,19 +286,19 @@ export default function TaskDetailPage() {
                             <DialogTrigger asChild>
                                 <Button variant="outline" size="sm" className="gap-1.5"><Megaphone className="h-4 w-4" /> Notify Assignees</Button>
                             </DialogTrigger>
-                                <DialogContent className="max-w-lg">
-                                <DialogHeader><DialogTitle>Notify Assignees</DialogTitle></DialogHeader>
+                            <DialogContent className="max-w-lg">
+                                <DialogHeader><DialogTitle>📢 Notify Assignees</DialogTitle></DialogHeader>
                                 <div className="space-y-4 pt-2">
                                     <p className="text-xs text-muted-foreground">Send an announcement to all {task.assignedTo.length} employee{task.assignedTo.length !== 1 ? "s" : ""} assigned to this task.</p>
                                     <div>
                                         <label className="text-sm font-medium">Channel</label>
                                         <Select value={notifyChannel} onValueChange={(v) => setNotifyChannel(v as "email" | "whatsapp" | "in_app")}>
                                             <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="in_app">In-App</SelectItem>
-                                                    <SelectItem value="email">Email (simulated)</SelectItem>
-                                                    <SelectItem value="whatsapp">WhatsApp (simulated)</SelectItem>
-                                                </SelectContent>
+                                            <SelectContent>
+                                                <SelectItem value="in_app">🔔 In-App</SelectItem>
+                                                <SelectItem value="email">✉️ Email (simulated)</SelectItem>
+                                                <SelectItem value="whatsapp">💬 WhatsApp (simulated)</SelectItem>
+                                            </SelectContent>
                                         </Select>
                                     </div>
                                     <div>

@@ -47,9 +47,30 @@ const LEAVE_ICONS: Record<LeaveType, React.ReactNode> = {
     SPL: <Users className="h-4 w-4" />,
 };
 
-function daysBetween(a: string, b: string) {
-    const d1 = new Date(a); const d2 = new Date(b);
-    return Math.max(1, Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1);
+/**
+ * Calculate leave days accounting for duration type (full_day, half_day, hourly).
+ * Falls back to simple date range calculation for full-day requests.
+ */
+function calculateDisplayDays(
+    startDate: string,
+    endDate: string,
+    duration?: string,
+    hours?: number
+): number {
+    const d1 = new Date(startDate);
+    const d2 = new Date(endDate);
+    const fullDays = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1);
+
+    switch (duration) {
+        case "half_day_am":
+        case "half_day_pm":
+            return fullDays === 1 ? 0.5 : fullDays;
+        case "hourly":
+            return hours ? Math.round((hours / 8) * 10) / 10 : fullDays;
+        case "full_day":
+        default:
+            return fullDays;
+    }
 }
 
 const leaveStatusColors: Record<string, string> = {
@@ -125,7 +146,7 @@ export default function AdminLeaveView() {
         for (const type of ["VL", "SL", "EL", "OTHER", "ML", "PL", "SPL"] as LeaveType[]) {
             const policyEntitlement = policies.find((p) => p.leaveType === type)?.annualEntitlement ?? LEAVE_ALLOC_FALLBACK[type];
             const approved = requests.filter((r) => r.status === "approved" && r.type === type);
-            const usedDays = approved.reduce((sum, r) => sum + daysBetween(r.startDate, r.endDate), 0);
+            const usedDays = approved.reduce((sum, r) => sum + calculateDisplayDays(r.startDate, r.endDate, r.duration, r.hours), 0);
             const alloc = policyEntitlement * employees.filter((e) => e.status === "active").length;
             result[type] = { alloc, used: usedDays, remaining: Math.max(0, alloc - usedDays) };
         }
@@ -296,7 +317,7 @@ export default function AdminLeaveView() {
                                                 <TableCell><Badge variant="outline" className="text-[10px]">{req.type}</Badge></TableCell>
                                                 <TableCell className="text-sm">{req.startDate}</TableCell>
                                                 <TableCell className="text-sm">{req.endDate}</TableCell>
-                                                <TableCell className="text-sm text-muted-foreground">{daysBetween(req.startDate, req.endDate)}</TableCell>
+                                                <TableCell className="text-sm text-muted-foreground">{calculateDisplayDays(req.startDate, req.endDate, req.duration, req.hours)}</TableCell>
                                                 <TableCell className="text-sm max-w-[200px] truncate">{req.reason}</TableCell>
                                                 <TableCell>
                                                     <Badge variant="secondary" className={`text-[10px] ${leaveStatusColors[req.status]}`}>

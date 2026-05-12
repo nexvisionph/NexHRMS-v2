@@ -575,7 +575,7 @@ export default function FaceEnrollPage() {
                             boxShadow: `0 0 10px ${NEON_GREEN}`,
                         }}
                     />
-                    <span>{companyName || "NexHRMS"} • Face Enrollment</span>
+                    <span>{companyName || "Soren Data Solutions Inc."} • Face Enrollment</span>
                 </div>
             </footer>
         </div>

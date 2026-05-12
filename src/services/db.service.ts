@@ -260,7 +260,25 @@ export const leaveDb = {
 // ─── Attendance ─────────────────────────────────────────────────
 
 export const attendanceDb = {
-  fetchLogs: () => fetchAll<AttendanceLog>("attendance_logs"),
+  fetchLogs: async () => {
+    if (typeof window !== "undefined" && !isDemoMode) {
+      try {
+        const res = await fetch("/api/attendance/logs", {
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const data = await res.json() as { logs?: AttendanceLog[] };
+          return data.logs ?? [];
+        }
+        console.warn("[db] attendance_logs API:", res.status);
+      } catch (error) {
+        console.warn("[db] attendance_logs API failed:", error);
+      }
+    }
+
+    return fetchAll<AttendanceLog>("attendance_logs");
+  },
   fetchEvents: async (): Promise<AttendanceEvent[]> => {
     const rows = await fetchAll<AttendanceEvent>("attendance_events", { order: { column: "timestamp_utc", ascending: false } });
     // keysToCamel converts "timestamp_utc" → "timestampUtc" but the type expects "timestampUTC".
@@ -363,61 +381,7 @@ export const attendanceDb = {
   // Evidence
   fetchEvidence: () => fetchAll<AttendanceEvidence>("attendance_evidence"),
   async insertEvidence(evidence: AttendanceEvidence): Promise<boolean> {
-    if (!evidence.eventId) {
-      console.warn("[db] insertEvidence: missing eventId, skipping");
-      return false;
-    }
-    // Permanent FK guard: ensure parent attendance_events row exists before
-    // inserting evidence. Without this, the write-through subscriber can race
-    // ahead of the parent event commit and trigger:
-    //   "violates foreign key constraint attendance_evidence_event_id_fkey"
-    // Strategy:
-    //   1. Check if the parent event exists in the DB
-    //   2. If not, look it up in the local Zustand store and insert it first
-    //   3. Then insert the evidence (with one retry on transient FK error)
-    const sb = supabase();
-    const { data: existingEvent } = await sb
-      .from("attendance_events")
-      .select("id")
-      .eq("id", evidence.eventId)
-      .maybeSingle();
-
-    if (!existingEvent) {
-      // Look the event up in the local store (avoids a circular import
-      // by accessing window.__zustand or using a lazy require pattern)
-      try {
-        const { useAttendanceStore } = await import("@/store/attendance.store");
-        const localEvent = useAttendanceStore
-          .getState()
-          .events.find((e) => e.id === evidence.eventId);
-        if (localEvent) {
-          const ok = await attendanceDb.insertEvent(localEvent);
-          if (!ok) {
-            console.warn(
-              `[db] insertEvidence: parent event ${evidence.eventId} could not be inserted; deferring evidence`
-            );
-            return false;
-          }
-        } else {
-          console.warn(
-            `[db] insertEvidence: parent event ${evidence.eventId} not found locally or in DB; skipping evidence`
-          );
-          return false;
-        }
-      } catch (err) {
-        console.warn(
-          `[db] insertEvidence: could not resolve parent event:`,
-          err instanceof Error ? err.message : String(err)
-        );
-        return false;
-      }
-    }
-
-    // Now safe to insert the evidence row
-    return insertRow(
-      "attendance_evidence",
-      evidence as unknown as Record<string, unknown>
-    );
+    return insertRow("attendance_evidence", evidence as unknown as Record<string, unknown>);
   },
 
   // Exceptions
@@ -464,8 +428,9 @@ export const payrollDb = {
         byRun.set(r.run_id, arr);
       }
       for (const run of runs) {
-        const ids = byRun.get(run.id);
-        if (ids) run.payslipIds = ids;
+        const junctionIds = byRun.get(run.id) ?? [];
+        const legacyIds = run.payslipIds ?? [];
+        run.payslipIds = Array.from(new Set([...legacyIds, ...junctionIds]));
       }
     }
     // If junction table is empty/missing, runs keep their legacy payslipIds from the column
@@ -473,17 +438,33 @@ export const payrollDb = {
   },
 
   async upsertPayslip(ps: Payslip): Promise<boolean> {
-    return upsertRow("payslips", ps as unknown as Record<string, unknown>);
+    // Strip local-only fields that don't exist in the DB schema
+    const row: Record<string, unknown> = { ...(ps as unknown as Record<string, unknown>) };
+    delete row.holdNote;
+    delete row.heldAt;
+    delete row.grossOverrideApplied;
+    delete row.attendanceDaysPresent;
+    delete row.attendanceDaysAbsent;
+    delete row.attendanceLateMinutes;
+    delete row.attendanceUndertimeHours;
+    return upsertRow("payslips", row);
   },
 
   async updatePayslip(id: string, patch: Partial<Payslip>): Promise<boolean> {
-    return updateRow("payslips", id, patch as unknown as Record<string, unknown>);
+    const row: Record<string, unknown> = { ...(patch as unknown as Record<string, unknown>) };
+    delete row.holdNote;
+    delete row.heldAt;
+    return updateRow("payslips", id, row);
   },
 
   async upsertRun(run: PayrollRun): Promise<boolean> {
     // Separate payslipIds for junction table
     const payslipIds = run.payslipIds ?? [];
     const row: Record<string, unknown> = { ...(run as unknown as Record<string, unknown>) };
+    // DB constraint only allows draft/locked/completed
+    if (row.status === "ended" || row.status === "published") {
+      row.status = "locked";
+    }
     // Keep legacy column in sync during transition
     row.payslipIds = payslipIds;
     const baseOk = await upsertRow("payroll_runs", row);
@@ -509,13 +490,35 @@ export const payrollDb = {
       if (delErr) console.error("[db] payroll_run_payslips.delete:", delErr.message);
     }
 
-    // Add new payslips
+    // Add new payslips (upsert to handle duplicates gracefully)
     const toAdd = [...targetIds].filter((id) => !existingIds.has(id));
     if (toAdd.length > 0) {
-      const { error: insErr } = await supabase()
-        .from("payroll_run_payslips")
-        .upsert(toAdd.map((pid) => ({ run_id: run.id, payslip_id: pid })), { onConflict: "run_id,payslip_id", ignoreDuplicates: true });
-      if (insErr) console.error("[db] payroll_run_payslips.insert:", insErr.message);
+      try {
+        const resolvedIds = new Set<string>();
+        for (let attempt = 0; attempt < 4 && resolvedIds.size < toAdd.length; attempt++) {
+          const missingIds = toAdd.filter((id) => !resolvedIds.has(id));
+          const { data: presentRows, error: lookupErr } = await supabase()
+            .from("payslips")
+            .select("id")
+            .in("id", missingIds);
+          if (lookupErr) throw lookupErr;
+          for (const row of presentRows ?? []) resolvedIds.add((row as { id: string }).id);
+          if (resolvedIds.size < toAdd.length) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+          }
+        }
+
+        const readyIds = toAdd.filter((id) => resolvedIds.has(id));
+        if (readyIds.length === 0) return true;
+
+        const { error: insErr } = await supabase()
+          .from("payroll_run_payslips")
+          .upsert(readyIds.map((pid) => ({ run_id: run.id, payslip_id: pid })), { onConflict: "run_id,payslip_id", ignoreDuplicates: true });
+        if (insErr) console.error("[db] payroll_run_payslips.upsert:", insErr.message);
+      } catch (e) {
+        // Suppress foreign key errors for payslips not yet synced to DB
+        console.warn("[db] payroll_run_payslips sync skipped:", (e as Error).message);
+      }
     }
 
     return true;
@@ -694,7 +697,7 @@ export const payrollDb = {
   // ─── Deduction Overrides (per-employee) ─────────────────────
   fetchDeductionOverrides: () => fetchAll<DeductionOverride>("deduction_overrides"),
 
-  async upsertDeductionOverride(override: DeductionOverride): Promise<boolean> {
+  async upsertDeductionOverride(override: DeductionOverride & { id?: string }): Promise<boolean> {
     // Use the composite unique (employee_id, deduction_type) for upsert
     const dbRow = keysToSnake(override as unknown as Record<string, unknown>);
     const { error } = await supabase()
@@ -865,6 +868,11 @@ function projectToDb(p: Partial<Project>): Record<string, unknown> {
   if (p.requireGeofence !== undefined) row.require_geofence = p.requireGeofence;
   if (p.geofenceRadiusMeters !== undefined) row.geofence_radius_meters = p.geofenceRadiusMeters;
 
+  // QR columns (migration 055) — only include when defined to avoid clobbering
+  // an existing qr_secret with null on update.
+  if (p.qrSecret !== undefined && p.qrSecret !== null) row.qr_secret = p.qrSecret;
+  if (p.qrEnabled !== undefined) row.qr_enabled = p.qrEnabled;
+
   return row;
 }
 
@@ -902,6 +910,16 @@ export const projectsDb = {
     const row = projectToDb(project);
     // Keep legacy column in sync during transition
     row.assigned_employee_ids = employeeIds;
+
+    // Guard: qr_secret is NOT NULL in DB. Always include a value so INSERT succeeds.
+    // On UPDATE the existing DB value is preserved because we include it when defined
+    // (projectFromDb hydrates qrSecret via keysToCamel). For new projects created
+    // before this fix, generate a fresh secret here as a safety net.
+    if (row.qr_secret === undefined || row.qr_secret === null) {
+      // Import nanoid lazily to keep this file server/client compatible.
+      const { nanoid: _nanoid } = await import("nanoid");
+      row.qr_secret = _nanoid(32);
+    }
 
     const { error } = await supabase().from("projects").upsert(row, { onConflict: "id" });
     if (error) {
@@ -1010,42 +1028,11 @@ export const messagingDb = {
     return deleteRow("text_channels", id);
   },
 
-  /**
-   * Ensure parent text_channel exists in DB before inserting a message.
-   * Without this guard, seed-only channels (SEED_TEXT_CHANNELS) that were never
-   * synced will cause: "violates foreign key constraint channel_messages_channel_id_fkey".
-   */
-  async _ensureChannelExists(channelId: string): Promise<boolean> {
-    if (!channelId) return false;
-    const { data } = await supabase()
-      .from("text_channels")
-      .select("id")
-      .eq("id", channelId)
-      .maybeSingle();
-    if (data) return true;
-    try {
-      const { useMessagingStore } = await import("@/store/messaging.store");
-      const local = useMessagingStore.getState().channels.find((c) => c.id === channelId);
-      if (local) {
-        return await messagingDb.upsertChannel(local);
-      }
-    } catch (err) {
-      console.warn(
-        `[db] _ensureChannelExists: lookup failed:`,
-        err instanceof Error ? err.message : String(err)
-      );
-    }
-    console.warn(`[db] _ensureChannelExists: channel ${channelId} not found locally or in DB`);
-    return false;
-  },
-
   async insertMessage(msg: ChannelMessage): Promise<boolean> {
-    if (!(await messagingDb._ensureChannelExists(msg.channelId))) return false;
     return insertRow("channel_messages", msg as unknown as Record<string, unknown>);
   },
 
   async upsertMessage(msg: ChannelMessage): Promise<boolean> {
-    if (!(await messagingDb._ensureChannelExists(msg.channelId))) return false;
     return upsertRow("channel_messages", msg as unknown as Record<string, unknown>);
   },
 };
@@ -1055,7 +1042,11 @@ export const messagingDb = {
 export const tasksDb = {
   fetchGroups: () => fetchAll<TaskGroup>("task_groups"),
   fetchTasks: () => fetchAll<Task>("tasks"),
-  fetchCompletionReports: () => fetchAll<TaskCompletionReport>("task_completion_reports"),
+  // Limit to 500 most-recent reports to avoid Supabase statement_timeout on large tables.
+  fetchCompletionReports: () => fetchAll<TaskCompletionReport>("task_completion_reports", {
+    order: { column: "submitted_at", ascending: false },
+    limit: 500,
+  }),
   fetchComments: () => fetchAll<TaskComment>("task_comments", { order: { column: "created_at", ascending: true } }),
 
   async upsertGroup(g: TaskGroup): Promise<boolean> {
@@ -1132,8 +1123,7 @@ export const tasksDb = {
   },
 
   async deleteTask(id: string): Promise<boolean> {
-    // Migration 027 cascades task_completion_reports; migration 028 cascades task_comments.
-    // Pre-delete comments as safety net until 028 is verified live in production.
+    // Pre-delete comments as safety net until cascade is verified live in production.
     const { error: cmtErr } = await supabase()
       .from("task_comments")
       .delete()
@@ -1278,7 +1268,7 @@ export async function hasValidSession(): Promise<boolean> {
     }
     
     return !!data.session?.access_token;
-  } catch (_err) {
+  } catch {
     // Network or other error - assume no valid session
     return false;
   }

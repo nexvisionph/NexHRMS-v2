@@ -1,154 +1,90 @@
 /**
- * Annual Tax Engine (Philippines - TRAIN Law)
- * Computes annual income tax based on TRAIN law brackets.
- * Used for BIR Form 2316 generation and year-end tax adjustments.
+ * Annual Tax Engine — Year-End Reconciliation
+ * --------------------------------------------------------------
+ * Aggregates a full year of categorized payslips into an `AnnualTaxSummary`,
+ * folds in any previous-employer income, computes annual TRAIN tax due, and
+ * determines the over/under-withheld adjustment.
+ *
+ * Reference: bir_alphalist.md §4 (Annual reconciliation)
  */
 
-// ─── TRAIN Law Tax Brackets (2026) ──────────────────────────
+import type {
+    Payslip,
+    PreviousEmployerRecord,
+    AnnualTaxSummary,
+    AnnualTaxAdjustmentType,
+} from "@/types";
+import { aggregateCategories } from "./bir-tax-categories";
+import { reconcileAnnualTax } from "./bir-tax-rules";
 
-export interface TaxBracket {
-  min: number;
-  max: number;
-  rate: number;
-  fixedAmount: number;
-}
-
-export const TRAIN_TAX_BRACKETS_2026: TaxBracket[] = [
-  { min: 0, max: 250000, rate: 0, fixedAmount: 0 },
-  { min: 250001, max: 400000, rate: 0.15, fixedAmount: 0 },
-  { min: 400001, max: 800000, rate: 0.20, fixedAmount: 22500 },
-  { min: 800001, max: 2000000, rate: 0.25, fixedAmount: 102500 },
-  { min: 2000001, max: 8000000, rate: 0.30, fixedAmount: 402500 },
-  { min: 8000001, max: Infinity, rate: 0.35, fixedAmount: 2202500 },
-];
-
-// ─── Non-Taxable Income Thresholds ──────────────────────────
-
-export const NON_TAXABLE_LIMITS = {
-  /** 13th month pay and other benefits (non-taxable up to this amount) */
-  thirteenthMonthAndBenefits: 90000,
-  /** De minimis benefits (non-taxable) */
-  deMinimis: {
-    riceSubsidy: 2000, // per month
-    uniformAllowance: 6000, // per year
-    medicalAllowance: 10000, // per year
-    laundryAllowance: 300, // per month
-    achievementAwards: 10000, // per year
-    christmasGift: 5000, // per year
-    dailyMealAllowance: 150, // per day (for overtime)
-  },
-  /** SSS, PhilHealth, Pag-IBIG contributions (non-taxable) */
-  mandatoryContributions: true,
-} as const;
-
-// ─── Annual Tax Computation ─────────────────────────────────
-
-export interface AnnualTaxInput {
-  /** Total gross compensation for the year */
-  grossCompensation: number;
-  /** Total 13th month pay received */
-  thirteenthMonthPay: number;
-  /** Other non-taxable benefits (de minimis, etc.) */
-  otherNonTaxableBenefits: number;
-  /** Total SSS contributions for the year */
-  sssContributions: number;
-  /** Total PhilHealth contributions for the year */
-  philhealthContributions: number;
-  /** Total Pag-IBIG contributions for the year */
-  pagibigContributions: number;
-  /** Total tax already withheld during the year */
-  taxAlreadyWithheld: number;
-  /** Whether employee is a minimum wage earner */
-  isMinimumWageEarner?: boolean;
-}
-
-export interface AnnualTaxResult {
-  grossCompensation: number;
-  nonTaxableIncome: number;
-  taxableIncome: number;
-  annualTaxDue: number;
-  taxAlreadyWithheld: number;
-  overUnderWithholding: number; // positive = over-withheld (refund), negative = under-withheld (collect)
-  effectiveTaxRate: number;
-  bracket: TaxBracket;
+export interface BuildAnnualSummaryInput {
+    employeeId: string;
+    year: number;
+    payslips: Payslip[];                    // pre-filtered to that employee+year
+    prevEmployerRecords?: PreviousEmployerRecord[];
+    existingId?: string;                    // for updates
+    existingCreatedAt?: string;
 }
 
 /**
- * Compute annual income tax using TRAIN law brackets
+ * Build (or refresh) an `AnnualTaxSummary` from categorized payslips.
+ * Returns a new object with status='reconciled' — caller decides when to finalize.
  */
-export function computeAnnualTax(
-  input: AnnualTaxInput,
-  brackets: TaxBracket[] = TRAIN_TAX_BRACKETS_2026
-): AnnualTaxResult {
-  // Minimum wage earners are exempt from income tax
-  if (input.isMinimumWageEarner) {
+export function buildAnnualSummary(
+    input: BuildAnnualSummaryInput,
+): AnnualTaxSummary {
+    const totals = aggregateCategories(input.payslips);
+    const prevIncome = sum(input.prevEmployerRecords?.map((r) => r.totalIncome) ?? []);
+    const prevTax = sum(input.prevEmployerRecords?.map((r) => r.totalTaxWithheld) ?? []);
+
+    // Annual taxable = current-employer taxable + prev-employer income
+    // (per BIR Form 2316 line 21–24 — both employers' compensation aggregated)
+    const annualTaxable = totals.taxableTotal + prevIncome;
+
+    const { annualTaxDue, adjustment, type } = reconcileAnnualTax(
+        annualTaxable,
+        totals.withholdingTax + prevTax,
+    );
+
+    const now = new Date().toISOString();
     return {
-      grossCompensation: input.grossCompensation,
-      nonTaxableIncome: input.grossCompensation,
-      taxableIncome: 0,
-      annualTaxDue: 0,
-      taxAlreadyWithheld: input.taxAlreadyWithheld,
-      overUnderWithholding: input.taxAlreadyWithheld, // refund all withheld
-      effectiveTaxRate: 0,
-      bracket: brackets[0],
+        id: input.existingId ?? `ATS-${input.employeeId}-${input.year}`,
+        employeeId: input.employeeId,
+        year: input.year,
+        totalTaxableComp: round2(totals.taxableTotal),
+        totalNonTaxableComp: round2(totals.nonTaxableTotal),
+        totalDeMinimis: round2(
+            totals.deMinimisRiceSubsidy +
+                totals.deMinimisMedicalAllowance +
+                totals.deMinimisLaundryAllowance +
+                totals.deMinimisUniformAllowance +
+                totals.deMinimisMealAllowance +
+                totals.deMinimisOther,
+        ),
+        totalSSS: round2(totals.sssContribution),
+        totalPhilHealth: round2(totals.philhealthContribution),
+        totalPagIBIG: round2(totals.pagibigContribution),
+        total13thNonTaxable: round2(totals.thirteenthMonthNonTaxable),
+        total13thTaxable: round2(totals.thirteenthMonthTaxable),
+        totalOtherBenefits: round2(
+            totals.taxableAllowances + totals.nonTaxableAllowances,
+        ),
+        totalTaxWithheld: round2(totals.withholdingTax),
+        prevEmployerIncome: round2(prevIncome),
+        prevEmployerTax: round2(prevTax),
+        annualTaxDue: round2(annualTaxDue),
+        adjustmentType: type as AnnualTaxAdjustmentType,
+        adjustmentAmount: round2(adjustment),
+        status: "reconciled",
+        createdAt: input.existingCreatedAt ?? now,
+        updatedAt: now,
     };
-  }
-
-  // Compute non-taxable income
-  const thirteenthMonthExempt = Math.min(input.thirteenthMonthPay, NON_TAXABLE_LIMITS.thirteenthMonthAndBenefits);
-  const mandatoryContributions = input.sssContributions + input.philhealthContributions + input.pagibigContributions;
-  const nonTaxableIncome = thirteenthMonthExempt + input.otherNonTaxableBenefits + mandatoryContributions;
-
-  // Compute taxable income
-  const taxableIncome = Math.max(0, input.grossCompensation - nonTaxableIncome);
-
-  // Find applicable bracket
-  const bracket = brackets.find((b) => taxableIncome >= b.min && taxableIncome <= b.max) ?? brackets[brackets.length - 1];
-
-  // Compute tax due
-  let annualTaxDue = 0;
-  if (taxableIncome > 250000) {
-    annualTaxDue = bracket.fixedAmount + ((taxableIncome - (bracket.min - 1)) * bracket.rate);
-  }
-  annualTaxDue = Math.round(annualTaxDue * 100) / 100;
-
-  // Over/under withholding
-  const overUnderWithholding = Math.round((input.taxAlreadyWithheld - annualTaxDue) * 100) / 100;
-
-  // Effective tax rate
-  const effectiveTaxRate = taxableIncome > 0 ? (annualTaxDue / taxableIncome) * 100 : 0;
-
-  return {
-    grossCompensation: input.grossCompensation,
-    nonTaxableIncome,
-    taxableIncome,
-    annualTaxDue,
-    taxAlreadyWithheld: input.taxAlreadyWithheld,
-    overUnderWithholding,
-    effectiveTaxRate: Math.round(effectiveTaxRate * 100) / 100,
-    bracket,
-  };
 }
 
-/**
- * Compute monthly withholding tax (for payroll processing)
- */
-export function computeMonthlyWithholdingTax(
-  monthlyTaxableIncome: number,
-  brackets: TaxBracket[] = TRAIN_TAX_BRACKETS_2026
-): number {
-  // Annualize the monthly income
-  const annualizedIncome = monthlyTaxableIncome * 12;
+function sum(nums: number[]): number {
+    return nums.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
+}
 
-  // Find bracket
-  const bracket = brackets.find((b) => annualizedIncome >= b.min && annualizedIncome <= b.max) ?? brackets[brackets.length - 1];
-
-  // Compute annual tax
-  let annualTax = 0;
-  if (annualizedIncome > 250000) {
-    annualTax = bracket.fixedAmount + ((annualizedIncome - (bracket.min - 1)) * bracket.rate);
-  }
-
-  // Return monthly portion
-  return Math.round((annualTax / 12) * 100) / 100;
+function round2(n: number): number {
+    return Math.round((n ?? 0) * 100) / 100;
 }

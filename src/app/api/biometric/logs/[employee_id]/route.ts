@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/services/supabase-server";
-import { getCurrentUserFromCookie } from "@/services/auth.service";
+import { createServerSupabaseClient } from "@/services/supabase-server";
+import { getCurrentUser } from "@/services/auth.service";
 
 async function getCurrentEmployee(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const { data: byId } = await supabase
@@ -31,8 +31,8 @@ function manilaDateBoundaryUtc(date: string, endOfDay = false) {
 export async function GET(req: Request, { params }: { params: Promise<{ employee_id: string }> }) {
   const { employee_id } = await params;
   try {
-    const supabase = await createClient();
-    const user = await getCurrentUserFromCookie();
+    const supabase = await createServerSupabaseClient();
+    const user = await getCurrentUser();
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

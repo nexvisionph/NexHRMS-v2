@@ -131,9 +131,6 @@ export function Topbar() {
 
     const roleColors: Record<Role, string> = {
         admin: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-        support_admin: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-        finance_admin: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-        analyst: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
         hr: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
         finance: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
         employee: "bg-purple-500/15 text-purple-700 dark:text-purple-400",
@@ -368,6 +365,7 @@ export function Topbar() {
                             { label: "Attendance", href: "/attendance" },
                             { label: "Leave", href: "/leave" },
                             { label: "Payroll", href: "/payroll" },
+                            { label: "My Payslips", href: "/my-payslips" },
                             { label: "Settings", href: "/settings" },
                         ].map((p) => (
                             <CommandItem

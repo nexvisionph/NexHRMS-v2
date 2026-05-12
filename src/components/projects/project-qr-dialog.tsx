@@ -1,160 +1,140 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useEffect, useRef, useState } from "react";
+import { QRCodeCanvas } from "qrcode.react";
 import { Button } from "@/components/ui/button";
-import { generateProjectQR, getProjectQRDisplayData } from "@/lib/project-qr";
-import { Download, Printer, QrCode, Copy } from "lucide-react";
-import type { Project } from "@/types";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Download, Printer, QrCode, Loader2, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 
-interface ProjectQRDialogProps {
-  project: Project;
+/**
+ * Project QR Dialog
+ *
+ * Fetches the signed QR payload from /api/projects/[id]/qr and renders it as a
+ * permanent, downloadable, printable QR code. The payload is HMAC-signed so
+ * even if the QR sticker is photographed and replayed, scans outside the
+ * project's geofence are rejected by the server-side validator.
+ */
+interface ProjectQrDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  projectId: string;
+  projectName: string;
 }
 
-export function ProjectQRDialog({ project, open, onOpenChange }: ProjectQRDialogProps) {
-  const [qrData, setQrData] = useState<string>("");
-  const [copied, setCopied] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: ProjectQrDialogProps) {
+  const [payload, setPayload] = useState<string | null>(null);
+  const [checkinUrl, setCheckinUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (open) {
-      generateProjectQR(project.id, project.name).then(setQrData);
-    }
-  }, [open, project.id, project.name]);
-
-  // Simple QR-like visual (in production, use a QR library like 'qrcode')
-  useEffect(() => {
-    if (!canvasRef.current || !qrData) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const size = 256;
-    canvas.width = size;
-    canvas.height = size;
-
-    // White background
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, size, size);
-
-    // Generate a deterministic pattern from the QR data
-    ctx.fillStyle = "#000000";
-    const cellSize = 8;
-    const grid = size / cellSize;
-
-    // Simple hash-based pattern (placeholder for real QR encoding)
-    let hash = 0;
-    for (let i = 0; i < qrData.length; i++) {
-      hash = ((hash << 5) - hash) + qrData.charCodeAt(i);
-      hash = hash & hash;
-    }
-
-    for (let y = 0; y < grid; y++) {
-      for (let x = 0; x < grid; x++) {
-        // Position patterns (corners)
-        const isCorner = (x < 7 && y < 7) || (x >= grid - 7 && y < 7) || (x < 7 && y >= grid - 7);
-        if (isCorner) {
-          const cx = x < 7 ? x : (x >= grid - 7 ? x - (grid - 7) : x);
-          const cy = y < 7 ? y : (y >= grid - 7 ? y - (grid - 7) : y);
-          const isBorder = cx === 0 || cx === 6 || cy === 0 || cy === 6;
-          const isInner = cx >= 2 && cx <= 4 && cy >= 2 && cy <= 4;
-          if (isBorder || isInner) {
-            ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-          }
-        } else {
-          // Data pattern
-          const seed = (hash + x * 31 + y * 37 + x * y) & 0xffffffff;
-          if (seed % 3 !== 0) {
-            ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-          }
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setPayload(null);
+    setCheckinUrl(null);
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/qr`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j.error || `HTTP ${res.status}`);
         }
-      }
-    }
-
-    // Center label
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(size / 2 - 30, size / 2 - 10, 60, 20);
-    ctx.fillStyle = "#000000";
-    ctx.font = "bold 10px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("PROJECT", size / 2, size / 2 + 4);
-  }, [qrData]);
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setPayload(data.payload as string);
+        setCheckinUrl((data.checkinUrl as string) ?? null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load QR");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, projectId]);
 
   const handleDownload = () => {
-    if (!canvasRef.current) return;
-    const link = document.createElement("a");
-    link.download = `project-qr-${project.name.replace(/\s+/g, "-").toLowerCase()}.png`;
-    link.href = canvasRef.current.toDataURL("image/png");
-    link.click();
+    const canvas = wrapRef.current?.querySelector("canvas");
+    if (!canvas) return toast.error("QR not ready");
+    try {
+      const url = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `project-${projectId}-qr.png`;
+      a.click();
+      toast.success("QR downloaded");
+    } catch {
+      toast.error("Download failed");
+    }
   };
 
   const handlePrint = () => {
-    if (!canvasRef.current) return;
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    printWindow.document.write(`
-      <html>
-        <head><title>Project QR - ${project.name}</title></head>
-        <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;">
-          <h2>${project.name}</h2>
-          <img src="${canvasRef.current.toDataURL("image/png")}" style="width:300px;height:300px;" />
-          <p style="color:#666;margin-top:16px;">Scan this QR code to check in at this project location.</p>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
+    const canvas = wrapRef.current?.querySelector("canvas");
+    if (!canvas) return toast.error("QR not ready");
+    const url = canvas.toDataURL("image/png");
+    const w = window.open("", "_blank", "width=600,height=700");
+    if (!w) return toast.error("Pop-up blocked — allow pop-ups to print");
+    w.document.write(`
+      <html><head><title>Project QR — ${projectName}</title>
+      <style>body{font-family:sans-serif;text-align:center;padding:40px}h1{margin:0 0 8px}p{color:#555;margin:0 0 24px}img{max-width:480px}small{font-size:11px;color:#888}</style>
+      </head><body>
+        <h1>${projectName}</h1>
+        <p>Scan with your phone to log attendance for this project</p>
+        <img src="${url}" />
+        <br/><small>Project ID: ${projectId}</small>
+      </body></html>`);
+    w.document.close();
+    setTimeout(() => { w.focus(); w.print(); }, 200);
   };
-
-  const handleCopy = async () => {
-    if (!qrData) return;
-    await navigator.clipboard.writeText(qrData);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const displayData = getProjectQRDisplayData(project.id, project.name);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <QrCode className="h-5 w-5" />
-            Project QR Code
+            Project QR — {projectName}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Signed QR code for {projectName}. Print and post at the project site for employee attendance scanning.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="text-center">
-            <p className="font-medium">{displayData.label}</p>
-            <p className="text-sm text-muted-foreground">{displayData.subtitle}</p>
+          <div ref={wrapRef} className="flex items-center justify-center bg-white p-6 rounded-lg border">
+            {loading && <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />}
+            {error && (
+              <div className="flex flex-col items-center gap-2 text-destructive py-8">
+                <AlertCircle className="h-8 w-8" />
+                <p className="text-sm">{error}</p>
+              </div>
+            )}
+            {payload && !error && (
+              <QRCodeCanvas
+                value={checkinUrl ?? payload}
+                size={256}
+                level="H"
+                includeMargin
+              />
+            )}
           </div>
-
-          <div className="flex justify-center">
-            <canvas
-              ref={canvasRef}
-              className="border rounded-lg shadow-sm"
-              style={{ width: 256, height: 256 }}
-            />
-          </div>
-
-          <p className="text-xs text-center text-muted-foreground">
-            This QR code is permanent and unique to this project. Employees scan it to record attendance.
+          <p className="text-xs text-muted-foreground text-center">
+            Print this QR and post it at the project site. Employees scan it with their phone
+            to check in or out. Geofence verification ensures they must be physically present.
           </p>
-
           <div className="flex gap-2">
-            <Button onClick={handleDownload} variant="outline" className="flex-1">
-              <Download className="h-4 w-4 mr-2" />Download PNG
+            <Button variant="outline" className="flex-1" onClick={handleDownload} disabled={!checkinUrl}>
+              <Download className="h-4 w-4 mr-1" /> Download
             </Button>
-            <Button onClick={handlePrint} variant="outline" className="flex-1">
-              <Printer className="h-4 w-4 mr-2" />Print
+            <Button className="flex-1" onClick={handlePrint} disabled={!checkinUrl}>
+              <Printer className="h-4 w-4 mr-1" /> Print
             </Button>
           </div>
-          <Button onClick={handleCopy} variant="ghost" className="w-full" size="sm">
-            <Copy className="h-3 w-3 mr-2" />{copied ? "Copied!" : "Copy QR Data"}
-          </Button>
         </div>
       </DialogContent>
     </Dialog>

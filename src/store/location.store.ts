@@ -229,6 +229,6 @@ export const useLocationStore = create<LocationState>()(
                 }).catch(() => {});
             },
         }),
-        { name: "nexhrms-location", version: 1, storage: safePersistStorage }
+        { name: "soren-location", version: 1, storage: safePersistStorage }
     )
 );

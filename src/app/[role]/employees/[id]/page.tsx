@@ -11,9 +11,6 @@ export default function EmployeeDetailPage() {
         <RoleViewDispatcher
             views={{
                 admin: AdminView,
-                support_admin: AdminView,
-                finance_admin: AdminView,
-                analyst: AdminView,
                 hr: AdminView,
                 finance: ViewerView,
                 supervisor: ViewerView,

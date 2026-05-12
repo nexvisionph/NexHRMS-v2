@@ -11,9 +11,6 @@ export default function ReportsPage() {
         <RoleViewDispatcher
             views={{
                 admin: AdminReportsView,
-                support_admin: AdminReportsView,
-                finance_admin: AdminReportsView,
-                analyst: AdminReportsView,
                 finance: AdminReportsView,
                 payroll_admin: AdminReportsView,
                 hr: AdminReportsView,

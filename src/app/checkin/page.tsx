@@ -1,172 +1,199 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAuthStore } from "@/store/auth.store";
-import { useAttendanceStore } from "@/store/attendance.store";
-import { useEmployeesStore } from "@/store/employees.store";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { createBrowserClient } from "@supabase/ssr";
+import { MapPin, CheckCircle, XCircle, Loader2, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Clock, MapPin, CheckCircle, LogIn, LogOut } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function SelfCheckInPage() {
-  const currentUser = useAuthStore((s) => s.currentUser);
-  const employees = useEmployeesStore((s) => s.employees);
-  const events = useAttendanceStore((s) => s.events);
-  const appendEvent = useAttendanceStore((s) => s.appendEvent);
+type Step = "loading" | "locating" | "submitting" | "success" | "error";
 
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [location, setLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
-  const [locationError, setLocationError] = useState("");
-  const [checkingIn, setCheckingIn] = useState(false);
-  const [message, setMessage] = useState("");
+interface CheckinResult {
+  eventType: "IN" | "OUT";
+  time: string;
+  projectName: string;
+  employeeName: string;
+}
 
-  // Find current employee
-  const currentEmployee = employees.find(
-    (e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase()
-  );
+export default function CheckinPage() {
+  const searchParams = useSearchParams();
+  const qrParam = searchParams.get("qr");
 
-  // Update clock
+  const [step, setStep] = useState<Step>("loading");
+  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [result, setResult] = useState<CheckinResult | null>(null);
+
   useEffect(() => {
-    const interval = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Get GPS location
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setLocation({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            accuracy: pos.coords.accuracy,
-          });
-        },
-        (err) => setLocationError(err.message),
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
+    if (!qrParam) {
+      setErrorMsg("No QR code found in URL. Please scan the QR sticker again.");
+      setStep("error");
+      return;
     }
-  }, []);
 
-  // Today's events for this employee
-  const today = new Date().toISOString().split("T")[0];
-  const todayEvents = currentEmployee
-    ? events.filter((e) => e.employeeId === currentEmployee.id && e.timestampUTC.startsWith(today) && (e.eventType === "IN" || e.eventType === "OUT"))
-    : [];
+    // Check authentication status
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
 
-  const lastEvent = todayEvents[todayEvents.length - 1];
-  const isCheckedIn = lastEvent?.eventType === "IN";
-
-  const handleCheckIn = async () => {
-    if (!currentEmployee) return;
-    setCheckingIn(true);
-
-    const eventType = isCheckedIn ? "OUT" : "IN";
-
-    appendEvent({
-      employeeId: currentEmployee.id,
-      eventType,
-      timestampUTC: new Date().toISOString(),
-      description: `Self check-${eventType === "IN" ? "in" : "out"} via mobile`,
-      metadata: location ? { gpsLat: location.lat, gpsLng: location.lng, gpsAccuracy: location.accuracy } : undefined,
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        // Redirect to login with this URL as the next param
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.href = `/login?next=${next}`;
+        return;
+      }
+      // Authenticated — get location then check in
+      setStep("locating");
+      getLocationAndCheckin(qrParam);
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrParam]);
 
-    setMessage(`Successfully checked ${eventType === "IN" ? "in" : "out"} at ${new Date().toLocaleTimeString()}`);
-    setCheckingIn(false);
+  function getLocationAndCheckin(payload: string) {
+    if (!navigator.geolocation) {
+      setErrorMsg("Your browser does not support GPS location, which is required for project check-in.");
+      setStep("error");
+      return;
+    }
 
-    setTimeout(() => setMessage(""), 5000);
-  };
-
-  if (!currentEmployee) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6 text-center">
-            <p className="text-muted-foreground">Please log in to use self-service check-in.</p>
-            <Button className="mt-4" onClick={() => window.location.href = "/login"}>Go to Login</Button>
-          </CardContent>
-        </Card>
-      </div>
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const location = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        };
+        doCheckin(payload, location);
+      },
+      (err) => {
+        const msg =
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission denied. Please allow location access and scan again."
+            : err.code === err.TIMEOUT
+            ? "GPS timed out. Move to an area with better signal and scan again."
+            : "Could not get your location. Please try again.";
+        setErrorMsg(msg);
+        setStep("error");
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
   }
 
+  async function doCheckin(payload: string, location: { lat: number; lng: number; accuracy?: number }) {
+    setStep("submitting");
+    try {
+      const res = await fetch("/api/attendance/project-qr-checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payload, location }),
+      });
+      const data = await res.json() as {
+        ok: boolean;
+        error?: string;
+        eventType?: "IN" | "OUT";
+        time?: string;
+        projectName?: string;
+        employeeName?: string;
+      };
+
+      if (!res.ok || !data.ok) {
+        setErrorMsg(data.error ?? "Check-in failed. Please try again.");
+        setStep("error");
+        return;
+      }
+
+      setResult({
+        eventType: data.eventType!,
+        time: data.time!,
+        projectName: data.projectName!,
+        employeeName: data.employeeName!,
+      });
+      setStep("success");
+    } catch {
+      setErrorMsg("Network error. Please check your connection and try again.");
+      setStep("error");
+    }
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-      <Card className="w-full max-w-md shadow-xl">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <Card className="w-full max-w-sm shadow-lg">
         <CardHeader className="text-center pb-2">
-          <CardTitle className="text-xl">Self-Service Check-In</CardTitle>
-          <p className="text-sm text-muted-foreground">{currentEmployee.name}</p>
+          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <QrCode className="h-6 w-6 text-primary" />
+          </div>
+          <CardTitle className="text-lg">Project Check-In</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Clock */}
-          <div className="text-center">
-            <p className="text-4xl font-mono font-bold tabular-nums">
-              {currentTime.toLocaleTimeString()}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {currentTime.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-            </p>
-          </div>
-
-          {/* Status */}
-          <div className="flex justify-center">
-            <Badge variant={isCheckedIn ? "default" : "outline"} className="text-sm px-4 py-1">
-              {isCheckedIn ? "Checked In" : "Not Checked In"}
-            </Badge>
-          </div>
-
-          {/* Location */}
-          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="h-4 w-4" />
-            {location ? (
-              <span>GPS: {location.lat.toFixed(4)}, {location.lng.toFixed(4)} (±{Math.round(location.accuracy)}m)</span>
-            ) : locationError ? (
-              <span className="text-red-500">{locationError}</span>
-            ) : (
-              <span>Acquiring location...</span>
-            )}
-          </div>
-
-          {/* Check-in/out Button */}
-          <Button
-            onClick={handleCheckIn}
-            disabled={checkingIn}
-            className="w-full h-14 text-lg"
-            variant={isCheckedIn ? "outline" : "default"}
-          >
-            {isCheckedIn ? (
-              <><LogOut className="h-5 w-5 mr-2" />Check Out</>
-            ) : (
-              <><LogIn className="h-5 w-5 mr-2" />Check In</>
-            )}
-          </Button>
-
-          {/* Success Message */}
-          {message && (
-            <div className="flex items-center gap-2 text-green-600 justify-center">
-              <CheckCircle className="h-4 w-4" />
-              <span className="text-sm">{message}</span>
-            </div>
+        <CardContent className="text-center space-y-4">
+          {step === "loading" && (
+            <>
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto" />
+              <p className="text-sm text-muted-foreground">Verifying your session…</p>
+            </>
           )}
 
-          {/* Today's Log */}
-          {todayEvents.length > 0 && (
-            <div className="border-t pt-4">
-              <p className="text-sm font-medium mb-2">Today&apos;s Activity</p>
-              <div className="space-y-1">
-                {todayEvents.map((ev) => (
-                  <div key={ev.id} className="flex justify-between text-sm">
-                    <span className={ev.eventType === "IN" ? "text-green-600" : "text-red-600"}>
-                      {ev.eventType === "IN" ? "Check In" : "Check Out"}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {new Date(ev.timestampUTC).toLocaleTimeString()}
-                    </span>
-                  </div>
-                ))}
+          {step === "locating" && (
+            <>
+              <MapPin className="h-8 w-8 text-primary mx-auto animate-pulse" />
+              <p className="text-sm text-muted-foreground">Getting your location…</p>
+              <p className="text-xs text-muted-foreground">Please allow location access when prompted.</p>
+            </>
+          )}
+
+          {step === "submitting" && (
+            <>
+              <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+              <p className="text-sm text-muted-foreground">Recording attendance…</p>
+            </>
+          )}
+
+          {step === "success" && result && (
+            <>
+              <CheckCircle className="h-12 w-12 text-green-500 mx-auto" />
+              <div>
+                <p className="text-xl font-semibold text-green-600">
+                  {result.eventType === "IN" ? "Checked In!" : "Checked Out!"}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">{result.time}</p>
               </div>
-            </div>
+              <div className="bg-muted rounded-lg p-3 text-left text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Employee</span>
+                  <span className="font-medium">{result.employeeName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Project</span>
+                  <span className="font-medium">{result.projectName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Event</span>
+                  <span className="font-medium">{result.eventType}</span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">You can close this page.</p>
+            </>
+          )}
+
+          {step === "error" && (
+            <>
+              <XCircle className="h-12 w-12 text-destructive mx-auto" />
+              <p className="text-sm font-medium text-destructive">Check-In Failed</p>
+              <p className="text-sm text-muted-foreground">{errorMsg}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (qrParam) {
+                    setStep("locating");
+                    getLocationAndCheckin(qrParam);
+                  }
+                }}
+              >
+                Try Again
+              </Button>
+            </>
           )}
         </CardContent>
       </Card>

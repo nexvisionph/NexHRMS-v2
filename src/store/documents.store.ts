@@ -3,231 +3,194 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
+import type {
+    Employee201Document,
+    Employee201DocType,
+    Document201Status,
+    Document201Visibility,
+} from "@/types";
+import { useAuditStore } from "./audit.store";
 
-// ─── Document Types ──────────────────────────────────────────
-
-export type DocumentType =
-  | "personal_info"
-  | "employment_contract"
-  | "government_id"
-  | "resume"
-  | "application_form"
-  | "job_offer"
-  | "medical"
-  | "training_certificate"
-  | "performance_evaluation"
-  | "payslip"
-  | "leave_record"
-  | "warning"
-  | "nte"
-  | "nod"
-  | "clearance"
-  | "resignation_letter"
-  | "coe"
-  | "final_pay_document"
-  | "other";
-
-export type DocumentStatus =
-  | "pending_upload"
-  | "uploaded"
-  | "for_review"
-  | "approved"
-  | "rejected"
-  | "expired"
-  | "archived";
-
-export type DocumentVisibility =
-  | "hr_only"
-  | "manager"
-  | "employee"
-  | "payroll"
-  | "admin_only";
-
-export interface Employee201Document {
-  id: string;
-  employeeId: string;
-  documentType: DocumentType;
-  title: string;
-  description?: string;
-  fileUrl?: string;
-  fileName?: string;
-  fileSize?: number;
-  mimeType?: string;
-  status: DocumentStatus;
-  visibility: DocumentVisibility;
-  expiryDate?: string;
-  uploadedBy?: string;
-  uploadedAt?: string;
-  reviewedBy?: string;
-  reviewedAt?: string;
-  rejectionReason?: string;
-  version: number;
-  tags?: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-// Required documents for gap analysis
-export const REQUIRED_DOCUMENTS: DocumentType[] = [
-  "employment_contract",
-  "government_id",
-  "resume",
-  "application_form",
-  "medical",
+/** Required document types every employee should have on file. */
+export const REQUIRED_201_DOC_TYPES: Employee201DocType[] = [
+    "employment_contract",
+    "government_id",
+    "resume",
+    "application_form",
+    "medical",
 ];
 
-export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
-  personal_info: "Personal Information",
-  employment_contract: "Employment Contract",
-  government_id: "Government ID",
-  resume: "Resume / CV",
-  application_form: "Application Form",
-  job_offer: "Job Offer Letter",
-  medical: "Medical Certificate",
-  training_certificate: "Training Certificate",
-  performance_evaluation: "Performance Evaluation",
-  payslip: "Payslip",
-  leave_record: "Leave Record",
-  warning: "Warning Letter",
-  nte: "Notice to Explain (NTE)",
-  nod: "Notice of Decision (NOD)",
-  clearance: "Clearance Form",
-  resignation_letter: "Resignation Letter",
-  coe: "Certificate of Employment",
-  final_pay_document: "Final Pay Document",
-  other: "Other",
-};
+interface DocumentsState {
+    documents: Employee201Document[];
 
-export interface DocumentGap {
-  employeeId: string;
-  employeeName: string;
-  missingDocuments: DocumentType[];
-  expiringDocuments: Employee201Document[];
+    upload: (data: Omit<Employee201Document, "id" | "createdAt" | "updatedAt" | "status"> & { status?: Document201Status }) => Employee201Document;
+    approve: (id: string, reviewerId: string, remarks?: string) => void;
+    reject: (id: string, reviewerId: string, remarks: string) => void;
+    archive: (id: string, by: string) => void;
+    remove: (id: string) => void;
+    setVisibility: (id: string, visibility: Document201Visibility) => void;
+    setExpiry: (id: string, date: string) => void;
+    attachToCase: (docId: string, caseId: string) => void;
+
+    getById: (id: string) => Employee201Document | undefined;
+    getByEmployee: (employeeId: string) => Employee201Document[];
+    getByType: (type: Employee201DocType) => Employee201Document[];
+    getMissingForEmployee: (employeeId: string) => Employee201DocType[];
+    getCompletenessForEmployee: (employeeId: string) => number; // 0..1
+    getExpiring: (daysAhead?: number) => Employee201Document[];
+    getStats: () => {
+        total: number;
+        forReview: number;
+        approved: number;
+        rejected: number;
+        expiring30: number;
+    };
+
+    resetToSeed: () => void;
 }
 
-interface DocumentsState {
-  documents: Employee201Document[];
-
-  // CRUD
-  addDocument: (doc: Omit<Employee201Document, "id" | "createdAt" | "updatedAt" | "version">) => void;
-  updateDocument: (id: string, patch: Partial<Employee201Document>) => void;
-  deleteDocument: (id: string) => void;
-
-  // Status transitions
-  submitForReview: (id: string) => void;
-  approveDocument: (id: string, reviewedBy: string) => void;
-  rejectDocument: (id: string, reviewedBy: string, reason: string) => void;
-  archiveDocument: (id: string) => void;
-  markExpired: (id: string) => void;
-
-  // Queries
-  getByEmployee: (employeeId: string) => Employee201Document[];
-  getByType: (employeeId: string, docType: DocumentType) => Employee201Document[];
-  getMissingDocuments: (employeeId: string) => DocumentType[];
-  getExpiringDocuments: (daysAhead?: number) => Employee201Document[];
-  getGapAnalysis: (employees: { id: string; name: string }[]) => DocumentGap[];
+function nowIso() {
+    return new Date().toISOString();
 }
 
 export const useDocumentsStore = create<DocumentsState>()(
-  persist(
-    (set, get) => ({
-      documents: [],
+    persist(
+        (set, get) => ({
+            documents: [],
 
-      addDocument: (doc) =>
-        set((s) => ({
-          documents: [
-            ...s.documents,
-            {
-              ...doc,
-              id: nanoid(),
-              version: 1,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
+            upload: (data) => {
+                const doc: Employee201Document = {
+                    id: `DOC-${nanoid(8)}`,
+                    status: data.status ?? "uploaded",
+                    createdAt: nowIso(),
+                    updatedAt: nowIso(),
+                    ...data,
+                };
+                set((s) => ({ documents: [doc, ...s.documents] }));
+                useAuditStore.getState().log({
+                    entityType: "document",
+                    entityId: doc.id,
+                    action: "doc_uploaded",
+                    performedBy: data.uploadedBy ?? "system",
+                    afterSnapshot: { type: doc.documentType, title: doc.documentTitle, employeeId: doc.employeeId },
+                });
+                return doc;
             },
-          ],
-        })),
 
-      updateDocument: (id, patch) =>
-        set((s) => ({
-          documents: s.documents.map((d) =>
-            d.id === id ? { ...d, ...patch, updatedAt: new Date().toISOString() } : d
-          ),
-        })),
+            approve: (id, reviewerId, remarks) =>
+                set((s) => ({
+                    documents: s.documents.map((d) => {
+                        if (d.id !== id) return d;
+                        useAuditStore.getState().log({
+                            entityType: "document",
+                            entityId: id,
+                            action: "doc_approved",
+                            performedBy: reviewerId,
+                            beforeSnapshot: { status: d.status },
+                            afterSnapshot: { status: "approved", remarks },
+                        });
+                        return { ...d, status: "approved", reviewedBy: reviewerId, reviewedAt: nowIso(), remarks: remarks ?? d.remarks, updatedAt: nowIso() };
+                    }),
+                })),
 
-      deleteDocument: (id) =>
-        set((s) => ({ documents: s.documents.filter((d) => d.id !== id) })),
+            reject: (id, reviewerId, remarks) =>
+                set((s) => ({
+                    documents: s.documents.map((d) => {
+                        if (d.id !== id) return d;
+                        useAuditStore.getState().log({
+                            entityType: "document",
+                            entityId: id,
+                            action: "doc_rejected",
+                            performedBy: reviewerId,
+                            beforeSnapshot: { status: d.status },
+                            afterSnapshot: { status: "rejected", remarks },
+                        });
+                        return { ...d, status: "rejected", reviewedBy: reviewerId, reviewedAt: nowIso(), remarks, updatedAt: nowIso() };
+                    }),
+                })),
 
-      submitForReview: (id) =>
-        set((s) => ({
-          documents: s.documents.map((d) =>
-            d.id === id ? { ...d, status: "for_review" as DocumentStatus, updatedAt: new Date().toISOString() } : d
-          ),
-        })),
+            archive: (id, by) =>
+                set((s) => ({
+                    documents: s.documents.map((d) => {
+                        if (d.id !== id) return d;
+                        useAuditStore.getState().log({
+                            entityType: "document", entityId: id, action: "doc_archived", performedBy: by,
+                        });
+                        return { ...d, status: "archived", updatedAt: nowIso() };
+                    }),
+                })),
 
-      approveDocument: (id, reviewedBy) =>
-        set((s) => ({
-          documents: s.documents.map((d) =>
-            d.id === id
-              ? { ...d, status: "approved" as DocumentStatus, reviewedBy, reviewedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-              : d
-          ),
-        })),
+            remove: (id) =>
+                set((s) => ({ documents: s.documents.filter((d) => d.id !== id) })),
 
-      rejectDocument: (id, reviewedBy, reason) =>
-        set((s) => ({
-          documents: s.documents.map((d) =>
-            d.id === id
-              ? { ...d, status: "rejected" as DocumentStatus, reviewedBy, reviewedAt: new Date().toISOString(), rejectionReason: reason, updatedAt: new Date().toISOString() }
-              : d
-          ),
-        })),
+            setVisibility: (id, visibility) =>
+                set((s) => ({
+                    documents: s.documents.map((d) =>
+                        d.id === id ? { ...d, visibility, updatedAt: nowIso() } : d
+                    ),
+                })),
 
-      archiveDocument: (id) =>
-        set((s) => ({
-          documents: s.documents.map((d) =>
-            d.id === id ? { ...d, status: "archived" as DocumentStatus, updatedAt: new Date().toISOString() } : d
-          ),
-        })),
+            setExpiry: (id, date) =>
+                set((s) => ({
+                    documents: s.documents.map((d) =>
+                        d.id === id ? { ...d, expiryDate: date, updatedAt: nowIso() } : d
+                    ),
+                })),
 
-      markExpired: (id) =>
-        set((s) => ({
-          documents: s.documents.map((d) =>
-            d.id === id ? { ...d, status: "expired" as DocumentStatus, updatedAt: new Date().toISOString() } : d
-          ),
-        })),
+            attachToCase: (docId, caseId) =>
+                set((s) => ({
+                    documents: s.documents.map((d) =>
+                        d.id === docId ? { ...d, caseId, updatedAt: nowIso() } : d
+                    ),
+                })),
 
-      getByEmployee: (employeeId) =>
-        get().documents.filter((d) => d.employeeId === employeeId),
+            getById: (id) => get().documents.find((d) => d.id === id),
 
-      getByType: (employeeId, docType) =>
-        get().documents.filter((d) => d.employeeId === employeeId && d.documentType === docType),
+            getByEmployee: (employeeId) =>
+                get().documents.filter((d) => d.employeeId === employeeId && d.status !== "archived"),
 
-      getMissingDocuments: (employeeId) => {
-        const docs = get().documents.filter((d) => d.employeeId === employeeId);
-        return REQUIRED_DOCUMENTS.filter(
-          (reqType) => !docs.some((d) => d.documentType === reqType && d.status !== "rejected" && d.status !== "expired")
-        );
-      },
+            getByType: (type) =>
+                get().documents.filter((d) => d.documentType === type && d.status !== "archived"),
 
-      getExpiringDocuments: (daysAhead = 30) => {
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() + daysAhead);
-        return get().documents.filter(
-          (d) => d.expiryDate && new Date(d.expiryDate) <= cutoff && d.status === "approved"
-        );
-      },
+            getMissingForEmployee: (employeeId) => {
+                const present = new Set(
+                    get()
+                        .documents
+                        .filter((d) => d.employeeId === employeeId && d.status === "approved")
+                        .map((d) => d.documentType)
+                );
+                return REQUIRED_201_DOC_TYPES.filter((t) => !present.has(t));
+            },
 
-      getGapAnalysis: (employees) =>
-        employees.map((emp) => ({
-          employeeId: emp.id,
-          employeeName: emp.name,
-          missingDocuments: get().getMissingDocuments(emp.id),
-          expiringDocuments: get().getExpiringDocuments(30).filter((d) => d.employeeId === emp.id),
-        })).filter((g) => g.missingDocuments.length > 0 || g.expiringDocuments.length > 0),
-    }),
-    {
-      name: "nexhrms-documents",
-      storage: safePersistStorage,
-    }
-  )
+            getCompletenessForEmployee: (employeeId) => {
+                const missing = get().getMissingForEmployee(employeeId).length;
+                return 1 - missing / REQUIRED_201_DOC_TYPES.length;
+            },
+
+            getExpiring: (daysAhead = 30) => {
+                const now = Date.now();
+                const cutoff = now + daysAhead * 86_400_000;
+                return get().documents.filter((d) => {
+                    if (!d.expiryDate || d.status === "archived" || d.status === "expired") return false;
+                    const t = Date.parse(d.expiryDate);
+                    return Number.isFinite(t) && t >= now && t <= cutoff;
+                });
+            },
+
+            getStats: () => {
+                const docs = get().documents;
+                const expiring30 = get().getExpiring(30).length;
+                return {
+                    total: docs.filter((d) => d.status !== "archived").length,
+                    forReview: docs.filter((d) => d.status === "for_review").length,
+                    approved: docs.filter((d) => d.status === "approved").length,
+                    rejected: docs.filter((d) => d.status === "rejected").length,
+                    expiring30,
+                };
+            },
+
+            resetToSeed: () => set({ documents: [] }),
+        }),
+        { name: "soren-documents", version: 1, storage: safePersistStorage }
+    )
 );

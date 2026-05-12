@@ -52,12 +52,12 @@ export default function DashboardPage() {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">
+                <h1 className="text-2xl font-bold tracking-tight">
                     Welcome back, {currentUser.name.split(" ")[0]}!
                 </h1>
-                <p className="text-base text-muted-foreground mt-1.5">
+                <p className="text-muted-foreground mt-1">
                     {roleDescriptions[role] || "Here is what is happening today."}
                 </p>
             </div>

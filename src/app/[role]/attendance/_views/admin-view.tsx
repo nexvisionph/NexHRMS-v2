@@ -40,7 +40,7 @@ import {
     Clock, LogIn, LogOut, Download, MapPin, CheckCircle, XCircle, Navigation,
     BellRing, UserX, ShieldCheck, Timer, ThumbsUp, ThumbsDown, RotateCcw,
     AlertTriangle, Zap, CalendarDays, Plus, Pencil, Trash2, UploadCloud,
-    ShieldAlert, Gauge, Camera, ListChecks, MoreHorizontal, Undo2,
+    ShieldAlert, Gauge, Camera, ListChecks, MoreHorizontal, Undo2, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { isWithinGeofence } from "@/lib/geofence";
@@ -56,6 +56,7 @@ import { SiteSurveyGallery } from "@/components/attendance/site-survey-gallery";
 import { LocationTrail } from "@/components/attendance/location-trail";
 import { AttendanceHeatmap } from "@/components/attendance/attendance-heatmap";
 import type { Holiday, AttendanceFlag } from "@/types";
+import { forceRehydrate, stopWriteThrough, startWriteThrough } from "@/services/sync.service";
 
 type CheckInStep = "idle" | "locating" | "location_result" | "done" | "error" | "selfie";
 
@@ -71,41 +72,18 @@ const detectLocationSpoofing = (coords: GeolocationCoordinates): string | null =
     if (coords.accuracy > 0 && coords.accuracy < 1) return "Suspiciously precise GPS accuracy (possible mock provider).";
     if (coords.accuracy > 500) return "GPS accuracy is too poor to verify location reliably.";
     if (coords.speed !== null && coords.speed < 0) return "Invalid speed value in location data.";
-    if (isIOS && coords.altitude === null) return "Mock location suspected — iOS altitude data missing.";
+    // NOTE: iOS altitude is intentionally NOT checked — Safari does not reliably expose altitude
+    // (returns null for WiFi/cell positioning and when Precise Location is off on iOS 14+).
     if (isAndroid && coords.altitude !== null && coords.altitudeAccuracy === null) return "Mock location suspected — Android altitude accuracy missing.";
     return null;
+};
+
+const isLegacyIosAltitudeFalsePositive = (reason: string): boolean => {
+    return /ios altitude.*missing/i.test(reason) || /mock location suspected.*ios.*altitude/i.test(reason);
 };
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const statusColors: Record<string, string> = { present: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", absent: "bg-red-500/15 text-red-700 dark:text-red-400", on_leave: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
 const otStatusColor: Record<string, string> = { pending: "bg-amber-500/15 text-amber-700 dark:text-amber-400", approved: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", rejected: "bg-red-500/15 text-red-700 dark:text-red-400" };
-const methodColors: Record<string, { bg: string; text: string }> = {
-    fingerprint: { bg: "#22C55E", text: "#ffffff" },
-    face: { bg: "#3B82F6", text: "#ffffff" },
-    palm: { bg: "#14B8A6", text: "#ffffff" },
-    rfid: { bg: "#EAB308", text: "#111827" },
-    pin: { bg: "#F97316", text: "#ffffff" },
-    manual: { bg: "#EF4444", text: "#ffffff" },
-};
-const methodLabels: Record<string, string> = {
-    fingerprint: "Fingerprint",
-    face: "Face Scan",
-    palm: "Palm Scan",
-    rfid: "RFID",
-    pin: "PIN",
-    manual: "Manual",
-};
-
-function MethodBadge({ method }: { method?: string }) {
-    if (!method) return <span className="text-muted-foreground">—</span>;
-    const color = methodColors[method];
-    const label = methodLabels[method] || method;
-    if (!color) return <Badge variant="outline" className="text-[10px]">{label}</Badge>;
-    return (
-        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: color.bg, color: color.text }}>
-            {label}
-        </span>
-    );
-}
 
 /* ═══════════════════════════════════════════════════════════════
    ADMIN MANAGEMENT VIEW
@@ -118,7 +96,7 @@ interface AdminViewProps {
 }
 
 export default function AdminView({ mode = "admin" }: AdminViewProps) {
-    const { logs, checkIn, checkOut, getTodayLog, markAbsent, updateLog, bulkUpsertLogs, appendEvent, overtimeRequests, submitOvertimeRequest, approveOvertime, rejectOvertime, events, exceptions, autoGenerateExceptions, autoMarkAbsentAfterShift, resolveException, updateException, deleteException, reopenException, resetToSeed, holidays, addHoliday, updateHoliday, deleteHoliday, resetHolidaysToDefault, applyPenalty, getActivePenalty, cleanExpiredPenalties, shiftTemplates, employeeShifts } = useAttendanceStore();
+    const { logs, checkIn, checkOut, getTodayLog, markAbsent, updateLog, bulkUpsertLogs, appendEvent, overtimeRequests, submitOvertimeRequest, approveOvertime, rejectOvertime, events, exceptions, autoGenerateExceptions, autoMarkAbsentAfterShift, resolveException, updateException, deleteException, reopenException, resetToSeed, resetTodayLog, clearPenalty, holidays, addHoliday, updateHoliday, deleteHoliday, resetHolidaysToDefault, applyPenalty, getActivePenalty, cleanExpiredPenalties, shiftTemplates, employeeShifts } = useAttendanceStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
     const getProjectForEmployee = useProjectsStore((s) => s.getProjectForEmployee);
@@ -161,6 +139,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     // ─── Filters ──────────────────────────────────────────────────
     const [dateFilter, setDateFilter] = useState(() => new Date().toISOString().split("T")[0]);
     const [empFilter, setEmpFilter] = useState("all");
+    const [dateFilterTouched, setDateFilterTouched] = useState(false);
 
     // Event ledger filters
     const [eventTypeFilter, setEventTypeFilter] = useState("all");
@@ -177,6 +156,40 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
             .sort((a, b) => b.date.localeCompare(a.date))
             .slice(0, 50);
     }, [logs, dateFilter, empFilter, teamEmployeeIds]);
+
+    useEffect(() => {
+        forceRehydrate().catch(() => { /* keep local state if refresh fails */ });
+
+        const refreshOnFocus = () => {
+            if (document.visibilityState === "visible") {
+                forceRehydrate().catch(() => { /* keep local state if refresh fails */ });
+            }
+        };
+
+        window.addEventListener("focus", refreshOnFocus);
+        document.addEventListener("visibilitychange", refreshOnFocus);
+        return () => {
+            window.removeEventListener("focus", refreshOnFocus);
+            document.removeEventListener("visibilitychange", refreshOnFocus);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (dateFilterTouched || logs.length === 0 || filteredLogs.length > 0) return;
+
+        const visibleLogDates = logs
+            .filter((l) => {
+                const matchEmp = empFilter === "all" || l.employeeId === empFilter;
+                const matchTeam = !teamEmployeeIds || teamEmployeeIds.has(l.employeeId);
+                return matchEmp && matchTeam;
+            })
+            .map((l) => l.date)
+            .sort((a, b) => b.localeCompare(a));
+
+        if (visibleLogDates[0]) {
+            setDateFilter(visibleLogDates[0]);
+        }
+    }, [dateFilterTouched, empFilter, filteredLogs.length, logs, teamEmployeeIds]);
 
     const filteredEvents = useMemo(() => {
         return events
@@ -212,6 +225,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const [spoofReason, setSpoofReason] = useState<string | null>(null);
     const [selfieDataUrl, setSelfieDataUrl] = useState<string | null>(null);
     const [notifyingId, setNotifyingId] = useState<string | null>(null);
+    const [resetingId, setResetingId] = useState<string | null>(null);
 
     // OT state
     const [otOpen, setOtOpen] = useState(false);
@@ -226,7 +240,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const [holEditing, setHolEditing] = useState<Holiday | null>(null);
     const [holDate, setHolDate] = useState("");
     const [holName, setHolName] = useState("");
-    const [holType, setHolType] = useState<"regular" | "special_non_working" | "special_working">("regular");
+    const [holType, setHolType] = useState<"regular" | "special" | "special_non_working" | "special_working">("regular");
     const [holDeleteId, setHolDeleteId] = useState<string | null>(null);
 
     // CSV import ref
@@ -432,6 +446,34 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
         setNotifyingId(null);
     };
 
+    const handleAdminResetEmployee = async (employeeId: string) => {
+        setResetingId(employeeId);
+        stopWriteThrough();
+        await new Promise((r) => setTimeout(r, 600));
+        try {
+            const res = await fetch("/api/attendance/reset-today", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ employeeId }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                toast.error((data as { message?: string }).message || "Failed to reset attendance");
+                return;
+            }
+            const empName = employees.find((e) => e.id === employeeId)?.name ?? employeeId;
+            resetTodayLog(employeeId);
+            clearPenalty(employeeId);
+            await forceRehydrate();
+            toast.success(`${empName}'s attendance reset.`);
+        } catch {
+            toast.error("Network error — couldn't reset attendance");
+        } finally {
+            startWriteThrough();
+            setResetingId(null);
+        }
+    };
+
     // ─── Check-in flow ────────────────────────────────────────────
     const startCheckIn = () => {
         if (myEmployeeId && activePenalty) {
@@ -456,12 +498,10 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
         if (!navigator.geolocation) { toast.error("Geolocation not supported"); setStep("error"); return; }
         navigator.geolocation.getCurrentPosition(
             (pos) => {
-                const spoof = detectLocationSpoofing(pos.coords);
+                const spoofRaw = detectLocationSpoofing(pos.coords);
+                const spoof = spoofRaw && isLegacyIosAltitudeFalsePositive(spoofRaw) ? null : spoofRaw;
                 if (spoof) {
-                    if (penaltySettings.devOptionsPenaltyEnabled && myEmployeeId && (penaltySettings.devOptionsPenaltyApplyTo === "spoofing" || penaltySettings.devOptionsPenaltyApplyTo === "both")) {
-                        applyPenalty({ employeeId: myEmployeeId, reason: spoof, triggeredAt: new Date().toISOString(), penaltyUntil: new Date(Date.now() + penaltySettings.devOptionsPenaltyMinutes * 60000).toISOString() });
-                        toast.error(`Location spoofing detected. Locked out for ${penaltySettings.devOptionsPenaltyMinutes} minutes.`, { duration: 6000 });
-                    }
+                    // Warn only — no penalty, no lockout. User must disable mock location then refresh.
                     setSpoofReason(spoof); setStep("error"); return;
                 }
                 const gpsAccuracy = Math.round(pos.coords.accuracy);
@@ -489,7 +529,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
         if (selfieDataUrl && userLocation) {
             addPhoto({ eventId: `checkin-${Date.now()}`, employeeId: myEmployeeId, photoDataUrl: selfieDataUrl, gpsLat: userLocation.lat, gpsLng: userLocation.lng, gpsAccuracyMeters: geoResult?.accuracy || 0, capturedAt: new Date().toISOString(), geofencePass: geoResult?.within ?? true, projectId: myProject?.id });
         }
-        setStep("done"); toast.success("Check-in successful!");
+        setStep("done"); toast.success("Check-in successful! 🎉");
     }, [myEmployeeId, myProject, userLocation, checkIn, selfieDataUrl, geoResult, addPhoto]);
 
     const viewTitle = mode === "admin" ? "Attendance Management" : mode === "hr" ? "Attendance Overview" : "Team Attendance";
@@ -497,14 +537,14 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     return (
         <div className="space-y-4">
             {/* ─── Header ─────────────────────────────────────────── */}
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0">
-                    <h1 className="text-xl sm:text-2xl font-bold tracking-tight truncate">{viewTitle}</h1>
-                    <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex flex-col min-w-[200px]">
+                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{viewTitle}</h1>
+                    <p className="text-sm text-muted-foreground mt-1">
                         {mode === "supervisor" ? "Team check-in/out logs" : "Daily check-in/out logs"}
                     </p>
                 </div>
-                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap justify-start md:justify-end">
                     {/* Live clock pill */}
                     <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-border/40 bg-muted/30 px-3 py-1.5 text-xs font-medium tabular-nums">
                         <CalendarDays className="h-3 w-3 text-muted-foreground" />
@@ -693,7 +733,15 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                     <Card className="border border-border/40 shadow-sm">
                         <CardContent className="p-3">
                             <div className="flex flex-wrap items-center gap-2">
-                                <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="w-full sm:w-[170px] h-9" />
+                                <Input
+                                    type="date"
+                                    value={dateFilter}
+                                    onChange={(e) => {
+                                        setDateFilterTouched(true);
+                                        setDateFilter(e.target.value);
+                                    }}
+                                    className="w-full sm:w-[170px] h-9"
+                                />
                                 <EmployeeCombobox value={empFilter} onValueChange={setEmpFilter} allLabel={mode === "supervisor" ? "All Team Members" : "All Employees"} className="w-full sm:w-[220px]" />
                             </div>
                         </CardContent>
@@ -727,9 +775,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                             <TableHead className="text-xs">Shift</TableHead>
                                             <TableHead className="text-xs">Project</TableHead>
                                             <TableHead className="text-xs">Check In</TableHead>
-                                            <TableHead className="text-xs">In Method</TableHead>
                                             <TableHead className="text-xs">Check Out</TableHead>
-                                            <TableHead className="text-xs">Out Method</TableHead>
                                             <TableHead className="text-xs">Hours</TableHead>
                                             <TableHead className="text-xs">Late</TableHead>
                                             <TableHead className="text-xs">Status</TableHead>
@@ -739,7 +785,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                     </TableHeader>
                                     <TableBody>
                                         {filteredLogs.length === 0 ? (
-                                            <TableRow><TableCell colSpan={canOverride ? 16 : 14} className="text-center text-sm text-muted-foreground py-8">No attendance logs</TableCell></TableRow>
+                                            <TableRow><TableCell colSpan={canOverride ? 14 : 12} className="text-center text-sm text-muted-foreground py-8">No attendance logs</TableCell></TableRow>
                                         ) : filteredLogs.map((log) => (
                                             <TableRow key={log.id} className={selectedLogIds.has(log.id) ? "bg-primary/5" : undefined}>
                                                 {canOverride && <TableCell className="w-8"><Checkbox checked={selectedLogIds.has(log.id)} onCheckedChange={() => toggleLogSelect(log.id)} aria-label="Select row" /></TableCell>}
@@ -749,9 +795,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                                 <TableCell className="text-xs">{(() => { const sh = getEmpShift(log.employeeId); return sh ? <Badge variant="secondary" className="text-[9px] bg-purple-500/10 text-purple-700 dark:text-purple-400 whitespace-nowrap">{sh.name} ({sh.startTime}–{sh.endTime})</Badge> : <span className="text-muted-foreground">—</span>; })()}</TableCell>
                                                 <TableCell className="text-xs text-muted-foreground">{getProjectName(log.projectId)}</TableCell>
                                                 <TableCell className="text-sm">{log.checkIn || "—"}{log.faceVerified && <ShieldCheck className="inline h-3.5 w-3.5 ml-1 text-emerald-500" />}</TableCell>
-                                                <TableCell className="text-sm"><MethodBadge method={log.checkInMethod} /></TableCell>
                                                 <TableCell className="text-sm">{log.checkOut || "—"}</TableCell>
-                                                <TableCell className="text-sm"><MethodBadge method={log.checkOutMethod} /></TableCell>
                                                 <TableCell className="text-sm">{log.hours ? `${log.hours}h` : "—"}</TableCell>
                                                 <TableCell className="text-sm">
                                                     {log.lateMinutes && log.lateMinutes > 0 ? <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400">+{log.lateMinutes}m</Badge> : <span className="text-muted-foreground">—</span>}
@@ -767,6 +811,9 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                                             )}
                                                             {log.status === "absent" && (
                                                                 <Tooltip><TooltipTrigger asChild><Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-amber-600" disabled={notifyingId === log.employeeId} onClick={() => handleAbsenceNotify(log.employeeId, log.date)}><BellRing className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent side="left"><p className="text-xs">Notify</p></TooltipContent></Tooltip>
+                                                            )}
+                                                            {log.date === now.toISOString().split("T")[0] && (
+                                                                <Tooltip><TooltipTrigger asChild><Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-orange-500 hover:text-orange-700 hover:bg-orange-500/10" disabled={resetingId === log.employeeId} onClick={() => handleAdminResetEmployee(log.employeeId)}>{resetingId === log.employeeId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}</Button></TooltipTrigger><TooltipContent side="left"><p className="text-xs">Reset today</p></TooltipContent></Tooltip>
                                                             )}
                                                         </div>
                                                     </TableCell>
@@ -1106,7 +1153,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <p className={`text-sm font-semibold ${isHolidayToday ? "text-emerald-700 dark:text-emerald-300" : "text-foreground"}`}>
-                                        {isHolidayToday ? `Today is a Holiday — ${upcoming.name}` : `Next Holiday: ${upcoming.name}`}
+                                        {isHolidayToday ? `Today is a Holiday — ${upcoming.name} 🎉` : `Next Holiday: ${upcoming.name}`}
                                     </p>
                                     <p className={`text-xs mt-0.5 ${isHolidayToday ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
                                         {new Date(upcoming.date + "T00:00:00").toLocaleDateString("en-PH", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
@@ -1220,9 +1267,9 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                             <div><label className="text-sm font-medium">Date</label><Input type="date" value={holDate} onChange={(e) => setHolDate(e.target.value)} className="mt-1" /></div>
                             <div><label className="text-sm font-medium">Holiday Name</label><Input value={holName} onChange={(e) => setHolName(e.target.value)} placeholder="e.g. National Election Day" className="mt-1" /></div>
                             <div><label className="text-sm font-medium">Type</label>
-                                <Select value={holType} onValueChange={(v) => setHolType(v as "regular" | "special_non_working" | "special_working")}>
+                                <Select value={holType} onValueChange={(v) => setHolType(v as "regular" | "special" | "special_non_working" | "special_working")}>
                                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                                    <SelectContent><SelectItem value="regular">Regular Holiday (200%)</SelectItem><SelectItem value="special_non_working">Special Non-Working (130%)</SelectItem><SelectItem value="special_working">Special Working (130%)</SelectItem></SelectContent>
+                                    <SelectContent><SelectItem value="regular">Regular Holiday (200%)</SelectItem><SelectItem value="special">Special Non-Working (130%)</SelectItem><SelectItem value="special_non_working">Special Non-Working (130%)</SelectItem><SelectItem value="special_working">Special Working (130%)</SelectItem></SelectContent>
                                 </Select>
                             </div>
                             <div className="flex gap-2 pt-1"><Button variant="outline" className="flex-1" onClick={() => setHolDialogOpen(false)}>Cancel</Button>
@@ -1416,7 +1463,8 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                     <div className="h-16 w-16 rounded-full bg-orange-500/15 flex items-center justify-center"><ShieldAlert className="h-8 w-8 text-orange-500" /></div>
                                     <p className="text-sm font-medium text-orange-700 dark:text-orange-400">Check-In Blocked</p>
                                     <p className="text-xs text-muted-foreground text-center">{spoofReason}</p>
-                                    <Button variant="outline" size="sm" onClick={() => { setSpoofReason(null); setStep("idle"); }} className="mt-1">Try Again</Button>
+                                    <p className="text-[10px] text-muted-foreground text-center">Turn off any mock location or GPS spoofing app, then tap Refresh to try again.</p>
+                                    <Button variant="outline" size="sm" onClick={requestLocation} className="mt-1">Refresh Location</Button>
                                 </CardContent>
                             </Card>
                         )}

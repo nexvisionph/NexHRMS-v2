@@ -108,6 +108,14 @@ export const ATTENDANCE_TEMPLATE_HEADERS = [
   "Mock Location",
 ] as const;
 
+export const EMPLOYEES_TEMPLATE_HEADERS = [
+  "Name",
+  "Email",
+  "Phone",
+  "Birthday",
+  "Address",
+] as const;
+
 const PAYROLL_SAMPLE_ROWS: Record<string, string>[] = [
   {
     "Employee Name": "Juan Dela Cruz",
@@ -169,25 +177,55 @@ const ATTENDANCE_SAMPLE_ROWS: Record<string, string>[] = [
   },
 ];
 
+const EMPLOYEES_SAMPLE_ROWS: Record<string, string>[] = [
+  {
+    Name: "Juan Dela Cruz",
+    Email: "juan@example.com",
+    Phone: "+63 917 123 4567",
+    Birthday: "1990-05-20",
+    Address: "Manila, Philippines",
+  },
+  {
+    Name: "Maria Santos",
+    Email: "maria@example.com",
+    Phone: "+63 918 234 5678",
+    Birthday: "1993-11-15",
+    Address: "Quezon City, Philippines",
+  },
+];
+
 /**
- * Download an import template file (XLSX or CSV) for payroll or attendance.
+ * Download an import template file (XLSX or CSV) for payroll, attendance, or employees.
  * Includes headers + 1-2 sample rows so users know the expected format.
  */
 export function downloadImportTemplate(
-  module: "payroll" | "attendance",
+  module: "payroll" | "attendance" | "employees",
   format: ExportFormat
 ) {
   const headers =
-    module === "payroll" ? PAYROLL_TEMPLATE_HEADERS : ATTENDANCE_TEMPLATE_HEADERS;
+    module === "payroll"
+      ? PAYROLL_TEMPLATE_HEADERS
+      : module === "attendance"
+      ? ATTENDANCE_TEMPLATE_HEADERS
+      : EMPLOYEES_TEMPLATE_HEADERS;
   const sampleRows =
-    module === "payroll" ? PAYROLL_SAMPLE_ROWS : ATTENDANCE_SAMPLE_ROWS;
+    module === "payroll"
+      ? PAYROLL_SAMPLE_ROWS
+      : module === "attendance"
+      ? ATTENDANCE_SAMPLE_ROWS
+      : EMPLOYEES_SAMPLE_ROWS;
 
   exportToFile({
     filename: `${module}-import-template`,
     format,
     sheets: [
       {
-        name: module === "payroll" ? "Payroll Import" : "Attendance Import",
+        name:
+          module === "payroll"
+            ? "Payroll Import"
+            : module === "attendance"
+            ? "Attendance Import"
+            : "Employees Import",
         data: sampleRows.map((row) => {
           const ordered: Record<string, unknown> = {};
           for (const h of headers) {

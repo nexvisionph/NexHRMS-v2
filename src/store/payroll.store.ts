@@ -16,6 +16,12 @@ export const DEFAULT_PAY_SCHEDULE: PayScheduleConfig = {
     biWeeklyStartDate: "2026-01-05",
     weeklyPayDay: 5, // Friday
     deductGovFrom: "second",
+    // Auto-deduction toggles (migration 055) — default ON for backwards-compat
+    autoDeductLate: true,
+    autoDeductAbsent: true,
+    autoDeductUndertime: true,
+    autoAddOvertime: true,
+    workDaysPerMonth: 22,
 };
 
 export const DEFAULT_SIGNATURE_CONFIG: PayrollSignatureConfig = {
@@ -53,17 +59,24 @@ interface PayrollState {
     signPayslip: (id: string, signatureDataUrl: string) => void;
     acknowledgePayslip: (id: string, employeeId: string) => void;
     confirmPaidByFinance: (id: string, confirmedBy: string, method: Payslip["paymentMethod"], reference: string, cashAmount?: number, paymentProofUrl?: string) => void;
+    holdPayment: (id: string, note?: string) => void;
+    releasePaymentHold: (id: string) => void;
+    /** Reject a held payslip's signature — clears signedAt so employee must re-sign */
+    rejectHoldSignature: (id: string) => void;
     /** Update a payslip with data from server (avoids timestamp mismatch with write-through) */
     updatePayslipFromServer: (payslip: Partial<Payslip> & { id: string }) => void;
+    /** Delete a draft payslip and remove it from its run's payslipIds */
+    deletePayslip: (id: string) => void;
     getPayslipsByStatus: (status: Payslip["status"]) => Payslip[];
     getSignedPayslips: () => Payslip[];
     getUnsignedPublished: () => Payslip[];
     // ─── Payroll runs ─────────────────────────────────
-    createDraftRun: (runDate: string, payslipIds: string[], runType?: PayrollRun["runType"]) => void;
+    createDraftRun: (runDate: string, payslipIds: string[], runType?: PayrollRun["runType"], periodStart?: string, periodEnd?: string) => void;
     validateRun: (runDate: string) => void;
     lockRun: (runDate: string, lockedBy?: string) => void;
     unlockRun: (runDate: string, unlockedBy?: string) => void;
     publishRun: (runDate: string) => void;
+    endRun: (runDate: string) => void;
     markRunPaid: (runDate: string) => void;
     // ─── Adjustments ──────────────────────────────────
     createAdjustment: (data: Omit<PayrollAdjustment, "id" | "status" | "createdAt">) => void;
@@ -188,6 +201,8 @@ export const usePayrollStore = create<PayrollState>()(
                             locked: false,
                             payslipIds: [newId],
                             runType: "regular" as const,
+                            periodStart: data.periodStart,
+                            periodEnd: data.periodEnd,
                         }];
                     } else if (existingRun.status === "draft") {
                         updatedRuns = s.runs.map((r) =>
@@ -201,7 +216,7 @@ export const usePayrollStore = create<PayrollState>()(
                 }),
 
             // DEPRECATED: no-op in simplified flow (kept for backward compat)
-            confirmPayslip: (_id) =>
+            confirmPayslip: (/* id */) =>
                 set(() => ({})),
 
             // Publish: draft → published (requires locked payroll run)
@@ -227,7 +242,7 @@ export const usePayrollStore = create<PayrollState>()(
             recordPayment: (id, paymentMethod, bankReferenceId) =>
                 set((s) => {
                     const ps = s.payslips.find((p) => p.id === id);
-                    if (!ps || (ps.status !== "published" && ps.status !== "signed")) return {};
+                    if (!ps || ps.status !== "signed") return {};
                     // Guard: payslip must belong to a locked payroll run
                     if (ps.payrollBatchId) {
                         const run = s.runs.find((r) => r.id === ps.payrollBatchId);
@@ -271,7 +286,7 @@ export const usePayrollStore = create<PayrollState>()(
             confirmPaidByFinance: (id, confirmedBy, method, reference, cashAmount, paymentProofUrl) =>
                 set((s) => {
                     const ps = s.payslips.find((p) => p.id === id);
-                    if (!ps) return {};
+                    if (!ps || (ps.status !== "signed" && !(ps.status === "payment_hold" && ps.signedAt))) return {};
                     // Guard: payslip must belong to a locked payroll run
                     if (ps.payrollBatchId) {
                         const run = s.runs.find((r) => r.id === ps.payrollBatchId);
@@ -296,6 +311,51 @@ export const usePayrollStore = create<PayrollState>()(
                     };
                 }),
 
+            holdPayment: (id, note) =>
+                set((s) => {
+                    const ps = s.payslips.find((p) => p.id === id);
+                    if (!ps || ps.status !== "published" || ps.signedAt) return {};
+                    if (ps.payrollBatchId) {
+                        const run = s.runs.find((r) => r.id === ps.payrollBatchId);
+                        if (!run || !run.locked) return {};
+                    }
+                    return {
+                        payslips: s.payslips.map((p) =>
+                            p.id === id
+                                ? {
+                                    ...p,
+                                    status: "payment_hold" as const,
+                                    holdNote: note || "Late compliance to payroll submission. Please coordinate with the payroll team to resolve this issue.",
+                                    heldAt: new Date().toISOString(),
+                                  }
+                                : p
+                        ),
+                    };
+                }),
+
+            releasePaymentHold: (id) =>
+                set((s) => ({
+                    payslips: s.payslips.map((p) =>
+                        p.id === id && p.status === "payment_hold"
+                            ? {
+                                ...p,
+                                status: "published" as const,
+                                holdNote: undefined,
+                                heldAt: undefined,
+                              }
+                            : p
+                    ),
+                })),
+
+            rejectHoldSignature: (id) =>
+                set((s) => ({
+                    payslips: s.payslips.map((p) =>
+                        p.id === id && p.status === "payment_hold"
+                            ? { ...p, signedAt: undefined, signatureDataUrl: undefined, acknowledgedAt: undefined, acknowledgedBy: undefined }
+                            : p
+                    ),
+                })),
+
             /** Update payslip with server data (timestamps match DB, avoids write-through conflicts) */
             updatePayslipFromServer: (serverPayslip) =>
                 set((s) => ({
@@ -304,12 +364,27 @@ export const usePayrollStore = create<PayrollState>()(
                     ),
                 })),
 
+            /** Delete a draft payslip and strip it from its run's payslipIds */
+            deletePayslip: (id) =>
+                set((s) => {
+                    const ps = s.payslips.find((p) => p.id === id);
+                    if (!ps || ps.status !== "draft") return {};
+                    return {
+                        payslips: s.payslips.filter((p) => p.id !== id),
+                        runs: s.runs.map((r) =>
+                            r.payslipIds?.includes(id)
+                                ? { ...r, payslipIds: r.payslipIds.filter((pid) => pid !== id) }
+                                : r
+                        ),
+                    };
+                }),
+
             getPayslipsByStatus: (status) => get().payslips.filter((p) => p.status === status),
             getSignedPayslips: () => get().payslips.filter((p) => p.status === "signed"),
             getUnsignedPublished: () => get().payslips.filter((p) => p.status === "published" && !p.signedAt),
 
             // ─── Payroll runs — draft → locked → completed ───────────
-            createDraftRun: (runDate, payslipIds, runType = "regular") =>
+            createDraftRun: (runDate, payslipIds, runType = "regular", periodStart, periodEnd) =>
                 set((s) => {
                     const existing = s.runs.find((r) => r.periodLabel === runDate);
                     if (existing) return {}; // already exists
@@ -325,6 +400,8 @@ export const usePayrollStore = create<PayrollState>()(
                                 locked: false,
                                 payslipIds,
                                 runType,
+                                periodStart,
+                                periodEnd,
                             },
                         ],
                         payslips: s.payslips.map((p) =>
@@ -336,7 +413,7 @@ export const usePayrollStore = create<PayrollState>()(
                 }),
 
             // DEPRECATED: no-op in simplified flow (draft goes directly to locked)
-            validateRun: (_runDate) =>
+            validateRun: (/* runDate */) =>
                 set(() => ({})),
 
             // Lock run: draft → locked (freezes policy snapshot — payslips must be published first)
@@ -364,7 +441,7 @@ export const usePayrollStore = create<PayrollState>()(
                 }),
 
             // Unlock run: locked → draft (for corrections; published payslips stay published)
-            unlockRun: (runDate, _unlockedBy = "system") =>
+            unlockRun: (runDate) =>
                 set((s) => {
                     const run = s.runs.find((r) => r.periodLabel === runDate);
                     if (!run || !run.locked) return {};
@@ -397,11 +474,25 @@ export const usePayrollStore = create<PayrollState>()(
                     };
                 }),
 
-            // Complete run: locked/published → completed (terminal state)
-            markRunPaid: (runDate) =>
+            // End cycle: locked/published → ended (evaluation phase — admin reviews on-hold, etc.)
+            endRun: (runDate) =>
                 set((s) => {
                     const run = s.runs.find((r) => r.periodLabel === runDate);
                     if (!run || (run.status !== "locked" && run.status !== "published")) return {};
+                    return {
+                        runs: s.runs.map((r) =>
+                            r.periodLabel === runDate
+                                ? { ...r, status: "ended" as const }
+                                : r
+                        ),
+                    };
+                }),
+
+            // Complete run: locked/published/ended → completed (terminal state)
+            markRunPaid: (runDate) =>
+                set((s) => {
+                    const run = s.runs.find((r) => r.periodLabel === runDate);
+                    if (!run || (run.status !== "locked" && run.status !== "published" && run.status !== "ended")) return {};
                     return {
                         runs: s.runs.map((r) =>
                             r.periodLabel === runDate
@@ -633,8 +724,8 @@ export const usePayrollStore = create<PayrollState>()(
                 })),
         }),
         {
-            name: "nexhrms-payroll",
-            version: 8,
+            name: "soren-payroll",
+            version: 9,
             storage: safePersistStorage,
             migrate: () => ({
                 payslips: [],

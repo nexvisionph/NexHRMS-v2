@@ -47,7 +47,16 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, message: "Employee not found" }, { status: 404 });
         }
 
-        if (emp.profile_id !== user.id) {
+        // Resolve the requesting user's role so admins/hr can reset any employee.
+        const { data: requesterEmp } = await adminClient
+            .from("employees")
+            .select("role")
+            .eq("profile_id", user.id)
+            .single();
+        const requesterRole = (requesterEmp?.role as string | undefined)?.toLowerCase() ?? "";
+        const isPrivileged = ["admin", "hr"].includes(requesterRole);
+
+        if (!isPrivileged && emp.profile_id !== user.id) {
             return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
         }
 

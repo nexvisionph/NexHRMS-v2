@@ -29,14 +29,12 @@ export async function GET(req: Request) {
   }
 
   // Fetch payslips within the period range
-  const payslipsResult = await supabase
+  let { data: payslips, error: psErr } = await supabase
     .from("payslips")
     .select("*, employees!payslips_employee_id_fkey(name, email, department, job_title)")
     .gte("period_start", from)
     .lte("period_end", to)
     .order("period_start", { ascending: false });
-  let payslips = payslipsResult.data;
-  const psErr = payslipsResult.error;
 
   if (psErr) {
     // Fallback: try without join if FK name differs

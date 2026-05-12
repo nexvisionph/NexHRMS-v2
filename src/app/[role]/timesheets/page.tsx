@@ -175,6 +175,12 @@ export default function TimesheetsPage() {
             nightDiffStart: "22:00",
             nightDiffEnd: "06:00",
             holidayMultiplier: 1.0,
+            // OT multipliers (migration 055) — DOLE PH defaults
+            otMultiplierRegular: 1.25,
+            otMultiplierRestDay: 1.30,
+            otMultiplierSpecialHoliday: 1.30,
+            otMultiplierRegularHoliday: 2.00,
+            otMultiplierNightDiff: 1.10,
         });
         toast.success("Rule set created");
         setEditRsOpen(false);

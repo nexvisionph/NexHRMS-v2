@@ -11,9 +11,6 @@ export default function MessagesPage() {
         <RoleViewDispatcher
             views={{
                 admin: AdminMessagesView,
-                support_admin: AdminMessagesView,
-                finance_admin: AdminMessagesView,
-                analyst: AdminMessagesView,
                 hr: AdminMessagesView,
                 supervisor: AdminMessagesView,
                 finance: AdminMessagesView,
