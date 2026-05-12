@@ -61,7 +61,7 @@ export default function LoginPage() {
     // Consolidated branding from appearance store
     const {
         loginHeading, loginSubheading, loginBackground, loginBgColor,
-        loginCardStyle, logoUrl, companyName, brandTagline
+        loginCardStyle, companyName, brandTagline
     } = useAppearanceStore(
         useShallow((s) => ({
             loginHeading: s.loginHeading,
@@ -69,7 +69,6 @@ export default function LoginPage() {
             loginBackground: s.loginBackground,
             loginBgColor: s.loginBgColor,
             loginCardStyle: s.loginCardStyle,
-            logoUrl: s.logoUrl,
             companyName: s.companyName,
             brandTagline: s.brandTagline,
         }))
@@ -235,14 +234,8 @@ export default function LoginPage() {
             {loginCardStyle === "split" && (
                 <div className="hidden md:flex w-1/2 items-center justify-center bg-primary/5 relative">
                     <div className="text-center space-y-4 p-8">
-                        {logoUrl ? (
-                            <img src={logoUrl} alt={companyName} className="h-16 mx-auto object-contain" />
-                        ) : (
-                            <>
-                                <Image src="/logo.png" alt={companyName} width={80} height={80} className="mx-auto dark:hidden" />
-                                <Image src="/darklogo.png" alt={companyName} width={80} height={80} className="mx-auto hidden dark:block" />
-                            </>
-                        )}
+                        <Image src="/logo.png" alt={companyName} width={80} height={80} className="mx-auto dark:hidden" />
+                        <Image src="/darklogo.png" alt={companyName} width={80} height={80} className="mx-auto hidden dark:block" />
                         <h2 className="text-2xl font-bold">{companyName}</h2>
                         {brandTagline && (
                             <p className="text-muted-foreground">{brandTagline}</p>
@@ -272,14 +265,8 @@ export default function LoginPage() {
                     
                     <CardHeader className="text-center space-y-1 pb-4 pt-12">
                         <div className="flex justify-center mb-6">
-                            {logoUrl ? (
-                                <img src={logoUrl} alt={companyName} className="h-16 md:h-24 w-auto object-contain max-w-[280px] drop-shadow-sm" />
-                            ) : (
-                                <>
-                                    <Image src="/logo.png" alt={companyName} width={240} height={96} className="h-16 md:h-24 w-auto object-contain drop-shadow-sm dark:hidden" priority />
-                                    <Image src="/darklogo.png" alt={companyName} width={240} height={96} className="h-16 md:h-24 w-auto object-contain drop-shadow-sm hidden dark:block" priority />
-                                </>
-                            )}
+                            <Image src="/logo.png" alt={companyName} width={240} height={96} className="h-16 md:h-24 w-auto object-contain drop-shadow-sm dark:hidden" priority />
+                            <Image src="/darklogo.png" alt={companyName} width={240} height={96} className="h-16 md:h-24 w-auto object-contain drop-shadow-sm hidden dark:block" priority />
                         </div>
                         <div>
                             <p className="text-sm md:text-base text-muted-foreground font-medium">

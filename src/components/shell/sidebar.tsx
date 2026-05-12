@@ -118,12 +118,11 @@ function SidebarComponent() {
     const hasPermission = useRolesStore((s) => s.hasPermission);
 
     // Consolidated appearance store selector
-    const { modules, navOverrides, sidebarVariant, logoUrl, companyName, logoTextVisible } = useAppearanceStore(
+    const { modules, navOverrides, sidebarVariant, companyName, logoTextVisible } = useAppearanceStore(
         useShallow((s) => ({
             modules: s.modules,
             navOverrides: s.navOverrides,
             sidebarVariant: s.sidebarVariant,
-            logoUrl: s.logoUrl,
             companyName: s.companyName,
             logoTextVisible: s.logoTextVisible,
         }))
@@ -295,35 +294,25 @@ function SidebarComponent() {
             {/* Logo */}
             <div className={cn("flex h-16 items-center px-4", showLabel || isMobile ? "justify-between" : "justify-center")}>
                 <Link href={`${rolePrefix}/dashboard`} className="flex items-center gap-2.5">
-                    {logoUrl ? (
-                        <img
-                            src={logoUrl}
-                            alt={companyName}
-                            className="sidebar-logo h-9 max-w-[140px] object-contain transition-all duration-300"
-                        />
-                    ) : (
-                        <>
-                            <Image
-                                src="/logo.png"
-                                alt={companyName}
-                                width={showLabel ? 140 : 36}
-                                height={36}
-                                className="sidebar-logo transition-all duration-300 dark:hidden"
-                                style={{ width: "auto", height: "auto", maxHeight: 36 }}
-                                priority
-                            />
-                            <Image
-                                src="/darklogo.png"
-                                alt={companyName}
-                                width={showLabel ? 140 : 36}
-                                height={36}
-                                className="sidebar-logo transition-all duration-300 hidden dark:block"
-                                style={{ width: "auto", height: "auto", maxHeight: 36 }}
-                                priority
-                            />
-                        </>
-                    )}
-                    {showLabel && logoTextVisible && logoUrl && (
+                    <Image
+                        src="/logo.png"
+                        alt={companyName}
+                        width={showLabel ? 140 : 36}
+                        height={36}
+                        className="sidebar-logo transition-all duration-300 dark:hidden"
+                        style={{ width: "auto", height: "auto", maxHeight: 36 }}
+                        priority
+                    />
+                    <Image
+                        src="/darklogo.png"
+                        alt={companyName}
+                        width={showLabel ? 140 : 36}
+                        height={36}
+                        className="sidebar-logo transition-all duration-300 hidden dark:block"
+                        style={{ width: "auto", height: "auto", maxHeight: 36 }}
+                        priority
+                    />
+                    {showLabel && logoTextVisible && (
                         <span className="text-sm font-bold truncate">{companyName}</span>
                     )}
                 </Link>
