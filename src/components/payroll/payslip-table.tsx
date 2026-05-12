@@ -17,7 +17,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Eye, CheckCircle, CreditCard, Search, FileText, Upload, Image, Lock } from "lucide-react";
+import { Eye, CheckCircle, CreditCard, Search, FileText, Upload, Lock, RotateCcw } from "lucide-react";
 import { PayslipDetail } from "./payslip-detail";
 import { PayslipSignatureViewer } from "./payslip-signature-viewer";
 import { toast } from "sonner";
@@ -27,19 +27,24 @@ const statusConfig: Record<string, { label: string; color: string }> = {
     published: { label: "Published", color: "bg-violet-500/15 text-violet-700 dark:text-violet-400" },
     signed: { label: "Signed", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
     paid: { label: "Paid", color: "bg-blue-500/15 text-blue-700 dark:text-blue-400" },
+    payment_hold: { label: "On Hold", color: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
 };
 
 type PaymentMethod = "bank_transfer" | "gcash" | "cash" | "check";
+const PROOF_ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+const PROOF_ACCEPTED_LABEL = "JPG, PNG, GIF, or WebP";
+const PROOF_MAX_SIZE = 5 * 1024 * 1024;
 
 interface PayslipTableProps {
     payslips: Payslip[];
     runs?: PayrollRun[];
     getEmpName: (id: string) => string;
     onMarkPaid?: (id: string, method: PaymentMethod, reference: string, cashAmount?: number, paymentProofUrl?: string) => void;
+    onReissue?: (id: string) => void;
     isAdmin?: boolean;
 }
 
-export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAdmin }: PayslipTableProps) {
+export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, onReissue, isAdmin }: PayslipTableProps) {
     const isPayslipRunLocked = (ps: Payslip) => {
         if (!ps.payrollBatchId) return false;
         const run = runs.find((r) => r.id === ps.payrollBatchId);
@@ -48,6 +53,8 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
     const [statusFilter, setStatusFilter] = useState("all");
     const [signedFilter, setSignedFilter] = useState("all");
     const [searchTerm, setSearchTerm] = useState("");
+    const [page, setPage] = useState(1);
+    const pageSize = 50;
     const [detailId, setDetailId] = useState<string | null>(null);
     const [sigViewId, setSigViewId] = useState<string | null>(null);
     const [markPaidId, setMarkPaidId] = useState<string | null>(null);
@@ -73,6 +80,13 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
         });
     }, [payslips, statusFilter, signedFilter, searchTerm, getEmpName]);
 
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const paginated = useMemo(
+        () => filtered.slice((safePage - 1) * pageSize, safePage * pageSize),
+        [filtered, pageSize, safePage]
+    );
+
     const detailPayslip = payslips.find((p) => p.id === detailId);
     const sigViewPayslip = payslips.find((p) => p.id === sigViewId);
     const markPaidPayslip = payslips.find((p) => p.id === markPaidId);
@@ -81,6 +95,18 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
     const handleProofFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
+            if (!PROOF_ACCEPTED_TYPES.includes(file.type)) {
+                toast.error(`Unsupported image type. Please upload ${PROOF_ACCEPTED_LABEL}.`);
+                e.target.value = "";
+                return;
+            }
+
+            if (file.size > PROOF_MAX_SIZE) {
+                toast.error("Proof image is too large. Maximum size is 5MB.");
+                e.target.value = "";
+                return;
+            }
+
             setProofFile(file);
             const reader = new FileReader();
             reader.onloadend = () => {
@@ -135,12 +161,13 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
                     const data = await response.json();
                     proofUrl = data.url;
                 } else {
-                    toast.error("Failed to upload proof of payment");
+                    const data = await response.json().catch(() => null);
+                    toast.error(data?.error || "Failed to upload proof of payment");
                     setIsUploading(false);
                     return;
                 }
-            } catch {
-                toast.error("Failed to upload proof of payment");
+            } catch (err) {
+                toast.error(err instanceof Error ? err.message : "Failed to upload proof of payment");
                 setIsUploading(false);
                 return;
             }
@@ -150,7 +177,6 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
         const finalCashAmount = payMethod === "cash" ? (cashAmount ?? markPaidPayslip?.netPay) : undefined;
         onMarkPaid?.(markPaidId, payMethod, payRef, finalCashAmount, proofUrl);
         resetPaymentDialog();
-        toast.success("Payment confirmed");
     };
 
     return (
@@ -162,11 +188,11 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
                     <Input
                         placeholder="Search employee..."
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
                         className="w-[180px] h-8 text-xs"
                     />
                 </div>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
                     <SelectTrigger className="w-[140px] h-8 text-xs">
                         <SelectValue placeholder="Status" />
                     </SelectTrigger>
@@ -174,9 +200,11 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
                         <SelectItem value="all">All Statuses</SelectItem>
                         <SelectItem value="draft">Draft</SelectItem>
                         <SelectItem value="published">Published</SelectItem>
+                        <SelectItem value="signed">Signed</SelectItem>
+                        <SelectItem value="paid">Paid</SelectItem>
                     </SelectContent>
                 </Select>
-                <Select value={signedFilter} onValueChange={setSignedFilter}>
+                <Select value={signedFilter} onValueChange={(v) => { setSignedFilter(v); setPage(1); }}>
                     <SelectTrigger className="w-[130px] h-8 text-xs">
                         <SelectValue placeholder="Signed" />
                     </SelectTrigger>
@@ -205,7 +233,7 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filtered.length === 0 ? (
+                                {paginated.length === 0 ? (
                                     <TableRow>
                                         <TableCell colSpan={6} className="text-center py-12">
                                             <FileText className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
@@ -213,8 +241,8 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    filtered.map((ps) => {
-                                        const sc = statusConfig[ps.status] ?? statusConfig.issued;
+                                    paginated.map((ps) => {
+                                        const sc = statusConfig[ps.status] ?? { label: ps.status, color: "bg-muted text-muted-foreground" };
                                         return (
                                             <TableRow key={ps.id}>
                                                 <TableCell className="text-sm font-medium">{getEmpName(ps.employeeId)}</TableCell>
@@ -253,10 +281,10 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
                                                         >
                                                             <Eye className="h-3.5 w-3.5" />
                                                         </Button>
-                                                        {isAdmin && (ps.status === "published" || ps.status === "signed") && (() => {
+                                                        {isAdmin && (ps.status === "published" || ps.status === "signed" || ps.status === "payment_hold") && (() => {
                                                             const runLocked = isPayslipRunLocked(ps);
                                                             const canPay = !!ps.signedAt && runLocked;
-                                                            const title = !runLocked ? "Payroll run must be locked first" : !ps.signedAt ? "Awaiting employee signature" : "Mark as Paid";
+                                                            const title = !runLocked ? "Payroll run must be locked first" : !ps.signedAt ? "Unsigned - not eligible for payment" : "Mark as Paid";
                                                             return (
                                                                 <Button
                                                                     variant="ghost"
@@ -270,6 +298,17 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
                                                                 </Button>
                                                             );
                                                         })()}
+                                                        {isAdmin && onReissue && ps.status === "payment_hold" && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-7 w-7 p-0 text-amber-600"
+                                                                onClick={() => onReissue(ps.id)}
+                                                                title="Re-Issue (release hold)"
+                                                            >
+                                                                <RotateCcw className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -281,6 +320,16 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
                     </div>
                 </CardContent>
             </Card>
+
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Page {safePage} of {totalPages}</p>
+                    <div className="flex gap-1">
+                        <Button variant="outline" size="sm" disabled={safePage <= 1} onClick={() => setPage((p) => p - 1)} className="h-8 text-xs">Previous</Button>
+                        <Button variant="outline" size="sm" disabled={safePage >= totalPages} onClick={() => setPage((p) => p + 1)} className="h-8 text-xs">Next</Button>
+                    </div>
+                </div>
+            )}
 
             {/* Detail dialog */}
             {detailPayslip && (
@@ -414,11 +463,12 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, isAd
                                         <div className="flex flex-col items-center justify-center pt-2 pb-3">
                                             <Upload className="h-6 w-6 text-muted-foreground mb-1" />
                                             <p className="text-xs text-muted-foreground">Click to upload image</p>
+                                            <p className="text-[11px] text-muted-foreground/70">{PROOF_ACCEPTED_LABEL} up to 5MB</p>
                                         </div>
                                         <input
                                             type="file"
                                             className="hidden"
-                                            accept="image/*"
+                                            accept={PROOF_ACCEPTED_TYPES.join(",")}
                                             onChange={handleProofFileChange}
                                         />
                                     </label>

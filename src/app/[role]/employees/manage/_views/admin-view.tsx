@@ -885,11 +885,11 @@ export default function AdminEmployeesView() {
                                         </div>
                                         <div className="p-4 space-y-3">
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div><label className="text-xs font-medium text-muted-foreground">Job Title <span className="text-destructive">*</span></label>
-                                                    <Select value={newJobTitle} onValueChange={(val) => { setNewJobTitle(val); const jt = jobTitles.find((j) => j.name === val); if (jt?.department) setNewDept(jt.department); }}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select job title" /></SelectTrigger><SelectContent>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
-                                                </div>
                                                 <div><label className="text-xs font-medium text-muted-foreground">Department <span className="text-destructive">*</span></label>
-                                                    <Select value={newDept} onValueChange={setNewDept}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select dept" /></SelectTrigger><SelectContent>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
+                                                    <Select value={newDept} onValueChange={(v) => { setNewDept(v); setNewJobTitle(""); }}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select dept" /></SelectTrigger><SelectContent>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
+                                                </div>
+                                                <div><label className="text-xs font-medium text-muted-foreground">Job Title <span className="text-destructive">*</span></label>
+                                                    <Select value={newJobTitle} onValueChange={setNewJobTitle} disabled={!newDept}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder={newDept ? "Select job title" : "Select dept first"} /></SelectTrigger><SelectContent>{jobTitles.filter((jt) => jt.isActive && jt.department === newDept).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">

@@ -65,6 +65,8 @@ interface PayrollState {
     rejectHoldSignature: (id: string) => void;
     /** Update a payslip with data from server (avoids timestamp mismatch with write-through) */
     updatePayslipFromServer: (payslip: Partial<Payslip> & { id: string }) => void;
+    /** Delete a draft payslip and remove it from its run's payslipIds */
+    deletePayslip: (id: string) => void;
     getPayslipsByStatus: (status: Payslip["status"]) => Payslip[];
     getSignedPayslips: () => Payslip[];
     getUnsignedPublished: () => Payslip[];
@@ -361,6 +363,21 @@ export const usePayrollStore = create<PayrollState>()(
                         p.id === serverPayslip.id ? { ...p, ...serverPayslip } : p
                     ),
                 })),
+
+            /** Delete a draft payslip and strip it from its run's payslipIds */
+            deletePayslip: (id) =>
+                set((s) => {
+                    const ps = s.payslips.find((p) => p.id === id);
+                    if (!ps || ps.status !== "draft") return {};
+                    return {
+                        payslips: s.payslips.filter((p) => p.id !== id),
+                        runs: s.runs.map((r) =>
+                            r.payslipIds?.includes(id)
+                                ? { ...r, payslipIds: r.payslipIds.filter((pid) => pid !== id) }
+                                : r
+                        ),
+                    };
+                }),
 
             getPayslipsByStatus: (status) => get().payslips.filter((p) => p.status === status),
             getSignedPayslips: () => get().payslips.filter((p) => p.status === "signed"),

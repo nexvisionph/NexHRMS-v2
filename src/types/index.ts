@@ -90,7 +90,10 @@ export type AuditAction =
   | "mark_absent" | "bulk_mark_absent"
   | "task_created" | "task_assigned" | "task_completed" | "task_verified" | "task_rejected"
   | "tag_created" | "tag_updated" | "tag_deleted"
-  | "announcement_sent" | "channel_created";
+  | "announcement_sent" | "channel_created"
+  | "doc_uploaded" | "doc_approved" | "doc_rejected" | "doc_archived"
+  | "case_created" | "nte_issued" | "nte_acknowledged" | "nte_explained"
+  | "nod_issued" | "nod_acknowledged" | "case_closed";
 
 // ─── Holiday Type ────────────────────────────────────────────
 
@@ -115,6 +118,113 @@ export interface EmployeeDocument {
   uploadedAt: string;
   fileUrl?: string;
   fileType?: string;
+}
+
+// ─── 201 File Document Center ────────────────────────────────
+
+export type Employee201DocType =
+  | "personal_info" | "employment_contract" | "government_id"
+  | "resume" | "application_form" | "job_offer" | "medical"
+  | "training_certificate" | "performance_evaluation"
+  | "payslip" | "leave_record" | "warning" | "nte" | "nod"
+  | "clearance" | "resignation_letter" | "coe"
+  | "final_pay_document" | "other";
+
+export type Document201Status =
+  | "pending_upload" | "uploaded" | "for_review" | "approved"
+  | "rejected" | "expired" | "archived";
+
+export type Document201Visibility =
+  | "hr_only" | "manager" | "employee" | "payroll" | "admin_only";
+
+export interface Employee201Document {
+  id: string;
+  employeeId: string;
+  documentType: Employee201DocType;
+  documentTitle: string;
+  filePath?: string;
+  fileType?: string;
+  fileSize?: number;
+  status: Document201Status;
+  visibility: Document201Visibility;
+  expiryDate?: string;
+  remarks?: string;
+  uploadedBy?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  caseId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Disciplinary (NTE / NOD) ────────────────────────────────
+
+export type DisciplinaryCaseStatus =
+  | "open" | "nte_issued" | "nte_acknowledged" | "explanation_submitted"
+  | "no_response" | "under_review" | "nod_issued" | "nod_acknowledged"
+  | "sanction_active" | "closed";
+
+export interface DisciplinaryCase {
+  id: string;
+  caseNumber: string;
+  employeeId: string;
+  violationType: string;
+  policyReference?: string;
+  incidentDate: string;
+  incidentLocation?: string;
+  description: string;
+  evidenceUrls: string[];
+  status: DisciplinaryCaseStatus;
+  assignedHr?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NTEStatus =
+  | "draft" | "issued" | "acknowledged" | "explanation_submitted"
+  | "no_response" | "under_review" | "closed" | "moved_to_nod";
+
+export interface NTERecord {
+  id: string;
+  caseId: string;
+  employeeId: string;
+  responseDeadline: string;
+  documentId?: string;
+  issuedBy: string;
+  issuedAt: string;
+  acknowledgedAt?: string;
+  employeeExplanation?: string;
+  explanationSubmittedAt?: string;
+  status: NTEStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NODDecision =
+  | "no_violation" | "verbal_warning" | "written_warning"
+  | "final_warning" | "suspension" | "termination"
+  | "salary_deduction" | "training_required" | "pip";
+
+export type NODStatus =
+  | "draft" | "issued" | "acknowledged" | "sanction_active" | "completed" | "closed";
+
+export interface NODRecord {
+  id: string;
+  caseId: string;
+  employeeId: string;
+  decision: NODDecision;
+  sanctionStartDate?: string;
+  sanctionEndDate?: string;
+  returnToWorkDate?: string;
+  decisionDetails: string;
+  documentId?: string;
+  issuedBy: string;
+  issuedAt: string;
+  acknowledgedAt?: string;
+  status: NODStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── Job Title ───────────────────────────────────────────────
@@ -245,6 +355,16 @@ export interface Employee {
   deductionExempt?: boolean;       // true = skip ALL government deductions (contract-based employees)
   deductionExemptReason?: string;  // reason for exemption (e.g., "Contract-based", "Minimum wage earner")
   notificationPreferences?: Record<string, boolean>; // per-employee notification opt-outs (from DB jsonb column)
+  // ─── BIR Compliance (migration 056) ──
+  tin?: string;                                  // 12-digit BIR TIN (NNN-NNN-NNN-NNN)
+  employmentClassification?: BIREmploymentClassification;
+  isMWE?: boolean;
+  mweDailyRate?: number;
+  substitutedFiling?: boolean;                   // employer files in lieu of 1700
+  taxStatus?: BIRTaxStatus;
+  taxResidency?: BIRTaxResidency;
+  separationDate?: string;
+  separationType?: BIRSeparationType;
   createdAt?: string;     // ISO timestamptz from DB
   updatedAt?: string;     // ISO timestamptz from DB
 }
@@ -810,7 +930,6 @@ export type Permission =
   | "audit:view"
   // Settings
   | "settings:roles" | "settings:organization" | "settings:shifts"
-  | "settings:page_builder"
   // Projects
   | "projects:manage"
   // Reports
@@ -824,7 +943,12 @@ export type Permission =
   | "tasks:delete" | "tasks:manage_groups"
   // Messaging
   | "page:messages" | "messages:send_announcement" | "messages:manage_channels"
-  | "messages:send_whatsapp" | "messages:send_email";
+  | "messages:send_whatsapp" | "messages:send_email"
+  // Jobs / Talent Acquisition
+  | "page:jobs" | "jobs:create" | "jobs:edit" | "jobs:close"
+  | "jobs:view_applications" | "jobs:manage_applications"
+  // Events
+  | "events:manage";
 
 // System role slug union (never changes — always recognized)
 export type SystemRoleSlug = "admin" | "hr" | "finance" | "employee" | "supervisor" | "payroll_admin" | "auditor";
@@ -873,19 +997,6 @@ export type WidgetType =
   | "events_widget" | "events_widget_readonly" | "birthdays_widget"
   // Attendance
   | "attendance_live_stats" | "enrollment_reminder";
-
-export interface CustomPage {
-  id: string;
-  title: string;
-  slug: string;
-  icon: string;
-  description?: string;
-  allowedRoles: string[];
-  widgets: WidgetConfig[];
-  showInSidebar: boolean;
-  order: number;
-  createdAt: string;
-}
 
 // ─── Site Survey Photo ───────────────────────────────────────
 
@@ -1030,6 +1141,54 @@ export interface TaskTag {
   createdAt: string;
 }
 
+// ─── Jobs / Talent Acquisition ──────────────────────────────
+
+export type JobStatus = "draft" | "open" | "on_hold" | "closed";
+export type JobType = "full_time" | "part_time" | "contract" | "internship" | "freelance";
+export type JobPriority = "low" | "medium" | "high" | "urgent";
+export type ApplicationStatus =
+  | "applied" | "screening" | "interview" | "offer" | "hired" | "rejected" | "withdrawn";
+
+export interface JobPosting {
+  id: string;
+  title: string;
+  department: string;
+  location: string;
+  type: JobType;
+  status: JobStatus;
+  priority: JobPriority;
+  headcount: number;            // number of open slots
+  salaryMin?: number;
+  salaryMax?: number;
+  description: string;
+  requirements: string;         // freeform text
+  responsibilities: string;     // freeform text
+  deadline?: string;            // ISO date string
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JobApplication {
+  id: string;
+  jobId: string;
+  applicantName: string;
+  applicantEmail: string;
+  applicantPhone?: string;
+  resumeUrl?: string;
+  resumeStoragePath?: string;   // private bucket path in "job-resumes"
+  coverLetter?: string;
+  source: string;               // e.g. "LinkedIn", "Referral", "Walk-in"
+  status: ApplicationStatus;
+  interviewDate?: string;       // ISO datetime
+  offerSalary?: number;
+  notes?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── Multi-Channel Messaging ─────────────────────────────────
 
 export type MessageChannel = "email" | "whatsapp" | "sms" | "in_app";
@@ -1162,3 +1321,241 @@ export interface FaceVerificationResult {
 }
 
 // Project interface is defined above (line ~681) with all verification fields included.
+
+// ─── BIR Compliance Engine ───────────────────────────────────
+// Types backing migration 056 + bir_alphalist.md plan.
+
+export type BIREmploymentClassification = "R" | "C" | "CP" | "S" | "P" | "AL";
+export type BIRTaxStatus = "S" | "M" | "ME" | "MX";
+export type BIRTaxResidency = "resident" | "non_resident";
+export type BIRSeparationType = "resigned" | "terminated" | "end_of_contract";
+export type AnnualTaxStatus = "open" | "reconciled" | "finalized" | "exported";
+export type AnnualTaxAdjustmentType = "over_withheld" | "under_withheld" | "balanced";
+export type Form2316Status = "draft" | "for_signature" | "released" | "downloaded" | "revoked";
+export type AlphalistScheduleType = "schedule_1" | "schedule_2" | "both";
+export type AlphalistExportFormat = "csv" | "xlsx" | "dat";
+export type AlphalistValidationStatus = "passed" | "has_warnings" | "has_errors";
+export type EFPSStatus = "draft" | "validated" | "ready" | "submitted" | "payment_pending" | "paid" | "completed";
+
+/**
+ * BIR earnings categorization on a single payslip.
+ * Persisted in payslips.tax_categories (jsonb).
+ */
+export interface TaxCategoryBreakdown {
+  // Basic compensation
+  basicPay: number;                      // taxable basic salary
+  mweBasic: number;                      // basic exempt under MWE rules
+
+  // Time-based earnings
+  overtimePay: number;                   // taxable OT
+  mweOvertimePay: number;                // OT exempt under MWE
+  holidayPay: number;                    // taxable holiday
+  mweHolidayPay: number;                 // holiday exempt under MWE
+  nightDiff: number;                     // taxable night-diff
+  mweNightDiff: number;                  // exempt under MWE
+  hazardPay: number;                     // taxable hazard
+  mweHazardPay: number;                  // exempt under MWE
+
+  // 13th month + bonuses (₱90k ceiling under TRAIN)
+  thirteenthMonth: number;               // total 13th month + Christmas bonus
+  thirteenthMonthTaxable: number;        // amount above ₱90k ceiling
+  thirteenthMonthNonTaxable: number;     // up to ₱90k
+
+  // De minimis benefits (RR 11-2018)
+  deMinimisRiceSubsidy: number;          // up to ₱2,000/month
+  deMinimisMedicalAllowance: number;     // up to ₱1,500/qtr
+  deMinimisLaundryAllowance: number;     // up to ₱300/month
+  deMinimisUniformAllowance: number;     // up to ₱6,000/yr
+  deMinimisMealAllowance: number;        // up to 25% of basic min wage
+  deMinimisOther: number;
+  deMinimisExcess: number;               // amount above caps → taxable
+
+  // Allowances / fringe
+  taxableAllowances: number;             // fully taxable allowances
+  nonTaxableAllowances: number;
+
+  // Government statutory contributions (employee share — non-taxable)
+  sssContribution: number;
+  philhealthContribution: number;
+  pagibigContribution: number;
+  unionDues: number;
+
+  // Tax computed
+  withholdingTax: number;                // BIR tax withheld this period
+
+  // Roll-up totals (precomputed for convenience)
+  taxableTotal: number;                  // sum of taxable items
+  nonTaxableTotal: number;               // sum of non-taxable items + MWE exempt + de minimis within cap
+}
+
+/** Per-employee BIR profile (1:1 with employees). */
+export interface EmployeeTaxProfile {
+  id: string;
+  employeeId: string;
+  tin?: string;                          // 12-digit (NNN-NNN-NNN-NNN)
+  employmentClassification: BIREmploymentClassification;
+  isMWE: boolean;
+  mweDailyRate?: number;
+  substitutedFiling: boolean;
+  taxStatus: BIRTaxStatus;
+  taxResidency: BIRTaxResidency;
+  prevEmployerTin?: string;
+  prevEmployerName?: string;
+  prevIncome?: number;
+  prevTaxWithheld?: number;
+  prev2316Received: boolean;
+  separationDate?: string;
+  separationType?: BIRSeparationType;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Annual aggregated taxable summary used to issue Form 2316. */
+export interface AnnualTaxSummary {
+  id: string;
+  employeeId: string;
+  year: number;
+  totalTaxableComp: number;
+  totalNonTaxableComp: number;
+  totalDeMinimis: number;
+  totalSSS: number;
+  totalPhilHealth: number;
+  totalPagIBIG: number;
+  total13thNonTaxable: number;           // up to ₱90k
+  total13thTaxable: number;              // excess above ₱90k
+  totalOtherBenefits: number;
+  totalTaxWithheld: number;
+  prevEmployerIncome: number;            // copied from PreviousEmployerRecord(s)
+  prevEmployerTax: number;
+  annualTaxDue?: number;                 // computed via annual TRAIN brackets
+  adjustmentType?: AnnualTaxAdjustmentType;
+  adjustmentAmount?: number;             // signed: + = under-withheld owed; - = over-withheld refund
+  status: AnnualTaxStatus;
+  finalizedAt?: string;
+  finalizedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Previous employer income record (mid-year hires). */
+export interface PreviousEmployerRecord {
+  id: string;
+  employeeId: string;
+  year: number;
+  employerName: string;
+  employerTin?: string;
+  employerAddress?: string;
+  totalIncome: number;
+  totalTaxWithheld: number;
+  reference2316?: string;                // BIR Form 2316 reference number
+  submittedAt: string;
+  submittedBy?: string;
+  createdAt: string;
+}
+
+/** BIR Form 2316 issuance record. */
+export interface Form2316Record {
+  id: string;
+  employeeId: string;
+  year: number;
+  annualSummaryId?: string;
+  generatedAt: string;
+  generatedBy?: string;
+  employerSignedAt?: string;
+  employerSignedBy?: string;
+  employerSignatureUrl?: string;
+  employeeSignedAt?: string;
+  employeeSignatureUrl?: string;
+  pdfUrl?: string;
+  documentHash?: string;                 // SHA-256 of the rendered PDF for tamper-detection
+  status: Form2316Status;
+  releasedAt?: string;
+  downloadedAt?: string;
+  downloadedBy?: string;
+  revokedAt?: string;
+  revokedBy?: string;
+  revokeReason?: string;
+  createdAt: string;
+}
+
+/** Alphalist export header / metadata. */
+export interface AlphalistExport {
+  id: string;
+  year: number;
+  scheduleType: AlphalistScheduleType;
+  generatedAt: string;
+  generatedBy?: string;
+  employeeCount: number;
+  totalTaxableComp: number;
+  totalTaxWithheld: number;
+  validationStatus: AlphalistValidationStatus;
+  validationErrors?: BIRValidationIssue[];
+  exportFormat: AlphalistExportFormat;
+  fileUrl?: string;
+  efpsStatus: EFPSStatus;
+  submittedAt?: string;
+  submittedBy?: string;
+  createdAt: string;
+}
+
+/** Validation finding emitted by BIR validators. */
+export interface BIRValidationIssue {
+  severity: "error" | "warning" | "info";
+  code: string;                          // machine code e.g. "TIN_MISSING"
+  message: string;                       // human-readable
+  employeeId?: string;
+  field?: string;
+  value?: unknown;
+  suggestedFix?: string;
+}
+
+/** Single row in Alphalist Schedule 1 (active employees). */
+export interface AlphalistRow {
+  sequenceNumber: number;
+  tin: string;
+  lastName: string;
+  firstName: string;
+  middleName: string;
+  employmentClassification: BIREmploymentClassification;
+  taxStatus: BIRTaxStatus;
+  isMWE: boolean;
+  grossCompensation: number;
+  nonTaxableCompensation: number;
+  taxableCompensation: number;
+  taxWithheld: number;
+  taxDue: number;
+  overUnderWithheld: number;             // signed
+  prevEmployerIncome: number;
+  prevEmployerTax: number;
+  separationDate?: string;
+  separationType?: BIRSeparationType;
+}
+
+
+// ─── Performance Management ──────────────────────────────────
+
+export interface PerformanceSalaryAdjustment {
+  id: string;
+  employee_id: string;
+  review_id?: string;
+  band_id?: string;
+  recommended_amount: number;
+  finance_approved_amount?: number;
+  override_reason?: string;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+  approved_at?: string;
+  approved_by?: string;
+  employee?: {
+    name: string;
+    current_salary: number;
+  };
+  review?: {
+    overall_rating: number;
+  };
+  band?: {
+    band_name: string;
+    adjustment_percentage: number;
+    description?: string;
+  };
+}

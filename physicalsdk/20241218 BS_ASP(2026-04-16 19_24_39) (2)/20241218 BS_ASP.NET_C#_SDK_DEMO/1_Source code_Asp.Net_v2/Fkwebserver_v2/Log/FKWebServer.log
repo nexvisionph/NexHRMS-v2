@@ -1,0 +1,4 @@
+2023-11-08 16:00:58,409 [5] INFO SiteLogger [(null)] - GetTransBuff --  last buff_len = 0
+2023-11-08 16:00:58,429 [5] INFO SiteLogger [(null)] - SetDevice -- 0 - DevId:1812220002, DevName:FPBS100, DevInfo:{"firmware":"FKL7201OF03 V2.01","firmware_filename":"fkl7201of03_bs3_um","fk_bin_data_lib":"FKDataHS101","fp_data_ver":128,"supported_enroll_data":["PASSWORD","IDCARD","FP"]}
+2023-11-08 16:01:03,437 [5] INFO SiteLogger [(null)] - GetTransBuff --  last buff_len = 0
+2023-11-08 16:01:03,443 [5] INFO SiteLogger [(null)] - ProcessCmdResult -- 

@@ -4,9 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:https": "next dev --experimental-https",
+    "dev:lan:https": "next dev --experimental-https --hostname 0.0.0.0",
+    "biometric:bridge": "node scripts/fk-bridge.js",
+    "biometric:bridge:watch": "node scripts/fk-bridge-watch.js",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:ci": "jest --ci --coverage --coverageReporters=text-summary --coverageReporters=lcov",
     "copy-face-models": "node -e \"const fs=require('fs'),p=require('path');const s='node_modules/@vladmandic/face-api/model',d='public/models/face-api';fs.mkdirSync(d,{recursive:true});['ssd_mobilenetv1_model','face_landmark_68_model','face_recognition_model'].forEach(m=>{fs.readdirSync(s).filter(f=>f.startsWith(m)).forEach(f=>fs.copyFileSync(p.join(s,f),p.join(d,f)))});console.log('Face models copied to '+d)\""
   },
   "dependencies": {

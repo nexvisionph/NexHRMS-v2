@@ -119,8 +119,7 @@ export async function POST(req: Request) {
     .from("leave_requests")
     .select("employee_id, start_date, end_date")
     .eq("status", "approved")
-    .lte("start_date", endDate)
-    .gte("end_date", startDate);
+    .or(`start_date.lte.${endDate},end_date.gte.${startDate}`);
 
   // Build a helper to check if employee is on leave on a given date
   const onLeaveMap = new Map<string, Array<{ start: string; end: string }>>();

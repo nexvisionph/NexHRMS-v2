@@ -1,5 +1,5 @@
-import { createClient } from "@/services/supabase-server";
-import { getCurrentUserFromCookie } from "@/services/auth.service";
+import { createServerSupabaseClient } from "@/services/supabase-server";
+import { getCurrentUser } from "@/services/auth.service";
 import { NextResponse } from "next/server";
 
 export async function POST(
@@ -8,8 +8,8 @@ export async function POST(
 ) {
   const { id, action: reviewAction } = await params;
   try {
-    const supabase = await createClient();
-    const user = await getCurrentUserFromCookie();
+    const supabase = await createServerSupabaseClient();
+    const user = await getCurrentUser();
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

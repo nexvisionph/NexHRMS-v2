@@ -10,7 +10,6 @@ import {
 import { loadFaceModels, detectFace, detectFaceQuick, averageDescriptors, descriptorConsistency } from "@/lib/face-api";
 import type { FaceTrackingResult } from "@/lib/face-api";
 import { useAuthStore } from "@/store/auth.store";
-import { useEmployeesStore } from "@/store/employees.store";
 
 /**
  * Real Face Verification component using face-api.js 128-d embeddings.
@@ -61,7 +60,6 @@ export function RealFaceVerification({
     required: _required = false,
 }: RealFaceVerificationProps) {
     const currentUserId = useAuthStore((s) => s.currentUser?.id);
-    const employees = useEmployeesStore((s) => s.employees);
     const [phase, setPhase] = useState<Phase>("loading");
     const [error, setError] = useState("");
     const [errorHint, setErrorHint] = useState("");
@@ -80,8 +78,6 @@ export function RealFaceVerification({
     const trackingRef = useRef(true);
     const stableCountRef = useRef(0);
     const autoScanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const resolvedEmployee = employeeId ? employees.find((employee) => employee.id === employeeId) : undefined;
-    const requiresBiometricEnrollment = !!resolvedEmployee?.biometricId;
 
     // Clean up camera + wake lock
     const cleanup = useCallback(() => {
@@ -413,19 +409,19 @@ export function RealFaceVerification({
                 console.log(`[face-verify] Verify response:`, verifyData);
 
                 if (verifyData?.ok && verifyData.verified) {
-                    console.log(`[face-verify] VERIFIED employee=${employeeId} distance=${verifyData.distance?.toFixed(4) ?? "?"}`);
+                    console.log(`[face-verify] ✅ VERIFIED employee=${employeeId} distance=${verifyData.distance?.toFixed(4) ?? "?"}`);
                     setPhase("verified");
                     setTimeout(() => onVerified(), 1500);
                     return;
                 }
 
-                console.warn(`[face-verify] Verify FAILED for employee=${employeeId}`, verifyData);
+                console.warn(`[face-verify] ❌ Verify FAILED for employee=${employeeId}`, verifyData);
 
                 // Check if employee has enrollment at all
                 const statusRes = await fetch(`/api/face-recognition/enroll?action=status&employeeId=${encodeURIComponent(employeeId)}`);
                 if (statusRes.ok) {
                     const statusData = await statusRes.json();
-                    if (!statusData.enrolled && requiresBiometricEnrollment) {
+                    if (!statusData.enrolled) {
                         console.log(`[face-verify] Employee ${employeeId} has no face enrollment`);
                         setPhase("no-enrollment");
                         return;
@@ -456,13 +452,13 @@ export function RealFaceVerification({
             console.log(`[face-verify] Match response:`, matchData);
 
             if (matchData?.ok && matchData.employeeId) {
-                console.log(`[face-verify] MATCHED employee=${matchData.employeeId} distance=${matchData.distance?.toFixed(4) ?? "?"}`);
+                console.log(`[face-verify] ✅ MATCHED employee=${matchData.employeeId} distance=${matchData.distance?.toFixed(4) ?? "?"}`);
                 setPhase("verified");
                 setTimeout(() => onVerified(), 1500);
                 return;
             }
 
-            console.warn(`[face-verify] Match FAILED`, matchData);
+            console.warn(`[face-verify] ❌ Match FAILED`, matchData);
             setError("Face verification failed.");
             setErrorHint("Your face did not match any enrolled profile. Try with better lighting or enroll first.");
             setPhase("failed");

@@ -179,7 +179,7 @@ export function FaceRecognitionSimulator({
                     <div className="h-16 w-16 rounded-full bg-emerald-500/15 flex items-center justify-center">
                         <CheckCircle className="h-8 w-8 text-emerald-500" />
                     </div>
-                    <p className={`text-sm font-medium ${isKiosk ? "text-emerald-400" : "text-emerald-700 dark:text-emerald-400"}`}>Face Verified</p>
+                    <p className={`text-sm font-medium ${isKiosk ? "text-emerald-400" : "text-emerald-700 dark:text-emerald-400"}`}>Face Verified ✅</p>
                     <p className={`text-xs ${isKiosk ? "text-white/50" : "text-muted-foreground"}`}>
                         {aiResult?.confidence === "demo" ? "Identity confirmed (demo mode)" : `AI confidence: ${aiResult?.confidence || "high"}`}
                     </p>

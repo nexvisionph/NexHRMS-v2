@@ -17,23 +17,27 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import {
     LogIn, LogOut, Clock, CalendarDays, CalendarOff, Banknote,
     FileText, Plus, ChevronRight, Calendar, Cake, TrendingUp,
-    ArrowRight, Briefcase, Timer, AlertCircle,
+    ArrowRight, Briefcase, Timer, AlertCircle, PauseCircle,
 } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { parseISO, isAfter, startOfDay, isToday, format } from "date-fns";
 
 /* ─── Helpers ───────────────────────────────────────────────── */
 
 function formatTimeAmPm(time: string | null | undefined): string {
     if (!time) return "—";
-    const [h, m] = time.split(":").map(Number);
+    const [h, m, s] = time.split(":").map(Number);
     if (isNaN(h) || isNaN(m)) return time;
     const hour12 = h % 12 || 12;
     const ampm = h >= 12 ? "PM" : "AM";
-    return `${hour12}:${String(m).padStart(2, "0")} ${ampm}`;
+    const seconds = typeof s === "number" && Number.isFinite(s) && s > 0 ? `:${String(s).padStart(2, "0")}` : "";
+    return `${hour12}:${String(m).padStart(2, "0")}${seconds} ${ampm}`;
 }
 
 /* ─── Main Component ─────────────────────────────────────────── */
@@ -53,6 +57,9 @@ export function EmployeeDashboard() {
                     Your personal workspace — attendance, leave, and payslips.
                 </p>
             </div>
+
+            {/* On-Hold Alert — shown only when employee has held payslips */}
+            <PayslipOnHoldAlert />
 
             {/* Row 1: Attendance Status + Quick Stats */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -655,5 +662,78 @@ function BirthdaysCard() {
                 )}
             </CardContent>
         </Card>
+    );
+}
+
+/* ─── 8. Payslip On-Hold Alert ────────────────────────────────────── */
+
+function PayslipOnHoldAlert() {
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const employees = useEmployeesStore((s) => s.employees);
+    const payslips = usePayrollStore((s) => s.payslips);
+    const [open, setOpen] = useState(false);
+
+    const empRecord = useMemo(
+        () => employees.find(
+            (e) =>
+                e.profileId === currentUser.id ||
+                (e.email && currentUser.email && e.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase()) ||
+                (e.name && currentUser.name && e.name.trim().toLowerCase() === currentUser.name.trim().toLowerCase()),
+        ),
+        [employees, currentUser]
+    );
+
+    const heldPayslips = useMemo(() => {
+        if (!empRecord) return [];
+        return payslips.filter((p) => p.employeeId === empRecord.id && p.status === "payment_hold");
+    }, [payslips, empRecord]);
+
+    if (heldPayslips.length === 0) return null;
+
+    return (
+        <>
+            <Card
+                className="border-2 border-amber-400/50 dark:border-amber-600/40 bg-amber-50/50 dark:bg-amber-950/20 cursor-pointer hover:shadow-md transition-all group"
+                onClick={() => setOpen(true)}
+            >
+                <CardContent className="p-4 flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-amber-500/10 shadow-sm">
+                        <PauseCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div className="flex-1">
+                        <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Payslip On Hold</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            {heldPayslips.length} payslip{heldPayslips.length !== 1 ? "s" : ""} pending resolution — tap to view details
+                        </p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </CardContent>
+            </Card>
+
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                            <PauseCircle className="h-5 w-5" /> Payslip On Hold
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        {heldPayslips.map((ps) => (
+                            <div key={ps.id} className="rounded-lg border border-amber-200/60 dark:border-amber-800/30 bg-amber-50/30 dark:bg-amber-950/10 p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-xs text-muted-foreground">{ps.periodStart} – {ps.periodEnd}</p>
+                                    <span className="text-sm font-bold tabular-nums">{formatCurrency(ps.netPay)}</span>
+                                </div>
+                                <div className="rounded-md bg-white/60 dark:bg-black/20 border border-border/40 p-2.5">
+                                    <p className="text-xs text-muted-foreground font-medium mb-1">Reason</p>
+                                    <p className="text-sm">{ps.holdNote || "Late compliance to payroll submission. Please coordinate with the payroll team to resolve this issue."}</p>
+                                </div>
+                                {ps.heldAt && <p className="text-[10px] text-muted-foreground">Held on {new Date(ps.heldAt).toLocaleDateString()}</p>}
+                            </div>
+                        ))}
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }

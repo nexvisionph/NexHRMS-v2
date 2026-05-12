@@ -157,8 +157,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     // Install global auth error suppression on mount (once)
     useEffect(() => {
         installAuthErrorSuppression();
-        const timer = setTimeout(() => setMounted(true), 0);
-        return () => clearTimeout(timer);
+        setMounted(true);
     }, []);
 
     useEffect(() => {
@@ -225,12 +224,6 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                 handleInvalidSession();
                 return;
             }
-            // Tear down any stale write-through subscription from a previous session
-            // BEFORE hydrating stores. Without this, the old subscription (which may
-            // have captured isAdminOrHr=true from a prior admin session) fires during
-            // hydration using the new user's auth session → RLS violation.
-            stopWriteThrough();
-            stopRealtime();
             // Session is valid, hydrate stores (skip redundant session check)
             hydrateAllStores({ skipSessionCheck: true }).then(() => {
                 startWriteThrough();

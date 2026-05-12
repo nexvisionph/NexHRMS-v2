@@ -13,6 +13,10 @@ export default function ProjectsPage() {
                 admin: AdminProjectsView,
                 hr: AdminProjectsView,
                 supervisor: ReadonlyProjectsView,
+                employee: ReadonlyProjectsView,
+                finance: ReadonlyProjectsView,
+                payroll_admin: ReadonlyProjectsView,
+                auditor: ReadonlyProjectsView,
             }}
         />
     );

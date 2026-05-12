@@ -83,10 +83,10 @@ const TRIGGER_LABELS: Record<string, string> = {
 };
 
 const CHANNEL_OPTIONS: { value: NotificationChannel; label: string; icon: string }[] = [
-    { value: "in_app", label: "In-App Only", icon: "" },
-    { value: "email", label: "Email", icon: "" },
-    { value: "sms", label: "SMS", icon: "" },
-    { value: "both", label: "Email + SMS", icon: "" },
+    { value: "in_app", label: "In-App Only", icon: "🔔" },
+    { value: "email", label: "Email", icon: "📧" },
+    { value: "sms", label: "SMS", icon: "📱" },
+    { value: "both", label: "Email + SMS", icon: "📨" },
 ];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────

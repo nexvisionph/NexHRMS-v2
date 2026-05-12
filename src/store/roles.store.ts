@@ -4,13 +4,13 @@ import { persist } from "zustand/middleware";
 import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { CustomRole, Permission, WidgetConfig } from "@/types";
-import { isAdministrativeRole } from "@/lib/admin-tier";
 
 // ─── All available permissions ──────────────────────────────
 export const ALL_PERMISSIONS: Permission[] = [
     "page:dashboard", "page:employees", "page:attendance", "page:leave",
     "page:payroll", "page:loans", "page:projects", "page:reports",
     "page:kiosk", "page:notifications", "page:audit", "page:settings", "page:timesheets", "page:events",
+    "events:manage",
     "employees:view", "employees:create", "employees:edit", "employees:delete",
     "employees:view_salary", "employees:approve_salary",
     "attendance:view_all", "attendance:edit", "attendance:approve_overtime",
@@ -18,7 +18,7 @@ export const ALL_PERMISSIONS: Permission[] = [
     "payroll:view_all", "payroll:generate", "payroll:lock", "payroll:issue", "payroll:view_own",
     "loans:view_all", "loans:approve", "loans:view_own",
     "audit:view",
-    "settings:roles", "settings:organization", "settings:shifts", "settings:page_builder",
+    "settings:roles", "settings:organization", "settings:shifts",
     "projects:manage",
     "reports:view", "reports:government",
     "notifications:manage",
@@ -148,12 +148,18 @@ export const PERMISSION_GROUPS: { label: string; permissions: { key: Permission;
         ],
     },
     {
+        label: "Events",
+        permissions: [
+            { key: "events:manage", label: "Add / edit / delete events" },
+        ],
+    },
+    {
         label: "Settings",
         permissions: [
             { key: "settings:roles", label: "Manage roles" },
             { key: "settings:organization", label: "Organization settings" },
             { key: "settings:shifts", label: "Shift management" },
-            { key: "settings:page_builder", label: "Page / dashboard builder" },
+
         ],
     },
 ];
@@ -175,6 +181,8 @@ const HR_PERMS: Permission[] = [
     "projects:manage",
     "page:tasks", "tasks:view", "tasks:create", "tasks:assign", "tasks:verify", "tasks:manage_groups",
     "page:messages", "messages:send_announcement", "messages:manage_channels", "messages:send_email",
+    "payroll:view_own",
+    "events:manage",
 ];
 
 const FINANCE_PERMS: Permission[] = [
@@ -186,6 +194,7 @@ const FINANCE_PERMS: Permission[] = [
     "reports:view", "reports:government",
     "settings:organization",
     "messages:send_announcement",
+    "payroll:view_own",
 ];
 
 const PAYROLL_ADMIN_PERMS: Permission[] = [
@@ -198,6 +207,7 @@ const PAYROLL_ADMIN_PERMS: Permission[] = [
     "timesheets:view_all",
     "settings:organization",
     "messages:send_announcement",
+    "payroll:view_own",
 ];
 
 const SUPERVISOR_PERMS: Permission[] = [
@@ -209,6 +219,7 @@ const SUPERVISOR_PERMS: Permission[] = [
     "timesheets:view_all", "timesheets:approve",
     "page:tasks", "tasks:view", "tasks:create", "tasks:assign", "tasks:verify", "tasks:manage_groups",
     "page:messages", "messages:send_announcement",
+    "payroll:view_own",
 ];
 
 const EMPLOYEE_PERMS: Permission[] = [
@@ -227,6 +238,7 @@ const AUDITOR_PERMS: Permission[] = [
     "employees:view",
     "reports:view", "reports:government",
     "loans:view_all",
+    "payroll:view_own",
 ];
 
 // ─── Default dashboard layouts per system role ───────────────
@@ -313,9 +325,6 @@ const HR_DASHBOARD: WidgetConfig[] = [
 function buildSystemRoles(): CustomRole[] {
     return [
         { id: "sys-admin", name: "Admin", slug: "admin", color: "#6366f1", icon: "Shield", isSystem: true, permissions: ADMIN_PERMS, dashboardLayout: { roleId: "sys-admin", widgets: ADMIN_DASHBOARD }, createdAt: "2025-01-01T00:00:00Z" },
-        { id: "sys-support_admin", name: "Support Admin", slug: "support_admin", color: "#6366f1", icon: "Shield", isSystem: true, permissions: ADMIN_PERMS, dashboardLayout: { roleId: "sys-support_admin", widgets: ADMIN_DASHBOARD }, createdAt: "2025-01-01T00:00:00Z" },
-        { id: "sys-finance_admin", name: "Finance Admin", slug: "finance_admin", color: "#6366f1", icon: "Shield", isSystem: true, permissions: ADMIN_PERMS, dashboardLayout: { roleId: "sys-finance_admin", widgets: ADMIN_DASHBOARD }, createdAt: "2025-01-01T00:00:00Z" },
-        { id: "sys-analyst", name: "Analyst", slug: "analyst", color: "#6366f1", icon: "Shield", isSystem: true, permissions: ADMIN_PERMS, dashboardLayout: { roleId: "sys-analyst", widgets: ADMIN_DASHBOARD }, createdAt: "2025-01-01T00:00:00Z" },
         { id: "sys-hr", name: "HR", slug: "hr", color: "#ec4899", icon: "Users", isSystem: true, permissions: HR_PERMS, dashboardLayout: { roleId: "sys-hr", widgets: HR_DASHBOARD }, createdAt: "2025-01-01T00:00:00Z" },
         { id: "sys-finance", name: "Finance", slug: "finance", color: "#14b8a6", icon: "Banknote", isSystem: true, permissions: FINANCE_PERMS, dashboardLayout: { roleId: "sys-finance", widgets: FINANCE_DASHBOARD }, createdAt: "2025-01-01T00:00:00Z" },
         { id: "sys-payroll_admin", name: "Payroll Admin", slug: "payroll_admin", color: "#f97316", icon: "Wallet", isSystem: true, permissions: PAYROLL_ADMIN_PERMS, dashboardLayout: { roleId: "sys-payroll_admin", widgets: FINANCE_DASHBOARD }, createdAt: "2025-01-01T00:00:00Z" },
@@ -550,16 +559,14 @@ export const useRolesStore = create<RolesState>()(
             getRoleById: (id) => get().roles.find((r) => r.id === id),
 
             hasPermission: (roleSlug, perm) => {
-                if (isAdministrativeRole(roleSlug)) return true;
                 const role = get().roles.find((r) => r.slug === roleSlug);
                 if (!role) return false;
                 // Admin role always has all permissions
-                if (isAdministrativeRole(role.slug)) return true;
+                if (role.slug === "admin") return true;
                 return role.permissions.includes(perm);
             },
 
             getPermissions: (roleSlug) => {
-                if (isAdministrativeRole(roleSlug)) return ADMIN_PERMS;
                 const role = get().roles.find((r) => r.slug === roleSlug);
                 return role?.permissions ?? [];
             },
@@ -643,7 +650,7 @@ export const useRolesStore = create<RolesState>()(
             },
         }),
         {
-            name: "nexhrms-roles",
+            name: "soren-roles",
             version: 3,
             storage: safePersistStorage,
             migrate: () => ({ roles: buildSystemRoles(), isLoading: false, hasFetchedFromDb: false }),

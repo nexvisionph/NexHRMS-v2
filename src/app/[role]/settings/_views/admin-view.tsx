@@ -39,6 +39,7 @@ import { useAppearanceStore } from "@/store/appearance.store";
 import { useLocationStore } from "@/store/location.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useMessagingStore } from "@/store/messaging.store";
+import { pauseWriteThrough, resumeWriteThrough, forceRehydrate } from "@/services/sync.service";
 import type { AttendanceRuleSet, PayFrequency } from "@/types";
 import Link from "next/link";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
@@ -97,24 +98,38 @@ export default function AdminSettingsView() {
 
     // ─── Global Reset ──────────────────────────────────────────────
     const [resetAllOpen, setResetAllOpen] = useState(false);
-    const handleResetAll = () => {
-        useAuthStore.getState().resetToSeed();
-        useEmployeesStore.getState().resetToSeed();
-        useProjectsStore.getState().resetToSeed();
-        useAttendanceStore.getState().resetToSeed();
-        usePayrollStore.getState().resetToSeed();
-        useLeaveStore.getState().resetToSeed();
-        useLoansStore.getState().resetToSeed();
-        useTimesheetStore.getState().resetToSeed();
-        useEventsStore.getState().resetToSeed();
-        useNotificationsStore.getState().resetToSeed();
-        useAuditStore.getState().resetToSeed();
-        useAppearanceStore.getState().resetAppearance();
-        useLocationStore.getState().resetToSeed();
-        useTasksStore.getState().resetToSeed();
-        useMessagingStore.getState().resetToSeed();
+    const handleResetAll = async () => {
+        // Pause write-through BEFORE resetting stores so seed data is never
+        // pushed to Supabase. Stores are reset to seed state locally, then
+        // force-rehydrated from the DB to restore real data.
+        pauseWriteThrough();
+        try {
+            useAuthStore.getState().resetToSeed();
+            useEmployeesStore.getState().resetToSeed();
+            useProjectsStore.getState().resetToSeed();
+            useAttendanceStore.getState().resetToSeed();
+            usePayrollStore.getState().resetToSeed();
+            useLeaveStore.getState().resetToSeed();
+            useLoansStore.getState().resetToSeed();
+            useTimesheetStore.getState().resetToSeed();
+            useEventsStore.getState().resetToSeed();
+            useNotificationsStore.getState().resetToSeed();
+            useAuditStore.getState().resetToSeed();
+            useAppearanceStore.getState().resetAppearance();
+            useLocationStore.getState().resetToSeed();
+            useTasksStore.getState().resetToSeed();
+            useMessagingStore.getState().resetToSeed();
+
+            // Re-pull all data from Supabase so local state matches the DB
+            // (replaces the just-set seed state with real rows).
+            if (!USE_DEMO_MODE) {
+                await forceRehydrate();
+            }
+        } finally {
+            resumeWriteThrough();
+        }
         setResetAllOpen(false);
-        toast.success("All demo data has been reset to seed state.");
+        toast.success("All data has been refreshed from the database.");
     };
 
     // ─── Password Change ──────────────────────────────────────────

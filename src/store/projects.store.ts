@@ -29,6 +29,10 @@ export const useProjectsStore = create<ProjectsState>()(
                             ...data,
                             id: `PRJ-${nanoid(8)}`,
                             createdAt: new Date().toISOString(),
+                            // Generate a per-project QR secret so the DB NOT NULL constraint is satisfied.
+                            // The secret is regenerated fresh for each project and never exposed to clients.
+                            qrSecret: nanoid(32),
+                            qrEnabled: data.qrEnabled ?? true,
                         },
                     ],
                 })),
@@ -67,7 +71,7 @@ export const useProjectsStore = create<ProjectsState>()(
             resetToSeed: () => set({ projects: SEED_PROJECTS }),
         }),
         {
-            name: "nexhrms-projects",
+            name: "soren-projects",
             version: 3,
             storage: safePersistStorage,
             migrate: () => ({ projects: SEED_PROJECTS }),

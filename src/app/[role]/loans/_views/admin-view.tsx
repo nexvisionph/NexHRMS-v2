@@ -14,7 +14,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Plus, Snowflake, CheckCircle, MinusCircle, Play, History, Calendar, Percent, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
-import type { LoanType } from "@/types";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -27,7 +26,7 @@ export default function AdminLoansView() {
 
     const [open, setOpen] = useState(false);
     const [formEmpId, setFormEmpId] = useState("");
-    const [formType, setFormType] = useState<LoanType>("cash_advance");
+    const [formType, setFormType] = useState("cash_advance");
     const [formAmount, setFormAmount] = useState("");
     const [formMonthly, setFormMonthly] = useState("");
     const [formRemarks, setFormRemarks] = useState("");
@@ -90,7 +89,7 @@ export default function AdminLoansView() {
                             <div><label className="text-sm font-medium">Employee</label>
                                 <div className="mt-1"><EmployeeCombobox value={formEmpId} onValueChange={setFormEmpId} required placeholder="Select employee" className="w-full" /></div></div>
                             <div><label className="text-sm font-medium">Loan Type</label>
-                                <Select value={formType} onValueChange={(v) => setFormType(v as LoanType)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash_advance">Cash Advance</SelectItem><SelectItem value="salary_loan">Salary Loan</SelectItem><SelectItem value="sss">SSS Loan</SelectItem><SelectItem value="pagibig">Pag-IBIG Loan</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
+                                <Select value={formType} onValueChange={setFormType}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash_advance">Cash Advance</SelectItem><SelectItem value="salary_loan">Salary Loan</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div><label className="text-sm font-medium">Total Amount (₱)</label><Input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} className="mt-1" placeholder="e.g. 50000" /></div>
                                 <div><label className="text-sm font-medium">Monthly Deduction (₱)</label><Input type="number" value={formMonthly} onChange={(e) => setFormMonthly(e.target.value)} className="mt-1" placeholder="e.g. 5000" /></div>

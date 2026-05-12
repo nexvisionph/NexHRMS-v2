@@ -102,10 +102,42 @@ export const useAuthStore = create<AuthState>()(
                 // This prevents login failures when new demo users are added to seed.ts
                 // without triggering a version bump.
                 const seed = buildSeedAccounts();
+                const seedByEmail = new Map(seed.map((u) => [u.email.toLowerCase(), u]));
+                let repairedCount = 0;
+
+                // Upsert seed accounts by email to keep credentials and profile flags in sync.
+                // This ensures all seed demo accounts continue to work with password demo1234.
+                accounts = accounts.map((acc) => {
+                    const fromSeed = seedByEmail.get(acc.email.toLowerCase());
+                    if (!fromSeed) return acc;
+
+                    const needsRepair =
+                        acc.passwordHash !== fromSeed.passwordHash ||
+                        acc.role !== fromSeed.role ||
+                        acc.name !== fromSeed.name ||
+                        acc.mustChangePassword !== fromSeed.mustChangePassword ||
+                        acc.profileComplete !== fromSeed.profileComplete;
+
+                    if (needsRepair) {
+                        repairedCount += 1;
+                        return {
+                            ...acc,
+                            id: fromSeed.id,
+                            name: fromSeed.name,
+                            role: fromSeed.role,
+                            passwordHash: fromSeed.passwordHash,
+                            mustChangePassword: fromSeed.mustChangePassword,
+                            profileComplete: fromSeed.profileComplete,
+                        };
+                    }
+
+                    return acc;
+                });
+
                 const existingEmails = new Set(accounts.map((u) => u.email.toLowerCase()));
                 const newFromSeed = seed.filter((u) => !existingEmails.has(u.email.toLowerCase()));
-                if (newFromSeed.length > 0) {
-                    console.log(`[auth] Self-healing: merging ${newFromSeed.length} new seed accounts:`, newFromSeed.map(u => u.email));
+                if (repairedCount > 0 || newFromSeed.length > 0) {
+                    console.log(`[auth] Self-healing: repaired ${repairedCount} and merged ${newFromSeed.length} seed accounts`);
                     accounts = [...accounts, ...newFromSeed];
                     set({ accounts });
                 }
@@ -254,7 +286,7 @@ export const useAuthStore = create<AuthState>()(
             },
         }),
         {
-            name: "nexhrms-auth",
+            name: "soren-auth",
             version: 8,
             storage: safePersistStorage,
             migrate: (persisted: unknown, version: number) => {

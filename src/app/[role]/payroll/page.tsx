@@ -1,20 +1,30 @@
-﻿"use client";
+"use client";
 
-import { lazy } from "react";
-import { RoleViewDispatcher } from "@/components/ui/role-dispatcher";
+import { Suspense, lazy } from "react";
+import { useAuthStore } from "@/store/auth.store";
+import { useRouter } from "next/navigation";
 
 const AdminPayrollView = lazy(() => import("./_views/admin-view"));
-const EmployeePayrollView = lazy(() => import("./_views/employee-view"));
+
+const ALLOWED: Record<string, "admin" | "finance" | "payroll_admin"> = {
+    admin: "admin",
+    finance: "finance",
+    payroll_admin: "payroll_admin",
+};
 
 export default function PayrollPage() {
+    const role = useAuthStore((s) => s.currentUser.role);
+    const router = useRouter();
+    const mode = ALLOWED[role];
+
+    if (!mode) {
+        router.replace(`/${role}/my-payslips`);
+        return null;
+    }
+
     return (
-        <RoleViewDispatcher
-            views={{
-                admin: () => <AdminPayrollView mode="admin" />,
-                finance: () => <AdminPayrollView mode="finance" />,
-                payroll_admin: () => <AdminPayrollView mode="payroll_admin" />,
-                employee: () => <EmployeePayrollView />,
-            }}
-        />
+        <Suspense fallback={<div>Loading…</div>}>
+            <AdminPayrollView mode={mode} />
+        </Suspense>
     );
 }

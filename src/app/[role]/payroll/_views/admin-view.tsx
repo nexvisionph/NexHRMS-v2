@@ -112,10 +112,58 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     const [formNightDiffHours, setFormNightDiffHours] = useState("0");
     const [formNotes, setFormNotes] = useState("");
     const [formIssuedAt, setFormIssuedAt] = useState(format(new Date(), "yyyy-MM-dd"));
+    const [grossOverrides, setGrossOverrides] = useState<Record<string, string>>({});
+    const [expandedOverrideEmpId, setExpandedOverrideEmpId] = useState<string | null>(null);
     const [selectedMonth, setSelectedMonth] = useState(format(new Date(), "yyyy-MM"));
     const [cutoff, setCutoff] = useState<"first" | "second">(() =>
         new Date().getDate() > paySchedule.semiMonthlyFirstCutoff ? "second" : "first"
     );
+
+    // ─── Period-end override (for partial-period proration) ───────
+    // Helper: compute the canonical full-period boundaries for a given month/cutoff
+    const computeNaturalBoundaries = useCallback((month: string, cut: "first" | "second", freq: string, cutDay: number) => {
+        const base = new Date(month + "-01");
+        const yr = getYear(base);
+        const mo = getMonth(base);
+        if (freq === "semi_monthly") {
+            if (cut === "first") {
+                return { start: `${month}-01`, end: `${month}-${String(cutDay).padStart(2, "0")}` };
+            } else {
+                const eom = endOfMonth(new Date(yr, mo, 1));
+                return { start: `${month}-${String(cutDay + 1).padStart(2, "0")}`, end: format(eom, "yyyy-MM-dd") };
+            }
+        }
+        if (freq === "bi_weekly" || freq === "weekly") {
+            return { start: `${month}-01`, end: format(endOfMonth(new Date(yr, mo, 1)), "yyyy-MM-dd") };
+        }
+        // monthly
+        return { start: `${month}-01`, end: format(endOfMonth(new Date(yr, mo, 1)), "yyyy-MM-dd") };
+    }, []);
+
+    const naturalBounds = useMemo(
+        () => computeNaturalBoundaries(selectedMonth, cutoff, paySchedule.defaultFrequency, paySchedule.semiMonthlyFirstCutoff),
+        [selectedMonth, cutoff, paySchedule.defaultFrequency, paySchedule.semiMonthlyFirstCutoff, computeNaturalBoundaries]
+    );
+
+    // Smart default: min(today, naturalEnd), clamped to [naturalStart, naturalEnd]
+    const computeSmartPeriodEnd = useCallback((bounds: { start: string; end: string }) => {
+        const today = format(new Date(), "yyyy-MM-dd");
+        if (today < bounds.start) return bounds.start;
+        if (today > bounds.end) return bounds.end;
+        return today;
+    }, []);
+
+    const [formPeriodEnd, setFormPeriodEnd] = useState(() => computeSmartPeriodEnd(computeNaturalBoundaries(
+        format(new Date(), "yyyy-MM"),
+        new Date().getDate() > paySchedule.semiMonthlyFirstCutoff ? "second" : "first",
+        paySchedule.defaultFrequency,
+        paySchedule.semiMonthlyFirstCutoff
+    )));
+
+    // Reset period end whenever the selected month or cutoff changes
+    useEffect(() => {
+        setFormPeriodEnd(computeSmartPeriodEnd(naturalBounds));
+    }, [naturalBounds, computeSmartPeriodEnd]);
 
     // ─── Search, filter, pagination ──────────────────────────────
     const [searchTerm, setSearchTerm] = useState("");
@@ -187,25 +235,25 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
 
-    // ─── Cutoff date range ────────────────────────────────────────
+    // ─── Cutoff date range (end is user-overridable via formPeriodEnd) ──────
     const cutoffDates = useMemo(() => {
-        const base = new Date(selectedMonth + "-01");
-        const year = getYear(base);
-        const month = getMonth(base);
-        const freq = paySchedule.defaultFrequency;
+        const start = naturalBounds.start;
+        const end = formPeriodEnd;
+        const startDate = parseISO(start);
+        const endDate = parseISO(end);
+        const label = `${format(startDate, "MMM d")} – ${format(endDate, "MMM d, yyyy")}`;
+        return { start, end, label };
+    }, [naturalBounds.start, formPeriodEnd]);
 
-        if (freq === "semi_monthly") {
-            const cutDay = paySchedule.semiMonthlyFirstCutoff;
-            if (cutoff === "first") {
-                return { start: `${selectedMonth}-01`, end: `${selectedMonth}-${String(cutDay).padStart(2, "0")}`, label: `${format(new Date(year, month, 1), "MMM d")} – ${format(new Date(year, month, cutDay), "MMM d, yyyy")}` };
-            } else {
-                const eom = endOfMonth(new Date(year, month, 1));
-                return { start: `${selectedMonth}-${String(cutDay + 1).padStart(2, "0")}`, end: format(eom, "yyyy-MM-dd"), label: `${format(new Date(year, month, cutDay + 1), "MMM d")} – ${format(eom, "MMM d, yyyy")}` };
-            }
-        }
-        const eom = endOfMonth(new Date(year, month, 1));
-        return { start: `${selectedMonth}-01`, end: format(eom, "yyyy-MM-dd"), label: `${format(new Date(year, month, 1), "MMM d")} – ${format(eom, "MMM d, yyyy")}` };
-    }, [selectedMonth, cutoff, paySchedule]);
+    // Proration metrics (calendar-day basis, per PH DOLE common practice)
+    const prorationInfo = useMemo(() => {
+        const nominalDays = differenceInCalendarDays(parseISO(naturalBounds.end), parseISO(naturalBounds.start)) + 1;
+        const actualDays  = differenceInCalendarDays(parseISO(cutoffDates.end), parseISO(cutoffDates.start)) + 1;
+        const factor = Math.min(1, actualDays / nominalDays);
+        const isPartial = actualDays < nominalDays;
+        const pct = Math.round(factor * 1000) / 10; // one decimal
+        return { nominalDays, actualDays, factor, isPartial, pct };
+    }, [naturalBounds, cutoffDates]);
 
     const last6Months = useMemo(() => Array.from({ length: 6 }, (_, i) => format(subMonths(new Date(), i), "yyyy-MM")), []);
     const last12Months = useMemo(() => Array.from({ length: 12 }, (_, i) => format(subMonths(new Date(), i), "yyyy-MM")), []);
@@ -273,7 +321,24 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         [signPayslips, pageSize, signSafePage]
     );
 
-    const eligibleFilteredEmployees = useMemo(() => filteredActiveEmployees.filter((e) => !payslips.some((p) => p.employeeId === e.id && p.periodStart === cutoffDates.start && p.periodEnd === cutoffDates.end)), [filteredActiveEmployees, payslips, cutoffDates]);
+    const signPayslips = useMemo(
+        () => filteredPayslips.filter((p) => p.status === "published" || p.status === "payment_hold" || p.status === "signed"),
+        [filteredPayslips]
+    );
+    const signTotalPages = Math.max(1, Math.ceil(signPayslips.length / pageSize));
+    const signSafePage = Math.min(signPage, signTotalPages);
+    const paginatedSignPayslips = useMemo(
+        () => signPayslips.slice((signSafePage - 1) * pageSize, signSafePage * pageSize),
+        [signPayslips, pageSize, signSafePage]
+    );
+
+    // Smart cutoff detection: periodStart uniquely identifies the cutoff — a payslip with the same
+    // periodStart and payFrequency means this employee already received pay for this cutoff,
+    // regardless of whether the period end differed (e.g. partial-period proration).
+    const eligibleFilteredEmployees = useMemo(() => filteredActiveEmployees.filter((e) => {
+        const empFreq = e.payFrequency || paySchedule.defaultFrequency;
+        return !payslips.some((p) => p.employeeId === e.id && p.periodStart === cutoffDates.start && (p.payFrequency === empFreq || !p.payFrequency));
+    }), [filteredActiveEmployees, payslips, cutoffDates, paySchedule.defaultFrequency]);
     const allSelected = eligibleFilteredEmployees.length > 0 && eligibleFilteredEmployees.every((e) => selectedEmployeeIds.includes(e.id));
     const toggleSelectAll = () => {
         if (allSelected) {
@@ -338,23 +403,45 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
             let successCount = 0;
             let totalLoanDeductions = 0;
             let skippedDuplicates = 0;
+            let zeroNetPayCount = 0;
 
             selectedEmployeeIds.forEach((empId) => {
                 const emp = employees.find((e) => e.id === empId);
                 if (!emp) return;
 
-                // Duplicate guard: skip if payslip already exists for this employee + period
+                const freq = emp.payFrequency || paySchedule.defaultFrequency;
+
+                // Smart cutoff duplicate guard: same periodStart + payFrequency = same cutoff,
+                // even if the end date differs due to partial-period proration
                 const existingPayslip = payslips.find(
-                    (p) => p.employeeId === empId && p.periodStart === cutoffDates.start && p.periodEnd === cutoffDates.end
+                    (p) => p.employeeId === empId && p.periodStart === cutoffDates.start && (p.payFrequency === freq || !p.payFrequency)
                 );
                 if (existingPayslip) { skippedDuplicates++; return; }
 
-                const freq = emp.payFrequency || paySchedule.defaultFrequency;
-                let grossPay: number;
-                if (freq === "semi_monthly") grossPay = Math.round(emp.salary / 2);
-                else if (freq === "bi_weekly") grossPay = Math.round((emp.salary * 12) / 26);
-                else if (freq === "weekly") grossPay = Math.round((emp.salary * 12) / 52);
-                else grossPay = emp.salary;
+                // ─── Proration: compute per-employee factor based on freq ──────────
+                // For semi-monthly / bi-weekly / weekly we prorate relative to the
+                // nominal period days.  For monthly we prorate against days-in-month.
+                const { factor: prorFactor, isPartial: isProrPartial, actualDays: prorActual, nominalDays: prorNominal } = prorationInfo;
+                let fullPeriodGross: number;
+                if (freq === "semi_monthly") fullPeriodGross = Math.round(emp.salary / 2);
+                else if (freq === "bi_weekly") fullPeriodGross = Math.round((emp.salary * 12) / 26);
+                else if (freq === "weekly") fullPeriodGross = Math.round((emp.salary * 12) / 52);
+                else {
+                    // monthly: prorate against calendar days in month
+                    const daysInMo = getDaysInMonth(parseISO(naturalBounds.start));
+                    fullPeriodGross = emp.salary;
+                    const monthFactor = Math.min(1, prorActual / daysInMo);
+                    fullPeriodGross = Math.round(emp.salary * monthFactor);
+                }
+                const grossPay = freq === "monthly"
+                    ? fullPeriodGross // already factored above
+                    : Math.round(fullPeriodGross * prorFactor);
+
+                // ─── Admin per-employee gross override ────────────────────────────
+                const overrideStr = grossOverrides[empId];
+                const effectiveGrossPay = (overrideStr && Number(overrideStr) > 0)
+                    ? Math.round(Number(overrideStr))
+                    : grossPay;
 
                 const phDeductions = computeAllPHDeductions(emp.salary);
                 let govMultiplier = 1;
@@ -367,7 +454,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                 const empLoans = getActiveByEmployee(empId);
                 const rawLoanDeduction = empLoans.reduce((sum, l) => sum + Math.min(l.monthlyDeduction, l.remainingBalance), 0);
                 // Enforce 30% deduction cap per DB schema (loans.deduction_cap_percent DEFAULT 30)
-                const empLoanDeduction = Math.min(rawLoanDeduction, Math.round(grossPay * 0.30));
+                const empLoanDeduction = Math.min(rawLoanDeduction, Math.round(effectiveGrossPay * 0.30));
                 totalLoanDeductions += empLoanDeduction;
 
                 const allowances = allowancesVal;
@@ -407,7 +494,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                 const pi = emp.deductionExempt ? 0 : computeDeduction("pagibig", phDeductions.pagIBIG);
 
                 // BIR tax is calculated on taxable income (gross minus gov contributions)
-                const taxableIncome = Math.max(0, grossPay - sss - ph - pi);
+                const taxableIncome = Math.max(0, effectiveGrossPay - sss - ph - pi);
                 const birOverride = getDeductionOverride(empId, "bir");
                 const birGlobal = getGlobalDefault("bir");
                 let tax: number;
@@ -502,7 +589,8 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                 if (netPay <= 0) { toast.error(`Skipped ${emp.name}: Net pay would be ≤ 0`); return; }
 
                 issuePayslip({
-                    employeeId: empId, periodStart: cutoffDates.start, periodEnd: cutoffDates.end, payFrequency: freq, grossPay,
+                    employeeId: empId, periodStart: cutoffDates.start, periodEnd: cutoffDates.end, payFrequency: freq,
+                    grossPay: effectiveGrossPay,
                     allowances: allowances + otPay + nightDiffPay,
                     sssDeduction: sss, philhealthDeduction: ph, pagibigDeduction: pi, taxDeduction: tax,
                     otherDeductions: otherDed, loanDeduction: empLoanDeduction,
@@ -525,9 +613,10 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
 
             const loanMsg = totalLoanDeductions > 0 ? ` (incl. ${formatCurrency(totalLoanDeductions)} total loan deductions)` : "";
             if (skippedDuplicates > 0) toast.warning(`${skippedDuplicates} employee${skippedDuplicates > 1 ? "s" : ""} already had payslips for this period — skipped.`);
+            if (zeroNetPayCount > 0) toast.warning(`${zeroNetPayCount} employee${zeroNetPayCount > 1 ? "s" : ""} issued with ₱0 net pay — review deductions before locking.`);
             if (successCount > 0) toast.success(`Issued ${successCount} payslip${successCount > 1 ? "s" : ""}${loanMsg}`);
             else if (skippedDuplicates > 0) toast.info("No new payslips issued — all selected employees already have payslips for this period.");
-            setOpen(false); setSelectedEmployeeIds([]); setFormAllowances("0"); setFormOtherDeductions("0"); setFormOTHours("0"); setFormNightDiffHours("0"); setFormNotes(""); setFormIssuedAt(format(new Date(), "yyyy-MM-dd")); setEmpSearchTerm("");
+            setOpen(false); setSelectedEmployeeIds([]); setFormAllowances("0"); setFormOtherDeductions("0"); setFormOTHours("0"); setFormNightDiffHours("0"); setFormNotes(""); setFormIssuedAt(format(new Date(), "yyyy-MM-dd")); setFormPeriodEnd(computeSmartPeriodEnd(naturalBounds)); setEmpSearchTerm(""); setGrossOverrides({}); setExpandedOverrideEmpId(null);
         } catch (err) {
             toast.error(`Payslip issuance failed: ${err instanceof Error ? err.message : "Unknown error"}`);
         }
@@ -736,7 +825,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                     <h1 className="text-2xl font-bold tracking-tight">{viewTitle}</h1>
                     <p className="text-sm text-muted-foreground mt-0.5">{activeRunPayslips.length} payslips</p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 justify-start md:justify-end">
                     {canReset && (
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
@@ -758,6 +847,13 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                 <Settings className="h-4 w-4" /> <span className="hidden sm:inline">Payroll Settings</span>
                             </Button>
                         </Link>
+                        {/* DEMO: hidden — uncomment to re-enable
+                        <Link href={`/${role}/payroll/bir-compliance`}>
+                            <Button variant="outline" size="sm" className="gap-1.5">
+                                <Shield className="h-4 w-4" /> <span className="hidden sm:inline">BIR Compliance</span>
+                            </Button>
+                        </Link>
+                        */}
                         <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setThirteenthMonthOpen(true)}>
                             <Gift className="h-4 w-4" /> <span className="hidden sm:inline">13th Month</span>
                         </Button>
@@ -803,6 +899,56 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                 </div>
                                             )}
                                             <p className="text-xs text-muted-foreground mt-1.5 font-mono bg-muted px-2 py-1 rounded">{cutoffDates.label}</p>
+                                        </div>
+                                        {/* Actual Period End (partial-period override) */}
+                                        <div>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <label className="text-sm font-medium">Actual Period End</label>
+                                                {prorationInfo.isPartial && (
+                                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-semibold px-2 py-0.5">
+                                                        <CalendarDays className="h-3 w-3" />
+                                                        {prorationInfo.actualDays}/{prorationInfo.nominalDays} days · {prorationInfo.pct}% gross
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex gap-1.5">
+                                                <Input
+                                                    type="date"
+                                                    min={naturalBounds.start}
+                                                    max={naturalBounds.end}
+                                                    value={formPeriodEnd}
+                                                    onChange={(e) => {
+                                                        const v = e.target.value;
+                                                        if (v >= naturalBounds.start && v <= naturalBounds.end) setFormPeriodEnd(v);
+                                                    }}
+                                                    className="flex-1"
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="shrink-0 text-xs px-2.5"
+                                                    onClick={() => setFormPeriodEnd(computeSmartPeriodEnd(naturalBounds))}
+                                                    title="Reset to today"
+                                                >
+                                                    Today
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="shrink-0 text-xs px-2.5 text-muted-foreground"
+                                                    onClick={() => setFormPeriodEnd(naturalBounds.end)}
+                                                    title="Full period"
+                                                >
+                                                    Full
+                                                </Button>
+                                            </div>
+                                            <p className="text-[10px] text-muted-foreground mt-1">
+                                                {prorationInfo.isPartial
+                                                    ? `Gross will be prorated to ${prorationInfo.pct}% of the full period amount.`
+                                                    : "Full period — no proration applied."}
+                                            </p>
                                         </div>
                                         {/* Issue Date */}
                                         <div><label className="text-sm font-medium">Issue Date</label><Input type="date" value={formIssuedAt} onChange={(e) => setFormIssuedAt(e.target.value)} className="mt-1" /></div>
@@ -897,25 +1043,57 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                     {filteredActiveEmployees.length === 0 ? (
                                                         <p className="text-sm text-muted-foreground text-center py-4">{empSearchTerm ? "No employees match search" : "No active employees"}</p>
                                                     ) : filteredActiveEmployees.map((emp) => {
-                                                        const alreadyIssued = !!(cutoffDates.start && cutoffDates.end && payslips.some(
-                                                            (p) => p.employeeId === emp.id && p.periodStart === cutoffDates.start && p.periodEnd === cutoffDates.end
-                                                        ));
+                                                        const empFreq = emp.payFrequency || paySchedule.defaultFrequency;
+                                                        const alreadyIssuedSlip = cutoffDates.start ? payslips.find(
+                                                            (p) => p.employeeId === emp.id && p.periodStart === cutoffDates.start && (p.payFrequency === empFreq || !p.payFrequency)
+                                                        ) : undefined;
+                                                        const alreadyIssued = !!alreadyIssuedSlip;
+                                                        const overrideActive = !!(grossOverrides[emp.id] && Number(grossOverrides[emp.id]) > 0);
+                                                        const isExpanded = expandedOverrideEmpId === emp.id;
                                                         return (
-                                                            <div key={emp.id} onClick={() => !alreadyIssued && toggleEmployee(emp.id)} className={`flex items-center gap-3 p-2 rounded-lg transition-colors border border-transparent ${alreadyIssued ? "opacity-50 cursor-not-allowed bg-muted/30" : "hover:bg-muted/50 cursor-pointer hover:border-border/50"}`}>
-                                                                <Checkbox checked={selectedEmployeeIds.includes(emp.id)} onCheckedChange={() => !alreadyIssued && toggleEmployee(emp.id)} disabled={alreadyIssued} />
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className="text-sm font-medium">{emp.name}{alreadyIssued && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 font-normal">✓ Already issued</span>}</p>
-                                                                    <p className="text-xs text-muted-foreground">{emp.role} • {emp.department} • {formatCurrency(emp.salary)}/mo</p>
+                                                            <div key={emp.id} className={`rounded-lg border transition-colors ${alreadyIssued ? "opacity-50 cursor-not-allowed bg-muted/30 border-transparent" : overrideActive ? "border-amber-400/60 bg-amber-50/40 dark:bg-amber-950/20" : "border-transparent hover:bg-muted/50 hover:border-border/50"}`}>
+                                                                <div onClick={() => !alreadyIssued && toggleEmployee(emp.id)} className={`flex items-center gap-3 p-2 ${alreadyIssued ? "cursor-not-allowed" : "cursor-pointer"}`}>
+                                                                    <Checkbox checked={selectedEmployeeIds.includes(emp.id)} onCheckedChange={() => !alreadyIssued && toggleEmployee(emp.id)} disabled={alreadyIssued} />
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="text-sm font-medium">{emp.name}{alreadyIssuedSlip && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 font-normal">✓ Issued ({alreadyIssuedSlip.status})</span>}{overrideActive && <span className="ml-2 text-xs text-amber-700 dark:text-amber-400 font-semibold">⚡ Gross override</span>}</p>
+                                                                        <p className="text-xs text-muted-foreground">{emp.role} • {emp.department} • {formatCurrency(emp.salary)}/mo</p>
+                                                                    </div>
+                                                                    <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded whitespace-nowrap">
+                                                                        {overrideActive ? formatCurrency(Number(grossOverrides[emp.id])) : (() => {
+                                                                            const f = emp.payFrequency || paySchedule.defaultFrequency;
+                                                                            if (f === "semi_monthly") return `≈${formatCurrency(Math.round(emp.salary / 2))}/cutoff`;
+                                                                            if (f === "bi_weekly") return `≈${formatCurrency(Math.round((emp.salary * 12) / 26))}/period`;
+                                                                            if (f === "weekly") return `≈${formatCurrency(Math.round((emp.salary * 12) / 52))}/wk`;
+                                                                            return `${formatCurrency(emp.salary)}/mo`;
+                                                                        })()}
+                                                                    </span>
+                                                                    {!alreadyIssued && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => { e.stopPropagation(); setExpandedOverrideEmpId(isExpanded ? null : emp.id); }}
+                                                                            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                                                                            title="Override gross pay"
+                                                                        >
+                                                                            <Pencil className="h-3 w-3" />
+                                                                        </button>
+                                                                    )}
                                                                 </div>
-                                                                <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded whitespace-nowrap">
-                                                                    {(() => {
-                                                                        const f = emp.payFrequency || paySchedule.defaultFrequency;
-                                                                        if (f === "semi_monthly") return `≈${formatCurrency(Math.round(emp.salary / 2))}/cutoff`;
-                                                                        if (f === "bi_weekly") return `≈${formatCurrency(Math.round((emp.salary * 12) / 26))}/period`;
-                                                                        if (f === "weekly") return `≈${formatCurrency(Math.round((emp.salary * 12) / 52))}/wk`;
-                                                                        return `${formatCurrency(emp.salary)}/mo`;
-                                                                    })()}
-                                                                </span>
+                                                                {isExpanded && !alreadyIssued && (
+                                                                    <div className="px-3 pb-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                                                        <label className="text-xs text-muted-foreground whitespace-nowrap">Override gross ₱</label>
+                                                                        <Input
+                                                                            type="number"
+                                                                            min={1}
+                                                                            value={grossOverrides[emp.id] ?? ""}
+                                                                            onChange={(e) => setGrossOverrides((prev) => ({ ...prev, [emp.id]: e.target.value }))}
+                                                                            placeholder="e.g. 15000"
+                                                                            className="h-7 text-xs flex-1"
+                                                                        />
+                                                                        {overrideActive && (
+                                                                            <button type="button" onClick={() => { setGrossOverrides((prev) => { const n = { ...prev }; delete n[emp.id]; return n; }); setExpandedOverrideEmpId(null); }} className="text-xs text-red-500 hover:text-red-700 whitespace-nowrap">Clear</button>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         );
                                                     })}

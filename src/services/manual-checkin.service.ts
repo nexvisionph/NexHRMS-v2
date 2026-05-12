@@ -11,21 +11,6 @@ import { createServerSupabaseClient, createAdminSupabaseClient } from "./supabas
 import type { ManualCheckin, ManualCheckinReason } from "@/types";
 import { nanoid } from "nanoid";
 
-const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
-
-function toManilaDate(utcIso: string) {
-  const ms = new Date(utcIso).getTime() + MANILA_OFFSET_MS;
-  return new Date(ms).toISOString().slice(0, 10);
-}
-
-function toManilaTime(utcIso: string) {
-  const ms = new Date(utcIso).getTime() + MANILA_OFFSET_MS;
-  const d = new Date(ms);
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const mm = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
-}
-
 /**
  * Get all active manual check-in reasons
  */
@@ -134,48 +119,6 @@ export async function createManualCheckin(
       // Rollback manual check-in
       await supabase.from("manual_checkins").delete().eq("id", checkinId);
       return { ok: false, error: eventError.message };
-    }
-
-    // Update daily attendance log with manual method
-    const logDate = toManilaDate(timestampUtc);
-    const logTime = toManilaTime(timestampUtc);
-    if (data.eventType === "IN") {
-      const { error: logError } = await supabase.from("attendance_logs").upsert(
-        {
-          id: `ATT-${logDate}-${data.employeeId}`,
-          employee_id: data.employeeId,
-          date: logDate,
-          check_in: logTime,
-          check_in_method: "manual",
-          source: "manual",
-          needs_review: true,
-          status: "present",
-          updated_at: timestampUtc,
-        },
-        { onConflict: "employee_id,date" }
-      );
-
-      if (logError) {
-        console.error("[createManualCheckin] attendance_logs upsert error:", logError.message);
-      }
-    }
-
-    if (data.eventType === "OUT") {
-      const { error: logError } = await supabase
-        .from("attendance_logs")
-        .update({
-          check_out: logTime,
-          check_out_method: "manual",
-          source: "manual",
-          needs_review: true,
-          updated_at: timestampUtc,
-        })
-        .eq("employee_id", data.employeeId)
-        .eq("date", logDate);
-
-      if (logError) {
-        console.error("[createManualCheckin] attendance_logs update error:", logError.message);
-      }
     }
 
     // Create audit log
@@ -297,24 +240,20 @@ export async function getManualCheckinsByDateRange(
 
     if (!data) return [];
 
-    return data.map((row: Record<string, unknown>) => {
-      const employee = row.employee as { id?: string; name?: string } | null;
-      const performer = row.performer as { name?: string } | null;
-      return {
+    return data.map((row: Record<string, unknown>) => ({
       id: row.id as string,
-      employeeId: employee?.id || row.employee_id as string,
-      employeeName: employee?.name as string,
+      employeeId: (row as any).employee?.id as string || row.employee_id as string,
+      employeeName: (row as any).employee?.name as string,
       eventType: row.event_type as "IN" | "OUT",
       reasonId: row.reason_id as string,
       customReason: row.custom_reason as string,
       performedBy: row.performed_by as string,
-      performerName: performer?.name as string,
+      performerName: (row as any).performer?.name as string,
       timestampUtc: row.timestamp_utc as string,
       projectId: row.project_id as string,
       notes: row.notes as string,
       createdAt: row.created_at as string,
-      };
-    });
+    }));
   } catch (error) {
     console.error("[getManualCheckinsByDateRange] Error:", error);
     return [];

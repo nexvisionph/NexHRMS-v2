@@ -7,7 +7,7 @@ const MAX_BATCH_SIZE = 100;
 /**
  * POST /api/payroll/status
  * Admin/Finance transitions a payslip or batch of payslips to the next status.
- * Body: { payslipIds: string[], action: "confirm" | "publish" | "record_payment", paymentMethod?, bankReferenceId?, cashAmount?, paymentProofUrl?, performedBy }
+ * Body: { payslipIds: string[], action: "confirm" | "publish" | "record_payment" | "hold_payment" | "release_hold", paymentMethod?, bankReferenceId?, cashAmount?, paymentProofUrl?, performedBy }
  * Auth: Requires valid Supabase session with admin/finance/payroll_admin role.
  */
 export async function POST(request: NextRequest) {
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const validActions = ["confirm", "publish", "record_payment"];
+    const validActions = ["confirm", "publish", "record_payment", "hold_payment", "release_hold"];
     if (!validActions.includes(action)) {
       return NextResponse.json(
         { ok: false, message: `Invalid action. Must be one of: ${validActions.join(", ")}` },
@@ -76,13 +76,10 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case "confirm":
-        // True no-op in simplified flow — no DB write needed
-        return NextResponse.json({
-          ok: true,
-          successCount: payslipIds.length,
-          totalRequested: payslipIds.length,
-          message: "Confirm is a no-op in simplified flow",
-        });
+        // In the simplified flow, confirm is a no-op — go straight to publish
+        requiredStatus = "draft";
+        update = { status: "draft" };
+        break;
       case "publish":
         requiredStatus = "draft";
         update = { status: "published", published_at: now };
@@ -90,6 +87,7 @@ export async function POST(request: NextRequest) {
       case "record_payment":
         requiredStatus = "signed";
         update = {
+          status: "paid",
           paid_at: now,
           payment_method: paymentMethod || "bank_transfer",
           bank_reference_id: bankReferenceId || null,
@@ -97,6 +95,22 @@ export async function POST(request: NextRequest) {
           payment_proof_url: paymentProofUrl || null,
           paid_confirmed_by: performedBy,
           paid_confirmed_at: now,
+        };
+        break;
+      case "hold_payment":
+        requiredStatus = "published";
+        update = {
+          status: "payment_hold",
+          paid_confirmed_by: performedBy,
+          paid_confirmed_at: now,
+        };
+        break;
+      case "release_hold":
+        requiredStatus = "payment_hold";
+        update = {
+          status: "published",
+          paid_confirmed_by: null,
+          paid_confirmed_at: null,
         };
         break;
     }

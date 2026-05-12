@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/services/supabase-server";
-import { getCurrentUserFromCookie } from "@/services/auth.service";
+import { createServerSupabaseClient } from "@/services/supabase-server";
+import { getCurrentUser } from "@/services/auth.service";
 import { createHash, randomBytes } from "crypto";
 
 export async function GET() {
   try {
-    const supabase = await createClient();
-    const user = await getCurrentUserFromCookie();
+    const supabase = await createServerSupabaseClient();
+    const user = await getCurrentUser();
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -38,8 +38,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createClient();
-    const user = await getCurrentUserFromCookie();
+    const supabase = await createServerSupabaseClient();
+    const user = await getCurrentUser();
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

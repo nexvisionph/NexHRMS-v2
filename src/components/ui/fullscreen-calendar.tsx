@@ -209,66 +209,76 @@ export function FullScreenCalendar({
           </div>
         </div>
 
-        <div className="flex flex-col items-center gap-4 md:flex-row md:gap-4">
-          {/* View mode toggle */}
-          <div className="inline-flex w-full -space-x-px rounded-lg shadow-sm shadow-black/5 md:w-auto rtl:space-x-reverse">
-            {(["week", "month", "year"] as CalendarViewMode[]).map((mode) => (
-              <Button
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                className={cn(
-                  "rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 capitalize text-xs",
-                  viewMode === mode && "bg-primary text-primary-foreground hover:bg-primary/90",
-                )}
-                variant={viewMode === mode ? "default" : "outline"}
-                size="sm"
-              >
-                {mode}
+          {/* Mobile: single scrollable row with view toggle + nav together */}
+          <div className="flex items-center gap-2 overflow-x-auto md:hidden">
+            <div className="inline-flex -space-x-px rounded-lg shadow-sm shadow-black/5 shrink-0 rtl:space-x-reverse">
+              {(["week", "month", "year"] as CalendarViewMode[]).map((mode) => (
+                <Button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={cn(
+                    "rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 capitalize text-xs",
+                    viewMode === mode && "bg-primary text-primary-foreground hover:bg-primary/90",
+                  )}
+                  variant={viewMode === mode ? "default" : "outline"}
+                  size="sm"
+                >
+                  {mode}
+                </Button>
+              ))}
+            </div>
+            <div className="inline-flex -space-x-px rounded-lg shadow-sm shadow-black/5 shrink-0 rtl:space-x-reverse">
+              <Button onClick={navigatePrev} className="rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10" variant="outline" size="icon" aria-label="Previous">
+                <ChevronLeftIcon size={16} strokeWidth={2} />
               </Button>
-            ))}
+              <Button onClick={goToToday} className="rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 h-9 px-4 text-xs" variant="outline" size="sm">
+                Today
+              </Button>
+              <Button onClick={navigateNext} className="rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10" variant="outline" size="icon" aria-label="Next">
+                <ChevronRightIcon size={16} strokeWidth={2} />
+              </Button>
+            </div>
+            {headerActions && headerActions}
           </div>
 
-          <Separator orientation="vertical" className="hidden h-6 md:block" />
-
-          {/* Navigation */}
-          <div className="inline-flex w-full -space-x-px rounded-lg shadow-sm shadow-black/5 md:w-auto rtl:space-x-reverse">
-            <Button
-              onClick={navigatePrev}
-              className="rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10"
-              variant="outline"
-              size="icon"
-              aria-label="Previous"
-            >
-              <ChevronLeftIcon size={16} strokeWidth={2} />
-            </Button>
-            <Button
-              onClick={goToToday}
-              className="w-full rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 md:w-auto px-3 text-xs"
-              variant="outline"
-              size="icon"
-            >
-              Today
-            </Button>
-            <Button
-              onClick={navigateNext}
-              className="rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10"
-              variant="outline"
-              size="icon"
-              aria-label="Next"
-            >
-              <ChevronRightIcon size={16} strokeWidth={2} />
-            </Button>
+          {/* Desktop: original layout with separator */}
+          <div className="hidden md:flex md:flex-col md:items-center md:gap-4 md:flex-row md:gap-4">
+            <div className="inline-flex w-full -space-x-px rounded-lg shadow-sm shadow-black/5 md:w-auto rtl:space-x-reverse">
+              {(["week", "month", "year"] as CalendarViewMode[]).map((mode) => (
+                <Button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={cn(
+                    "rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 capitalize text-xs h-9",
+                    viewMode === mode && "bg-primary text-primary-foreground hover:bg-primary/90",
+                  )}
+                  variant={viewMode === mode ? "default" : "outline"}
+                  size="sm"
+                >
+                  {mode}
+                </Button>
+              ))}
+            </div>
+            <Separator orientation="vertical" className="hidden h-6 md:block" />
+            <div className="inline-flex w-full -space-x-px rounded-lg shadow-sm shadow-black/5 md:w-auto rtl:space-x-reverse">
+              <Button onClick={navigatePrev} className="rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10" variant="outline" size="icon" aria-label="Previous">
+                <ChevronLeftIcon size={16} strokeWidth={2} />
+              </Button>
+              <Button onClick={goToToday} className="w-full rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 md:w-auto px-3 text-xs" variant="outline" size="icon">
+                Today
+              </Button>
+              <Button onClick={navigateNext} className="rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10" variant="outline" size="icon" aria-label="Next">
+                <ChevronRightIcon size={16} strokeWidth={2} />
+              </Button>
+            </div>
+            {headerActions && (
+              <>
+                <Separator orientation="vertical" className="hidden h-6 md:block" />
+                {headerActions}
+              </>
+            )}
           </div>
-
-          {headerActions && (
-            <>
-              <Separator orientation="vertical" className="hidden h-6 md:block" />
-              <Separator orientation="horizontal" className="block w-full md:hidden" />
-              {headerActions}
-            </>
-          )}
         </div>
-      </div>
 
       {/* ─── Calendar Body ───────────────────────────────── */}
       {viewMode === "month" && (

@@ -21,15 +21,15 @@ import { createJSONStorage } from "zustand/middleware";
 // Priority order for eviction (lowest first — evict these first).
 // These are large, fully DB-backed, and will be re-hydrated on next sync.
 const EVICTION_ORDER: string[] = [
-  "nexhrms-audit",         // audit logs — read-only, always re-fetched
-  "nexhrms-location",      // pings/photos — large, transient
-  "nexhrms-timesheet",     // fully DB-backed
-  "nexhrms-messaging",     // channels/messages — DB-backed
-  "nexhrms-attendance",    // events/logs — large, DB-backed
-  "nexhrms-notifications", // logs — DB-backed, capped at 500
-  "nexhrms-payroll",       // payslips/runs — DB-backed
-  "nexhrms-tasks",         // groups/tasks/reports — DB-backed
-  "nexhrms-employees",     // fully DB-backed
+  "soren-audit",         // audit logs — read-only, always re-fetched
+  "soren-location",      // pings/photos — large, transient
+  "soren-timesheet",     // fully DB-backed
+  "soren-messaging",     // channels/messages — DB-backed
+  "soren-attendance",    // events/logs — large, DB-backed
+  "soren-notifications", // logs — DB-backed, capped at 500
+  "soren-payroll",       // payslips/runs — DB-backed
+  "soren-tasks",         // groups/tasks/reports — DB-backed
+  "soren-employees",     // fully DB-backed
   "nexhrms-deductions",  // deduction templates — DB-backed
   "hrms-departments",    // departments — DB-backed
   "hrms-job-titles",     // job titles — DB-backed

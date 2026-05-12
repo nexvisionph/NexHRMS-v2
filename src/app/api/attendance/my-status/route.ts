@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/services/supabase-server";
+import { createAdminSupabaseClient, createServerSupabaseClient } from "@/services/supabase-server";
 
 /**
  * GET /api/attendance/my-status
@@ -21,11 +21,13 @@ export async function GET() {
         }
 
         // Get employee record for this user
-        const { data: employee, error: empError } = await supabase
+        const admin = await createAdminSupabaseClient();
+        const { data: employee, error: empError } = await admin
             .from("employees")
             .select("id")
-            .eq("profile_id", user.id)
-            .single();
+            .or(`profile_id.eq.${user.id},email.eq.${user.email ?? ""}`)
+            .limit(1)
+            .maybeSingle();
 
         if (empError || !employee) {
             return NextResponse.json({ error: "Employee not found" }, { status: 404 });
@@ -33,7 +35,7 @@ export async function GET() {
 
         // Get today's attendance log
         const today = new Date().toISOString().split("T")[0];
-        const { data: log, error: logError } = await supabase
+        const { data: log, error: logError } = await admin
             .from("attendance_logs")
             .select("*")
             .eq("employee_id", employee.id)
@@ -50,7 +52,7 @@ export async function GET() {
         weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Sunday
         const weekStartStr = weekStart.toISOString().split("T")[0];
 
-        const { data: weekLogs } = await supabase
+        const { data: weekLogs } = await admin
             .from("attendance_logs")
             .select("date, status, hours")
             .eq("employee_id", employee.id)

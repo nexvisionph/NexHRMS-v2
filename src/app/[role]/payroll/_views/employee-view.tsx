@@ -18,7 +18,7 @@ import { CheckCircle, Eye, PenTool, Sparkles, Printer, AlertCircle, FileSignatur
 import { toast } from "sonner";
 import { SignaturePad } from "@/components/ui/signature-pad";
 import { PrintablePayslip } from "@/components/payroll/printable-payslip";
-import { dispatchNotification, notifyPayslipSigned } from "@/lib/notifications";
+import { notifyPayslipSigned } from "@/lib/notifications";
 import { formatCurrency } from "@/lib/format";
 import { keysToCamel } from "@/lib/db-utils";
 
@@ -31,10 +31,12 @@ const statusConfig: Record<string, { label: string; color: string; icon: typeof 
     draft:     { label: "Draft",     color: "bg-amber-500/15 text-amber-700 dark:text-amber-400",   icon: Clock,         step: 1 },
     published: { label: "Published", color: "bg-violet-500/15 text-violet-700 dark:text-violet-400", icon: FileSignature, step: 2 },
     signed:    { label: "Signed",    color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", icon: CheckCircle, step: 3 },
+    paid:      { label: "Paid",      color: "bg-blue-500/15 text-blue-700 dark:text-blue-400",       icon: ShieldCheck,  step: 4 },
+    payment_hold: { label: "On Hold", color: "bg-amber-500/15 text-amber-700 dark:text-amber-400", icon: AlertCircle, step: 2 },
 };
 
 export default function EmployeePayrollView() {
-    const { payslips, runs, updatePayslipFromServer, signatureConfig, isPayslipRunLocked } = usePayrollStore();
+    const { payslips, updatePayslipFromServer, signatureConfig, isPayslipRunLocked } = usePayrollStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
 
@@ -44,10 +46,18 @@ export default function EmployeePayrollView() {
     const [signingInProgress, setSigningInProgress] = useState(false);
     const [acknowledging, setAcknowledging] = useState(false);
 
-    const myEmployee = useMemo(
-        () => employees.find((e) => e.profileId === currentUser.id || e.email?.toLowerCase() === currentUser.email?.toLowerCase() || e.name === currentUser.name),
-        [employees, currentUser.email, currentUser.name],
-    );
+    const myEmployee = useMemo(() => {
+        const match = employees.find(
+            (e) =>
+                e.profileId === currentUser.id ||
+                (e.email && currentUser.email && e.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase()) ||
+                (e.name && currentUser.name && e.name.trim().toLowerCase() === currentUser.name.trim().toLowerCase()),
+        );
+        if (!match && employees.length > 0) {
+            console.warn("[payroll/employee-view] No employee match for current user:", { id: currentUser.id, email: currentUser.email, name: currentUser.name });
+        }
+        return match;
+    }, [employees, currentUser.email, currentUser.id, currentUser.name]);
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
 
@@ -65,8 +75,11 @@ export default function EmployeePayrollView() {
     const totalEarned = useMemo(() => myPayslips.reduce((s, p) => s + p.netPay, 0), [myPayslips]);
     const latestPayslip = myPayslips[0];
     // Employees can sign only when payslip is published AND its payroll run is locked
-    const pendingSign = useMemo(() => myPayslips.filter((p) => p.status === "published" && !p.signedAt && isPayslipRunLocked(p.id)), [myPayslips, runs]);
-    const pendingAck = useMemo(() => [] as typeof myPayslips, []);
+    const pendingSign = useMemo(() => myPayslips.filter((p) => p.status === "published" && !p.signedAt && isPayslipRunLocked(p.id)), [myPayslips, isPayslipRunLocked]);
+    const pendingAck = useMemo(
+        () => myPayslips.filter((p) => p.status === "paid" && !!p.signedAt && !p.acknowledgedAt),
+        [myPayslips],
+    );
 
     // ─── E-Sign handler (calls API first, then updates store with server data) ───
     const handleSign = useCallback(async (payslipId: string, signatureDataUrl: string) => {
@@ -326,6 +339,10 @@ export default function EmployeePayrollView() {
                                                                 <CheckCircle className="h-3.5 w-3.5" />
                                                                 <span className="text-[10px] font-medium">Signed</span>
                                                             </span>
+                                                        ) : ps.status === "payment_hold" ? (
+                                                            <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1" title="Payslip is on hold — awaiting re-issue">
+                                                                <AlertCircle className="h-3 w-3" /> On Hold
+                                                            </span>
                                                         ) : canSign ? (
                                                             <Button
                                                                 variant="ghost" size="sm"
@@ -459,7 +476,7 @@ export default function EmployeePayrollView() {
 
                                     {/* Status Progress */}
                                     <div className="flex items-center gap-1 py-2">
-                                        {["draft", "published", "signed"].map((step, i) => {
+                                        {["draft", "published", "signed", "paid"].map((step, i) => {
                                             const currentStep = statusConfig[viewedPayslip.status]?.step || 1;
                                             const stepNum = i + 1;
                                             const isActive = stepNum <= currentStep;
@@ -470,6 +487,18 @@ export default function EmployeePayrollView() {
                                             );
                                         })}
                                     </div>
+
+                                    {/* On-Hold Notice */}
+                                    {viewedPayslip.status === "payment_hold" && (
+                                        <div className="rounded-md bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30 p-2.5">
+                                            <p className="text-[10px] font-semibold uppercase text-amber-600 dark:text-amber-400 flex items-center gap-1 mb-1">
+                                                <AlertCircle className="h-3 w-3" /> On Hold
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {viewedPayslip.holdNote || "Late compliance to payroll submission. Please coordinate with the payroll team to resolve this issue."}
+                                            </p>
+                                        </div>
+                                    )}
 
                                     {/* Earnings */}
                                     <div className="border-t border-border/50 pt-3 space-y-1.5">
@@ -530,7 +559,7 @@ export default function EmployeePayrollView() {
                                                     <CheckCircle className="h-3 w-3 text-emerald-500" />
                                                     Signed on {new Date(viewedPayslip.signedAt).toLocaleString()}
                                                 </p>
-                                                {viewedPayslip.status === "published" && !viewedPayslip.acknowledgedAt && (
+                                                {viewedPayslip.status === "paid" && !viewedPayslip.acknowledgedAt && (
                                                     <Button
                                                         size="sm" className="w-full gap-1.5 mt-2"
                                                         disabled={acknowledging}
@@ -548,7 +577,7 @@ export default function EmployeePayrollView() {
                                                     </div>
                                                 )}
                                             </div>
-                                        ) : viewedPayslip.status === "published" && isPayslipRunLocked(viewedPayslip.id) ? (
+                                        ) : (viewedPayslip.status === "published" || viewedPayslip.status === "payment_hold") && isPayslipRunLocked(viewedPayslip.id) ? (
                                             <div className="space-y-2">
                                                 <Button
                                                     className="w-full gap-2 bg-violet-600 hover:bg-violet-700 text-white"
@@ -561,7 +590,7 @@ export default function EmployeePayrollView() {
                                                     Sign to acknowledge you have reviewed and accepted this payslip
                                                 </p>
                                             </div>
-                                        ) : viewedPayslip.status === "published" ? (
+                                        ) : viewedPayslip.status === "published" || viewedPayslip.status === "payment_hold" ? (
                                             <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md text-center space-y-1">
                                                 <p className="text-xs text-amber-700 dark:text-amber-400 font-medium flex items-center justify-center gap-1.5">
                                                     <AlertCircle className="h-3.5 w-3.5" /> Payroll run not locked yet

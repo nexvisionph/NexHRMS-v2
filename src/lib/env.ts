@@ -65,7 +65,32 @@ export function getQwenModel(): string {
 
 /** Face template encryption key — server-side only. */
 export function getFaceTemplateEncryptionKey(): string {
-  return process.env.FACE_TEMPLATE_ENCRYPTION_KEY || "nexhrms-default-key-change-in-production";
+  return process.env.FACE_TEMPLATE_ENCRYPTION_KEY || "soren-default-key-change-in-production";
+}
+
+// ─── T800 Biometric Bridge ───────────────────────────────────────────────────
+
+/** T800 bridge target URL — server-side only. */
+export function getT800BridgeTargetUrl(): string {
+  return process.env.T800_BRIDGE_TARGET_URL || process.env.HRMS_URL || "http://localhost:3000/api/attendance/t800";
+}
+
+/** Comma-separated list of allowed T800 device IDs — server-side only. */
+export function getT800AllowedDeviceIds(): string[] {
+  return (process.env.T800_DEVICE_IDS || process.env.BIOMETRIC_DEVICE_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+/** T800 request code accepted by the attendance adapter. */
+export function getT800RequestCode(): string {
+  return process.env.T800_REQUEST_CODE || "realtime_glog";
+}
+
+/** When true, legacy biometric endpoints and UI are disabled and only T800 flow is allowed. */
+export function getT800Only(): boolean {
+  return process.env.T800_ONLY === "true";
 }
 
 // ─── Kiosk Security ───────────────────────────────────────────────────────────

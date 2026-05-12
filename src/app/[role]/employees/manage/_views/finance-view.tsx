@@ -84,7 +84,7 @@ export default function FinanceEmployeesView() {
                 </Select>
                 <Select value={status} onValueChange={setStatus}>
                     <SelectTrigger className="w-full sm:w-[130px]"><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem><SelectItem value="resigned">Resigned</SelectItem></SelectContent>
+                    <SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent>
                 </Select>
             </div>
 

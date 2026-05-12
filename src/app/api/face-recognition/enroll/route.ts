@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { enrollFace, verifyFace, matchFace, deleteFaceEnrollment, getFaceEnrollmentStatus } from "@/services/face-recognition.service";
 import { kioskRateLimiter, getClientIp } from "@/lib/rate-limit";
 import { validateKioskAuth } from "@/lib/kiosk-auth";
+import { getT800Only } from "@/lib/env";
 
 /**
  * POST /api/face-recognition/enroll
@@ -13,6 +14,9 @@ import { validateKioskAuth } from "@/lib/kiosk-auth";
  * Match:       POST ?action=match   { embedding: number[128] }
  */
 export async function POST(request: NextRequest) {
+    if (getT800Only()) {
+        return NextResponse.json({ ok: false, error: "Face-recognition API disabled in T800-only mode" }, { status: 410 });
+    }
     const action = request.nextUrl.searchParams.get("action") || "enroll";
 
     // Rate limit all actions
@@ -63,6 +67,9 @@ export async function POST(request: NextRequest) {
  * Check face enrollment status for an employee.
  */
 export async function GET(request: NextRequest) {
+    if (getT800Only()) {
+        return NextResponse.json({ error: "Face-recognition API disabled in T800-only mode" }, { status: 410 });
+    }
     try {
         const employeeId = request.nextUrl.searchParams.get("employeeId");
 

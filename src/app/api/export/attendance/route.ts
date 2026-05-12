@@ -29,14 +29,12 @@ export async function GET(req: Request) {
   }
 
   // Fetch attendance events within the date range
-  const eventsResult = await supabase
+  let { data: events, error: evErr } = await supabase
     .from("attendance_events")
     .select("*, employees!attendance_events_employee_id_fkey(name, email, department)")
     .gte("timestamp_utc", `${from}T00:00:00`)
     .lte("timestamp_utc", `${to}T23:59:59`)
     .order("timestamp_utc", { ascending: false });
-  let events = eventsResult.data;
-  const evErr = eventsResult.error;
 
   if (evErr) {
     // Fallback without join

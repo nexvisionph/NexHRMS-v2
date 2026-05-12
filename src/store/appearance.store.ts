@@ -157,6 +157,7 @@ export interface ModuleFlags {
   attendance: boolean;
   leave: boolean;
   payroll: boolean;
+  myPayslips: boolean;
   loans: boolean;
   projects: boolean;
   reports: boolean;
@@ -168,12 +169,17 @@ export interface ModuleFlags {
   tasks: boolean;
   messages: boolean;
   events: boolean;
+  // ── Premium / unpaid features (hidden until client upgrades) ──────────────
+  jobs: boolean;
+  birCompliance: boolean;
+  documentCenter: boolean;
 }
 
 export const DEFAULT_MODULE_FLAGS: ModuleFlags = {
   attendance: true,
   leave: true,
   payroll: true,
+  myPayslips: true,
   loans: true,
   projects: true,
   reports: true,
@@ -185,12 +191,17 @@ export const DEFAULT_MODULE_FLAGS: ModuleFlags = {
   tasks: true,
   messages: true,
   events: true,
+  // ── Premium / unpaid features (off by default) ────────────────────────────
+  jobs: false,
+  birCompliance: false,
+  documentCenter: false,
 };
 
 export const MODULE_INFO: Record<keyof ModuleFlags, { label: string; description: string; icon: string }> = {
   attendance: { label: "Attendance", description: "Clock-in/out tracking, geofencing, daily logs", icon: "Clock" },
   leave: { label: "Leave Management", description: "Leave requests, balances, approvals", icon: "CalendarOff" },
   payroll: { label: "Payroll", description: "Salary processing, payslips, deductions", icon: "Wallet" },
+  myPayslips: { label: "My Payslips", description: "Personal payslip viewing, e-signatures, acknowledgements", icon: "FileText" },
   loans: { label: "Loans", description: "Employee loan management & repayment tracking", icon: "Banknote" },
   projects: { label: "Projects", description: "Project tracking, task management", icon: "FolderKanban" },
   reports: { label: "Reports", description: "Analytics, government reports, exports", icon: "BarChart3" },
@@ -202,6 +213,10 @@ export const MODULE_INFO: Record<keyof ModuleFlags, { label: string; description
   tasks: { label: "Task Management", description: "Task groups, assignments, photo & GPS proof", icon: "ListTodo" },
   messages: { label: "Messaging Hub", description: "Channels, announcements, multi-channel messaging", icon: "MessageSquare" },
   events: { label: "Events & Meetings", description: "Company events, meetings, calendar management", icon: "Calendar" },
+  // ── Premium / unpaid features ─────────────────────────────────────────────
+  jobs: { label: "Jobs / Talent Acquisition", description: "Job postings, applications, and hiring pipeline", icon: "Briefcase" },
+  birCompliance: { label: "BIR Compliance (Alphalist)", description: "BIR alphalist generation and tax compliance reports", icon: "ReceiptText" },
+  documentCenter: { label: "Document Center (201 Files)", description: "Employee 201 file management and document storage", icon: "FolderArchive" },
 };
 
 // ─── Navigation Overrides ─────────────────────────────────────────────────────
@@ -294,7 +309,7 @@ const INITIAL_STATE = {
   fontFamily: "geist" as FontFamilyId,
   radius: "md" as RadiusId,
   density: "default" as DensityId,
-  companyName: "NexHRMS",
+  companyName: "NexHRIS",
   logoUrl: "",
   logoTextVisible: true,
   faviconUrl: "",
@@ -310,7 +325,7 @@ const INITIAL_STATE = {
   loginBackground: "gradient" as LoginBackground,
   loginBgColor: "",
   loginCardStyle: "centered" as LoginCardStyle,
-  loginHeading: "NexHRMS",
+  loginHeading: "NexHRIS",
   loginSubheading: "Sign in to your account to continue",
 };
 

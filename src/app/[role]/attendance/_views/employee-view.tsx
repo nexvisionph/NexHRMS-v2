@@ -61,6 +61,11 @@ function ElapsedTimeDisplay({ checkInTime }: { checkInTime: string }) {
         const tick = () => {
             const [h, m, s = 0] = checkInTime.split(":").map(Number);
             const start = new Date(); start.setHours(h, m, s, 0);
+            // Handle overnight shifts: if start is in the future, it means
+            // the check-in was yesterday (e.g., 22:00 night shift, now 02:00)
+            if (start.getTime() > Date.now()) {
+                start.setDate(start.getDate() - 1);
+            }
             const diff = Math.max(0, Date.now() - start.getTime());
             const hrs = Math.floor(diff / 3600000);
             const mins = Math.floor((diff % 3600000) / 60000);
@@ -109,10 +114,10 @@ const detectLocationSpoofing = (coords: GeolocationCoordinates): string | null =
     // 4. Negative speed = impossible, indicates tampered data
     if (coords.speed !== null && coords.speed < 0) return "Invalid speed value in location data.";
 
-    // 5. iOS-specific: real GPS always provides altitude; mock tools often don't
-    if (isIOS && coords.altitude === null) return "Mock location suspected — iOS altitude data is missing.";
-
-    // 6. Android-specific: real GPS reports altitude accuracy with altitude; mock without
+    // 5. Android-specific: real GPS reports altitude accuracy when altitude is present; mock tools often skip it
+    //    NOTE: iOS altitude is intentionally NOT checked — Safari does not reliably expose altitude
+    //    via the Geolocation API (returns null for WiFi/cell positioning, indoor GPS, and precise
+    //    location disabled in iOS 14+). Checking it causes false positives for real users.
     if (isAndroid && coords.altitude !== null && coords.altitudeAccuracy === null) return "Mock location suspected — Android altitude accuracy data is missing.";
 
     // 7. Android: rounded coordinates suggest mock provider (whole degrees/minutes)
@@ -130,6 +135,10 @@ const detectLocationSpoofing = (coords: GeolocationCoordinates): string | null =
     }
 
     return null;
+};
+
+const isLegacyIosAltitudeFalsePositive = (reason: string): boolean => {
+    return /ios altitude.*missing/i.test(reason) || /mock location suspected.*ios.*altitude/i.test(reason);
 };
 
 /**
@@ -254,7 +263,7 @@ export default function EmployeeView() {
 
     // ─── Check-out state ──────────────────────────────────────────
     const [checkOutOpen, setCheckOutOpen] = useState(false);
-    const [checkOutStep, setCheckOutStep] = useState<"idle" | "verifying" | "done">("idle");
+    const [checkOutStep, setCheckOutStep] = useState<"idle" | "locating" | "verifying" | "done">("idle");
 
     // ─── OT state ─────────────────────────────────────────────────
     const [otOpen, setOtOpen] = useState(false);
@@ -286,6 +295,10 @@ export default function EmployeeView() {
 
     // ─── Cheat detection handler (event + penalty + audit + notify) ──
     const handleCheatDetected = useCallback((employeeId: string, reason: string, cheatType: "devtools" | "spoofing") => {
+        // Permanent safeguard: iOS often omits altitude metadata in legitimate GPS reads.
+        // Never penalize or notify for this legacy false-positive signature.
+        if (isLegacyIosAltitudeFalsePositive(reason)) return;
+
         const now = new Date();
         const until = new Date(now.getTime() + penaltySettings.devOptionsPenaltyMinutes * 60000).toISOString();
 
@@ -396,22 +409,16 @@ export default function EmployeeView() {
         if (!navigator.geolocation) { toast.error("Geolocation is not supported"); setStep("error"); return; }
         navigator.geolocation.getCurrentPosition(
             (pos) => {
-                const spoof = detectLocationSpoofing(pos.coords);
+                const spoofRaw = detectLocationSpoofing(pos.coords);
+                const spoof = spoofRaw && isLegacyIosAltitudeFalsePositive(spoofRaw) ? null : spoofRaw;
                 if (spoof) {
-                    if (penaltySettings.devOptionsPenaltyEnabled && myEmployeeId &&
-                        (penaltySettings.devOptionsPenaltyApplyTo === "spoofing" || penaltySettings.devOptionsPenaltyApplyTo === "both")) {
-                        handleCheatDetected(myEmployeeId, spoof, "spoofing");
-                        toast.error(`Location spoofing detected. Locked out for ${penaltySettings.devOptionsPenaltyMinutes} minutes.`, { duration: 6000 });
-                    }
+                    // Warn only — no penalty, no lockout. User must disable mock location then refresh.
                     setSpoofReason(spoof); setStep("error"); return;
                 }
                 // Velocity check — detect teleportation between consecutive readings
                 const velocitySpoof = checkLocationVelocity(pos.coords.latitude, pos.coords.longitude);
                 if (velocitySpoof) {
-                    if (penaltySettings.devOptionsPenaltyEnabled && myEmployeeId &&
-                        (penaltySettings.devOptionsPenaltyApplyTo === "spoofing" || penaltySettings.devOptionsPenaltyApplyTo === "both")) {
-                        handleCheatDetected(myEmployeeId, velocitySpoof, "spoofing");
-                    }
+                    // Warn only — no penalty, no lockout. User must disable mock location then refresh.
                     setSpoofReason(velocitySpoof); setStep("error"); return;
                 }
                 saveLocationForVelocity(pos.coords.latitude, pos.coords.longitude);
@@ -937,28 +944,62 @@ export default function EmployeeView() {
                 <DialogContent className="max-w-sm w-[calc(100vw-2rem)] max-h-[90dvh] flex flex-col p-0">
                     <DialogHeader className="px-4 pt-4 pb-2 shrink-0"><DialogTitle className="flex items-center gap-2"><LogOut className="h-5 w-5" /> Check Out</DialogTitle></DialogHeader>
                     <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-4">
-                        {checkOutStep === "idle" && (<>
-                            {myProject?.verificationMethod === "qr_only" ? (
-                                <div className="pt-1">
-                                    <p className="text-xs text-muted-foreground text-center mb-3">Scan the project QR code to check out</p>
-                                    <ProjectQrScanner
-                                        onScanned={handleProjectQrCheckout}
-                                        onCancel={() => setCheckOutOpen(false)}
-                                    />
-                                </div>
-                            ) : (
-                                <div className="pt-1">
-                                    <p className="text-xs text-muted-foreground text-center mb-3">Verify your identity to check out</p>
-                                    <RealFaceVerification
-                                        onVerified={handleCheckOutFaceVerified}
-                                        autoStart
-                                        employeeId={myEmployeeId}
-                                        employeeName={currentUser.name}
-                                        required={myProject?.verificationMethod === "face_only"}
-                                    />
-                                </div>
-                            )}
-                        </>)}
+                        {checkOutStep === "idle" && myProject?.verificationMethod === "qr_only" && (
+                            <Card className="border border-border/50">
+                                <CardContent className="p-6 flex flex-col items-center gap-3">
+                                    <div className="h-16 w-16 rounded-full bg-blue-500/10 flex items-center justify-center"><Navigation className="h-8 w-8 text-blue-500" /></div>
+                                    <p className="text-sm font-medium">Step 1: Share Location</p>
+                                    <p className="text-xs text-muted-foreground text-center">
+                                        Verify your location before checking out
+                                    </p>
+                                    <Button onClick={() => {
+                                        setCheckOutStep("locating");
+                                        navigator.geolocation.getCurrentPosition(
+                                            (pos) => {
+                                                setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                                                setCheckOutStep("verifying");
+                                            },
+                                            (err) => {
+                                                const msg = err.code === err.PERMISSION_DENIED ? "Location access denied." : err.code === err.TIMEOUT ? "Location request timed out." : "Unable to retrieve location.";
+                                                toast.error(msg);
+                                                setCheckOutStep("idle");
+                                            },
+                                            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                                        );
+                                    }} className="gap-1.5 mt-1"><MapPin className="h-4 w-4" /> Share My Location</Button>
+                                </CardContent>
+                            </Card>
+                        )}
+                        {checkOutStep === "locating" && (
+                            <Card className="border border-border/50">
+                                <CardContent className="p-6 flex flex-col items-center gap-3">
+                                    <div className="h-12 w-12 rounded-full border-4 border-blue-500/30 border-t-blue-500 animate-spin" />
+                                    <p className="text-sm font-medium">Getting your location...</p>
+                                    <p className="text-xs text-muted-foreground">Please allow location access</p>
+                                </CardContent>
+                            </Card>
+                        )}
+                        {checkOutStep === "verifying" && myProject?.verificationMethod === "qr_only" && (
+                            <div className="pt-1">
+                                <p className="text-xs text-muted-foreground text-center mb-3">Step 2: Scan the project QR code to check out</p>
+                                <ProjectQrScanner
+                                    onScanned={handleProjectQrCheckout}
+                                    onCancel={() => setCheckOutOpen(false)}
+                                />
+                            </div>
+                        )}
+                        {checkOutStep === "idle" && myProject?.verificationMethod !== "qr_only" && (
+                            <div className="pt-1">
+                                <p className="text-xs text-muted-foreground text-center mb-3">Verify your identity to check out</p>
+                                <RealFaceVerification
+                                    onVerified={handleCheckOutFaceVerified}
+                                    autoStart
+                                    employeeId={myEmployeeId}
+                                    employeeName={currentUser.name}
+                                    required={myProject?.verificationMethod === "face_only"}
+                                />
+                            </div>
+                        )}
                         {checkOutStep === "done" && (
                             <Card className="border border-emerald-500/30 bg-emerald-500/5">
                                 <CardContent className="p-6 flex flex-col items-center gap-3">
@@ -1074,8 +1115,8 @@ export default function EmployeeView() {
                                     <div className="h-16 w-16 rounded-full bg-orange-500/15 flex items-center justify-center"><ShieldAlert className="h-8 w-8 text-orange-500" /></div>
                                     <p className="text-sm font-medium text-orange-700 dark:text-orange-400">Check-In Blocked</p>
                                     <p className="text-xs text-muted-foreground text-center">{spoofReason}</p>
-                                    <p className="text-[10px] text-muted-foreground text-center">Disable mock location apps and developer options, then try again.</p>
-                                    <Button variant="outline" size="sm" onClick={() => { setSpoofReason(null); setStep("idle"); }} className="mt-1">Try Again</Button>
+                                    <p className="text-[10px] text-muted-foreground text-center">Turn off any mock location or GPS spoofing app, then tap Refresh to try again.</p>
+                                    <Button variant="outline" size="sm" onClick={requestLocation} className="mt-1">Refresh Location</Button>
                                 </CardContent>
                             </Card>
                         )}

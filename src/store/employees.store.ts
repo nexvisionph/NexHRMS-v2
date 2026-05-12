@@ -8,6 +8,7 @@ import { SEED_EMPLOYEES } from "@/data/seed";
 
 interface EmployeesState {
     employees: Employee[];
+    deletedEmployeeIds: string[];
     salaryRequests: SalaryChangeRequest[];
     salaryHistory: SalaryHistoryEntry[];
     documents: Record<string, EmployeeDocument[]>;
@@ -75,6 +76,7 @@ export const useEmployeesStore = create<EmployeesState>()(
     persist(
         (set, get) => ({
             employees: SEED_EMPLOYEES,
+            deletedEmployeeIds: [],
             salaryRequests: [],
             salaryHistory: [],
             documents: {},
@@ -89,7 +91,7 @@ export const useEmployeesStore = create<EmployeesState>()(
             setRoleFilter: (r) => set({ roleFilter: r }),
             setDepartmentFilter: (d) => set({ departmentFilter: d }),
             addEmployee: (emp) => {
-                const { employees } = get();
+                const { employees, deletedEmployeeIds } = get();
                 // Check for duplicate ID
                 if (employees.some((e) => e.id === emp.id)) {
                     return { ok: false, error: `Employee ID "${emp.id}" already exists.` };
@@ -98,11 +100,13 @@ export const useEmployeesStore = create<EmployeesState>()(
                 if (employees.some((e) => e.email.toLowerCase() === emp.email.toLowerCase())) {
                     return { ok: false, error: `An employee with email "${emp.email}" already exists.` };
                 }
-                // Check for duplicate biometric ID when one is provided
-                if (emp.biometricId && employees.some((e) => e.biometricId && e.biometricId === emp.biometricId && e.id !== emp.id)) {
-                    return { ok: false, error: `T800 user ID "${emp.biometricId}" is already assigned to another employee.` };
+                if (emp.biometricId && employees.some((e) => e.biometricId === emp.biometricId)) {
+                    return { ok: false, error: `Biometric ID "${emp.biometricId}" is already assigned.` };
                 }
-                set({ employees: [...employees, emp] });
+                set({
+                    employees: [...employees, emp],
+                    deletedEmployeeIds: deletedEmployeeIds.filter((id) => id !== emp.id),
+                });
                 return { ok: true };
             },
             updateEmployee: (id, data) =>
@@ -111,9 +115,6 @@ export const useEmployeesStore = create<EmployeesState>()(
                     // For the governed salary-change workflow (propose → approve), use proposeSalaryChange / approveSalaryChange.
                     const { salary: _salary, ...safeData } = data;
                     const updateData = _salary !== undefined ? data : safeData;
-                    if (updateData.biometricId && s.employees.some((e) => e.id !== id && e.biometricId && e.biometricId === updateData.biometricId)) {
-                        return s;
-                    }
                     return {
                         employees: s.employees.map((e) => (e.id === id ? { ...e, ...updateData } : e)),
                     };
@@ -121,12 +122,13 @@ export const useEmployeesStore = create<EmployeesState>()(
             removeEmployee: (id) =>
                 set((s) => ({
                     employees: s.employees.filter((e) => e.id !== id),
+                    deletedEmployeeIds: [...new Set([...s.deletedEmployeeIds, id])],
                 })),
             toggleStatus: (id) =>
                 set((s) => ({
                     employees: s.employees.map((e) =>
                         e.id === id
-                            ? { ...e, status: e.status === "active" ? "inactive" : e.status === "inactive" ? "active" : e.status }
+                            ? { ...e, status: e.status === "active" ? "inactive" : "active" }
                             : e
                     ),
                 })),
@@ -146,7 +148,8 @@ export const useEmployeesStore = create<EmployeesState>()(
                         !searchQuery ||
                         e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                         e.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        e.id.toLowerCase().includes(searchQuery.toLowerCase());
+                        e.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        e.biometricId?.toLowerCase().includes(searchQuery.toLowerCase());
                     const matchesStatus = statusFilter === "all" || e.status === statusFilter;
                     const matchesWorkType = workTypeFilter === "all" || e.workType === workTypeFilter;
                     const matchesRole = roleFilter === "all" || e.role === roleFilter;
@@ -241,6 +244,7 @@ export const useEmployeesStore = create<EmployeesState>()(
             resetToSeed: () =>
                 set({
                     employees: SEED_EMPLOYEES,
+                    deletedEmployeeIds: [],
                     salaryRequests: [],
                     salaryHistory: [],
                     documents: {},
@@ -252,14 +256,15 @@ export const useEmployeesStore = create<EmployeesState>()(
                 }),
         }),
         {
-            name: "nexhrms-employees",
-            version: 12,
+            name: "soren-employees",
+            version: 13,
             storage: safePersistStorage,
             migrate: (persisted, fromVersion) => {
-                const state = persisted as Partial<EmployeesState> & { employees?: Employee[] };
+                const state = persisted as Partial<EmployeesState> & { employees?: Employee[]; deletedEmployeeIds?: string[] };
                 if (fromVersion < 7) {
-                    return { employees: SEED_EMPLOYEES, salaryRequests: [], salaryHistory: [], documents: {}, searchQuery: "", statusFilter: "all" as const, workTypeFilter: "all" as const, roleFilter: "all", departmentFilter: "all" };
+                    return { employees: SEED_EMPLOYEES, deletedEmployeeIds: [], salaryRequests: [], salaryHistory: [], documents: {}, searchQuery: "", statusFilter: "all" as const, workTypeFilter: "all" as const, roleFilter: "all", departmentFilter: "all" };
                 }
+                const deletedIds = new Set(state.deletedEmployeeIds ?? []);
                 const SYSTEM_ROLES = new Set(["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"]);
                 const seedIds = new Set(SEED_EMPLOYEES.map((e) => e.id));
                 // v7→v8: reset productivity to 0 for non-seed employees with hardcoded 80
@@ -267,7 +272,7 @@ export const useEmployeesStore = create<EmployeesState>()(
                 // v9→v10: if role is a job title (not a system role), move to jobTitle and default role to "employee"
                 // v10→v11: merge newly added payroll test seed employees (EMP-PAYROLL-*)
                 // v11→v12: same merge, ensures payroll test employees added to SEED_EMPLOYEES are present
-                const existingEmployees = (state.employees ?? SEED_EMPLOYEES).map((e) => {
+                const existingEmployees = (state.employees ?? SEED_EMPLOYEES).filter((e) => !deletedIds.has(e.id)).map((e) => {
                     let updated = e;
                     if (!seedIds.has(e.id) && e.productivity === 80) updated = { ...updated, productivity: 0 };
                     if (!SYSTEM_ROLES.has(e.role)) {
@@ -277,27 +282,35 @@ export const useEmployeesStore = create<EmployeesState>()(
                 });
                 const existingIds = new Set(existingEmployees.map((e) => e.id));
                 const existingEmails = new Set(existingEmployees.map((e) => e.email?.toLowerCase()).filter(Boolean));
-                const newSeedEmployees = SEED_EMPLOYEES.filter(
-                    (e) => !existingIds.has(e.id) && !existingEmails.has(e.email?.toLowerCase())
-                );
+                const shouldMergeSeeds = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+                const newSeedEmployees = shouldMergeSeeds
+                    ? SEED_EMPLOYEES.filter(
+                        (e) => !deletedIds.has(e.id) && !existingIds.has(e.id) && !existingEmails.has(e.email?.toLowerCase())
+                    )
+                    : [];
                 const employees = dedupeAll([...existingEmployees, ...newSeedEmployees]);
-                return { ...state, employees };
+                return { ...state, deletedEmployeeIds: Array.from(deletedIds), employees };
             },
             // Auto-deduplicate AND auto-merge missing seed employees on every rehydration
             merge: (persisted, current) => {
                 const persistedState = persisted as Partial<EmployeesState> | undefined;
                 const currentState = current as EmployeesState;
                 if (!persistedState) return currentState;
-                const persistedEmployees = dedupeAll(persistedState.employees ?? currentState.employees);
-                // Self-healing: ensure all seed employees are present even if migration was skipped
+                const deletedIds = new Set(persistedState.deletedEmployeeIds ?? []);
+                const persistedEmployees = dedupeAll(persistedState.employees ?? currentState.employees)
+                    .filter((employee) => !deletedIds.has(employee.id));
+                // Self-healing seed merge is demo-only. In production it can resurrect real deletes.
                 const existingIds = new Set(persistedEmployees.map((e) => e.id));
                 const existingEmails = new Set(persistedEmployees.map((e) => e.email?.toLowerCase()).filter(Boolean));
-                const missingSeed = SEED_EMPLOYEES.filter(
-                    (e) => !existingIds.has(e.id) && !existingEmails.has(e.email?.toLowerCase())
-                );
+                const missingSeed = process.env.NEXT_PUBLIC_DEMO_MODE === "true"
+                    ? SEED_EMPLOYEES.filter(
+                        (e) => !deletedIds.has(e.id) && !existingIds.has(e.id) && !existingEmails.has(e.email?.toLowerCase())
+                    )
+                    : [];
                 return {
                     ...currentState,
                     ...persistedState,
+                    deletedEmployeeIds: Array.from(deletedIds),
                     employees: dedupeAll([...persistedEmployees, ...missingSeed]),
                 };
             },

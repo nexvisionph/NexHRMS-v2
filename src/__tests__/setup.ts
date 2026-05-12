@@ -77,15 +77,6 @@ jest.mock("nanoid", () => ({
 }));
 
 // ═══════════════════════════════════════════════════════════════
-// Global fetch mock — stores use fire-and-forget fetch() for DB
-// sync and push notifications; jsdom doesn't include fetch so we
-// provide a silent no-op that always resolves OK.
-// ═══════════════════════════════════════════════════════════════
-global.fetch = jest.fn(() =>
-  Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) } as Response)
-);
-
-// ═══════════════════════════════════════════════════════════════
 // Test Lifecycle Hooks
 // ═══════════════════════════════════════════════════════════════
 
@@ -94,10 +85,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // clearAllMocks resets call history without destroying mock implementations.
-  // resetAllMocks was previously used here but it wiped implementations (e.g.
-  // global.fetch) causing 'Cannot read properties of undefined (reading catch)'.
-  jest.clearAllMocks();
+  jest.resetAllMocks();
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -174,7 +162,7 @@ declare global {
     payFrequency: "monthly" | "semi_monthly" | "bi_weekly" | "weekly";
     grossPay: number;
     netPay: number;
-    status: "draft" | "published" | "signed" | "paid";
+    status: "draft" | "published" | "signed" | "paid" | "payment_hold";
     issuedAt: string;
     sssDeduction: number;
     philhealthDeduction: number;

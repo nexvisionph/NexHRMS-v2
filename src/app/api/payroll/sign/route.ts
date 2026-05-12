@@ -43,28 +43,49 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createAdminSupabaseClient();
 
-    // Verify the session user owns this employee record
-    // Check by profile_id first, fallback to email if profile_id is null
-    const { data: emp, error: empErr } = await supabase
+    // Verify the requested employeeId belongs to the session user.
+    // The client resolves myEmployee by profile_id, email, OR name — we must accept all 3.
+    const { data: requestedEmp } = await supabase
       .from("employees")
-      .select("id, profile_id, email")
+      .select("id, profile_id, email, name")
       .eq("id", employeeId)
       .single();
 
-    if (empErr || !emp) {
+    if (!requestedEmp) {
       return NextResponse.json(
         { ok: false, message: "Employee not found" },
         { status: 404 }
       );
     }
 
-    // Ownership check: profile_id match OR email match (for unlinked employees)
-    const ownsEmployee = emp.profile_id === user.id || emp.email?.toLowerCase() === user.email?.toLowerCase();
+    // Check ownership: does this employee belong to the authenticated user?
+    const { data: profile } = await serverClient
+      .from("profiles")
+      .select("name")
+      .eq("id", user.id)
+      .single();
+
+    const ownsEmployee =
+      requestedEmp.profile_id === user.id ||
+      (user.email && requestedEmp.email?.toLowerCase() === user.email.toLowerCase()) ||
+      (profile?.name && requestedEmp.name?.toLowerCase() === profile.name.toLowerCase());
+
     if (!ownsEmployee) {
+      console.warn("[api/payroll/sign] ownership mismatch:", {
+        authUserId: user.id,
+        authEmail: user.email,
+        profileName: profile?.name,
+        requestedEmp: { id: requestedEmp.id, profile_id: requestedEmp.profile_id, email: requestedEmp.email, name: requestedEmp.name },
+      });
       return NextResponse.json(
         { ok: false, message: "Forbidden — employee does not match session" },
         { status: 403 }
       );
+    }
+
+    // Auto-fix stale profile_id if needed
+    if (requestedEmp.profile_id !== user.id) {
+      await supabase.from("employees").update({ profile_id: user.id }).eq("id", employeeId);
     }
 
     // Verify payslip exists and belongs to the employee

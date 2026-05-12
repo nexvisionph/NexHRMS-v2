@@ -18,10 +18,7 @@ export default function DeactivatedPage() {
                     {logoUrl ? (
                         <img src={logoUrl} alt={companyName} className="h-14 w-auto object-contain" />
                     ) : (
-                        <>
-                            <Image src="/logo.png" alt={companyName} width={160} height={56} className="h-14 w-auto object-contain dark:hidden" priority />
-                            <Image src="/darklogo.png" alt={companyName} width={160} height={56} className="h-14 w-auto object-contain hidden dark:block" priority />
-                        </>
+                        <Image src="/logo.png" alt={companyName} width={160} height={56} className="h-14 w-auto object-contain dark:brightness-0 dark:invert" priority />
                     )}
                 </div>
 

@@ -13,6 +13,7 @@ import {
     ArrowLeft, QrCode, LogIn, LogOut, CheckCircle, XCircle, CameraOff, Loader2, ClipboardList,
 } from "lucide-react";
 import jsQR from "jsqr";
+import { canUseCamera, cameraHttpsHint } from "@/lib/camera-context";
 
 // Neon theme colors
 const NEON_GREEN = "#39FF14";
