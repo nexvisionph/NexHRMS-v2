@@ -303,7 +303,7 @@ function SidebarComponent() {
                         />
                     ) : (
                         <Image
-                            src="/logo.png"
+                            src="/android-chrome-512x512.png"
                             alt={companyName}
                             width={showLabel ? 140 : 36}
                             height={36}

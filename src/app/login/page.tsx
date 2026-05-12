@@ -238,7 +238,7 @@ export default function LoginPage() {
                         {logoUrl ? (
                             <img src={logoUrl} alt={companyName} className="h-16 mx-auto object-contain" />
                         ) : (
-                            <Image src="/logo.png" alt={companyName} width={80} height={80} className="mx-auto dark:brightness-0 dark:invert" />
+                            <Image src="/android-chrome-512x512.png" alt={companyName} width={80} height={80} className="mx-auto dark:brightness-0 dark:invert" />
                         )}
                         <h2 className="text-2xl font-bold">{companyName}</h2>
                         {brandTagline && (
@@ -273,7 +273,7 @@ export default function LoginPage() {
                                 <img src={logoUrl} alt={companyName} className="h-16 md:h-24 w-auto object-contain max-w-[280px] drop-shadow-sm" />
                             ) : (
                                 <>
-                                    <Image src="/logo.png" alt={companyName} width={240} height={96} className="h-16 md:h-24 w-auto object-contain drop-shadow-sm dark:brightness-0 dark:invert" priority />
+                                    <Image src="/android-chrome-512x512.png" alt={companyName} width={240} height={96} className="h-16 md:h-24 w-auto object-contain drop-shadow-sm dark:brightness-0 dark:invert" priority />
                                 </>
                             )}
                         </div>
