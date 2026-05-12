@@ -586,8 +586,7 @@ export async function validateProjectQR(
       .eq("id", verifyResult.projectId)
       .single();
     if (!project || project.location_lat == null || project.location_lng == null) {
-      // No geofence configured for this project — allow check-in without distance restriction.
-      return { ok: true, valid: true, projectId: verifyResult.projectId, message: "Project QR validated (no geofence configured)", geofencePass: true };
+      return { ok: true, valid: false, projectId: verifyResult.projectId, message: "Project missing geofence configuration" };
     }
     const radius = (project.geofence_radius_meters as number) ?? 100;
     const geo = isWithinGeofence(

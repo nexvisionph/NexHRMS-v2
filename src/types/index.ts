@@ -694,17 +694,6 @@ export interface Payslip {
   overtimePay?: number;          // auto: ot_hours * hourly_rate * multiplier
   dailyRate?: number;            // snapshot at issuance
   hourlyRate?: number;           // snapshot at issuance
-  // ─── Attendance snapshot (for receipt display) ──
-  attendanceDaysPresent?: number;    // # of present logs in period
-  attendanceDaysAbsent?: number;     // # of absent logs in period
-  attendanceLateMinutes?: number;    // total late minutes in period
-  attendanceUndertimeHours?: number; // total undertime hours in period (shift - actual)
-  // ─── Gross override ──
-  grossOverrideApplied?: boolean;    // true when admin manually overrode gross for this payslip
-  // ─── BIR Compliance (migration 056) ──
-  taxCategories?: TaxCategoryBreakdown;          // BIR earnings categorization
-  taxableCompensation?: number;                  // taxable total this period
-  nonTaxableCompensation?: number;               // non-taxable total this period
 }
 
 export interface PolicySnapshot {
@@ -1104,13 +1093,12 @@ export interface TaskGroup {
 
 export interface Task {
   id: string;
-  groupId?: string;
+  groupId: string;
   projectId?: string;
   title: string;
   description: string;
   priority: TaskPriority;
   status: TaskStatus;
-  startDate?: string;
   dueDate?: string;
   assignedTo: string[];
   createdBy: string;

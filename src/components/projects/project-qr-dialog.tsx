@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Download, Printer, QrCode, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -101,9 +101,6 @@ export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: 
             <QrCode className="h-5 w-5" />
             Project QR — {projectName}
           </DialogTitle>
-          <DialogDescription className="sr-only">
-            Signed QR code for {projectName}. Print and post at the project site for employee attendance scanning.
-          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div ref={wrapRef} className="flex items-center justify-center bg-white p-6 rounded-lg border">

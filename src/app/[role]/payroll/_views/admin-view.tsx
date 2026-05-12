@@ -11,7 +11,6 @@ import { useAttendanceStore } from "@/store/attendance.store";
 import { useDeductionsStore } from "@/store/deductions.store";
 import { useTimesheetStore } from "@/store/timesheet.store";
 import { buildPayslipDeductions, computeDailyRate, computeHourlyRate } from "@/lib/payroll-deductions";
-import { categorizePay } from "@/lib/bir-tax-categories";
 import { PH_HOLIDAY_MULTIPLIERS } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,7 +41,7 @@ import { PayScheduleSettings } from "@/components/payroll/pay-schedule-settings"
 import { GovernmentReports } from "@/components/payroll/government-reports";
 import { PrintablePayslip } from "@/components/payroll/printable-payslip";
 import { PayrollReadinessChecklist } from "@/components/payroll/payroll-readiness-checklist";
-import { format, endOfMonth, subMonths, getYear, getMonth, parseISO, differenceInCalendarDays, getDaysInMonth } from "date-fns";
+import { format, endOfMonth, subMonths, getYear, getMonth } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { dispatchNotification, notifyPayslipOnHold } from "@/lib/notifications";
 import { useAuditStore } from "@/store/audit.store";
@@ -322,6 +321,17 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         [signPayslips, pageSize, signSafePage]
     );
 
+    const signPayslips = useMemo(
+        () => filteredPayslips.filter((p) => p.status === "published" || p.status === "payment_hold" || p.status === "signed"),
+        [filteredPayslips]
+    );
+    const signTotalPages = Math.max(1, Math.ceil(signPayslips.length / pageSize));
+    const signSafePage = Math.min(signPage, signTotalPages);
+    const paginatedSignPayslips = useMemo(
+        () => signPayslips.slice((signSafePage - 1) * pageSize, signSafePage * pageSize),
+        [signPayslips, pageSize, signSafePage]
+    );
+
     // Smart cutoff detection: periodStart uniquely identifies the cutoff — a payslip with the same
     // periodStart and payFrequency means this employee already received pay for this cutoff,
     // regardless of whether the period end differed (e.g. partial-period proration).
@@ -546,13 +556,11 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                 );
                 const lateMinutesAgg = periodLogs.reduce((sum, l) => sum + (l.lateMinutes || 0), 0);
                 const absentDaysAgg = periodLogs.filter((l) => l.status === "absent").length;
-                const presentDaysAgg = periodLogs.filter((l) => l.status === "present").length;
                 const activeRuleSet = ruleSets[0]; // RS-DEFAULT
                 const stdHours = activeRuleSet?.standardHoursPerDay ?? 8;
                 const presentLogs = periodLogs.filter((l) => l.status === "present");
                 const expectedHoursTotal = presentLogs.length * stdHours;
                 const actualHoursTotal = presentLogs.reduce((sum, l) => sum + (l.hours || 0), 0);
-                const undertimeHoursAgg = Math.max(0, expectedHoursTotal - actualHoursTotal);
                 const libDailyRate = computeDailyRate(emp.salary, paySchedule.workDaysPerMonth);
                 const libHourlyRate = computeHourlyRate(libDailyRate, stdHours);
                 const autoBreakdown = buildPayslipDeductions({
@@ -577,22 +585,8 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                 });
                 const autoDedTotal = autoBreakdown.totalDeductions;
 
-                const rawNetPay = effectiveGrossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - empLoanDeduction - customDedTotal - autoDedTotal;
-                const netPay = Math.max(0, rawNetPay);
-                if (rawNetPay <= 0) zeroNetPayCount++;
-
-                // BIR — categorize earnings into taxable / non-taxable buckets for Alphalist + Form 2316
-                const taxCategories = categorizePay({
-                    employee: { id: emp.id, isMWE: emp.isMWE, mweDailyRate: emp.mweDailyRate, salary: emp.salary },
-                    basicPay: effectiveGrossPay,
-                    overtimePay: otPay,
-                    holidayPay: holidayPaySupp,
-                    nightDiff: nightDiffPay,
-                    taxableAllowances: 0,
-                    nonTaxableAllowances: allowances + customAllowanceTotal,
-                    sss, philHealth: ph, pagIBIG: pi,
-                    withholdingTax: tax,
-                });
+                const netPay = grossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - empLoanDeduction - customDedTotal - autoDedTotal;
+                if (netPay <= 0) { toast.error(`Skipped ${emp.name}: Net pay would be ≤ 0`); return; }
 
                 issuePayslip({
                     employeeId: empId, periodStart: cutoffDates.start, periodEnd: cutoffDates.end, payFrequency: freq,
@@ -602,10 +596,6 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                     otherDeductions: otherDed, loanDeduction: empLoanDeduction,
                     customDeductions: customDedTotal,
                     holidayPay: holidayPaySupp !== 0 ? holidayPaySupp : undefined, netPay,
-                    // BIR tax categorization (migration 056)
-                    taxCategories,
-                    taxableCompensation: taxCategories.taxableTotal,
-                    nonTaxableCompensation: taxCategories.nonTaxableTotal,
                     // Itemized auto-deduction snapshots (migration 055)
                     lateDeduction: autoBreakdown.lateDeduction,
                     absentDeduction: autoBreakdown.absentDeduction,
@@ -613,19 +603,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                     overtimePay: otPay,
                     dailyRate: libDailyRate,
                     hourlyRate: libHourlyRate,
-                    // Attendance snapshot for receipt display
-                    attendanceDaysPresent: presentDaysAgg,
-                    attendanceDaysAbsent: absentDaysAgg,
-                    attendanceLateMinutes: lateMinutesAgg,
-                    attendanceUndertimeHours: undertimeHoursAgg,
-                    // Gross override flag
-                    grossOverrideApplied: overrideStr && Number(overrideStr) > 0 ? true : undefined,
-                    notes: formNotes || [
-                        isProrPartial ? `Prorated: ${prorActual}/${prorNominal} days (${Math.round(prorFactor * 1000) / 10}%)` : "",
-                        overrideStr && Number(overrideStr) > 0 ? `Gross overridden to ₱${Number(overrideStr).toLocaleString()}` : "",
-                        otHours > 0 ? `OT: ${otHours}hrs (\u20B1${otPay})` : "",
-                        nightDiffHours > 0 ? `ND: ${nightDiffHours}hrs (\u20B1${nightDiffPay})` : "",
-                    ].filter(Boolean).join(" · ") || undefined, issuedAt: formIssuedAt,
+                    notes: formNotes || [otHours > 0 ? `OT: ${otHours}hrs (\u20B1${otPay})` : "", nightDiffHours > 0 ? `ND: ${nightDiffHours}hrs (\u20B1${nightDiffPay})` : ""].filter(Boolean).join(", ") || undefined, issuedAt: formIssuedAt,
                 });
 
                 const actualPayslipId = usePayrollStore.getState().payslips.filter((p) => p.employeeId === empId).sort((a, b) => b.id.localeCompare(a.id))[0]?.id ?? `PS-fallback-${Date.now()}`;
@@ -842,10 +820,10 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="flex flex-col min-w-[200px]">
-                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{viewTitle}</h1>
-                    <p className="text-sm text-muted-foreground mt-1">{activeRunPayslips.length} payslips</p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight">{viewTitle}</h1>
+                    <p className="text-sm text-muted-foreground mt-0.5">{activeRunPayslips.length} payslips</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 justify-start md:justify-end">
                     {canReset && (
