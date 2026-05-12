@@ -14,7 +14,6 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
     DialogFooter,
     DialogClose,
 } from "@/components/ui/dialog";
@@ -82,13 +81,17 @@ export default function EventsPage() {
     const { events, addEvent, updateEvent, removeEvent } = useEventsStore();
     const hasPermission = useRolesStore((s) => s.hasPermission);
     const currentUser = useAuthStore((s) => s.currentUser);
-    const canEdit = hasPermission(currentUser.role, "page:events");
+    const canEdit = hasPermission(currentUser.role, "events:manage");
 
     // Dialog state
     const [addOpen, setAddOpen] = useState(false);
     const [editOpen, setEditOpen] = useState(false);
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null);
+    const [viewEvent, setViewEvent] = useState<CalendarEvent | null>(null);
+
+    // Calendar selection state
+    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
     // Form state
     const [title, setTitle] = useState("");
@@ -174,7 +177,7 @@ export default function EventsPage() {
 
     const handleCalendarItemClick = (item: CalendarItem) => {
         const event = events.find((e) => e.id === item.id);
-        if (event && canEdit) openEdit(event);
+        if (event) setViewEvent(event);
     };
 
     const handleAdd = () => {
@@ -300,71 +303,6 @@ export default function EventsPage() {
                     <h1 className="text-2xl font-semibold tracking-tight">Events & Meetings</h1>
                     <p className="text-muted-foreground">Manage company events, meetings, and important dates</p>
                 </div>
-                {canEdit && (
-                    <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetForm(); }}>
-                        <DialogTrigger asChild>
-                            <Button className="gap-2">
-                                <Plus className="h-4 w-4" />
-                                Add Event
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Add New Event</DialogTitle>
-                            </DialogHeader>
-                            <div className="space-y-4 pt-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="title">Title</Label>
-                                    <Input 
-                                        id="title" 
-                                        placeholder="Event title" 
-                                        value={title} 
-                                        onChange={(e) => setTitle(e.target.value)} 
-                                    />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="date">Date</Label>
-                                        <Input 
-                                            id="date" 
-                                            type="date" 
-                                            value={date} 
-                                            onChange={(e) => setDate(e.target.value)} 
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="time">Time</Label>
-                                        <Input 
-                                            id="time" 
-                                            type="time" 
-                                            value={time} 
-                                            onChange={(e) => setTime(e.target.value)} 
-                                        />
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="type">Type</Label>
-                                    <Select value={type} onValueChange={setType}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {eventTypes.map((t) => (
-                                                <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            <DialogFooter>
-                                <DialogClose asChild>
-                                    <Button variant="outline">Cancel</Button>
-                                </DialogClose>
-                                <Button onClick={handleAdd}>Create Event</Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                )}
             </div>
 
             {/* Stats Cards */}
@@ -439,7 +377,7 @@ export default function EventsPage() {
                                 <SelectContent>
                                     <SelectItem value="all">All Types</SelectItem>
                                     {eventTypes.map((t) => (
-                                        <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
+                                        <SelectItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
@@ -463,20 +401,20 @@ export default function EventsPage() {
                                 items={calendarItems}
                                 colorMap={EVENT_TYPE_COLORS}
                                 onItemClick={handleCalendarItemClick}
-                                onDayClick={(date) => {
-                                    if (canEdit) {
-                                        setDate(format(date, "yyyy-MM-dd"));
-                                        setTime("09:00");
-                                        setType("event");
-                                        setTitle("");
-                                        setAddOpen(true);
-                                    }
-                                }}
+                                onDayClick={(day) => setSelectedDate(day)}
                                 itemLabel="Events"
                                 headerActions={
                                     canEdit ? (
-                                        <Button size="sm" className="w-full gap-2 md:w-auto" onClick={() => setAddOpen(true)}>
-                                            <Plus className="h-4 w-4" /> New Event
+                                        <Button size="sm" className="w-full gap-2 md:w-auto" onClick={() => {
+                                            if (selectedDate) {
+                                                setDate(format(selectedDate, "yyyy-MM-dd"));
+                                            }
+                                            setTime("09:00");
+                                            setType("event");
+                                            setTitle("");
+                                            setAddOpen(true);
+                                        }}>
+                                            <Plus className="h-4 w-4" /> Add New Event
                                         </Button>
                                     ) : undefined
                                 }
@@ -510,6 +448,105 @@ export default function EventsPage() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Add Dialog (standalone, controlled) */}
+            <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetForm(); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Add New Event</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="title">Title</Label>
+                            <Input 
+                                id="title" 
+                                placeholder="Event title" 
+                                value={title} 
+                                onChange={(e) => setTitle(e.target.value)} 
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="date">Date</Label>
+                                <Input 
+                                    id="date" 
+                                    type="date" 
+                                    value={date} 
+                                    onChange={(e) => setDate(e.target.value)} 
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="time">Time</Label>
+                                <Input 
+                                    id="time" 
+                                    type="time" 
+                                    value={time} 
+                                    onChange={(e) => setTime(e.target.value)} 
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="type">Type</Label>
+                            <Select value={type} onValueChange={setType}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {eventTypes.map((t) => (
+                                        <SelectItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild>
+                            <Button variant="outline">Cancel</Button>
+                        </DialogClose>
+                        <Button onClick={handleAdd}>Create Event</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* View Event Details Dialog (read-only) */}
+            <Dialog open={!!viewEvent} onOpenChange={(open) => { if (!open) setViewEvent(null); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Event Details</DialogTitle>
+                    </DialogHeader>
+                    {viewEvent && (
+                        <div className="space-y-4 pt-4">
+                            <div className="space-y-1">
+                                <Label className="text-muted-foreground text-xs">Title</Label>
+                                <p className="font-medium">{viewEvent.title}</p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <Label className="text-muted-foreground text-xs">Date</Label>
+                                    <p className="text-sm">{format(parseISO(viewEvent.date), "MMMM d, yyyy")}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-muted-foreground text-xs">Time</Label>
+                                    <p className="text-sm">{viewEvent.time}</p>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-muted-foreground text-xs">Type</Label>
+                                <div>
+                                    <Badge className={typeColors[viewEvent.type || "event"]} variant="secondary">
+                                        {(viewEvent.type || "event").charAt(0).toUpperCase() + (viewEvent.type || "event").slice(1)}
+                                    </Badge>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <DialogClose asChild>
+                            <Button variant="outline">Close</Button>
+                        </DialogClose>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Edit Dialog */}
             <Dialog open={editOpen} onOpenChange={(open) => { setEditOpen(open); if (!open) resetForm(); }}>
@@ -555,7 +592,7 @@ export default function EventsPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     {eventTypes.map((t) => (
-                                        <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
+                                        <SelectItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
