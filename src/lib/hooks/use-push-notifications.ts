@@ -259,14 +259,14 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       if (swRegistrationRef.current) {
         // ServiceWorkerRegistration.showNotification has extended options
         swRegistrationRef.current.showNotification(title, {
-          icon: "/android-chrome-192x192.png",
-          badge: "/android-chrome-192x192.png",
+          icon: "/logo.png",
+          badge: "/logo.png",
           ...options,
         } as NotificationOptions);
       } else {
         // Fallback to regular Notification API
         new Notification(title, {
-          icon: "/android-chrome-192x192.png",
+          icon: "/logo.png",
           ...options,
         });
       }

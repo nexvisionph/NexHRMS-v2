@@ -87,8 +87,8 @@ self.addEventListener('push', (event) => {
   let data = {
     title: 'NexHRMS Notification',
     body: 'You have a new notification',
-    icon: '/android-chrome-192x192.png',
-    badge: '/android-chrome-192x192.png',
+    icon: '/logo.png',
+    badge: '/logo.png',
     tag: 'nexhrms-notification',
     data: { url: '/notifications' },
   };
