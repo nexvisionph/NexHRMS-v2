@@ -957,7 +957,9 @@ export type Permission =
   | "messages:send_whatsapp" | "messages:send_email"
   // Jobs / Talent Acquisition
   | "page:jobs" | "jobs:create" | "jobs:edit" | "jobs:close"
-  | "jobs:view_applications" | "jobs:manage_applications";
+  | "jobs:view_applications" | "jobs:manage_applications"
+  // Events
+  | "events:manage";
 
 // System role slug union (never changes — always recognized)
 export type SystemRoleSlug = "admin" | "hr" | "finance" | "employee" | "supervisor" | "payroll_admin" | "auditor";

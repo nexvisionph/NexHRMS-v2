@@ -10,6 +10,7 @@ export const ALL_PERMISSIONS: Permission[] = [
     "page:dashboard", "page:employees", "page:attendance", "page:leave",
     "page:payroll", "page:loans", "page:projects", "page:reports",
     "page:kiosk", "page:notifications", "page:audit", "page:settings", "page:timesheets", "page:events",
+    "events:manage",
     "employees:view", "employees:create", "employees:edit", "employees:delete",
     "employees:view_salary", "employees:approve_salary",
     "attendance:view_all", "attendance:edit", "attendance:approve_overtime",
@@ -147,6 +148,12 @@ export const PERMISSION_GROUPS: { label: string; permissions: { key: Permission;
         ],
     },
     {
+        label: "Events",
+        permissions: [
+            { key: "events:manage", label: "Add / edit / delete events" },
+        ],
+    },
+    {
         label: "Settings",
         permissions: [
             { key: "settings:roles", label: "Manage roles" },
@@ -175,6 +182,7 @@ const HR_PERMS: Permission[] = [
     "page:tasks", "tasks:view", "tasks:create", "tasks:assign", "tasks:verify", "tasks:manage_groups",
     "page:messages", "messages:send_announcement", "messages:manage_channels", "messages:send_email",
     "payroll:view_own",
+    "events:manage",
 ];
 
 const FINANCE_PERMS: Permission[] = [
