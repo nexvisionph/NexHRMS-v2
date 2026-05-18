@@ -321,17 +321,6 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         [signPayslips, pageSize, signSafePage]
     );
 
-    const signPayslips = useMemo(
-        () => filteredPayslips.filter((p) => p.status === "published" || p.status === "payment_hold" || p.status === "signed"),
-        [filteredPayslips]
-    );
-    const signTotalPages = Math.max(1, Math.ceil(signPayslips.length / pageSize));
-    const signSafePage = Math.min(signPage, signTotalPages);
-    const paginatedSignPayslips = useMemo(
-        () => signPayslips.slice((signSafePage - 1) * pageSize, signSafePage * pageSize),
-        [signPayslips, pageSize, signSafePage]
-    );
-
     // Smart cutoff detection: periodStart uniquely identifies the cutoff — a payslip with the same
     // periodStart and payFrequency means this employee already received pay for this cutoff,
     // regardless of whether the period end differed (e.g. partial-period proration).
