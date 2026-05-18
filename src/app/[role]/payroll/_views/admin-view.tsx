@@ -41,7 +41,7 @@ import { PayScheduleSettings } from "@/components/payroll/pay-schedule-settings"
 import { GovernmentReports } from "@/components/payroll/government-reports";
 import { PrintablePayslip } from "@/components/payroll/printable-payslip";
 import { PayrollReadinessChecklist } from "@/components/payroll/payroll-readiness-checklist";
-import { format, endOfMonth, subMonths, getYear, getMonth, parseISO } from "date-fns";
+import { format, endOfMonth, subMonths, getYear, getMonth, parseISO, differenceInCalendarDays, getDaysInMonth } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { dispatchNotification, notifyPayslipOnHold } from "@/lib/notifications";
 import { useAuditStore } from "@/store/audit.store";
