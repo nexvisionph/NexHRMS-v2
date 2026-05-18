@@ -193,7 +193,7 @@ export const DEFAULT_MODULE_FLAGS: ModuleFlags = {
   events: true,
   // ── Premium / unpaid features (off by default) ────────────────────────────
   jobs: false,
-  birCompliance: false,
+  birCompliance: true,
   documentCenter: false,
 };
 

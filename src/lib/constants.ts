@@ -161,14 +161,14 @@ export const NAV_ITEMS: {
             group: "hr",
         },
         // DEMO: hidden — uncomment moduleFlag to re-enable
-        // {
-        //     label: "Disciplinary",
-        //     href: "/disciplinary",
-        //     icon: "Gavel",
-        //     roles: ["admin", "hr"],
-        //     permission: "page:employees",
-        //     group: "hr",
-        // },
+        {
+            label: "Disciplinary",
+            href: "/disciplinary",
+            icon: "Gavel",
+            roles: ["admin", "hr"],
+            permission: "page:employees",
+            group: "hr",
+        },
         {
             label: "Jobs",
             href: "/jobs",
@@ -298,16 +298,15 @@ export const NAV_ITEMS: {
             permission: "reports:government",
             group: "payroll",
         },
-        // DEMO: hidden — uncomment to re-enable
-        // {
-        //     label: "BIR Compliance",
-        //     href: "/payroll/bir-compliance",
-        //     icon: "ReceiptText",
-        //     roles: ["admin", "finance", "payroll_admin"],
-        //     permission: "payroll:view_all",
-        //     moduleFlag: "birCompliance",
-        //     group: "payroll",
-        // },
+        {
+            label: "BIR Compliance",
+            href: "/payroll/bir-compliance",
+            icon: "ReceiptText",
+            roles: ["admin", "finance", "payroll_admin"],
+            permission: "payroll:view_all",
+            moduleFlag: "birCompliance",
+            group: "payroll",
+        },
 
         // ── Workflow ───────────────────────────────────────────────────────────
         {

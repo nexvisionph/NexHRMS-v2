@@ -96,7 +96,12 @@ async function upsertRow(table: string, row: Record<string, unknown>, onConflict
     // 23505 = unique_violation: row already exists via a different unique constraint.
     // Safe to suppress — the data is already in the DB.
     if (error.code === "23505") return true;
-    console.error(`[db] upsert ${table}:`, error.message);
+    // Log the offending row for constraint violations so we can trace the bad value
+    if (error.code === "23514") {
+      console.error(`[db] upsert ${table}: constraint violation — offending row id="${dbRow.id}" status="${dbRow.status}"`, error.message);
+    } else {
+      console.error(`[db] upsert ${table}:`, error.message);
+    }
   }
   return !error;
 }
@@ -447,6 +452,12 @@ export const payrollDb = {
     delete row.attendanceDaysAbsent;
     delete row.attendanceLateMinutes;
     delete row.attendanceUndertimeHours;
+    // Guard: ensure status is a valid DB enum value before upserting
+    const validStatuses = ["draft", "published", "signed", "paid", "payment_hold"];
+    if (!row.status || !validStatuses.includes(row.status as string)) {
+      console.warn(`[db] upsertPayslip: invalid status "${row.status}" for payslip ${ps.id}, defaulting to "draft"`);
+      row.status = "draft";
+    }
     return upsertRow("payslips", row);
   },
 

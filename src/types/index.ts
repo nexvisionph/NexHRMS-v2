@@ -1534,6 +1534,8 @@ export interface AlphalistRow {
 
 // ─── Performance Management ──────────────────────────────────
 
+export type { PerformanceCriterion, PerformanceRating, PerformanceReview } from "./performance";
+
 export interface PerformanceSalaryAdjustment {
   id: string;
   employee_id: string;
