@@ -161,6 +161,9 @@ export default function AdminEmployeesView() {
     // ─── Accounts Tab State ───
     const [acctSearch, setAcctSearch] = useState("");
     const [acctRoleFilter, setAcctRoleFilter] = useState("all");
+    const [acctStatusFilter, setAcctStatusFilter] = useState("all");
+    const [acctPage, setAcctPage] = useState(1);
+    const ACCT_PAGE_SIZE = 10;
     const [resetPwUserId, setResetPwUserId] = useState<string | null>(null);
     const [resetPwValue, setResetPwValue] = useState("");
 
@@ -168,6 +171,7 @@ export default function AdminEmployeesView() {
     const [jtSearch, setJtSearch] = useState("");
     const [jtDeptFilter, setJtDeptFilter] = useState("all");
     const [jtStatusFilter, setJtStatusFilter] = useState<"all" | "active" | "inactive">("all");
+    const [jtTypeFilter, setJtTypeFilter] = useState<"all" | "lead" | "individual">("all");
     const [jtAddOpen, setJtAddOpen] = useState(false);
     const [jtEditOpen, setJtEditOpen] = useState(false);
     const [editingJt, setEditingJt] = useState<JobTitle | null>(null);
@@ -184,14 +188,15 @@ export default function AdminEmployeesView() {
     const [jtEditIsLead, setJtEditIsLead] = useState(false);
     const [jtEditColor, setJtEditColor] = useState("#6366f1");
 
-    const filteredJobTitles = useMemo(() => {
-        return jobTitles.filter((jt) => {
-            const matchSearch = !jtSearch || jt.name.toLowerCase().includes(jtSearch.toLowerCase()) || (jt.description?.toLowerCase().includes(jtSearch.toLowerCase()));
-            const matchDept = jtDeptFilter === "all" || jt.department === jtDeptFilter;
-            const matchStatus = jtStatusFilter === "all" || (jtStatusFilter === "active" ? jt.isActive : !jt.isActive);
-            return matchSearch && matchDept && matchStatus;
-        });
-    }, [jobTitles, jtSearch, jtDeptFilter, jtStatusFilter]);
+   const filteredJobTitles = useMemo(() => {
+    return jobTitles.filter((jt) => {
+        const matchSearch = !jtSearch || jt.name.toLowerCase().includes(jtSearch.toLowerCase()) || (jt.description?.toLowerCase().includes(jtSearch.toLowerCase()));
+        const matchDept = jtDeptFilter === "all" || jt.department === jtDeptFilter;
+        const matchStatus = jtStatusFilter === "all" || (jtStatusFilter === "active" ? jt.isActive : !jt.isActive);
+        const matchType = jtTypeFilter === "all" || (jtTypeFilter === "lead" ? jt.isLead : !jt.isLead);
+        return matchSearch && matchDept && matchStatus && matchType;
+    });
+}, [jobTitles, jtSearch, jtDeptFilter, jtStatusFilter, jtTypeFilter]);
 
     const handleAddJobTitle = () => {
         if (!jtNewName.trim()) { toast.error("Job title name is required."); return; }
@@ -374,13 +379,18 @@ export default function AdminEmployeesView() {
         toast.success(`Account for ${acc.name} deleted.`);
     };
 
-    const filteredAccounts = useMemo(() => {
-        return accounts.filter((acc) => {
-            const matchSearch = !acctSearch || acc.name.toLowerCase().includes(acctSearch.toLowerCase()) || acc.email.toLowerCase().includes(acctSearch.toLowerCase());
-            const matchRole = acctRoleFilter === "all" || acc.role === acctRoleFilter;
-            return matchSearch && matchRole;
-        });
-    }, [accounts, acctSearch, acctRoleFilter]);
+   const filteredAccounts = useMemo(() => {
+    return accounts.filter((acc) => {
+        const matchSearch = !acctSearch || acc.name.toLowerCase().includes(acctSearch.toLowerCase()) || acc.email.toLowerCase().includes(acctSearch.toLowerCase());
+        const matchRole = acctRoleFilter === "all" || acc.role === acctRoleFilter;
+        const matchStatus = acctStatusFilter === "all" ||
+            (acctStatusFilter === "active" ? !acc.mustChangePassword : acc.mustChangePassword);
+        return matchSearch && matchRole && matchStatus;
+    });
+}, [accounts, acctSearch, acctRoleFilter, acctStatusFilter]);
+    const acctTotalPages = Math.max(1, Math.ceil(filteredAccounts.length / ACCT_PAGE_SIZE));
+    const acctSafePage = Math.min(acctPage, acctTotalPages);
+    const paginatedAccounts = filteredAccounts.slice((acctSafePage - 1) * ACCT_PAGE_SIZE, acctSafePage * ACCT_PAGE_SIZE);
 
     const [sortKey, setSortKey] = useState<SortKey>("name");
     const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -477,6 +487,8 @@ export default function AdminEmployeesView() {
     const [dirSearch, setDirSearch] = useState("");
     const [dirDept, setDirDept] = useState("all");
     const [dirStatus, setDirStatus] = useState("all");
+    const [dirPage, setDirPage] = useState(1);
+    const DIR_PAGE_SIZE = 12;
 
     const salaryDialogEmp = salaryDialogEmpId ? employees.find((e) => e.id === salaryDialogEmpId) : null;
 
@@ -486,6 +498,9 @@ export default function AdminEmployeesView() {
         const matchStatus = dirStatus === "all" || e.status === dirStatus;
         return matchSearch && matchDept && matchStatus;
     }), [employees, dirSearch, dirDept, dirStatus]);
+    const dirTotalPages = Math.max(1, Math.ceil(dirFiltered.length / DIR_PAGE_SIZE));
+    const dirSafePage = Math.min(dirPage, dirTotalPages);
+    const dirPaginated = dirFiltered.slice((dirSafePage - 1) * DIR_PAGE_SIZE, dirSafePage * DIR_PAGE_SIZE);
 
     const openSalaryDialog = (e: React.MouseEvent, empId: string, currentSalary: number) => {
         e.preventDefault(); e.stopPropagation();
@@ -1709,14 +1724,14 @@ export default function AdminEmployeesView() {
                     <div className="flex flex-wrap items-center gap-3">
                         <div className="relative flex-1 min-w-[200px]">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input placeholder="Search employees..." className="pl-9" value={dirSearch} onChange={(e) => setDirSearch(e.target.value)} />
+                            <Input placeholder="Search employees..." className="pl-9" value={dirSearch} onChange={(e) => { setDirSearch(e.target.value); setDirPage(1); }} />
                         </div>
-                        <Select value={dirDept} onValueChange={setDirDept}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Department" /></SelectTrigger><SelectContent><SelectItem value="all">All Departments</SelectItem>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
-                        <Select value={dirStatus} onValueChange={setDirStatus}><SelectTrigger className="w-full sm:w-[130px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select>
+                       <Select value={dirDept} onValueChange={(v) => { setDirDept(v); setDirPage(1); }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Department" /></SelectTrigger><SelectContent><SelectItem value="all">All Departments</SelectItem>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
+                        <Select value={dirStatus} onValueChange={(v) => { setDirStatus(v); setDirPage(1); }}><SelectTrigger className="w-full sm:w-[130px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">
-                        {dirFiltered.map((emp) => (
+                       {dirPaginated.map((emp) => (
                             <div key={emp.id} className="relative h-full">
                                 <Link href={rh(`/employees/${emp.id}`)} className="block h-full">
                                     <Card className="border border-border/50 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group h-full flex flex-col">
@@ -1729,7 +1744,11 @@ export default function AdminEmployeesView() {
                                                         <h3 className="text-sm font-semibold truncate group-hover:text-primary transition-colors">{emp.name}</h3>
                                                         <Badge variant="secondary" className={`text-[9px] shrink-0 ${emp.status === "active" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : "bg-red-500/15 text-red-700 dark:text-red-400"}`}>{emp.status}</Badge>
                                                     </div>
-                                                    <p className="text-xs text-muted-foreground mt-0.5 capitalize">{emp.role}</p>
+                                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                                        {emp.jobTitle && emp.department
+                                                            ? `${emp.jobTitle} | ${emp.department}`
+                                                            : emp.jobTitle || emp.department || emp.role}
+                                                    </p>
                                                 </div>
                                             </div>
                                             {/* Fixed-height info rows — always rendered for uniform card size */}
@@ -1757,6 +1776,24 @@ export default function AdminEmployeesView() {
                             </div>
                         ))}
                     </div>
+
+                     {/* Pagination Controls */}
+                    {dirTotalPages > 1 && (
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <p className="text-sm text-muted-foreground">
+                                Showing {((dirSafePage - 1) * DIR_PAGE_SIZE) + 1}–{Math.min(dirSafePage * DIR_PAGE_SIZE, dirFiltered.length)} of {dirFiltered.length} employees
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">Page {dirSafePage} of {dirTotalPages}</span>
+                                <Button variant="outline" size="icon" className="h-8 w-8" disabled={dirSafePage <= 1} onClick={() => setDirPage(dirSafePage - 1)}>
+                                    <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <Button variant="outline" size="icon" className="h-8 w-8" disabled={dirSafePage >= dirTotalPages} onClick={() => setDirPage(dirSafePage + 1)}>
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Pending Salary Proposals */}
                     {canDirectSet && salaryRequests.filter((r) => r.status === "pending").length > 0 && (
@@ -1800,9 +1837,9 @@ export default function AdminEmployeesView() {
                             <div className="flex flex-wrap items-center gap-3">
                                 <div className="relative flex-1 min-w-[200px]">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                    <Input placeholder="Search by name or email..." className="pl-9" value={acctSearch} onChange={(e) => setAcctSearch(e.target.value)} />
+                                    <Input placeholder="Search by name or email..." className="pl-9" value={acctSearch} onChange={(e) => { setAcctSearch(e.target.value); setAcctPage(1); }} />
                                 </div>
-                                <Select value={acctRoleFilter} onValueChange={setAcctRoleFilter}>
+                                <Select value={acctRoleFilter} onValueChange={(v) => { setAcctRoleFilter(v); setAcctPage(1); }}>
                                     <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="All Roles" /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">All Roles</SelectItem>
@@ -1811,11 +1848,19 @@ export default function AdminEmployeesView() {
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                {(acctSearch || acctRoleFilter !== "all") && (
+                                <Select value={acctStatusFilter} onValueChange={(v) => { setAcctStatusFilter(v); setAcctPage(1); }}>
+                                <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="All Status" /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="all">All Status</SelectItem>
+                                    <SelectItem value="active">Active</SelectItem>
+                                    <SelectItem value="pending">Pw Reset</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {(acctSearch || acctRoleFilter !== "all" || acctStatusFilter !== "all") && (
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => { setAcctSearch(""); setAcctRoleFilter("all"); }}
+                                        onClick={() => { setAcctSearch(""); setAcctRoleFilter("all"); setAcctStatusFilter("all"); setAcctPage(1); }}
                                         className="h-9 text-xs gap-1"
                                     >
                                         <XCircle className="h-3 w-3" /> Clear
@@ -1856,7 +1901,7 @@ export default function AdminEmployeesView() {
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {filteredAccounts.map((acc) => {
+                                            {paginatedAccounts.map((acc) => {
                                                 const roleColors: Record<string, string> = {
                                                     admin: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
                                                     hr: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800",
@@ -1945,7 +1990,21 @@ export default function AdminEmployeesView() {
                             )}
                         </CardContent>
                     </Card>
-
+                   {/* Pagination */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page: {ACCT_PAGE_SIZE}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Page {acctSafePage} of {acctTotalPages}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={acctSafePage <= 1} onClick={() => setAcctPage(acctSafePage - 1)}>
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={acctSafePage >= acctTotalPages} onClick={() => setAcctPage(acctSafePage + 1)}>
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
                     {/* Info Card */}
                     <Card className="border border-blue-500/20 bg-blue-500/5">
                         <CardContent className="p-4">
@@ -2034,11 +2093,19 @@ export default function AdminEmployeesView() {
                                         <SelectItem value="inactive">Inactive</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                {(jtSearch || jtDeptFilter !== "all" || jtStatusFilter !== "all") && (
+                                <Select value={jtTypeFilter} onValueChange={(v) => setJtTypeFilter(v as "all" | "lead" | "individual")}>
+                                <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="All Types" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Types</SelectItem>
+                                    <SelectItem value="lead">Lead</SelectItem>
+                                    <SelectItem value="individual">Individual</SelectItem>
+                                </SelectContent>
+                            </Select>
+                               {(jtSearch || jtDeptFilter !== "all" || jtStatusFilter !== "all" || jtTypeFilter !== "all") && (
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => { setJtSearch(""); setJtDeptFilter("all"); setJtStatusFilter("all"); }}
+                                        onClick={() => { setJtSearch(""); setJtDeptFilter("all"); setJtStatusFilter("all"); setJtTypeFilter("all"); }}
                                         className="h-9 text-xs gap-1"
                                     >
                                         <XCircle className="h-3 w-3" /> Clear
