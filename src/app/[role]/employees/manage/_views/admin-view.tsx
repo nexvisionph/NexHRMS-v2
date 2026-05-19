@@ -379,15 +379,19 @@ export default function AdminEmployeesView() {
         toast.success(`Account for ${acc.name} deleted.`);
     };
 
-   const filteredAccounts = useMemo(() => {
+const filteredAccounts = useMemo(() => {
     return accounts.filter((acc) => {
         const matchSearch = !acctSearch || acc.name.toLowerCase().includes(acctSearch.toLowerCase()) || acc.email.toLowerCase().includes(acctSearch.toLowerCase());
         const matchRole = acctRoleFilter === "all" || acc.role === acctRoleFilter;
+        const linkedEmp = employees.find((e) => e.profileId === acc.id || e.email === acc.email);
+        const empStatus = linkedEmp?.status ?? "active";
         const matchStatus = acctStatusFilter === "all" ||
-            (acctStatusFilter === "active" ? !acc.mustChangePassword : acc.mustChangePassword);
+            (acctStatusFilter === "active" && empStatus === "active" && !acc.mustChangePassword) ||
+            (acctStatusFilter === "pw_reset" && acc.mustChangePassword) ||
+            (acctStatusFilter === "inactive" && empStatus === "inactive");
         return matchSearch && matchRole && matchStatus;
     });
-}, [accounts, acctSearch, acctRoleFilter, acctStatusFilter]);
+}, [accounts, employees, acctSearch, acctRoleFilter, acctStatusFilter]);
     const acctTotalPages = Math.max(1, Math.ceil(filteredAccounts.length / ACCT_PAGE_SIZE));
     const acctSafePage = Math.min(acctPage, acctTotalPages);
     const paginatedAccounts = filteredAccounts.slice((acctSafePage - 1) * ACCT_PAGE_SIZE, acctSafePage * ACCT_PAGE_SIZE);
@@ -1854,6 +1858,7 @@ export default function AdminEmployeesView() {
                                     <SelectItem value="all">All Status</SelectItem>
                                     <SelectItem value="active">Active</SelectItem>
                                     <SelectItem value="pending">Pw Reset</SelectItem>
+                                    <SelectItem value="inactive">Inactive</SelectItem>
                                     </SelectContent>
                                 </Select>
                                 {(acctSearch || acctRoleFilter !== "all" || acctStatusFilter !== "all") && (
@@ -1930,19 +1935,30 @@ export default function AdminEmployeesView() {
                                                             </Badge>
                                                         </TableCell>
                                                         <TableCell>
-                                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                                {acc.mustChangePassword && (
-                                                                    <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
-                                                                        <KeyRound className="h-2.5 w-2.5 mr-0.5" /> pw reset
-                                                                    </Badge>
-                                                                )}
-                                                                {!acc.mustChangePassword && (
-                                                                    <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700">
-                                                                        <ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> active
-                                                                    </Badge>
-                                                                )}
-                                                            </div>
-                                                        </TableCell>
+                                                            {(() => {
+                                                                    const linkedEmp = employees.find((e) => e.profileId === acc.id || e.email === acc.email);
+                                                                    const empStatus = linkedEmp?.status ?? "active";
+                                                                    return (
+                                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                                            {empStatus === "inactive" && (
+                                                                                <Badge variant="outline" className="text-[10px] text-red-600 border-red-300 dark:text-red-400 dark:border-red-700">
+                                                                                    inactive
+                                                                                </Badge>
+                                                                            )}
+                                                                            {acc.mustChangePassword && empStatus !== "inactive" && (
+                                                                                <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
+                                                                                    <KeyRound className="h-2.5 w-2.5 mr-0.5" /> pw reset
+                                                                                </Badge>
+                                                                            )}
+                                                                            {!acc.mustChangePassword && empStatus === "active" && (
+                                                                                 <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700">
+                                                                                    <ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> active
+                                                                                </Badge>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })()}
+                                                                                                                    </TableCell>
                                                         {!USE_DEMO_MODE && (
                                                             <TableCell className="text-xs text-muted-foreground">
                                                                 {acc.createdAt ? formatDate(acc.createdAt.split("T")[0]) : "—"}
