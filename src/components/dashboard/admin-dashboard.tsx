@@ -35,8 +35,8 @@ export function AdminDashboard() {
     const currentUser = useAuthStore((s) => s.currentUser);
     const rh = useRoleHref();
 
-    return (
-        <div className="space-y-6">
+return (
+    <div className="space-y-4 px-4 sm:px-6 pb-6">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
@@ -64,19 +64,22 @@ export function AdminDashboard() {
             {/* Row 1: KPI Stats */}
             <KpiStatsRow />
 
-            {/* Row 2: Attendance Trend + Department Distribution */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-2">
+            {/* Row 2: Attendance Overview + Pending Actions */}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-stretch">
+                <div className="xl:col-span-2 h-full">
                     <AttendanceTrendChart />
                 </div>
-                <DepartmentDistributionChart />
+
+                <div className="h-full">
+                    <PendingActionsCard />
+                </div>
             </div>
 
-            {/* Row 3: Pending Actions + Recent Hires + Payroll Summary */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <PendingActionsCard />
-                <PayrollSummaryCard />
+            {/* Row 3: Recent Hires + Department + Payroll */}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-stretch">
                 <RecentHiresCard />
+                <DepartmentDistributionChart />
+                <PayrollSummaryCard />
             </div>
 
             {/* Row 4: Upcoming Events + Birthdays */}
@@ -205,7 +208,7 @@ function KpiStatsRow() {
                 {stats.map((stat) => (
                     <Link key={stat.label} href={stat.href}>
                         <Card className="border border-border/50 hover:border-border hover:shadow-sm transition-all cursor-pointer group">
-                            <CardContent className="p-5">
+                            <CardContent className="px-4 py-4">
                                 <div className="flex items-start justify-between">
                                     <div className="space-y-2">
                                         <p className="text-sm text-muted-foreground font-medium">{stat.label}</p>
@@ -272,7 +275,7 @@ function AttendanceTrendChart() {
     }, [logs]);
 
     return (
-        <Card className="border border-border/50">
+        <Card className="border border-border/50 rounded-2xl shadow-sm">
             <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
@@ -286,8 +289,8 @@ function AttendanceTrendChart() {
                     </Button>
                 </div>
             </CardHeader>
-            <CardContent className="pb-4">
-                <div className="h-[260px]">
+            <CardContent className="px-5 pb-5">
+                <div className="h-[300px] mt-2">
                     <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
                         <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
                             <defs>
@@ -364,7 +367,7 @@ function DepartmentDistributionChart() {
     const total = data.reduce((sum, d) => sum + d.value, 0);
 
     return (
-        <Card className="border border-border/50">
+        <Card className="border border-border/50 h-full">
             <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
@@ -378,8 +381,8 @@ function DepartmentDistributionChart() {
                     </Button>
                 </div>
             </CardHeader>
-            <CardContent className="pb-4">
-                <div className="h-[180px]">
+            <CardContent className="pb-4 flex flex-col lg:flex-row items-center gap-5">
+                <div className="h-[220px] w-full lg:w-[55%] shrink-0">
                     <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
                         <PieChart>
                             <Pie
@@ -398,19 +401,34 @@ function DepartmentDistributionChart() {
                             </Pie>
                             <RechartsTooltip
                                 contentStyle={{
-                                    backgroundColor: "hsl(var(--card))",
-                                    border: "1px solid hsl(var(--border))",
-                                    borderRadius: "8px",
-                                    fontSize: "12px",
+                                    backgroundColor: "#171717",
+                                    border: "1px solid rgba(255,255,255,.08)",
+                                    borderRadius: "12px",
+                                    color: "#fff",
+                                    fontSize: "12px"
                                 }}
-                                formatter={(value, name) => [`${value ?? 0} employees`, name ?? ""]}
+                                itemStyle={{
+                                    color:"#fff"
+                                }}
+                                formatter={(value, name, props) => {
+
+                                    const color =
+                                        DEPT_COLORS[props.payload.index % DEPT_COLORS.length];
+
+                                    return [
+                                        <span style={{color}}>
+                                            {value} employees
+                                        </span>,
+                                        name
+                                    ];
+                                }}
                             />
                         </PieChart>
                     </ResponsiveContainer>
                 </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-1">
+                <div className="grid grid-cols-1 gap-y-2 w-full lg:w-[45%]">
                     {data.slice(0, 8).map((dept, i) => (
-                        <div key={dept.name} className="flex items-center justify-between text-xs">
+                        <div key={dept.name}className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors text-xs">
                             <span className="flex items-center gap-1.5 truncate">
                                 <span
                                     className="h-2 w-2 rounded-full shrink-0"
@@ -442,55 +460,125 @@ function PendingActionsCard() {
     const activeLoans = loans.filter((l) => l.status === "active").length;
 
     const actions = [
-        { label: "Leave Requests", count: pendingLeaves, href: rh("/leave"), icon: CalendarOff, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10" },
-        { label: "OT Requests", count: pendingOT, href: rh("/attendance"), icon: Clock, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10" },
-        { label: "Payroll Adjustments", count: pendingAdj, href: rh("/payroll"), icon: CreditCard, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10" },
-        { label: "Active Loans", count: activeLoans, href: rh("/loans"), icon: Banknote, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10" },
-    ];
+    {
+        label: "Leave Requests",
+        count: pendingLeaves,
+        href: rh("/leave"),
+        icon: CalendarOff,
+        color: "text-violet-400",
+        bg: "bg-violet-500/10",
+        bar: "#8B5CF6"
+    },
+    {
+        label: "OT Requests",
+        count: pendingOT,
+        href: rh("/attendance"),
+        icon: Clock,
+        color: "text-blue-400",
+        bg: "bg-blue-500/10",
+        bar: "#1447E6"
+    },
+    {
+        label: "Payroll Adjustments",
+        count: pendingAdj,
+        href: rh("/payroll"),
+        icon: CreditCard,
+        color: "text-amber-400",
+        bg: "bg-amber-500/10",
+        bar: "#FE9A00"
+    },
+    {
+        label: "Active Loans",
+        count: activeLoans,
+        href: rh("/loans"),
+        icon: Banknote,
+        color: "text-emerald-400",
+        bg: "bg-emerald-500/10",
+        bar: "#00BC7D"
+    }
+];
 
-    const totalPending = pendingLeaves + pendingOT + pendingAdj;
+    const totalPending = pendingLeaves + pendingOT + pendingAdj + activeLoans;
 
-    return (
-        <Card className="border border-border/50">
-            <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <CardTitle className="text-sm font-semibold">Pending Actions</CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            {totalPending > 0 ? `${totalPending} items need attention` : "All caught up!"}
-                        </p>
-                    </div>
-                    {totalPending > 0 && (
-                        <Badge variant="secondary" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 text-xs">
-                            {totalPending} pending
-                        </Badge>
-                    )}
+return (
+    <Card className="border border-border/50 h-full">
+        <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+                <div>
+                    <CardTitle className="text-sm font-semibold">Pending Actions</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                        {totalPending > 0
+                            ? `${totalPending} items need attention`
+                            : "All caught up!"}
+                    </p>
                 </div>
-            </CardHeader>
-            <CardContent className="space-y-1">
-                {actions.map((action) => (
+                {totalPending > 0 && (
+                    <Badge
+                        variant="secondary"
+                        className="bg-amber-500/15 text-amber-400 text-xs"
+                    >
+                        {totalPending} pending
+                    </Badge>
+                )}
+            </div>
+        </CardHeader>
+
+        <CardContent className="px-5 pb-5 pt-1 space-y-5">
+            {actions.map((action) => {
+                const width =
+                    totalPending > 0
+                        ? `${(action.count / totalPending) * 100}%`
+                        : "0%";
+
+                return (
                     <Link key={action.label} href={action.href}>
-                        <div className="flex items-center justify-between p-2.5 rounded-lg hover:bg-muted/50 transition-colors group cursor-pointer">
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${action.bg}`}>
-                                    <action.icon className={`h-4 w-4 ${action.color}`} />
+                        <div className="space-y-2 cursor-pointer group mb-6">
+
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+
+                                    <div className={`p-2 rounded-lg ${action.bg}`}>
+                                        <action.icon className={`h-4 w-4 ${action.color}`} />
+                                    </div>
+
+                                    <div>
+                                        <p className="text-sm font-medium">
+                                            {action.label}
+                                        </p>
+
+                                        <p className="text-xs text-muted-foreground">
+                                            {action.count}/{totalPending}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-sm font-medium">{action.label}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className={`text-lg font-bold ${action.count > 0 ? action.color : "text-muted-foreground"}`}>
-                                    {action.count}
+
+                                <span className={action.color}>
+                                    {Math.round(
+                                        totalPending > 0
+                                            ? (action.count / totalPending) * 100
+                                            : 0
+                                    )}%
                                 </span>
-                                <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                             </div>
+
+                            <div className="h-2 rounded-full bg-muted overflow-hidden">
+                                <div
+                                    className="h-full rounded-full transition-all duration-500"
+                                    style={{
+                                        width,
+                                        backgroundColor: action.bar,
+                                        boxShadow: `0 0 10px ${action.bar}`
+                                    }}
+                                />
+                            </div>
+
                         </div>
                     </Link>
-                ))}
-            </CardContent>
-        </Card>
-    );
+                );
+            })}
+        </CardContent>
+    </Card>
+);
 }
 
 /* ─── 5. Payroll Summary Card ───────────────────────────────── */
@@ -515,8 +603,8 @@ function PayrollSummaryCard() {
     };
 
     return (
-        <Card className="border border-border/50">
-            <CardHeader className="pb-3">
+        <Card className="border border-border/50 h-full">
+            <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
                         <CardTitle className="text-sm font-semibold">Payroll Summary</CardTitle>
@@ -543,14 +631,14 @@ function PayrollSummaryCard() {
                     </div>
                 </div>
                 <div>
-                    <p className="text-xs text-muted-foreground mb-2">Payslip Status</p>
+                    <p className="text-xs text-muted-foreground mt-4 mb-2">Payslip Status</p>
                     <div className="space-y-2">
                         {([
                             { label: "Draft", count: statusCounts.draft, color: "bg-zinc-400" },
                             { label: "Published", count: statusCounts.published, color: "bg-amber-500" },
                             { label: "Signed", count: statusCounts.signed, color: "bg-emerald-500" },
                         ] as const).map((item) => (
-                            <div key={item.label} className="flex items-center gap-2 text-xs">
+                            <div key={item.label} className="flex items-center gap-2 text-xs mt-4">
                                 <span className={`h-2 w-2 rounded-full ${item.color}`} />
                                 <span className="text-muted-foreground flex-1">{item.label}</span>
                                 <span className="font-medium">{item.count}</span>
@@ -577,8 +665,8 @@ function RecentHiresCard() {
     }, [employees]);
 
     return (
-        <Card className="border border-border/50">
-            <CardHeader className="pb-3">
+        <Card className="border border-border/50 h-full">
+            <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
                         <CardTitle className="text-sm font-semibold">Recent Hires</CardTitle>
@@ -645,8 +733,8 @@ function UpcomingEventsCard() {
     };
 
     return (
-        <Card className="border border-border/50">
-            <CardHeader className="pb-3">
+        <Card className="border border-border/50 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
                         <CardTitle className="text-sm font-semibold">Upcoming Events</CardTitle>
@@ -719,8 +807,8 @@ function BirthdaysCard() {
     const currentMonth = new Date().getMonth() + 1;
 
     return (
-        <Card className="border border-border/50">
-            <CardHeader className="pb-3">
+        <Card className="border border-border/50 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
                         <CardTitle className="text-sm font-semibold">Birthdays This Month</CardTitle>
@@ -872,8 +960,8 @@ function RecentActivityCard() {
     }, [auditLogs, leaveRequests, attendanceLogs, payslips, loans, employees]);
 
     return (
-        <Card className="border border-border/50">
-            <CardHeader className="pb-3">
+        <Card className="border border-border/50 rounded-2xl shadow-sm">
+        <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
                         <CardTitle className="text-sm font-semibold">Recent Activity</CardTitle>
