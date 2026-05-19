@@ -395,14 +395,14 @@ const filteredAccounts = useMemo(() => {
     const acctTotalPages = Math.max(1, Math.ceil(filteredAccounts.length / acctPageSize));
     const acctSafePage = Math.min(acctPage, acctTotalPages);
     const paginatedAccounts = filteredAccounts.slice((acctSafePage - 1) * acctPageSize, acctSafePage * acctPageSize);
-    const [sortKey, setSortKey] = useState<SortKey>("name");
+    const [sortKey, setSortKey] = useState<SortKey>("id");
     const [sortDir, setSortDir] = useState<SortDir>("asc");
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [salaryRange, setSalaryRange] = useState([0, 200000]);
-    const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({
-        id: true, biometricId: true, name: true, status: true, role: true, department: false, project: true, teamLeader: true, productivity: true, joinDate: true, salary: true, workType: true,
-    });
+   const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({
+    id: true, biometricId: true, name: true, status: true, role: true, department: true, project: false, teamLeader: false, productivity: false, joinDate: false, salary: true, workType: true,
+});
 
     // Add Employee Dialog
     const [addOpen, setAddOpen] = useState(false);
@@ -1457,7 +1457,7 @@ const filteredAccounts = useMemo(() => {
                                                 onClick={() => {
                                                     setDepartmentFilter("all");
                                                     setSalaryRange([0, 200000]);
-                                                    setVisibleCols({ id: true, biometricId: true, name: true, status: true, role: true, department: false, project: true, teamLeader: true, productivity: true, joinDate: true, salary: true, workType: true });
+                                                   setVisibleCols({ id: true, biometricId: true, name: true, status: true, role: true, department: true, project: false, teamLeader: false, productivity: false, joinDate: false, salary: true, workType: true });
                                                 }}
                                             >
                                                 Reset all
@@ -1616,22 +1616,22 @@ const filteredAccounts = useMemo(() => {
                     <Card className="border border-border/50 hidden md:block">
                         <CardContent className="p-0">
                             <div className="overflow-x-auto">
-                                <Table>
+                                <Table className="table-fixed w-full">
                                     <TableHeader>
                                         <TableRow>
-                                            {visibleCols.id && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("id")}>ID{si("id")}</TableHead>}
-                                            {visibleCols.biometricId && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("biometricId")}>Biometric ID{si("biometricId")}</TableHead>}
-                                            {visibleCols.name && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("name")}>Name{si("name")}</TableHead>}
-                                            {visibleCols.status && <TableHead className="text-xs">Status</TableHead>}
-                                            {visibleCols.role && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("role")}>Role{si("role")}</TableHead>}
-                                            {visibleCols.department && <TableHead className="text-xs">Department</TableHead>}
+                                            {visibleCols.id && <TableHead className="cursor-pointer text-xs w-36" onClick={() => handleSort("id")}>ID{si("id")}</TableHead>}
+                                            {visibleCols.biometricId && <TableHead className="cursor-pointer text-xs w-28" onClick={() => handleSort("biometricId")}>Biometric ID{si("biometricId")}</TableHead>}
+                                            {visibleCols.name && <TableHead className="cursor-pointer text-xs w-56" onClick={() => handleSort("name")}>Name{si("name")}</TableHead>}
+                                            {visibleCols.role && <TableHead className="cursor-pointer text-xs w-24" onClick={() => handleSort("role")}>Role{si("role")}</TableHead>}
+                                            {visibleCols.department && <TableHead className="text-xs w-28">Department</TableHead>}
                                             {visibleCols.project && <TableHead className="text-xs">Project</TableHead>}
                                             {visibleCols.teamLeader && <TableHead className="text-xs">Team Leader</TableHead>}
                                             {visibleCols.productivity && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("productivity")}>Productivity{si("productivity")}</TableHead>}
                                             {visibleCols.joinDate && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("joinDate")}>Join Date{si("joinDate")}</TableHead>}
-                                            {visibleCols.salary && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("salary")}>Salary (Monthly){si("salary")}</TableHead>}
-                                            {visibleCols.workType && <TableHead className="text-xs">Work Type</TableHead>}
-                                            <TableHead className="text-xs w-28"></TableHead>
+                                            {visibleCols.salary && <TableHead className="cursor-pointer text-xs w-36" onClick={() => handleSort("salary")}>Salary (Monthly){si("salary")}</TableHead>}
+                                            {visibleCols.workType && <TableHead className="text-xs w-24">Work Type</TableHead>}
+                                            {visibleCols.status && <TableHead className="text-xs w-24">Status</TableHead>}
+                                            <TableHead className="text-xs w-48 text-center">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1641,8 +1641,7 @@ const filteredAccounts = useMemo(() => {
                                                 <TableRow key={emp.id} className="group">
                                                     {visibleCols.id && <TableCell className="text-xs text-muted-foreground">{emp.id}</TableCell>}
                                                     {visibleCols.biometricId && <TableCell className="text-xs font-mono text-muted-foreground">{emp.biometricId || "—"}</TableCell>}
-                                                    {visibleCols.name && <TableCell><div className="flex items-center gap-2"><Avatar className="h-8 w-8"><AvatarFallback className="text-[10px] bg-muted">{getInitials(emp.name)}</AvatarFallback></Avatar><div><p className="text-sm font-medium">{emp.name}</p><p className="text-xs text-muted-foreground">{emp.email}</p></div></div></TableCell>}
-                                                    {visibleCols.status && <TableCell><Badge variant="secondary" className={emp.status === "active" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : emp.status === "resigned" ? "bg-orange-500/15 text-orange-700 dark:text-orange-400" : "bg-red-500/15 text-red-700 dark:text-red-400"}>{emp.status}</Badge></TableCell>}
+                                                    {visibleCols.name && <TableCell><div className="flex items-center gap-2 min-w-0"><Avatar className="h-8 w-8 shrink-0"><AvatarFallback className="text-[10px] bg-muted">{getInitials(emp.name)}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium truncate">{emp.name}</p><p className="text-xs text-muted-foreground truncate">{emp.email}</p></div></div></TableCell>}
                                                     {visibleCols.role && <TableCell className="text-xs">{emp.role}</TableCell>}
                                                     {visibleCols.department && <TableCell className="text-xs">{emp.department}</TableCell>}
                                                     {visibleCols.project && <TableCell className="text-xs">{assignedProject ? <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800">{assignedProject.name}</Badge> : <span className="text-muted-foreground">—</span>}</TableCell>}
@@ -1651,9 +1650,10 @@ const filteredAccounts = useMemo(() => {
                                                     {visibleCols.joinDate && <TableCell className="text-xs text-muted-foreground">{formatDate(emp.joinDate)}</TableCell>}
                                                     {visibleCols.salary && <TableCell className="text-xs font-medium">{formatCurrency(emp.salary)}<span className="text-muted-foreground">/mo</span></TableCell>}
                                                     {visibleCols.workType && <TableCell><Badge variant="outline" className="text-[10px]">{emp.workType}</Badge></TableCell>}
+                                                    {visibleCols.status && <TableCell><Badge variant="secondary" className={emp.status === "active" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : emp.status === "resigned" ? "bg-orange-500/15 text-orange-700 dark:text-orange-400" : "bg-red-500/15 text-red-700 dark:text-red-400"}>{emp.status}</Badge></TableCell>}
                                                     <TableCell>
-                                                        <div className="flex items-center gap-1">
-                                                            <Link href={rh(`/employees/${emp.id}`)}><Button variant="ghost" size="icon" className="h-7 w-7"><Eye className="h-3.5 w-3.5" /></Button></Link>
+                                                         <div className="flex items-center justify-end gap-1">
+                                                             <Link href={rh(`/employees/${emp.id}`)}><Button variant="ghost" size="icon" className="h-7 w-7"><Eye className="h-3.5 w-3.5" /></Button></Link>
                                                             <Button variant="ghost" size="icon" className="h-7 w-7" disabled={!canManage} onClick={() => handleOpenEdit(emp)} title="Edit"><Pencil className="h-3.5 w-3.5" /></Button>
                                                             {canManage && emp.profileId && (
                                                                 <Button variant="ghost" size="icon" className="h-7 w-7" title="Reset password" onClick={() => {
@@ -1894,14 +1894,14 @@ const filteredAccounts = useMemo(() => {
                                 </div>
                             ) : (
                                 <div className="overflow-x-auto">
-                                    <Table>
+                                    <Table className="table-fixed w-full">
                                         <TableHeader>
                                             <TableRow>
-                                                <TableHead className="text-xs">User</TableHead>
-                                                <TableHead className="text-xs">Role</TableHead>
-                                                <TableHead className="text-xs">Status</TableHead>
-                                                {!USE_DEMO_MODE && <TableHead className="text-xs">Created</TableHead>}
-                                                <TableHead className="text-xs w-32 text-right">Actions</TableHead>
+                                               <TableHead className="text-xs w-72">User</TableHead>
+                                                <TableHead className="text-xs w-36">Role</TableHead>
+                                                <TableHead className="text-xs w-40">Status</TableHead>
+                                                {!USE_DEMO_MODE && <TableHead className="text-xs w-32">Created</TableHead>}
+                                                <TableHead className="text-xs w-24 text-right sticky right-0 bg-background">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -1918,8 +1918,8 @@ const filteredAccounts = useMemo(() => {
                                                 return (
                                                     <TableRow key={acc.id} className="group">
                                                         <TableCell>
-                                                            <div className="flex items-center gap-3">
-                                                                <Avatar className="h-9 w-9">
+                                                           <div className="flex items-center gap-3 min-w-0">
+                                                                <Avatar className="h-9 w-9 shrink-0">
                                                                     <AvatarFallback className="text-xs font-bold bg-primary/10 text-primary">{getInitials(acc.name)}</AvatarFallback>
                                                                 </Avatar>
                                                                 <div className="min-w-0">
@@ -1963,8 +1963,8 @@ const filteredAccounts = useMemo(() => {
                                                                 {acc.createdAt ? formatDate(acc.createdAt.split("T")[0]) : "—"}
                                                             </TableCell>
                                                         )}
-                                                        <TableCell>
-                                                            <div className="flex items-center justify-end gap-1">
+                                                       <TableCell className="text-center">
+                                                            <div className="flex items-center justify-center gap-1">
                                                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Reset password"
                                                                     onClick={() => { setResetPwUserId(acc.id); setResetPwValue(""); }}>
                                                                     <KeyRound className="h-3.5 w-3.5" />
