@@ -163,7 +163,7 @@ export default function AdminEmployeesView() {
     const [acctRoleFilter, setAcctRoleFilter] = useState("all");
     const [acctStatusFilter, setAcctStatusFilter] = useState("all");
     const [acctPage, setAcctPage] = useState(1);
-    const ACCT_PAGE_SIZE = 10;
+    const [acctPageSize, setAcctPageSize] = useState(10);
     const [resetPwUserId, setResetPwUserId] = useState<string | null>(null);
     const [resetPwValue, setResetPwValue] = useState("");
 
@@ -392,10 +392,9 @@ const filteredAccounts = useMemo(() => {
         return matchSearch && matchRole && matchStatus;
     });
 }, [accounts, employees, acctSearch, acctRoleFilter, acctStatusFilter]);
-    const acctTotalPages = Math.max(1, Math.ceil(filteredAccounts.length / ACCT_PAGE_SIZE));
+    const acctTotalPages = Math.max(1, Math.ceil(filteredAccounts.length / acctPageSize));
     const acctSafePage = Math.min(acctPage, acctTotalPages);
-    const paginatedAccounts = filteredAccounts.slice((acctSafePage - 1) * ACCT_PAGE_SIZE, acctSafePage * ACCT_PAGE_SIZE);
-
+    const paginatedAccounts = filteredAccounts.slice((acctSafePage - 1) * acctPageSize, acctSafePage * acctPageSize);
     const [sortKey, setSortKey] = useState<SortKey>("name");
     const [sortDir, setSortDir] = useState<SortDir>("asc");
     const [page, setPage] = useState(1);
@@ -1857,7 +1856,7 @@ const filteredAccounts = useMemo(() => {
                                   <SelectContent>
                                     <SelectItem value="all">All Status</SelectItem>
                                     <SelectItem value="active">Active</SelectItem>
-                                    <SelectItem value="pending">Pw Reset</SelectItem>
+                                    <SelectItem value="pw_reset">Pw Reset</SelectItem>
                                     <SelectItem value="inactive">Inactive</SelectItem>
                                     </SelectContent>
                                 </Select>
@@ -1945,13 +1944,13 @@ const filteredAccounts = useMemo(() => {
                                                                                     inactive
                                                                                 </Badge>
                                                                             )}
-                                                                            {acc.mustChangePassword && empStatus !== "inactive" && (
+                                                                           {acc.mustChangePassword && (
                                                                                 <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
                                                                                     <KeyRound className="h-2.5 w-2.5 mr-0.5" /> pw reset
                                                                                 </Badge>
                                                                             )}
                                                                             {!acc.mustChangePassword && empStatus === "active" && (
-                                                                                 <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700">
+                                                                                <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700">
                                                                                     <ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> active
                                                                                 </Badge>
                                                                             )}
@@ -2009,7 +2008,13 @@ const filteredAccounts = useMemo(() => {
                    {/* Pagination */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div className="flex items-center gap-2">
-                            <span className="text-sm text-muted-foreground">Rows per page: {ACCT_PAGE_SIZE}</span>
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select value={String(acctPageSize)} onValueChange={(v) => { setAcctPageSize(Number(v)); setAcctPage(1); }}>
+                                <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    {PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-muted-foreground">Page {acctSafePage} of {acctTotalPages}</span>
@@ -2105,7 +2110,7 @@ const filteredAccounts = useMemo(() => {
                                     <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="All Status" /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">All Status</SelectItem>
-                                        <SelectItem value="active">Active</SelectItem>
+                                        <SelectItem value="active">Active</SelectItem>  
                                         <SelectItem value="inactive">Inactive</SelectItem>
                                     </SelectContent>
                                 </Select>
