@@ -1445,25 +1445,12 @@ const filteredAccounts = useMemo(() => {
                                     </SheetTrigger>
                                     <SheetContent className="w-[320px] sm:w-[360px] flex flex-col gap-0 p-0">
                                         {/* Header */}
-                                        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                                        <div className="flex items-center px-5 py-4 border-b border-border">
                                             <div>
                                                 <SheetTitle className="text-base font-semibold">Advanced Filters</SheetTitle>
                                                 <p className="text-xs text-muted-foreground mt-0.5">Narrow down the employee list</p>
                                             </div>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-xs text-muted-foreground hover:text-foreground h-7 px-2"
-                                                onClick={() => {
-                                                    setDepartmentFilter("all");
-                                                    setSalaryRange([0, 200000]);
-                                                   setVisibleCols({ id: true, biometricId: true, name: true, status: true, role: true, department: true, project: false, teamLeader: false, productivity: false, joinDate: false, salary: true, workType: true });
-                                                }}
-                                            >
-                                                Reset all
-                                            </Button>
                                         </div>
-
                                         {/* Scrollable body */}
                                         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
 
@@ -1552,10 +1539,22 @@ const filteredAccounts = useMemo(() => {
                                         </div>
 
                                         {/* Footer */}
-                                        <div className="px-5 py-4 border-t border-border">
-                                            <p className="text-xs text-muted-foreground text-center">
+                                        <div className="px-5 py-4 border-t border-border flex items-center justify-between">
+                                            <p className="text-xs text-muted-foreground">
                                                 {filtered.length} employee{filtered.length !== 1 ? "s" : ""} match current filters
                                             </p>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-xs h-7 px-3"
+                                                onClick={() => {
+                                                    setDepartmentFilter("all");
+                                                    setSalaryRange([0, 200000]);
+                                                    setVisibleCols({ id: true, biometricId: true, name: true, status: true, role: true, department: true, project: false, teamLeader: false, productivity: false, joinDate: false, salary: true, workType: true });
+                                                }}
+                                            >
+                                                Reset all
+                                            </Button>
                                         </div>
                                     </SheetContent>
                                 </Sheet>
@@ -1615,8 +1614,8 @@ const filteredAccounts = useMemo(() => {
                     {/* Desktop Table */}
                     <Card className="border border-border/50 hidden md:block">
                         <CardContent className="p-0">
-                            <div className="overflow-x-auto">
-                                <Table className="table-fixed w-full">
+                           <div className="overflow-x-auto w-full">
+                                <Table className="w-full">
                                     <TableHeader>
                                         <TableRow>
                                             {visibleCols.id && <TableHead className="cursor-pointer text-xs w-36" onClick={() => handleSort("id")}>ID{si("id")}</TableHead>}
@@ -1901,7 +1900,7 @@ const filteredAccounts = useMemo(() => {
                                                 <TableHead className="text-xs w-36">Role</TableHead>
                                                 <TableHead className="text-xs w-40">Status</TableHead>
                                                 {!USE_DEMO_MODE && <TableHead className="text-xs w-32">Created</TableHead>}
-                                                <TableHead className="text-xs w-24 text-right sticky right-0 bg-background">Actions</TableHead>
+                                                <TableHead className="text-xs w-24 text-center">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -1964,8 +1963,8 @@ const filteredAccounts = useMemo(() => {
                                                             </TableCell>
                                                         )}
                                                        <TableCell className="text-center">
-                                                            <div className="flex items-center justify-center gap-1">
-                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Reset password"
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Reset password"
                                                                     onClick={() => { setResetPwUserId(acc.id); setResetPwValue(""); }}>
                                                                     <KeyRound className="h-3.5 w-3.5" />
                                                                 </Button>
