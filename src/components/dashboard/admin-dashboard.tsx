@@ -169,6 +169,7 @@ function KpiStatsRow() {
             icon: Users,
             iconBg: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
             href: rh("/employees/manage"),
+            clickable: true,
         },
         {
             label: "Present",
@@ -178,6 +179,7 @@ function KpiStatsRow() {
             icon: UserCheck,
             iconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
             href: rh("/attendance"),
+            clickable: false,
         },
         {
             label: "Absent",
@@ -187,6 +189,7 @@ function KpiStatsRow() {
             icon: UserX,
             iconBg: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
             href: rh("/attendance"),
+            clickable: false,
         },
         {
             label: "On Leave",
@@ -196,45 +199,97 @@ function KpiStatsRow() {
             icon: CalendarOff,
             iconBg: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
             href: rh("/leave"),
+            clickable: true,
         },
     ];
 
     return (
         <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
                 Attendance data as of: <span className="font-medium text-foreground">{(() => { try { return format(parseISO(reportingDate), "MMMM d, yyyy"); } catch { return reportingDate; } })()}</span>
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {stats.map((stat) => (
-                    <Link key={stat.label} href={stat.href}>
-                        <Card className="border border-border/50 hover:border-border hover:shadow-sm transition-all cursor-pointer group">
+                {stats.map((stat) => {
+                    const cardContent = (
+                        <Card
+                            className={`
+                                border border-border/50 transition-all
+                                ${
+                                    stat.clickable
+                                        ? "hover:border-border hover:shadow-sm cursor-pointer group"
+                                        : "cursor-pointer group"
+                                }
+                            `}
+                        >
                             <CardContent className="px-4 py-4">
                                 <div className="flex items-start justify-between">
                                     <div className="space-y-2">
-                                        <p className="text-sm text-muted-foreground font-medium">{stat.label}</p>
-                                        <p className="text-3xl font-bold tracking-tight">{stat.value}</p>
+                                        <p className="text-base text-muted-foreground font-medium">
+                                            {stat.label}
+                                        </p>
+
+                                        <p className="text-3xl font-bold tracking-tight">
+                                            {stat.value}
+                                        </p>
+
                                         <div className="flex items-center gap-1 text-xs">
-                                            {stat.changeType === "positive" && <ArrowUpRight className="h-3 w-3 text-emerald-500" />}
-                                            {stat.changeType === "negative" && <ArrowDownRight className="h-3 w-3 text-red-500" />}
-                                            {stat.changeType === "warning" && <AlertCircle className="h-3 w-3 text-amber-500" />}
-                                            <span className={
-                                                stat.changeType === "positive" ? "text-emerald-600 dark:text-emerald-400" :
-                                                    stat.changeType === "negative" ? "text-red-600 dark:text-red-400" :
-                                                        stat.changeType === "warning" ? "text-amber-600 dark:text-amber-400" :
-                                                            "text-muted-foreground"
-                                            }>
+                                            {stat.changeType === "positive" && (
+                                                <ArrowUpRight className="h-3 w-3 text-emerald-500" />
+                                            )}
+
+                                            {stat.changeType === "negative" && (
+                                                <ArrowDownRight className="h-3 w-3 text-red-500" />
+                                            )}
+
+                                            {stat.changeType === "warning" && (
+                                                <AlertCircle className="h-3 w-3 text-amber-500" />
+                                            )}
+
+                                            <span
+                                                className={
+                                                    stat.changeType === "positive"
+                                                        ? "text-emerald-600 dark:text-emerald-400"
+                                                        : stat.changeType === "negative"
+                                                        ? "text-red-600 dark:text-red-400"
+                                                        : stat.changeType === "warning"
+                                                        ? "text-amber-600 dark:text-amber-400"
+                                                        : "text-muted-foreground"
+                                                }
+                                            >
                                                 {stat.change}
                                             </span>
                                         </div>
                                     </div>
-                                    <div className={`p-2.5 rounded-xl ${stat.iconBg} group-hover:scale-110 transition-transform`}>
+
+                                    <div
+                                        className={`
+                                            p-2.5 rounded-xl
+                                            ${stat.iconBg}
+                                            ${
+                                                stat.clickable
+                                                    ? "group-hover:scale-110"
+                                                    : ""
+                                            }
+                                            transition-transform
+                                        `}
+                                    >
                                         <stat.icon className="h-5 w-5" />
                                     </div>
                                 </div>
                             </CardContent>
                         </Card>
-                    </Link>
-                ))}
+                    );
+
+                    return stat.clickable ? (
+                        <Link key={stat.label} href={stat.href}>
+                            {cardContent}
+                        </Link>
+                    ) : (
+                        <div key={stat.label}>
+                            {cardContent}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
@@ -279,10 +334,10 @@ function AttendanceTrendChart() {
             <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
-                        <CardTitle className="text-sm font-semibold">Attendance Overview</CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">Last 6 months trend</p>
+                        <CardTitle className="text-lg font-semibold">Attendance Overview</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-0.5">Last 6 months trend</p>
                     </div>
-                    <Button variant="ghost" size="sm" className="text-xs gap-1" asChild>
+                    <Button variant="ghost" size="sm" className="text-sm gap-1" asChild>
                         <Link href={rh("/attendance")}>
                             View All <ChevronRight className="h-3 w-3" />
                         </Link>
@@ -371,10 +426,10 @@ function DepartmentDistributionChart() {
             <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
-                        <CardTitle className="text-sm font-semibold">Employees by Department</CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">{total} total active</p>
+                        <CardTitle className="text-lg font-semibold">Employees by Department</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-0.5">{total} total active</p>
                     </div>
-                    <Button variant="ghost" size="sm" className="text-xs gap-1" asChild>
+                    <Button variant="ghost" size="sm" className="text-sm gap-1" asChild>
                         <Link href={rh("/employees/manage")}>
                             View <ChevronRight className="h-3 w-3" />
                         </Link>
@@ -505,8 +560,8 @@ return (
         <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
                 <div>
-                    <CardTitle className="text-sm font-semibold">Pending Actions</CardTitle>
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <CardTitle className="text-lg font-semibold">Pending Actions</CardTitle>
+                    <p className="text-sm text-muted-foreground mt-0.5">
                         {totalPending > 0
                             ? `${totalPending} items need attention`
                             : "All caught up!"}
@@ -607,12 +662,12 @@ function PayrollSummaryCard() {
             <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
-                        <CardTitle className="text-sm font-semibold">Payroll Summary</CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <CardTitle className="text-lg font-semibold">Payroll Summary</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-0.5">
                             {latestRun ? `Latest: ${latestRun.periodLabel}` : "No runs yet"}
                         </p>
                     </div>
-                    <Button variant="ghost" size="sm" className="text-xs gap-1" asChild>
+                    <Button variant="ghost" size="sm" className="text-sm gap-1" asChild>
                         <Link href={rh("/payroll")}>
                             Details <ChevronRight className="h-3 w-3" />
                         </Link>
@@ -669,8 +724,8 @@ function RecentHiresCard() {
             <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
-                        <CardTitle className="text-sm font-semibold">Recent Hires</CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">Newest team members</p>
+                        <CardTitle className="text-lg font-semibold">Recent Hires</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-0.5">Newest team members</p>
                     </div>
                     <Button variant="ghost" size="sm" className="text-xs gap-1" asChild>
                         <Link href={rh("/employees/manage")}>
@@ -737,8 +792,8 @@ function UpcomingEventsCard() {
             <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
-                        <CardTitle className="text-sm font-semibold">Upcoming Events</CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">{upcoming.length} upcoming</p>
+                        <CardTitle className="text-lg font-semibold">Upcoming Events</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-0.5">{upcoming.length} upcoming</p>
                     </div>
                     <Button variant="ghost" size="sm" className="text-xs gap-1" asChild>
                         <Link href={rh("/events")}>
@@ -811,8 +866,8 @@ function BirthdaysCard() {
             <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
-                        <CardTitle className="text-sm font-semibold">Birthdays This Month</CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <CardTitle className="text-lg font-semibold">Birthdays This Month</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-0.5">
                             {format(new Date(), "MMMM yyyy")} · {birthdaysThisMonth.length} celebrations
                         </p>
                     </div>
@@ -964,8 +1019,8 @@ function RecentActivityCard() {
         <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
-                        <CardTitle className="text-sm font-semibold">Recent Activity</CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">Latest system actions across all modules</p>
+                        <CardTitle className="text-lg font-semibold">Recent Activity</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-0.5">Latest system actions across all modules</p>
                     </div>
                     <Button variant="ghost" size="sm" className="text-xs gap-1" asChild>
                         <Link href={rh("/audit")}>
