@@ -30,6 +30,7 @@ import {
   notificationsDb,
   locationDb,
   loanExtrasDb,
+  documents201Db,
   createClient,
 } from "./db.service";
 import { keysToCamel } from "@/lib/db-utils";
@@ -47,6 +48,7 @@ import { useTimesheetStore } from "@/store/timesheet.store";
 import { useNotificationsStore, DEFAULT_EMPLOYEE_PREFS } from "@/store/notifications.store";
 import type { EmployeeNotifPrefs } from "@/store/notifications.store";
 import { useLocationStore } from "@/store/location.store";
+import { useDocumentsStore } from "@/store/documents.store";
 import { useAuthStore } from "@/store/auth.store";
 
 let _hydrated = false;
@@ -186,6 +188,7 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
       breakRecords,
       allLoanDeductions,
       allRepaymentSchedules,
+      fetchedDocuments,
     ] = await Promise.all([
       projectsDb.fetchAll(),
       auditDb.fetchAll(),
@@ -207,6 +210,7 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
       locationDb.fetchBreaks(),
       loanExtrasDb.fetchAllDeductions(),
       loanExtrasDb.fetchAllRepaymentSchedules(),
+      documents201Db.fetchAll(),
     ]);
 
     // Fetch employee-shift assignments separately (returns a mapping, not an array)
@@ -356,6 +360,10 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
         ...(breakRecords.length > 0 ? { breaks: breakRecords } : {}),
       });
     }
+
+    // Hydrate documents 201 store — always set from DB so DB-side changes
+    // (uploads, approvals, deletions) propagate on next login/refresh.
+    useDocumentsStore.setState({ documents: fetchedDocuments });
 
     _hydrated = true;
     console.log("[sync] Stores hydrated from Supabase");

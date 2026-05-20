@@ -27,6 +27,7 @@ import type {
   NotificationLog, NotificationRule,
   LocationPing, SiteSurveyPhoto, BreakRecord,
   DeductionOverride, DeductionGlobalDefault, PayrollSignatureConfig,
+  Employee201Document,
 } from "@/types";
 
 // Re-export for convenience
@@ -1311,6 +1312,49 @@ export const locationDb = {
 
   async upsertBreak(br: BreakRecord): Promise<boolean> {
     return upsertRow("break_records", br as unknown as Record<string, unknown>);
+  },
+};
+
+// ─── 201 Documents ──────────────────────────────────────────────
+
+export const documents201Db = {
+  fetchAll: () => fetchAll<Employee201Document>("employee_201_documents"),
+
+  async upsert(doc: Employee201Document): Promise<boolean> {
+    return upsertRow("employee_201_documents", doc as unknown as Record<string, unknown>);
+  },
+
+  async batchUpsert(docs: Employee201Document[]): Promise<boolean> {
+    return batchUpsertRows("employee_201_documents", docs as unknown as Record<string, unknown>[]);
+  },
+
+  async remove(id: string): Promise<boolean> {
+    return deleteRow("employee_201_documents", id);
+  },
+
+  async fetchExpiring(daysAhead = 30): Promise<Employee201Document[]> {
+    const today = new Date();
+    const future = new Date();
+    future.setDate(today.getDate() + daysAhead);
+
+    const todayStr = today.toISOString().split("T")[0];
+    const futureStr = future.toISOString().split("T")[0];
+
+    const { data, error } = await supabase()
+      .from("employee_201_documents")
+      .select("*")
+      .gte("expiry_date", todayStr)
+      .lte("expiry_date", futureStr)
+      .not("status", "in", "(archived,expired)")
+      .order("expiry_date", { ascending: true });
+
+    if (error) {
+      console.error("[db] documents201Db.fetchExpiring:", error.message);
+      return [];
+    }
+    return ((data ?? []) as unknown as Record<string, unknown>[]).map(
+      (row) => keysToCamel(row) as unknown as Employee201Document
+    );
   },
 };
 

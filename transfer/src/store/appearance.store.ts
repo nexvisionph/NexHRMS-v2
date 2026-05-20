@@ -169,6 +169,7 @@ export interface ModuleFlags {
   tasks: boolean;
   messages: boolean;
   events: boolean;
+  documentCenter: boolean;
   // ── Premium / unpaid features (hidden until client upgrades) ──────────────
   jobs: boolean;
 }
@@ -189,6 +190,7 @@ export const DEFAULT_MODULE_FLAGS: ModuleFlags = {
   tasks: true,
   messages: true,
   events: true,
+  documentCenter: true,
   // ── Premium / unpaid features (off by default) ────────────────────────────
   jobs: false,
 };
@@ -209,6 +211,7 @@ export const MODULE_INFO: Record<keyof ModuleFlags, { label: string; description
   tasks: { label: "Task Management", description: "Task groups, assignments, photo & GPS proof", icon: "ListTodo" },
   messages: { label: "Messaging Hub", description: "Channels, announcements, multi-channel messaging", icon: "MessageSquare" },
   events: { label: "Events & Meetings", description: "Company events, meetings, calendar management", icon: "Calendar" },
+  documentCenter: { label: "201 Files / Document Center", description: "Employee 201 document repository, uploads, approvals", icon: "FolderArchive" },
   // ── Premium / unpaid features ─────────────────────────────────────────────
   jobs: { label: "Jobs / Talent Acquisition", description: "Job postings, applications, and hiring pipeline", icon: "Briefcase" },
 };
