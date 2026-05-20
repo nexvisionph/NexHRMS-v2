@@ -99,3 +99,8 @@
 [2026-05-08T04:49:08.380Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
 [2026-05-08T04:49:28.857Z] [info] post request received {"path":"/","remote":"192.168.0.155:60302","requestCode":"receive_cmd","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":308}
 [2026-05-08T04:49:28.858Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-20T03:17:04.818Z] [info] bridge listening {"port":8080,"target":"http://localhost:3000/api/attendance/t800","logFile":"C:\\xampp\\htdocs\\Github\\NexHRMS-v2\\scripts\\fk-bridge.log"}
+[2026-05-20T03:17:04.819Z] [info] local addresses {"addresses":["192.168.16.1","192.168.254.157"]}
+[2026-05-20T03:17:42.691Z] [info] non-post request received {"method":"GET","path":"/favicon.ico","remote":"192.168.254.157:58080"}
+[2026-05-20T03:31:11.311Z] [info] non-post request received {"method":"GET","path":"/favicon.ico","remote":"192.168.254.157:58265"}
+[2026-05-20T03:34:51.574Z] [info] non-post request received {"method":"GET","path":"/favicon.ico","remote":"192.168.254.158:61675"}
