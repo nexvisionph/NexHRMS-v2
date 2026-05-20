@@ -440,6 +440,9 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
     supervisor: ["/dashboard", "/attendance", "/leave", "/my-payslips", "/timesheets", "/employees", "/projects", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings"],
     payroll_admin: ["/dashboard", "/payroll", "/payroll/settings", "/my-payslips", "/loans", "/reports", "/reports/government", "/timesheets", "/notifications", "/profile"],
     auditor: ["/dashboard", "/audit", "/reports", "/employees", "/notifications", "/profile", "/settings", "/my-payslips"],
+    support_admin: ["/dashboard", "/employees", "/attendance", "/leave", "/notifications", "/settings", "/profile", "/my-payslips"],
+    finance_admin: ["/dashboard", "/payroll", "/payroll/settings", "/my-payslips", "/loans", "/reports", "/reports/government", "/employees/directory", "/notifications", "/profile"],
+    analyst: ["/dashboard", "/reports", "/reports/government", "/employees", "/attendance", "/payroll", "/notifications", "/profile", "/my-payslips"],
 };
 
 /** Map a URL path to the permission needed to access it */

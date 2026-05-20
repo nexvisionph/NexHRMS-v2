@@ -12,28 +12,25 @@ import { useAppBadge } from "@/lib/hooks/use-app-badge";
  * Also keeps the PWA app badge in sync with unread notification count.
  */
 export function PushNotificationBanner() {
-  const [showBanner, setShowBanner] = useState(false);
+  const [dismissedSession, setDismissedSession] = useState(false);
   const { permission, isSupported, isSubscribed } = usePushNotifications();
   
   // Initialize app badge sync (works on Android PWA and iOS 16.4+ PWA)
   useAppBadge();
 
-  useEffect(() => {
-    // Check if banner was dismissed
-    const dismissed = localStorage.getItem("push-prompt-dismissed") === "true";
-    
-    // Show banner immediately if:
-    // - Push is supported
-    // - Permission not denied
-    // - Not already subscribed
-    // - Not previously dismissed
-    if (isSupported && permission === "default" && !isSubscribed && !dismissed) {
-      setShowBanner(true);
-    }
-  }, [isSupported, permission, isSubscribed]);
+  const dismissedPersisted =
+    typeof window !== "undefined" &&
+    localStorage.getItem("push-prompt-dismissed") === "true";
+
+  const showBanner =
+    !dismissedSession &&
+    !dismissedPersisted &&
+    isSupported &&
+    permission === "default" &&
+    !isSubscribed;
 
   const handleDismiss = () => {
-    setShowBanner(false);
+    setDismissedSession(true);
   };
 
   if (!showBanner) return null;

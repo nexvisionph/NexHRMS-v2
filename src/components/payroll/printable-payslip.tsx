@@ -14,13 +14,16 @@ interface PrintablePayslipProps {
     employeeName: string;
     department: string;
     companyName?: string;
+    logoUrl?: string;
+    jobTitle?: string;
+    employeeId?: string;
     authorizedSignature?: PayrollSignatureConfig;
     open: boolean;
     onClose: () => void;
 }
 
 export function PrintablePayslip({
-    payslip, employeeName, department, companyName = "Soren Data Solutions Inc.", authorizedSignature, open, onClose,
+    payslip, employeeName, department, companyName = "Soren Data Solutions Inc.", logoUrl, jobTitle, employeeId, authorizedSignature, open, onClose,
 }: PrintablePayslipProps) {
     const printRef = useRef<HTMLDivElement>(null);
 
@@ -45,6 +48,7 @@ export function PrintablePayslip({
                     * { margin: 0; padding: 0; box-sizing: border-box; }
                     body { font-family: 'Segoe UI', Arial, sans-serif; padding: 24px; color: #1a1a1a; font-size: 12px; }
                     .header { text-align: center; border-bottom: 2px solid #1a1a1a; padding-bottom: 12px; margin-bottom: 16px; }
+                    .header img { max-height: 64px; max-width: 200px; object-fit: contain; margin: 0 auto 8px; display: block; }
                     .header h1 { font-size: 18px; font-weight: 700; }
                     .header p { font-size: 10px; color: #666; margin-top: 2px; }
                     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
@@ -101,6 +105,10 @@ export function PrintablePayslip({
                 <div ref={printRef} className="border rounded-lg p-6 bg-white text-black text-xs">
                     {/* Company Header */}
                     <div className="header" style={{ textAlign: "center", borderBottom: "2px solid #1a1a1a", paddingBottom: "12px", marginBottom: "16px" }}>
+                        {logoUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={logoUrl} alt={companyName} style={{ maxHeight: "64px", maxWidth: "200px", objectFit: "contain", margin: "0 auto 8px", display: "block" }} />
+                        )}
                         <h1 style={{ fontSize: "18px", fontWeight: 700 }}>{companyName}</h1>
                         <p style={{ fontSize: "10px", color: "#666", marginTop: "2px" }}>PAYSLIP — CONFIDENTIAL</p>
                     </div>
@@ -115,6 +123,18 @@ export function PrintablePayslip({
                             <p style={{ fontSize: "10px", color: "#666", textTransform: "uppercase" }}>Department</p>
                             <p style={{ fontSize: "12px", fontWeight: 600 }}>{department}</p>
                         </div>
+                        {jobTitle && (
+                            <div>
+                                <p style={{ fontSize: "10px", color: "#666", textTransform: "uppercase" }}>Job Title</p>
+                                <p style={{ fontSize: "12px", fontWeight: 600 }}>{jobTitle}</p>
+                            </div>
+                        )}
+                        {employeeId && (
+                            <div>
+                                <p style={{ fontSize: "10px", color: "#666", textTransform: "uppercase" }}>Employee ID</p>
+                                <p style={{ fontSize: "12px", fontWeight: 600 }}>{employeeId}</p>
+                            </div>
+                        )}
                         <div>
                             <p style={{ fontSize: "10px", color: "#666", textTransform: "uppercase" }}>Pay Period</p>
                             <p style={{ fontSize: "12px", fontWeight: 600 }}>{payslip.periodStart} — {payslip.periodEnd}</p>
@@ -203,25 +223,25 @@ export function PrintablePayslip({
                             {(payslip.customDeductions || 0) > 0 && (
                                 <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
                                     <td style={{ padding: "6px 8px" }}>Custom Deductions</td>
-                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.customDeductions)}</td>
+                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.customDeductions ?? 0)}</td>
                                 </tr>
                             )}
                             {(payslip.lateDeduction || 0) > 0 && (
                                 <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
                                     <td style={{ padding: "6px 8px" }}>Late Penalty{payslip.attendanceLateMinutes ? ` (${payslip.attendanceLateMinutes} min)` : ""}</td>
-                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.lateDeduction)}</td>
+                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.lateDeduction ?? 0)}</td>
                                 </tr>
                             )}
                             {(payslip.absentDeduction || 0) > 0 && (
                                 <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
                                     <td style={{ padding: "6px 8px" }}>Absent Deduction{payslip.attendanceDaysAbsent ? ` (${payslip.attendanceDaysAbsent} day${payslip.attendanceDaysAbsent > 1 ? "s" : ""})` : ""}</td>
-                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.absentDeduction)}</td>
+                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.absentDeduction ?? 0)}</td>
                                 </tr>
                             )}
                             {(payslip.undertimeDeduction || 0) > 0 && (
                                 <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
                                     <td style={{ padding: "6px 8px" }}>Undertime Deduction{payslip.attendanceUndertimeHours ? ` (${payslip.attendanceUndertimeHours.toFixed(1)} hrs)` : ""}</td>
-                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.undertimeDeduction)}</td>
+                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.undertimeDeduction ?? 0)}</td>
                                 </tr>
                             )}
                             <tr style={{ borderBottom: "2px solid #1a1a1a", fontWeight: 700 }}>
@@ -243,32 +263,60 @@ export function PrintablePayslip({
                         </div>
                     )}
 
-                    {/* Attendance Summary */}
-                    {(payslip.attendanceDaysPresent !== undefined || payslip.attendanceDaysAbsent !== undefined || payslip.attendanceLateMinutes !== undefined) && (
-                        <div style={{ marginBottom: "16px", padding: "8px", background: "#f9fafb", border: "1px solid #e5e5e5", borderRadius: "4px", fontSize: "11px" }}>
-                            <p style={{ fontWeight: 700, textTransform: "uppercase", fontSize: "10px", color: "#666", marginBottom: "6px" }}>Attendance Summary</p>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
-                                {payslip.attendanceDaysPresent !== undefined && (
-                                    <div><span style={{ color: "#666" }}>Days Present</span><br /><strong>{payslip.attendanceDaysPresent}</strong></div>
-                                )}
-                                {payslip.attendanceDaysAbsent !== undefined && (
-                                    <div><span style={{ color: "#666" }}>Days Absent</span><br /><strong style={{ color: payslip.attendanceDaysAbsent > 0 ? "#dc2626" : "inherit" }}>{payslip.attendanceDaysAbsent}</strong></div>
-                                )}
-                                {payslip.attendanceLateMinutes !== undefined && (
-                                    <div><span style={{ color: "#666" }}>Late (min)</span><br /><strong style={{ color: payslip.attendanceLateMinutes > 0 ? "#d97706" : "inherit" }}>{payslip.attendanceLateMinutes}</strong></div>
-                                )}
-                                {payslip.attendanceUndertimeHours !== undefined && payslip.attendanceUndertimeHours > 0 && (
-                                    <div><span style={{ color: "#666" }}>Undertime</span><br /><strong style={{ color: "#d97706" }}>{payslip.attendanceUndertimeHours.toFixed(1)} hrs</strong></div>
-                                )}
-                                {payslip.dailyRate ? (
-                                    <div><span style={{ color: "#666" }}>Daily Rate</span><br /><span>{formatCurrency(payslip.dailyRate)}</span></div>
-                                ) : null}
-                                {payslip.hourlyRate ? (
-                                    <div><span style={{ color: "#666" }}>Hourly Rate</span><br /><span>{formatCurrency(payslip.hourlyRate)}</span></div>
-                                ) : null}
+                    {/* Attendance & Rate Summary — always shown */}
+                    <div style={{ marginBottom: "16px", padding: "10px", background: "#f9fafb", border: "1px solid #e5e5e5", borderRadius: "4px", fontSize: "11px" }}>
+                        <p style={{ fontWeight: 700, textTransform: "uppercase", fontSize: "10px", color: "#444", marginBottom: "8px", letterSpacing: "0.05em" }}>Attendance Summary</p>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginBottom: "8px" }}>
+                            <div>
+                                <span style={{ color: "#666", display: "block", fontSize: "9px", textTransform: "uppercase" }}>Days Present</span>
+                                <strong style={{ color: "#16a34a" }}>{payslip.attendanceDaysPresent ?? "—"}</strong>
                             </div>
+                            <div>
+                                <span style={{ color: "#666", display: "block", fontSize: "9px", textTransform: "uppercase" }}>Days Absent</span>
+                                <strong style={{ color: (payslip.attendanceDaysAbsent ?? 0) > 0 ? "#dc2626" : "#1a1a1a" }}>{payslip.attendanceDaysAbsent ?? 0}</strong>
+                            </div>
+                            <div>
+                                <span style={{ color: "#666", display: "block", fontSize: "9px", textTransform: "uppercase" }}>Late (min)</span>
+                                <strong style={{ color: (payslip.attendanceLateMinutes ?? 0) > 0 ? "#d97706" : "#1a1a1a" }}>{payslip.attendanceLateMinutes ?? 0}</strong>
+                            </div>
+                            {(payslip.attendanceUndertimeHours ?? 0) > 0 && (
+                                <div>
+                                    <span style={{ color: "#666", display: "block", fontSize: "9px", textTransform: "uppercase" }}>Undertime</span>
+                                    <strong style={{ color: "#d97706" }}>{(payslip.attendanceUndertimeHours ?? 0).toFixed(1)} hrs</strong>
+                                </div>
+                            )}
                         </div>
-                    )}
+                        {/* Rate Computation */}
+                        {(payslip.dailyRate || payslip.hourlyRate) && (
+                            <>
+                                <div style={{ borderTop: "1px solid #e5e5e5", paddingTop: "8px", marginTop: "4px" }}>
+                                    <p style={{ fontWeight: 700, fontSize: "9px", textTransform: "uppercase", color: "#444", marginBottom: "4px" }}>Rate Computation</p>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                                        {payslip.dailyRate ? (
+                                            <div>
+                                                <span style={{ color: "#666", display: "block", fontSize: "9px" }}>Daily Rate</span>
+                                                <span style={{ fontWeight: 600 }}>{formatCurrency(payslip.dailyRate)}</span>
+                                            </div>
+                                        ) : null}
+                                        {payslip.hourlyRate ? (
+                                            <div>
+                                                <span style={{ color: "#666", display: "block", fontSize: "9px" }}>Hourly Rate</span>
+                                                <span style={{ fontWeight: 600 }}>{formatCurrency(payslip.hourlyRate)}</span>
+                                            </div>
+                                        ) : null}
+                                        {payslip.dailyRate && payslip.attendanceDaysPresent !== undefined ? (
+                                            <div style={{ gridColumn: "1 / -1" }}>
+                                                <span style={{ color: "#666", display: "block", fontSize: "9px" }}>Basic Pay Computation</span>
+                                                <span style={{ fontWeight: 600 }}>
+                                                    {formatCurrency(payslip.dailyRate)} × {payslip.attendanceDaysPresent} day{payslip.attendanceDaysPresent !== 1 ? "s" : ""} = {formatCurrency(payslip.dailyRate * payslip.attendanceDaysPresent)}
+                                                </span>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
 
                     {/* Signature Section */}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "48px", marginTop: "32px" }}>

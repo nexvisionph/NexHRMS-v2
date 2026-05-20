@@ -18,6 +18,7 @@ import type {
   Payslip, PayrollRun, PayrollAdjustment, FinalPayComputation, PayScheduleConfig,
   Loan, LoanDeduction, LoanRepaymentSchedule,
   Project, AuditLogEntry, CalendarEvent,
+  Department, JobTitle,
   SalaryChangeRequest, SalaryHistoryEntry,
   PenaltyRecord,
   Announcement, TextChannel, ChannelMessage,
@@ -96,14 +97,49 @@ async function upsertRow(table: string, row: Record<string, unknown>, onConflict
     // 23505 = unique_violation: row already exists via a different unique constraint.
     // Safe to suppress — the data is already in the DB.
     if (error.code === "23505") return true;
-    // Log the offending row for constraint violations so we can trace the bad value
-    if (error.code === "23514") {
-      console.error(`[db] upsert ${table}: constraint violation — offending row id="${dbRow.id}" status="${dbRow.status}"`, error.message);
-    } else {
-      console.error(`[db] upsert ${table}:`, error.message);
-    }
+    console.error(`[db] upsert ${table}:`, error.message);
   }
   return !error;
+}
+
+/** Generic batch upsert — sends one SQL statement per chunk (max 100 rows). */
+async function batchUpsertRows(table: string, rows: Record<string, unknown>[], onConflict = "id"): Promise<boolean> {
+  if (rows.length === 0) return true;
+  const dbRows = rows.map((r) => keysToSnake(r));
+  const CHUNK_SIZE = 100;
+  let allOk = true;
+  for (let i = 0; i < dbRows.length; i += CHUNK_SIZE) {
+    const chunk = dbRows.slice(i, i + CHUNK_SIZE);
+    const { error } = await supabase().from(table).upsert(chunk, { onConflict });
+    if (error) {
+      if (isNetworkError(error) && isDemoMode) { allOk = false; continue; }
+      if (error.code === "42501" && isDemoMode) { allOk = false; continue; }
+      if (error.code === "23505") continue; // duplicates are fine
+      console.error(`[db] batchUpsert ${table}:`, error.message);
+      allOk = false;
+    }
+  }
+  return allOk;
+}
+
+/** Generic batch insert — sends one SQL statement per chunk (max 100 rows). */
+async function batchInsertRows(table: string, rows: Record<string, unknown>[]): Promise<boolean> {
+  if (rows.length === 0) return true;
+  const dbRows = rows.map((r) => keysToSnake(r));
+  const CHUNK_SIZE = 100;
+  let allOk = true;
+  for (let i = 0; i < dbRows.length; i += CHUNK_SIZE) {
+    const chunk = dbRows.slice(i, i + CHUNK_SIZE);
+    const { error } = await supabase().from(table).insert(chunk);
+    if (error) {
+      if (error.code === "23505") continue;
+      if (isNetworkError(error) && isDemoMode) { allOk = false; continue; }
+      if (error.code === "42501" && isDemoMode) { allOk = false; continue; }
+      console.error(`[db] batchInsert ${table}:`, error.message);
+      allOk = false;
+    }
+  }
+  return allOk;
 }
 
 /** Generic insert */
@@ -452,13 +488,23 @@ export const payrollDb = {
     delete row.attendanceDaysAbsent;
     delete row.attendanceLateMinutes;
     delete row.attendanceUndertimeHours;
-    // Guard: ensure status is a valid DB enum value before upserting
-    const validStatuses = ["draft", "published", "signed", "paid", "payment_hold"];
-    if (!row.status || !validStatuses.includes(row.status as string)) {
-      console.warn(`[db] upsertPayslip: invalid status "${row.status}" for payslip ${ps.id}, defaulting to "draft"`);
-      row.status = "draft";
-    }
     return upsertRow("payslips", row);
+  },
+
+  /** Batch upsert payslips — single DB call per 100-row chunk. */
+  async batchUpsertPayslips(payslips: Payslip[]): Promise<boolean> {
+    const rows = payslips.map((ps) => {
+      const row: Record<string, unknown> = { ...(ps as unknown as Record<string, unknown>) };
+      delete row.holdNote;
+      delete row.heldAt;
+      delete row.grossOverrideApplied;
+      delete row.attendanceDaysPresent;
+      delete row.attendanceDaysAbsent;
+      delete row.attendanceLateMinutes;
+      delete row.attendanceUndertimeHours;
+      return row;
+    });
+    return batchUpsertRows("payslips", rows);
   },
 
   async updatePayslip(id: string, patch: Partial<Payslip>): Promise<boolean> {
@@ -1004,6 +1050,11 @@ export const auditDb = {
   async insert(entry: AuditLogEntry): Promise<boolean> {
     return insertRow("audit_logs", entry as unknown as Record<string, unknown>);
   },
+
+  /** Batch insert audit log entries — single DB call per 100-row chunk. */
+  async batchInsert(entries: AuditLogEntry[]): Promise<boolean> {
+    return batchInsertRows("audit_logs", entries as unknown as Record<string, unknown>[]);
+  },
 };
 
 // ─── Calendar Events ────────────────────────────────────────────
@@ -1017,6 +1068,34 @@ export const eventsDb = {
 
   async remove(id: string): Promise<boolean> {
     return deleteRow("calendar_events", id);
+  },
+};
+
+// ─── Departments ────────────────────────────────────────────
+
+export const departmentsDb = {
+  fetchAll: () => fetchAll<Department>("departments"),
+
+  async upsert(dept: Department): Promise<boolean> {
+    return upsertRow("departments", dept as unknown as Record<string, unknown>);
+  },
+
+  async remove(id: string): Promise<boolean> {
+    return deleteRow("departments", id);
+  },
+};
+
+// ─── Job Titles ─────────────────────────────────────────────
+
+export const jobTitlesDb = {
+  fetchAll: () => fetchAll<JobTitle>("job_titles"),
+
+  async upsert(jt: JobTitle): Promise<boolean> {
+    return upsertRow("job_titles", jt as unknown as Record<string, unknown>);
+  },
+
+  async remove(id: string): Promise<boolean> {
+    return deleteRow("job_titles", id);
   },
 };
 
@@ -1203,6 +1282,11 @@ export const notificationsDb = {
 
   async upsertLog(log: NotificationLog): Promise<boolean> {
     return upsertRow("notification_logs", log as unknown as Record<string, unknown>);
+  },
+
+  /** Batch insert notification logs — single DB call per 100-row chunk. */
+  async batchInsertLogs(logs: NotificationLog[]): Promise<boolean> {
+    return batchInsertRows("notification_logs", logs as unknown as Record<string, unknown>[]);
   },
 
   async upsertRule(rule: NotificationRule): Promise<boolean> {

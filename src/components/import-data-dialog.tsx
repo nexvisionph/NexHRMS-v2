@@ -329,6 +329,7 @@ export function ImportDataDialog({
               <ul className="text-[11px] text-blue-700/90 dark:text-blue-300/90 space-y-0.5 list-none">
                 <li>✦ <strong>Name</strong> and <strong>Email</strong> are required. Phone, Birthday, and Address are optional.</li>
                 <li>✦ <strong>Duplicate emails</strong> are automatically detected and skipped.</li>
+                <li>✦ Only <strong>@nexsdsi.com</strong> email addresses are accepted.</li>
                 <li>✦ <strong>Birthday</strong> must be exactly <code className="bg-blue-100 dark:bg-blue-900/50 px-0.5 rounded text-[10px]">YYYY-MM-DD</code> (e.g. 1990-05-20) — case insensitive field name.</li>
                 <li>✦ Employees are imported with <strong>role: employee</strong>, status: active. Admin sets role, department, and pay details in the system after import.</li>
                 <li>✦ You can <strong>edit any cell</strong> in the preview table below before importing.</li>

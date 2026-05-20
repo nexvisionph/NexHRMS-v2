@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { JobPosting, JobApplication, JobStatus, ApplicationStatus } from "@/types";
 
@@ -59,8 +57,7 @@ interface JobsState {
 // ── store ─────────────────────────────────────────────────────────────────────
 
 export const useJobsStore = create<JobsState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             jobs: [],
             applications: [],
             isLoading: false,
@@ -299,7 +296,5 @@ export const useJobsStore = create<JobsState>()(
             },
 
             resetToSeed: () => set({ jobs: [], applications: [], hasFetched: false }),
-        }),
-        { name: "soren-jobs", version: 2, storage: safePersistStorage }
-    )
+        })
 );

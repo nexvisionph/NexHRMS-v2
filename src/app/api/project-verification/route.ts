@@ -75,6 +75,32 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
     try {
+        // Verify caller is authenticated and has admin role
+        const { createServerSupabaseClient } = await import("@/services/supabase-server");
+        const supabase = await createServerSupabaseClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (!user) {
+            return NextResponse.json(
+                { ok: false, error: "Unauthorized" },
+                { status: 401 },
+            );
+        }
+
+        // Check admin role
+        const { data: profile } = await supabase
+            .from("employees")
+            .select("role")
+            .eq("profile_id", user.id)
+            .single();
+
+        if (!profile || !["admin", "hr"].includes(profile.role)) {
+            return NextResponse.json(
+                { ok: false, error: "Forbidden — admin or HR role required" },
+                { status: 403 },
+            );
+        }
+
         const body = await request.json();
         const { projectId, method, options } = body;
 

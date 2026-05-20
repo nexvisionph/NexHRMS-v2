@@ -18,6 +18,8 @@ function assertDemoMode() {
     }
 }
 
+const PASSWORD_WHITESPACE_RE = /\s/;
+
 export function hashPassword(password: string): string {
     assertDemoMode();
     return btoa(encodeURIComponent(password));
@@ -169,6 +171,9 @@ export const useAuthStore = create<AuthState>()(
                 if (accounts.find((u) => u.email.toLowerCase() === input.email.toLowerCase())) {
                     return { ok: false, error: "An account with this email already exists." };
                 }
+                if (PASSWORD_WHITESPACE_RE.test(input.password)) {
+                    return { ok: false, error: "Password cannot contain spaces." };
+                }
                 if (input.password.length < 6) {
                     return { ok: false, error: "Password must be at least 6 characters." };
                 }
@@ -220,6 +225,9 @@ export const useAuthStore = create<AuthState>()(
                 if (!user.passwordHash || !verifyPassword(oldPassword, user.passwordHash)) {
                     return { ok: false, error: "Current password is incorrect." };
                 }
+                if (PASSWORD_WHITESPACE_RE.test(newPassword)) {
+                    return { ok: false, error: "New password cannot contain spaces." };
+                }
                 if (newPassword.length < 6) {
                     return { ok: false, error: "New password must be at least 6 characters." };
                 }
@@ -235,6 +243,9 @@ export const useAuthStore = create<AuthState>()(
                 const { accounts, currentUser } = get();
                 const user = accounts.find((u) => u.id === userId);
                 if (!user) return { ok: false, error: "Account not found." };
+                if (PASSWORD_WHITESPACE_RE.test(newPassword)) {
+                    return { ok: false, error: "New password cannot contain spaces." };
+                }
                 if (newPassword.length < 8) {
                     return { ok: false, error: "New password must be at least 8 characters." };
                 }
@@ -246,6 +257,9 @@ export const useAuthStore = create<AuthState>()(
             },
 
             adminSetPassword: (userId, newPassword) => {
+                if (PASSWORD_WHITESPACE_RE.test(newPassword)) {
+                    return;
+                }
                 const { accounts, currentUser } = get();
                 const updated = accounts.map((u) =>
                     u.id === userId ? { ...u, passwordHash: hashPassword(newPassword), mustChangePassword: true } : u
@@ -257,6 +271,9 @@ export const useAuthStore = create<AuthState>()(
             },
 
             completeOnboarding: (userId, profile, newPassword) => {
+                if (newPassword && PASSWORD_WHITESPACE_RE.test(newPassword)) {
+                    return;
+                }
                 const { accounts, currentUser } = get();
                 const patch: Partial<DemoUser> = {
                     ...profile,

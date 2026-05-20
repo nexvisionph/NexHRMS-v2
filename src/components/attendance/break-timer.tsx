@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useLocationStore } from "@/store/location.store";
+import * as locationService from "@/services/location-actions.service";
 import { useProjectsStore } from "@/store/projects.store";
 import { isWithinGeofence } from "@/lib/geofence";
 import { notifyGeofenceViolation } from "@/lib/notifications";
@@ -20,7 +21,7 @@ interface BreakTimerProps {
 
 export function BreakTimer({ employeeId, employeeName, employeeEmail, disabled }: BreakTimerProps) {
     const config = useLocationStore((s) => s.config);
-    const { startBreak, endBreak, getActiveBreak, getBreaksToday } = useLocationStore();
+    const { getActiveBreak, getBreaksToday } = useLocationStore();
     const getProjectForEmployee = useProjectsStore((s) => s.getProjectForEmployee);
 
     const activeBreak = getActiveBreak(employeeId);
@@ -61,7 +62,7 @@ export function BreakTimer({ employeeId, employeeName, employeeEmail, disabled }
         if ("geolocation" in navigator) {
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
-                    startBreak({
+                    locationService.startBreak({
                         employeeId,
                         breakType: "lunch",
                         lat: pos.coords.latitude,
@@ -70,16 +71,16 @@ export function BreakTimer({ employeeId, employeeName, employeeEmail, disabled }
                     toast.success("Lunch break started");
                 },
                 () => {
-                    startBreak({ employeeId, breakType: "lunch" });
+                    locationService.startBreak({ employeeId, breakType: "lunch" });
                     toast.success("Lunch break started (no GPS)");
                 },
                 { enableHighAccuracy: true, timeout: 10000 }
             );
         } else {
-            startBreak({ employeeId, breakType: "lunch" });
+            locationService.startBreak({ employeeId, breakType: "lunch" });
             toast.success("Lunch break started");
         }
-    }, [canStartBreak, config.allowedBreaksPerDay, employeeId, startBreak]);
+    }, [canStartBreak, config.allowedBreaksPerDay, employeeId]);
 
     const handleEnd = useCallback(() => {
         if (!activeBreak) return;
@@ -112,7 +113,7 @@ export function BreakTimer({ employeeId, employeeName, employeeEmail, disabled }
                 }
             }
 
-            endBreak(activeBreak.id, { lat, lng, geofencePass, distanceFromSite });
+            locationService.endBreak(activeBreak.id, { lat, lng, geofencePass, distanceFromSite });
             setEnding(false);
             toast.success("Lunch break ended");
         };
@@ -126,7 +127,7 @@ export function BreakTimer({ employeeId, employeeName, employeeEmail, disabled }
         } else {
             finalize();
         }
-    }, [activeBreak, employeeId, employeeName, employeeEmail, config, endBreak, getProjectForEmployee]);
+    }, [activeBreak, employeeId, employeeName, employeeEmail, config, getProjectForEmployee]);
 
     return (
         <Card className="border border-border/50">

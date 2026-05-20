@@ -1,10 +1,9 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
-import type { NotificationLog, NotificationType, NotificationChannel, NotificationRule, NotificationTrigger } from "@/types";
+import type { NotificationLog, NotificationType, NotificationRule, NotificationTrigger } from "@/types";
 import { useEmployeesStore } from "@/store/employees.store";
+import { notificationsDb } from "@/services/db.service";
 
 // ─── Default Rules ────────────────────────────────────────────
 
@@ -90,6 +89,8 @@ interface NotificationsState {
 
     // Dispatch (simulated send)
     dispatch: (trigger: NotificationTrigger, vars: Record<string, string>, recipientEmployeeId: string, recipientEmail?: string, recipientPhone?: string, link?: string) => void;
+    /** Batch dispatch — single setState for all entries, push in parallel */
+    batchDispatch: (entries: Array<{ trigger: NotificationTrigger; vars: Record<string, string>; recipientEmployeeId: string; recipientEmail?: string; recipientPhone?: string; link?: string }>) => void;
 
     resetToSeed: () => void;
 }
@@ -180,8 +181,7 @@ function getDefaultLinkForTrigger(trigger: NotificationTrigger): string {
 }
 
 export const useNotificationsStore = create<NotificationsState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             logs: [],
             rules: [...DEFAULT_RULES],
             providerConfig: { ...DEFAULT_PROVIDER },
@@ -421,6 +421,23 @@ export const useNotificationsStore = create<NotificationsState>()(
                     ].slice(0, 500),
                 }));
 
+                // Write to DB (fire-and-forget)
+                notificationsDb.insertLog({
+                    id: notificationId,
+                    employeeId: recipientEmployeeId,
+                    type: trigger,
+                    channel: channel as NotificationLog["channel"],
+                    subject,
+                    body: logBody,
+                    sentAt: new Date().toISOString(),
+                    status: "simulated" as const,
+                    recipientEmail: channel === "email" || channel === "both" ? recipientEmail : undefined,
+                    recipientPhone: channel === "sms" || channel === "both" ? recipientPhone : undefined,
+                    link: autoLink,
+                } as NotificationLog).catch((err) => {
+                    console.warn("[notifications] DB write failed:", err);
+                });
+
                 // ─── Fire real push notification (fire-and-forget) ───
                 // Only send push if the employee has push enabled in their prefs.
                 const recipientPrefs = { ...DEFAULT_EMPLOYEE_PREFS, ...state.employeePrefs[recipientEmployeeId] };
@@ -449,6 +466,87 @@ export const useNotificationsStore = create<NotificationsState>()(
                 }
             },
 
+            // ─── Batch Dispatch ─────────────────────────────
+            batchDispatch: (entries) => {
+                const state = get();
+                const newLogs: NotificationLog[] = [];
+                const pushPayloads: Array<{ employeeId: string; title: string; body: string; url: string; tag: string }> = [];
+
+                for (const entry of entries) {
+                    const rule = state.rules.find((r) => r.trigger === entry.trigger);
+                    if (!rule || !rule.enabled) continue;
+
+                    // Per-employee opt-out check
+                    const prefKey = prefKeyForTrigger(entry.trigger);
+                    if (prefKey !== null) {
+                        const prefs = { ...DEFAULT_EMPLOYEE_PREFS, ...state.employeePrefs[entry.recipientEmployeeId] };
+                        if (!prefs[prefKey]) continue;
+                    }
+
+                    const subject = renderTemplate(rule.subjectTemplate, entry.vars);
+                    const body = renderTemplate(rule.bodyTemplate, entry.vars);
+                    const channel = rule.channel;
+                    const autoLink = entry.link || getDefaultLinkForTrigger(entry.trigger);
+                    const notificationId = `NOTIF-${nanoid(8)}`;
+
+                    const logBody =
+                        (channel === "sms" || channel === "both") && rule.smsTemplate
+                            ? renderTemplate(rule.smsTemplate, entry.vars)
+                            : body;
+
+                    if (isLegacyIosAltitudeFalsePositiveNotification({ type: entry.trigger, body: logBody })) continue;
+
+                    newLogs.push({
+                        id: notificationId,
+                        employeeId: entry.recipientEmployeeId,
+                        type: entry.trigger,
+                        channel: channel as NotificationLog["channel"],
+                        subject,
+                        body: logBody,
+                        sentAt: new Date().toISOString(),
+                        status: "simulated" as const,
+                        recipientEmail: channel === "email" || channel === "both" ? entry.recipientEmail : undefined,
+                        recipientPhone: channel === "sms" || channel === "both" ? entry.recipientPhone : undefined,
+                        link: autoLink,
+                    });
+
+                    // Collect push payloads
+                    const recipientPrefs = { ...DEFAULT_EMPLOYEE_PREFS, ...state.employeePrefs[entry.recipientEmployeeId] };
+                    if (recipientPrefs.pushEnabled) {
+                        let pushUrl = autoLink;
+                        try {
+                            const emp = useEmployeesStore.getState().employees.find((e) => e.id === entry.recipientEmployeeId);
+                            if (emp?.role) pushUrl = `/${emp.role}${autoLink}`;
+                        } catch { /* best-effort */ }
+                        pushPayloads.push({ employeeId: entry.recipientEmployeeId, title: subject, body, url: pushUrl, tag: notificationId });
+                    }
+                }
+
+                // Single setState for all logs
+                if (newLogs.length > 0) {
+                    set((s) => ({
+                        logs: [...newLogs, ...s.logs].slice(0, 500),
+                    }));
+                    // Write to DB (fire-and-forget)
+                    notificationsDb.batchInsertLogs(newLogs).catch((err) => {
+                        console.warn("[notifications] batch DB write failed:", err);
+                    });
+                }
+
+                // Fire push notifications in parallel (fire-and-forget)
+                if (pushPayloads.length > 0) {
+                    Promise.all(
+                        pushPayloads.map((p) =>
+                            fetch("/api/push/send", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(p),
+                            }).catch(() => { /* push is best-effort */ })
+                        )
+                    ).catch(() => { /* best-effort */ });
+                }
+            },
+
             resetToSeed: () => {
                 set({ logs: [], rules: [...DEFAULT_RULES], providerConfig: { ...DEFAULT_PROVIDER }, employeePrefs: {} });
                 // Sync defaults back to DB
@@ -463,21 +561,5 @@ export const useNotificationsStore = create<NotificationsState>()(
                     body: JSON.stringify({ providerConfig: DEFAULT_PROVIDER }),
                 }).catch(() => {});
             },
-        }),
-        {
-            name: "soren-notifications",
-            version: 6,
-            storage: safePersistStorage,
-            migrate: (persisted: unknown) => {
-                // Carry over rules and logs from previous versions; reset everything else.
-                const p = persisted as Partial<NotificationsState> | null;
-                return {
-                    logs: (p?.logs ?? []).filter((l) => !isLegacyIosAltitudeFalsePositiveNotification({ type: l.type, body: l.body })),
-                    rules: p?.rules ?? [...DEFAULT_RULES],
-                    providerConfig: p?.providerConfig ?? { ...DEFAULT_PROVIDER },
-                    employeePrefs: (p as Record<string, unknown>)?.employeePrefs as Record<string, EmployeeNotifPrefs> ?? {},
-                };
-            },
-        }
-    )
+        })
 );

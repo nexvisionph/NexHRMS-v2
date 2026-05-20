@@ -14,7 +14,6 @@ import type { LeaveType } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -22,8 +21,8 @@ import {
 } from "@/components/ui/dialog";
 import {
     LogIn, LogOut, Clock, CalendarDays, CalendarOff, Banknote,
-    FileText, Plus, ChevronRight, Calendar, Cake, TrendingUp,
-    ArrowRight, Briefcase, Timer, AlertCircle, PauseCircle,
+    FileText, Plus, ChevronRight, Calendar, Cake,
+    ArrowRight, AlertCircle, PauseCircle,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { parseISO, isAfter, startOfDay, isToday, format } from "date-fns";
@@ -44,7 +43,6 @@ function formatTimeAmPm(time: string | null | undefined): string {
 
 export function EmployeeDashboard() {
     const currentUser = useAuthStore((s) => s.currentUser);
-    const rh = useRoleHref();
 
     return (
         <div className="space-y-6">
@@ -207,7 +205,6 @@ function QuickStatCards() {
     const currentUser = useAuthStore((s) => s.currentUser);
     const employees = useEmployeesStore((s) => s.employees);
     const leaveRequests = useLeaveStore((s) => s.requests);
-    const payslips = usePayrollStore((s) => s.payslips);
     const rh = useRoleHref();
 
     const empRecord = useMemo(
@@ -224,13 +221,6 @@ function QuickStatCards() {
         () => empRecord ? leaveRequests.filter((r) => r.employeeId === empRecord.id && r.status === "approved" && new Date(r.startDate).getFullYear() === new Date().getFullYear()).length : 0,
         [leaveRequests, empRecord]
     );
-
-    const latestPayslip = useMemo(() => {
-        if (!empRecord) return null;
-        return payslips
-            .filter((p) => p.employeeId === empRecord.id && ["draft", "published", "signed"].includes(p.status))
-            .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))[0] || null;
-    }, [payslips, empRecord]);
 
     const stats = [
         {

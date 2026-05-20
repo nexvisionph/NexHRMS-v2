@@ -115,7 +115,7 @@ export async function updatePayrollRun(id: string, patch: Partial<PayrollRun>): 
   return { ok: true, data: keysToCamel(data as Record<string, unknown>) as unknown as PayrollRun };
 }
 
-export async function lockPayrollRun(id: string, _lockedBy: string): Promise<ServiceResult<PayrollRun>> {
+export async function lockPayrollRun(id: string): Promise<ServiceResult<PayrollRun>> {
   return updatePayrollRun(id, { status: "locked", locked: true, lockedAt: new Date().toISOString() });
 }
 

@@ -131,10 +131,10 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-        async function parseIncomingBody(req: NextRequest): Promise<any> {
+        async function parseIncomingBody(req: NextRequest): Promise<Record<string, unknown>> {
             // Try JSON first
             try {
-                return await req.json();
+                return await req.json() as Record<string, unknown>;
             } catch (e) {
                 // Not JSON — try plain text
                 try {
@@ -191,17 +191,25 @@ export async function POST(request: NextRequest) {
         const { date: scanDay, time: timeStr } = getManilaParts(scanDate);
         const supabase = await createAdminSupabaseClient();
 
-        // Allow authenticated web users to post their own check-in using x-user-id header
+        // Allow authenticated web users to post their own check-in using validated session
         const headerUserId = request.headers.get("x-user-id");
         let employeeId: string | null = null;
         if (headerUserId) {
-            const { data: empByProfile, error: profErr } = await supabase
-                .from("employees")
-                .select("id, name, biometric_id, status")
-                .eq("profile_id", headerUserId)
-                .single();
-            if (!profErr && empByProfile && empByProfile.status === "active") {
-                employeeId = empByProfile.id as string;
+            // Validate the x-user-id against the actual authenticated session
+            const { createServerSupabaseClient: createSessionClient } = await import("@/services/supabase-server");
+            const sessionSupabase = await createSessionClient();
+            const { data: { user: sessionUser } } = await sessionSupabase.auth.getUser();
+            
+            // Only trust x-user-id if it matches the authenticated session user
+            if (sessionUser && sessionUser.id === headerUserId) {
+                const { data: empByProfile, error: profErr } = await supabase
+                    .from("employees")
+                    .select("id, name, biometric_id, status")
+                    .eq("profile_id", headerUserId)
+                    .single();
+                if (!profErr && empByProfile && empByProfile.status === "active") {
+                    employeeId = empByProfile.id as string;
+                }
             }
         }
 

@@ -29,7 +29,7 @@ function calculateHours(checkIn: string, checkOut: string) {
   const diffSeconds = outTotal >= inTotal
     ? outTotal - inTotal
     : 24 * 3600 - inTotal + outTotal;
-  if (diffSeconds > 0 && diffSeconds < 60) return 0.01;
+  if (diffSeconds <= 0) return 0;
   return Math.round((diffSeconds / 3600) * 100) / 100;
 }
 
@@ -91,6 +91,7 @@ export async function POST(req: Request) {
           employee_id: emp.id,
           date: scanDay,
           check_in: timeStr,
+          check_in_method: "self_checkin",
           status: "present",
           updated_at: nowISO,
         },

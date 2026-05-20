@@ -36,11 +36,17 @@ function ForcePasswordChangeModal() {
 
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
+    const [newPasswordHasWhitespace, setNewPasswordHasWhitespace] = useState(false);
+    const [confirmPasswordHasWhitespace, setConfirmPasswordHasWhitespace] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
 
     const isOpen = currentUser?.mustChangePassword === true;
-    const isValid = newPassword.length >= 8 && newPassword === confirmPassword;
+    const isValid =
+        newPassword.length >= 8 &&
+        newPassword === confirmPassword &&
+        !newPasswordHasWhitespace &&
+        !confirmPasswordHasWhitespace;
 
     const handleSubmit = async () => {
         if (!isValid) return;
@@ -75,6 +81,8 @@ function ForcePasswordChangeModal() {
             }
             setNewPassword("");
             setConfirmPassword("");
+            setNewPasswordHasWhitespace(false);
+            setConfirmPasswordHasWhitespace(false);
         } catch {
             toast.error("Failed to change password. Please try again.");
         }
@@ -103,7 +111,12 @@ function ForcePasswordChangeModal() {
                                 id="new-password"
                                 type={showPassword ? "text" : "password"}
                                 value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
+                                onChange={(e) => {
+                                    const raw = e.target.value;
+                                    const sanitized = raw.replace(/\s/g, "");
+                                    setNewPassword(sanitized);
+                                    setNewPasswordHasWhitespace(raw !== sanitized);
+                                }}
                                 placeholder="Min. 8 characters"
                                 autoFocus
                             />
@@ -120,6 +133,9 @@ function ForcePasswordChangeModal() {
                         {newPassword && newPassword.length < 8 && (
                             <p className="text-xs text-destructive">Password must be at least 8 characters</p>
                         )}
+                        {newPasswordHasWhitespace && (
+                            <p className="text-xs text-destructive">Spaces are not allowed</p>
+                        )}
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="confirm-password">Confirm Password</Label>
@@ -127,11 +143,19 @@ function ForcePasswordChangeModal() {
                             id="confirm-password"
                             type={showPassword ? "text" : "password"}
                             value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            onChange={(e) => {
+                                const raw = e.target.value;
+                                const sanitized = raw.replace(/\s/g, "");
+                                setConfirmPassword(sanitized);
+                                setConfirmPasswordHasWhitespace(raw !== sanitized);
+                            }}
                             placeholder="Re-enter password"
                         />
                         {confirmPassword && newPassword !== confirmPassword && (
                             <p className="text-xs text-destructive">Passwords do not match</p>
+                        )}
+                        {confirmPasswordHasWhitespace && (
+                            <p className="text-xs text-destructive">Spaces are not allowed</p>
                         )}
                     </div>
                 </div>

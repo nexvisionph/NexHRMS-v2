@@ -1,6 +1,6 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { getSupabaseUrl, getSupabaseAnonKey } from "@/lib/env";
-import type { AuthChangeEvent, Session, AuthError, SupabaseClient } from "@supabase/supabase-js";
+import type { AuthChangeEvent, Session, SupabaseClient } from "@supabase/supabase-js";
 
 let _client: ReturnType<typeof createBrowserClient> | null = null;
 let _initPromise: Promise<void> | null = null;

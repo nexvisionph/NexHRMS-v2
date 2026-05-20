@@ -869,7 +869,7 @@ function RecentActivityCard() {
         return items
             .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""))
             .slice(0, 10);
-    }, [auditLogs, leaveRequests, attendanceLogs, payslips, loans, employees]);
+    }, [auditLogs, leaveRequests, attendanceLogs, payslips, loans, employees, getEmpName]);
 
     return (
         <Card className="border border-border/50">

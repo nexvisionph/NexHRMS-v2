@@ -20,7 +20,7 @@ const LISTEN_PORT = process.env.PORT
   ? Number(process.env.PORT)
   : process.env.FK_BRIDGE_PORT
   ? Number(process.env.FK_BRIDGE_PORT)
-  : 5006;
+  : 8080;
 const TARGET = process.env.T800_BRIDGE_TARGET_URL || process.env.HRMS_URL || 'http://localhost:3000/api/attendance/t800';
 const KIOSK_API_KEY = process.env.KIOSK_API_KEY || '';
 const LOG_FILE = process.env.FK_BRIDGE_LOG_FILE || path.resolve(process.cwd(), 'scripts', 'fk-bridge.log');

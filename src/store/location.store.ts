@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type {
     SiteSurveyPhoto,
@@ -73,8 +71,7 @@ interface LocationState {
 }
 
 export const useLocationStore = create<LocationState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             config: { ...DEFAULT_CONFIG },
             photos: [],
             breaks: [],
@@ -100,30 +97,18 @@ export const useLocationStore = create<LocationState>()(
 
             updateConfig: (patch) => {
                 set((s) => ({ config: { ...s.config, ...patch } }));
-                // Fire-and-forget DB sync
-                fetch("/api/settings/location", {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(patch),
-                }).catch(() => {});
             },
 
             resetConfig: () => {
                 set({ config: { ...DEFAULT_CONFIG } });
-                // Sync defaults to DB
-                fetch("/api/settings/location", {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(DEFAULT_CONFIG),
-                }).catch(() => {});
             },
 
             // ─── Photos ────────────────────────────────
             addPhoto: (data) => {
                 const id = `PHOTO-${nanoid(8)}`;
+                const photo = { ...data, id };
                 set((s) => {
-                    const photos = [{ ...data, id }, ...s.photos];
-                    // Auto-purge oldest if over limit
+                    const photos = [photo, ...s.photos];
                     return { photos: photos.slice(0, MAX_PHOTOS) };
                 });
                 return id;
@@ -141,24 +126,20 @@ export const useLocationStore = create<LocationState>()(
             startBreak: (data) => {
                 const id = `BRK-${nanoid(8)}`;
                 const now = new Date();
-                set((s) => ({
-                    breaks: [
-                        ...s.breaks,
-                        {
-                            id,
-                            employeeId: data.employeeId,
-                            date: now.toISOString().split("T")[0],
-                            breakType: data.breakType,
-                            startTime: now.toISOString(),
-                            startLat: data.lat,
-                            startLng: data.lng,
-                        },
-                    ],
-                }));
+                const br = {
+                    id,
+                    employeeId: data.employeeId,
+                    date: now.toISOString().split("T")[0],
+                    breakType: data.breakType,
+                    startTime: now.toISOString(),
+                    startLat: data.lat,
+                    startLng: data.lng,
+                };
+                set((s) => ({ breaks: [...s.breaks, br] }));
                 return id;
             },
 
-            endBreak: (breakId, data) =>
+            endBreak: (breakId, data) => {
                 set((s) => ({
                     breaks: s.breaks.map((b) => {
                         if (b.id !== breakId || b.endTime) return b;
@@ -179,7 +160,8 @@ export const useLocationStore = create<LocationState>()(
                             overtime,
                         };
                     }),
-                })),
+                }));
+            },
 
             getActiveBreak: (employeeId) =>
                 get().breaks.find((b) => b.employeeId === employeeId && !b.endTime),
@@ -195,10 +177,10 @@ export const useLocationStore = create<LocationState>()(
             },
 
             // ─── Location pings ────────────────────────
-            addPing: (data) =>
-                set((s) => ({
-                    pings: [...s.pings, { ...data, id: `PING-${nanoid(8)}` }],
-                })),
+            addPing: (data) => {
+                const ping = { ...data, id: `PING-${nanoid(8)}` };
+                set((s) => ({ pings: [...s.pings, ping] }));
+            },
 
             getPings: (employeeId, date) => {
                 const all = get().pings.filter((p) => p.employeeId === employeeId);
@@ -221,14 +203,6 @@ export const useLocationStore = create<LocationState>()(
                     breaks: [],
                     pings: [],
                 });
-                // Sync defaults to DB
-                fetch("/api/settings/location", {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(DEFAULT_CONFIG),
-                }).catch(() => {});
             },
-        }),
-        { name: "soren-location", version: 1, storage: safePersistStorage }
-    )
+        })
 );

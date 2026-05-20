@@ -344,8 +344,8 @@ export default function QRKioskPage() {
         setQrCameraMessage("Camera unavailable");
         setQrScanning(true);
         try {
-            if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-                throw new Error("Camera requires HTTPS or localhost. Open this kiosk on the computer using http://localhost:3000/kiosk/qr.");
+            if (!canUseCamera(window)) {
+                throw new Error(cameraHttpsHint("/kiosk/qr"));
             }
             if (!navigator.mediaDevices?.getUserMedia) {
                 throw new Error("Camera is not supported by this browser.");

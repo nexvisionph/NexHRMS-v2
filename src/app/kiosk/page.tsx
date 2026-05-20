@@ -83,10 +83,22 @@ export default function KioskLandingPage() {
                     const data = await res.json() as { valid?: boolean };
                     pinValid = data.valid === true;
                 } else {
-                    pinValid = pin === (settings.adminPin || "000000");
+                    // Server validation failed — never fall back to client-side comparison
+                    setError("Unable to verify PIN. Please try again.");
+                    setShowError(true);
+                    setPin("");
+                    toast.error("PIN verification failed");
+                    setIsLoading(false);
+                    return;
                 }
             } catch {
-                pinValid = pin === (settings.adminPin || "000000");
+                // Network failure — deny access (do not trust client store)
+                setError("Connection error. Please try again.");
+                setShowError(true);
+                setPin("");
+                toast.error("Connection error");
+                setIsLoading(false);
+                return;
             }
 
             if (!pinValid) {
@@ -163,6 +175,7 @@ export default function KioskLandingPage() {
             <header className="relative z-10 w-full grid grid-cols-3 items-center px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
                 <div className="flex items-center gap-3">
                     {settings.showLogo && logoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img 
                             src={logoUrl} 
                             alt={companyName} 

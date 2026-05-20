@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { SignaturePad } from "@/components/ui/signature-pad";
 import { FileText, PenTool, CheckCircle, Image as ImageIcon } from "lucide-react";
+import { useAppearanceStore } from "@/store/appearance.store";
 
 const paymentMethodLabels: Record<string, string> = {
     bank_transfer: "Bank Transfer",
@@ -31,15 +32,19 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 interface PayslipDetailProps {
     payslip: Payslip;
     employeeName: string;
+    department?: string;
+    jobTitle?: string;
     onSign?: (signatureDataUrl: string) => void;
     onAcknowledge?: () => void;
     open: boolean;
     onClose: () => void;
 }
 
-export function PayslipDetail({ payslip, employeeName, onSign, onAcknowledge, open, onClose }: PayslipDetailProps) {
+export function PayslipDetail({ payslip, employeeName, department, jobTitle, onSign, onAcknowledge, open, onClose }: PayslipDetailProps) {
     const [showSignature, setShowSignature] = useState(false);
     const sc = statusConfig[payslip.status] ?? { label: payslip.status, color: "bg-muted text-muted-foreground" };
+    const logoUrl = useAppearanceStore((s) => s.logoUrl);
+    const companyName = useAppearanceStore((s) => s.companyName);
 
     const handleSign = (dataUrl: string) => {
         onSign?.(dataUrl);
@@ -65,12 +70,29 @@ export function PayslipDetail({ payslip, employeeName, onSign, onAcknowledge, op
                 </DialogHeader>
 
                 <div className="space-y-4">
+                    {/* Company branding */}
+                    <div className="flex flex-col items-center gap-1 pb-3 border-b">
+                        {logoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={logoUrl} alt={companyName} className="max-h-14 max-w-44 object-contain" />
+                        ) : (
+                            <p className="font-bold text-sm text-center">{companyName}</p>
+                        )}
+                        {!logoUrl && <p className="text-xs text-muted-foreground">{companyName}</p>}
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Payslip — Confidential</p>
+                    </div>
+
                     {/* Header */}
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm font-semibold">{employeeName}</p>
+                            {(department || jobTitle) && (
+                                <p className="text-xs text-muted-foreground">
+                                    {[jobTitle, department].filter(Boolean).join(" · ")}
+                                </p>
+                            )}
                             <p className="text-xs text-muted-foreground">
-                                {payslip.periodStart} \u2013 {payslip.periodEnd}
+                                {payslip.periodStart} &ndash; {payslip.periodEnd}
                             </p>
                         </div>
                         <Badge variant="secondary" className={sc.color}>{sc.label}</Badge>
@@ -102,11 +124,11 @@ export function PayslipDetail({ payslip, employeeName, onSign, onAcknowledge, op
                     </div>
 
                     {/* Attendance Summary */}
-                    {(payslip.attendanceDaysPresent !== undefined || payslip.attendanceDaysAbsent !== undefined || payslip.attendanceLateMinutes !== undefined) && (
+                    {(payslip.attendanceDaysPresent !== undefined || payslip.attendanceDaysAbsent !== undefined || payslip.attendanceLateMinutes !== undefined || payslip.dailyRate) && (
                         <div className="bg-muted/30 rounded-lg p-3 space-y-1.5">
                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Attendance Summary</p>
                             {payslip.attendanceDaysPresent !== undefined && (
-                                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Days Present</span><span className="font-medium">{payslip.attendanceDaysPresent}</span></div>
+                                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Days Present</span><span className="font-medium text-emerald-600">{payslip.attendanceDaysPresent}</span></div>
                             )}
                             {!!(payslip.attendanceDaysAbsent) && (
                                 <div className="flex justify-between text-xs"><span className="text-muted-foreground">Days Absent</span><span className="font-medium text-red-600">{payslip.attendanceDaysAbsent}</span></div>
@@ -117,12 +139,24 @@ export function PayslipDetail({ payslip, employeeName, onSign, onAcknowledge, op
                             {!!(payslip.attendanceUndertimeHours) && (
                                 <div className="flex justify-between text-xs"><span className="text-muted-foreground">Undertime</span><span className="font-medium text-amber-600">{payslip.attendanceUndertimeHours.toFixed(1)} hrs</span></div>
                             )}
-                            {payslip.dailyRate ? (
-                                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Daily Rate</span><span className="text-muted-foreground">{formatCurrency(payslip.dailyRate)}</span></div>
-                            ) : null}
-                            {payslip.hourlyRate ? (
-                                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Hourly Rate</span><span className="text-muted-foreground">{formatCurrency(payslip.hourlyRate)}</span></div>
-                            ) : null}
+                            {(payslip.dailyRate || payslip.hourlyRate) && (
+                                <>
+                                    <Separator className="my-1" />
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Rate Computation</p>
+                                    {payslip.dailyRate ? (
+                                        <div className="flex justify-between text-xs"><span className="text-muted-foreground">Daily Rate</span><span className="font-medium">{formatCurrency(payslip.dailyRate)}</span></div>
+                                    ) : null}
+                                    {payslip.hourlyRate ? (
+                                        <div className="flex justify-between text-xs"><span className="text-muted-foreground">Hourly Rate</span><span className="font-medium">{formatCurrency(payslip.hourlyRate)}</span></div>
+                                    ) : null}
+                                    {payslip.dailyRate && payslip.attendanceDaysPresent !== undefined ? (
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-muted-foreground">Computed Basic</span>
+                                            <span className="font-medium">{formatCurrency(payslip.dailyRate)} × {payslip.attendanceDaysPresent} days</span>
+                                        </div>
+                                    ) : null}
+                                </>
+                            )}
                         </div>
                     )}
 
@@ -225,7 +259,7 @@ export function PayslipDetail({ payslip, employeeName, onSign, onAcknowledge, op
                             <CardContent className="p-6 space-y-4">
                                 <p className="text-sm font-semibold">Sign Your Payslip</p>
                                 <p className="text-xs text-muted-foreground">
-                                    By signing, you acknowledge receipt of payslip for {payslip.periodStart} \u2013 {payslip.periodEnd} with net pay {formatCurrency(payslip.netPay)}.
+                                    By signing, you acknowledge receipt of payslip for {payslip.periodStart} &ndash; {payslip.periodEnd} with net pay {formatCurrency(payslip.netPay)}.
                                 </p>
                                 <SignaturePad
                                     onSave={handleSign}

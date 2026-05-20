@@ -80,11 +80,6 @@ function ZeroNetPayFixModal({
 }: FixModalProps) {
     const [selected, setSelected] = useState<Set<string>>(new Set());
 
-    // Reset selection when modal opens or payslip list changes
-    useEffect(() => {
-        if (open) setSelected(new Set());
-    }, [open]);
-
     const allSelected = badPayslips.length > 0 && selected.size === badPayslips.length;
     const someSelected = selected.size > 0 && !allSelected;
 
@@ -124,7 +119,12 @@ function ZeroNetPayFixModal({
     };
 
     return (
-        <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+        <Dialog open={open} onOpenChange={(v) => {
+            if (!v) {
+                setSelected(new Set());
+                onClose();
+            }
+        }}>
             <DialogContent className="max-w-lg">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
@@ -379,7 +379,7 @@ export function PayrollReadinessChecklist({
         };
 
         return [check1, check2, check3, check5, check6];
-    }, [exceptions, runPayslips, adjustments, getPendingLeaves, periodStart, periodEnd]);
+    }, [exceptions, runPayslips, adjustments, getPendingLeaves, periodStart, periodEnd, getEmpName, role]);
 
     const blockingFailed = checks.filter((c) => c.blocking && !c.passed);
     const warningsFailed = checks.filter((c) => !c.blocking && !c.passed);

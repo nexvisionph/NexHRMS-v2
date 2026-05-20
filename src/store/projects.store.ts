@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { Project } from "@/types";
 import { SEED_PROJECTS } from "@/data/seed";
@@ -18,63 +16,51 @@ interface ProjectsState {
 }
 
 export const useProjectsStore = create<ProjectsState>()(
-    persist(
-        (set, get) => ({
-            projects: SEED_PROJECTS,
-            addProject: (data) =>
-                set((s) => ({
-                    projects: [
-                        ...s.projects,
-                        {
-                            ...data,
-                            id: `PRJ-${nanoid(8)}`,
-                            createdAt: new Date().toISOString(),
-                            // Generate a per-project QR secret so the DB NOT NULL constraint is satisfied.
-                            // The secret is regenerated fresh for each project and never exposed to clients.
-                            qrSecret: nanoid(32),
-                            qrEnabled: data.qrEnabled ?? true,
-                        },
-                    ],
-                })),
-            updateProject: (id, data) =>
-                set((s) => ({
-                    projects: s.projects.map((p) => (p.id === id ? { ...p, ...data } : p)),
-                })),
-            deleteProject: (id) =>
-                set((s) => ({
-                    projects: s.projects.filter((p) => p.id !== id),
-                })),
-            assignEmployee: (projectId, employeeId) =>
-                set((s) => ({
-                    // Remove the employee from any other project first (1 project per employee)
-                    projects: s.projects.map((p) => {
-                        if (p.id === projectId) {
-                            return p.assignedEmployeeIds.includes(employeeId)
-                                ? p
-                                : { ...p, assignedEmployeeIds: [...p.assignedEmployeeIds, employeeId] };
-                        }
-                        // Strip from every other project
-                        return { ...p, assignedEmployeeIds: p.assignedEmployeeIds.filter((id) => id !== employeeId) };
-                    }),
-                })),
-            removeEmployee: (projectId, employeeId) =>
-                set((s) => ({
-                    projects: s.projects.map((p) =>
-                        p.id === projectId
-                            ? { ...p, assignedEmployeeIds: p.assignedEmployeeIds.filter((id) => id !== employeeId) }
-                            : p
-                    ),
-                })),
-            getProjectForEmployee: (employeeId) => {
-                return get().projects.find((p) => p.assignedEmployeeIds.includes(employeeId));
-            },
-            resetToSeed: () => set({ projects: SEED_PROJECTS }),
-        }),
-        {
-            name: "soren-projects",
-            version: 3,
-            storage: safePersistStorage,
-            migrate: () => ({ projects: SEED_PROJECTS }),
-        }
-    )
+    (set, get) => ({
+        projects: SEED_PROJECTS,
+        addProject: (data) => {
+            const newProject: Project = {
+                ...data,
+                id: `PRJ-${nanoid(8)}`,
+                createdAt: new Date().toISOString(),
+                qrSecret: nanoid(32),
+                qrEnabled: data.qrEnabled ?? true,
+            };
+            set((s) => ({ projects: [...s.projects, newProject] }));
+        },
+        updateProject: (id, data) => {
+            set((s) => ({
+                projects: s.projects.map((p) => (p.id === id ? { ...p, ...data } : p)),
+            }));
+        },
+        deleteProject: (id) => {
+            set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }));
+        },
+        assignEmployee: (projectId, employeeId) => {
+            set((s) => ({
+                // Remove the employee from any other project first (1 project per employee)
+                projects: s.projects.map((p) => {
+                    if (p.id === projectId) {
+                        return p.assignedEmployeeIds.includes(employeeId)
+                            ? p
+                            : { ...p, assignedEmployeeIds: [...p.assignedEmployeeIds, employeeId] };
+                    }
+                    return { ...p, assignedEmployeeIds: p.assignedEmployeeIds.filter((id) => id !== employeeId) };
+                }),
+            }));
+        },
+        removeEmployee: (projectId, employeeId) => {
+            set((s) => ({
+                projects: s.projects.map((p) =>
+                    p.id === projectId
+                        ? { ...p, assignedEmployeeIds: p.assignedEmployeeIds.filter((id) => id !== employeeId) }
+                        : p
+                ),
+            }));
+        },
+        getProjectForEmployee: (employeeId) => {
+            return get().projects.find((p) => p.assignedEmployeeIds.includes(employeeId));
+        },
+        resetToSeed: () => set({ projects: SEED_PROJECTS }),
+    })
 );

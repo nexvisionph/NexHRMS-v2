@@ -28,15 +28,26 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    // Auth: accept kiosk API key OR x-user-id header (authenticated employee page).
-    // Kiosk devices send x-kiosk-api-key; logged-in employees send x-user-id.
+    // Auth: accept kiosk API key OR validated session user.
+    // Kiosk devices send x-kiosk-api-key; logged-in employees are validated via Supabase session.
     const auth = validateKioskAuth(request.headers);
-    const hasUserId = !!request.headers.get("x-user-id");
-    if (!auth.ok && !hasUserId) {
-        console.warn(`[face-api-route] Auth REJECTED for action=${action}: no kiosk key, no user-id`);
-        return NextResponse.json({ ok: false, error: "Authentication required" }, { status: 401 });
+    let validatedUserId: string | null = null;
+    if (!auth.ok) {
+        // Validate session instead of trusting x-user-id header
+        const { createServerSupabaseClient } = await import("@/services/supabase-server");
+        const supabase = await createServerSupabaseClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            console.warn(`[face-api-route] Auth REJECTED for action=${action}: no kiosk key, no valid session`);
+            return NextResponse.json({ ok: false, error: "Authentication required" }, { status: 401 });
+        }
+        validatedUserId = user.id;
     }
-    console.log(`[face-api-route] Auth OK for action=${action} (kiosk=${auth.ok}, userId=${request.headers.get("x-user-id") ?? "none"})`);
+    // Override x-user-id with validated session user to prevent spoofing
+    if (validatedUserId) {
+        request.headers.set("x-user-id", validatedUserId);
+    }
+    console.log(`[face-api-route] Auth OK for action=${action} (kiosk=${auth.ok}, userId=${validatedUserId ?? request.headers.get("x-user-id") ?? "none"})`);
 
     try {
         const body = await request.json();
@@ -65,12 +76,24 @@ export async function POST(request: NextRequest) {
  * GET /api/face-recognition/enroll?action=status&employeeId=xxx
  *
  * Check face enrollment status for an employee.
+ * Requires authentication (kiosk key or valid session).
  */
 export async function GET(request: NextRequest) {
     if (getT800Only()) {
         return NextResponse.json({ error: "Face-recognition API disabled in T800-only mode" }, { status: 410 });
     }
     try {
+        // Auth: require kiosk key or valid session
+        const auth = validateKioskAuth(request.headers);
+        if (!auth.ok) {
+            const { createServerSupabaseClient } = await import("@/services/supabase-server");
+            const supabase = await createServerSupabaseClient();
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+            }
+        }
+
         const employeeId = request.nextUrl.searchParams.get("employeeId");
 
         if (!employeeId) {

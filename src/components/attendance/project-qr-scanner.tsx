@@ -16,6 +16,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Camera, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import jsQR from "jsqr";
+import { canUseCamera, cameraHttpsHint } from "@/lib/camera-context";
 
 interface ProjectQrScannerProps {
   onScanned: (payload: string) => void;
@@ -137,6 +138,9 @@ export function ProjectQrScanner({ onScanned, onCancel }: ProjectQrScannerProps)
 
     async function initCamera() {
       try {
+        if (!canUseCamera(window)) {
+          throw new Error(cameraHttpsHint());
+        }
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment" },
         });
@@ -154,7 +158,9 @@ export function ProjectQrScanner({ onScanned, onCancel }: ProjectQrScannerProps)
       } catch (err) {
         if (cancelled) return;
         const msg =
-          err instanceof DOMException && err.name === "NotAllowedError"
+          err instanceof Error && err.message.includes("HTTPS")
+            ? err.message
+            : err instanceof DOMException && err.name === "NotAllowedError"
             ? "Camera permission denied. Allow camera access to scan the QR code."
             : "Could not access camera. Please ensure no other app is using it.";
         setErrorMsg(msg);

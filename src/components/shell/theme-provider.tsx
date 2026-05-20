@@ -4,7 +4,6 @@ import { useEffect, useMemo } from "react";
 import { useAuthStore } from "@/store/auth.store";
 import {
     useAppearanceStore,
-    COLOR_PRESETS,
     FONT_OPTIONS,
     RADIUS_OPTIONS,
     type ColorThemeId,

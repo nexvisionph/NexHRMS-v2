@@ -15,9 +15,6 @@ import {
   parse,
   startOfToday,
   startOfWeek,
-  startOfMonth,
-  eachWeekOfInterval,
-  isSameWeek,
   getWeek,
   startOfYear,
   endOfYear,
@@ -394,7 +391,6 @@ interface MonthViewProps {
 function MonthView({
   firstDayCurrentMonth,
   selectedDay,
-  isDesktop,
   getItemsForDay,
   getColor,
   onItemClick,
@@ -640,7 +636,7 @@ interface YearViewProps {
   onMonthClick: (month: Date) => void;
 }
 
-function YearView({ year, items, getItemsForDay, onMonthClick }: YearViewProps) {
+function YearView({ year, getItemsForDay, onMonthClick }: YearViewProps) {
   const yearNum = year.getFullYear();
 
   return (

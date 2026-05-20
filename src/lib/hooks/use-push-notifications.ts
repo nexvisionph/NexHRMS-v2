@@ -127,6 +127,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       tag: latest.id,
       data: { url: fullUrl },
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logs, permission, isSupported, isAuthenticated, employees, currentUser, currentUserRole]);
 
   /**
@@ -259,14 +260,14 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       if (swRegistrationRef.current) {
         // ServiceWorkerRegistration.showNotification has extended options
         swRegistrationRef.current.showNotification(title, {
-          icon: "/logo.png",
-          badge: "/logo.png",
+          icon: "/android-chrome-192x192.png",
+          badge: "/android-chrome-192x192.png",
           ...options,
         } as NotificationOptions);
       } else {
         // Fallback to regular Notification API
         new Notification(title, {
-          icon: "/logo.png",
+          icon: "/android-chrome-192x192.png",
           ...options,
         });
       }

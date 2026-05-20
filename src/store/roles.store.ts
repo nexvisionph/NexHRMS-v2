@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { CustomRole, Permission, WidgetConfig } from "@/types";
 
@@ -10,7 +8,6 @@ export const ALL_PERMISSIONS: Permission[] = [
     "page:dashboard", "page:employees", "page:attendance", "page:leave",
     "page:payroll", "page:loans", "page:projects", "page:reports",
     "page:kiosk", "page:notifications", "page:audit", "page:settings", "page:timesheets", "page:events",
-    "events:manage",
     "employees:view", "employees:create", "employees:edit", "employees:delete",
     "employees:view_salary", "employees:approve_salary",
     "attendance:view_all", "attendance:edit", "attendance:approve_overtime",
@@ -148,12 +145,6 @@ export const PERMISSION_GROUPS: { label: string; permissions: { key: Permission;
         ],
     },
     {
-        label: "Events",
-        permissions: [
-            { key: "events:manage", label: "Add / edit / delete events" },
-        ],
-    },
-    {
         label: "Settings",
         permissions: [
             { key: "settings:roles", label: "Manage roles" },
@@ -182,7 +173,6 @@ const HR_PERMS: Permission[] = [
     "page:tasks", "tasks:view", "tasks:create", "tasks:assign", "tasks:verify", "tasks:manage_groups",
     "page:messages", "messages:send_announcement", "messages:manage_channels", "messages:send_email",
     "payroll:view_own",
-    "events:manage",
 ];
 
 const FINANCE_PERMS: Permission[] = [
@@ -368,8 +358,7 @@ interface RolesState {
 }
 
 export const useRolesStore = create<RolesState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             roles: buildSystemRoles(),
             isLoading: false,
             hasFetchedFromDb: false,
@@ -448,8 +437,6 @@ export const useRolesStore = create<RolesState>()(
                     createdAt: new Date().toISOString(),
                 };
                 set((s) => ({ roles: [...s.roles, newRole] }));
-                // Fire-and-forget DB sync
-                get().syncRoleToDb(newRole);
                 return id;
             },
 
@@ -459,17 +446,12 @@ export const useRolesStore = create<RolesState>()(
                         r.id === id ? { ...r, ...patch } : r
                     ),
                 }));
-                // Fire-and-forget DB sync
-                const updated = get().roles.find((r) => r.id === id);
-                if (updated) get().syncRoleToDb(updated);
             },
 
             deleteRole: (id) => {
                 const role = get().roles.find((r) => r.id === id);
                 if (!role || role.isSystem) return false;
                 set((s) => ({ roles: s.roles.filter((r) => r.id !== id) }));
-                // Fire-and-forget DB delete
-                fetch(`/api/roles?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
                 return true;
             },
 
@@ -648,12 +630,5 @@ export const useRolesStore = create<RolesState>()(
                     get().syncRoleToDb(role);
                 }
             },
-        }),
-        {
-            name: "soren-roles",
-            version: 3,
-            storage: safePersistStorage,
-            migrate: () => ({ roles: buildSystemRoles(), isLoading: false, hasFetchedFromDb: false }),
-        }
-    )
+        })
 );

@@ -658,6 +658,7 @@ export default function FaceKioskPage() {
                 </div>
                 <div className="flex items-center gap-3">
                     {ks.showLogo && logoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img 
                             src={logoUrl} 
                             alt={companyName}

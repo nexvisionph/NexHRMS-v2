@@ -171,8 +171,6 @@ export interface ModuleFlags {
   events: boolean;
   // ── Premium / unpaid features (hidden until client upgrades) ──────────────
   jobs: boolean;
-  birCompliance: boolean;
-  documentCenter: boolean;
 }
 
 export const DEFAULT_MODULE_FLAGS: ModuleFlags = {
@@ -193,8 +191,6 @@ export const DEFAULT_MODULE_FLAGS: ModuleFlags = {
   events: true,
   // ── Premium / unpaid features (off by default) ────────────────────────────
   jobs: false,
-  birCompliance: true,
-  documentCenter: false,
 };
 
 export const MODULE_INFO: Record<keyof ModuleFlags, { label: string; description: string; icon: string }> = {
@@ -215,8 +211,6 @@ export const MODULE_INFO: Record<keyof ModuleFlags, { label: string; description
   events: { label: "Events & Meetings", description: "Company events, meetings, calendar management", icon: "Calendar" },
   // ── Premium / unpaid features ─────────────────────────────────────────────
   jobs: { label: "Jobs / Talent Acquisition", description: "Job postings, applications, and hiring pipeline", icon: "Briefcase" },
-  birCompliance: { label: "BIR Compliance (Alphalist)", description: "BIR alphalist generation and tax compliance reports", icon: "ReceiptText" },
-  documentCenter: { label: "Document Center (201 Files)", description: "Employee 201 file management and document storage", icon: "FolderArchive" },
 };
 
 // ─── Navigation Overrides ─────────────────────────────────────────────────────
@@ -309,7 +303,7 @@ const INITIAL_STATE = {
   fontFamily: "geist" as FontFamilyId,
   radius: "md" as RadiusId,
   density: "default" as DensityId,
-  companyName: "NexHRIS",
+  companyName: "Soren Data Solutions Inc.",
   logoUrl: "",
   logoTextVisible: true,
   faviconUrl: "",
@@ -325,7 +319,7 @@ const INITIAL_STATE = {
   loginBackground: "gradient" as LoginBackground,
   loginBgColor: "",
   loginCardStyle: "centered" as LoginCardStyle,
-  loginHeading: "NexHRIS",
+  loginHeading: "Soren Data Solutions Inc.",
   loginSubheading: "Sign in to your account to continue",
 };
 
@@ -378,7 +372,7 @@ export const useAppearanceStore = create<AppearanceState>()(
       resetAppearance: () => set(INITIAL_STATE),
     }),
     {
-      name: "nexhrms-appearance",
+      name: "soren-appearance",
       version: 2,
       storage: safePersistStorage,
       migrate: (persisted, version) => {

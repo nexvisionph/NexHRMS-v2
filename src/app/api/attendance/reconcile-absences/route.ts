@@ -35,6 +35,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Role check — only admin/HR can trigger reconciliation
+  const { data: callerEmp } = await supabase
+    .from("employees")
+    .select("role")
+    .eq("profile_id", user.id)
+    .single();
+
+  if (!callerEmp || !["admin", "hr"].includes(callerEmp.role)) {
+    return NextResponse.json({ error: "Forbidden — admin or HR role required" }, { status: 403 });
+  }
+
   // Parse body
   let startDate: string;
   let endDate: string;
@@ -143,7 +154,6 @@ export async function POST(req: Request) {
 
   while (current <= end) {
     const dateStr = current.toISOString().split("T")[0];
-    const dayOfWeek = current.getDay();
 
     // Skip holidays
     if (!holidaySet.has(dateStr)) {

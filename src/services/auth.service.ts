@@ -3,6 +3,8 @@
 import { createAdminSupabaseClient, createServerSupabaseClient } from "./supabase-server";
 import type { Role } from "@/types";
 
+const PASSWORD_WHITESPACE_RE = /\s/;
+
 /**
  * Sign in with email/password via Supabase Auth.
  * Called from client via server action.
@@ -51,13 +53,22 @@ export async function signIn(email: string, password: string) {
     };
   }
 
+  // Auto-repair role mismatch: if employee has a valid role that differs from profile, sync profile
+  const VALID_ROLES = ["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"];
+  if (employee && profile && employee.role && VALID_ROLES.includes(employee.role) && employee.role !== profile.role) {
+    // Employee role takes precedence (set by admin during account creation)
+    const adminSupabase = await createAdminSupabaseClient();
+    await adminSupabase.from("profiles").update({ role: employee.role }).eq("id", data.user.id);
+    profile.role = employee.role;
+  }
+
   return {
     ok: true as const,
     user: {
       id: employee?.id ?? data.user.id,
       name: profile?.name ?? data.user.user_metadata?.name ?? "",
       email: data.user.email ?? "",
-      role: (profile?.role ?? data.user.user_metadata?.role ?? "employee") as Role,
+      role: (profile?.role ?? employee?.role ?? data.user.user_metadata?.role ?? "employee") as Role,
       avatarUrl: profile?.avatar_url,
       mustChangePassword: profile?.must_change_password ?? false,
       profileComplete: profile?.profile_complete ?? false,
@@ -99,6 +110,9 @@ export async function createUserAccount(input: {
   emergencyContact?: string;
 }) {
   // Password complexity - check before any network calls
+  if (PASSWORD_WHITESPACE_RE.test(input.password)) {
+    return { ok: false as const, error: "Password cannot contain spaces" };
+  }
   if (input.password.length < 8) {
     return { ok: false as const, error: "Password must be at least 8 characters" };
   }
@@ -246,8 +260,11 @@ export async function adminResetPassword(userId: string, newPassword: string) {
     return { ok: false as const, error: "Only admins can reset passwords" };
   }
 
-  if (newPassword.length < 6) {
-    return { ok: false as const, error: "Password must be at least 6 characters" };
+  if (PASSWORD_WHITESPACE_RE.test(newPassword)) {
+    return { ok: false as const, error: "Password cannot contain spaces" };
+  }
+  if (newPassword.length < 8) {
+    return { ok: false as const, error: "Password must be at least 8 characters" };
   }
 
   const supabase = await createAdminSupabaseClient();
@@ -299,8 +316,11 @@ export async function changeMyPassword(newPassword: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, error: "Not authenticated" };
 
-  if (newPassword.length < 6) {
-    return { ok: false as const, error: "Password must be at least 6 characters" };
+  if (PASSWORD_WHITESPACE_RE.test(newPassword)) {
+    return { ok: false as const, error: "Password cannot contain spaces" };
+  }
+  if (newPassword.length < 8) {
+    return { ok: false as const, error: "Password must be at least 8 characters" };
   }
 
   const { error } = await supabase.auth.updateUser({ password: newPassword });
@@ -350,11 +370,16 @@ export async function listUserAccounts() {
   );
   
   // Find profiles without corresponding employees and create them
+  // SKIP orphan repair if the profile has no employee — it may have been intentionally deleted
+  // Only create employee records for profiles that were JUST created (within last 5 minutes)
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
   const orphanProfiles = profiles.filter((p) => {
     // Already has an employee via profile_id link
     if (profileIdsWithEmployees.has(p.id)) return false;
     // Already has an employee via email match
     if (emailToEmployeeId.has(p.email?.toLowerCase())) return false;
+    // Only auto-create for recently created profiles (not old orphans from deleted employees)
+    if (p.created_at && p.created_at < fiveMinutesAgo) return false;
     return true;
   });
   

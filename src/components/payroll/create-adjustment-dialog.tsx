@@ -34,7 +34,7 @@ interface CreateAdjustmentDialogProps {
 }
 
 export function CreateAdjustmentDialog({
-    open, onOpenChange, employees, payslips, currentUserId, onSubmit,
+    open, onOpenChange, payslips, currentUserId, onSubmit,
 }: CreateAdjustmentDialogProps) {
     const [employeeId, setEmployeeId] = useState("");
     const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>("earnings");

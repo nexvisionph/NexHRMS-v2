@@ -16,9 +16,13 @@ export default function DeactivatedPage() {
                 {/* Logo */}
                 <div className="flex justify-center">
                     {logoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img src={logoUrl} alt={companyName} className="h-14 w-auto object-contain" />
                     ) : (
-                        <Image src="/logo.png" alt={companyName} width={160} height={56} className="h-14 w-auto object-contain dark:brightness-0 dark:invert" priority />
+                        <>
+                            <Image src="/logo.png" alt={companyName} width={160} height={56} className="h-14 w-auto object-contain dark:hidden" priority />
+                            <Image src="/darklogo.png" alt={companyName} width={160} height={56} className="h-14 w-auto object-contain hidden dark:block" priority />
+                        </>
                     )}
                 </div>
 

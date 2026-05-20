@@ -620,12 +620,13 @@ export async function getFaceEnrollmentStatus(
   try {
     const supabase = await createAdminSupabaseClient();
 
-    let { data: enrollment, error } = await supabase
+    const { data: initialEnrollment, error } = await supabase
       .from("face_enrollments")
       .select("*")
       .eq("employee_id", employeeId)
       .eq("is_active", true)
       .single();
+    let enrollment = initialEnrollment;
 
     if (error?.message?.includes("reference_image")) {
       const fallback = await supabase

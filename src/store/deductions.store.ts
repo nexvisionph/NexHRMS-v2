@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import type { DeductionTemplate, EmployeeDeductionAssignment, DeductionTemplateType, DeductionCalculationMode, DeductionCondition } from "@/types";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -36,8 +34,7 @@ interface DeductionsState {
 }
 
 export const useDeductionsStore = create<DeductionsState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             templates: [],
             assignments: [],
             isLoading: false,
@@ -68,7 +65,7 @@ export const useDeductionsStore = create<DeductionsState>()(
                     } else {
                         set({ error: json.message || "Failed to fetch templates", isLoading: false });
                     }
-                } catch (err) {
+                } catch {
                     set({ error: "Failed to fetch templates", isLoading: false });
                 }
             },
@@ -355,11 +352,5 @@ export const useDeductionsStore = create<DeductionsState>()(
 
                 return results;
             },
-        }),
-        {
-            name: "nexhrms-deductions",
-            version: 1,
-            storage: safePersistStorage,
-        }
-    )
+        })
 );

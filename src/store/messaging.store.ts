@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type {
     Announcement,
@@ -76,8 +74,7 @@ interface MessagingState {
 }
 
 export const useMessagingStore = create<MessagingState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             announcements: SEED_ANNOUNCEMENTS,
             channels: SEED_TEXT_CHANNELS,
             messages: SEED_CHANNEL_MESSAGES,
@@ -302,7 +299,5 @@ export const useMessagingStore = create<MessagingState>()(
                     messages: SEED_CHANNEL_MESSAGES,
                     config: DEFAULT_CONFIG,
                 }),
-        }),
-        { name: "soren-messaging", version: 1, storage: safePersistStorage }
-    )
+        })
 );

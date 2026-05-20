@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Download, Printer, QrCode, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { useAppearanceStore } from "@/store/appearance.store";
 
 /**
  * Project QR Dialog
@@ -28,6 +29,8 @@ export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const logoUrl = useAppearanceStore((s) => s.logoUrl);
+  const companyName = useAppearanceStore((s) => s.companyName);
 
   useEffect(() => {
     if (!open) return;
@@ -78,16 +81,21 @@ export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: 
     const canvas = wrapRef.current?.querySelector("canvas");
     if (!canvas) return toast.error("QR not ready");
     const url = canvas.toDataURL("image/png");
-    const w = window.open("", "_blank", "width=600,height=700");
+    const w = window.open("", "_blank", "width=600,height=750");
     if (!w) return toast.error("Pop-up blocked — allow pop-ups to print");
+    const logoHtml = logoUrl
+      ? `<img src="${logoUrl}" alt="${companyName}" style="max-height:70px;max-width:220px;object-fit:contain;margin:0 auto 6px;display:block">`
+      : `<h2 style="margin:0 0 4px;font-size:18px;font-weight:700">${companyName}</h2>`;
     w.document.write(`
       <html><head><title>Project QR — ${projectName}</title>
-      <style>body{font-family:sans-serif;text-align:center;padding:40px}h1{margin:0 0 8px}p{color:#555;margin:0 0 24px}img{max-width:480px}small{font-size:11px;color:#888}</style>
+      <style>body{font-family:sans-serif;text-align:center;padding:40px}p{color:#555;margin:0 0 8px}img.qr{max-width:420px;display:block;margin:0 auto}small{font-size:11px;color:#888}.location{font-size:16px;font-weight:700;color:#1a1a1a;margin:14px 0 4px}.scan-hint{font-size:12px;color:#666;margin:0 0 20px}</style>
       </head><body>
-        <h1>${projectName}</h1>
-        <p>Scan with your phone to log attendance for this project</p>
-        <img src="${url}" />
-        <br/><small>Project ID: ${projectId}</small>
+        ${logoHtml}
+        <p style="font-size:11px;color:#888;margin:0 0 20px">${companyName}</p>
+        <img class="qr" src="${url}" />
+        <p class="location">📍 ${projectName}</p>
+        <p class="scan-hint">Scan to log attendance at this location</p>
+        <small>Project ID: ${projectId}</small>
       </body></html>`);
     w.document.close();
     setTimeout(() => { w.focus(); w.print(); }, 200);
@@ -101,9 +109,19 @@ export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: 
             <QrCode className="h-5 w-5" />
             Project QR — {projectName}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Signed QR code for {projectName}. Print and post at the project site for employee attendance scanning.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div ref={wrapRef} className="flex items-center justify-center bg-white p-6 rounded-lg border">
+          <div ref={wrapRef} className="flex flex-col items-center bg-white p-6 rounded-lg border gap-3">
+            {/* Logo at top */}
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoUrl} alt={companyName} className="max-h-16 max-w-44 object-contain" />
+            ) : (
+              <p className="font-bold text-base text-black text-center">{companyName}</p>
+            )}
             {loading && <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />}
             {error && (
               <div className="flex flex-col items-center gap-2 text-destructive py-8">
@@ -114,10 +132,14 @@ export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: 
             {payload && !error && (
               <QRCodeCanvas
                 value={checkinUrl ?? payload}
-                size={256}
+                size={240}
                 level="H"
                 includeMargin
               />
+            )}
+            {/* Location below QR */}
+            {payload && !error && (
+              <p className="font-semibold text-sm text-black text-center">📍 {projectName}</p>
             )}
           </div>
           <p className="text-xs text-muted-foreground text-center">

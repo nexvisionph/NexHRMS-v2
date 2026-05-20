@@ -9,9 +9,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import {
-    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { Calculator, FileText } from "lucide-react";
 import { EmployeeCombobox } from "@/components/ui/employee-combobox";
 import { toast } from "sonner";

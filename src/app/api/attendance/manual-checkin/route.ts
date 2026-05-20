@@ -115,6 +115,16 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
     try {
+        // Require authentication for fetching reasons
+        const supabase = await createServerSupabaseClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 }
+            );
+        }
+
         const reasons = await getManualCheckinReasons();
         return NextResponse.json(reasons);
     } catch (error) {

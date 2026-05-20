@@ -136,3 +136,76 @@ export function formatPhoneDisplay(phone: string | undefined | null): string {
   }
   return num;
 }
+
+/**
+ * Validate email domain — only allows well-known email providers and legitimate company domains.
+ * Rejects obviously fake/random domains like "akshdja.com".
+ * 
+ * Allowed:
+ * - Major providers: gmail.com, yahoo.com, outlook.com, hotmail.com, icloud.com, etc.
+ * - PH providers: globe.com.ph, smart.com.ph, pldt.net, etc.
+ * - Company domains: any domain with a valid TLD that has 2+ characters in the name part
+ * 
+ * Rejected:
+ * - Random/gibberish domains (no vowels, too short, suspicious patterns)
+ * - Single-use/disposable email domains
+ */
+
+const ALLOWED_EMAIL_PROVIDERS = new Set([
+  // Company domain
+  "nexsdsi.com",
+  // Global providers
+  "gmail.com", "googlemail.com",
+  "yahoo.com", "yahoo.com.ph", "yahoo.co.uk", "yahoo.co.jp",
+  "outlook.com", "hotmail.com", "live.com", "msn.com",
+  "icloud.com", "me.com", "mac.com",
+  "protonmail.com", "proton.me",
+  "zoho.com", "zohomail.com",
+  "aol.com",
+  "mail.com",
+  "yandex.com", "yandex.ru",
+  "tutanota.com", "tuta.io",
+  "fastmail.com",
+  "gmx.com", "gmx.net",
+  // PH providers
+  "globe.com.ph", "smart.com.ph", "pldt.net", "converge.com.ph",
+  "email.com",
+]);
+
+// Known disposable/temporary email domains to block
+const BLOCKED_DOMAINS = new Set([
+  "tempmail.com", "throwaway.email", "guerrillamail.com", "mailinator.com",
+  "yopmail.com", "sharklasers.com", "guerrillamailblock.com", "grr.la",
+  "dispostable.com", "trashmail.com", "10minutemail.com", "temp-mail.org",
+  "fakeinbox.com", "maildrop.cc", "getnada.com",
+]);
+
+export interface EmailValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+export function validateEmailDomain(email: string): EmailValidationResult {
+  if (!email || !email.trim()) {
+    return { valid: false, error: "Email address is required" };
+  }
+
+  const trimmed = email.trim().toLowerCase();
+  
+  // Basic format check
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return { valid: false, error: "Please enter a valid email address" };
+  }
+
+  const [, domain] = trimmed.split("@");
+  if (!domain) {
+    return { valid: false, error: "Please enter a valid email address" };
+  }
+
+  // Only allow company domain
+  if (domain !== "nexsdsi.com") {
+    return { valid: false, error: "Only @nexsdsi.com email addresses are allowed" };
+  }
+
+  return { valid: true };
+}

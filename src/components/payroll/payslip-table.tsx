@@ -39,12 +39,13 @@ interface PayslipTableProps {
     payslips: Payslip[];
     runs?: PayrollRun[];
     getEmpName: (id: string) => string;
+    getEmpDetails?: (id: string) => { department?: string; jobTitle?: string };
     onMarkPaid?: (id: string, method: PaymentMethod, reference: string, cashAmount?: number, paymentProofUrl?: string) => void;
     onReissue?: (id: string) => void;
     isAdmin?: boolean;
 }
 
-export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, onReissue, isAdmin }: PayslipTableProps) {
+export function PayslipTable({ payslips, runs = [], getEmpName, getEmpDetails, onMarkPaid, onReissue, isAdmin }: PayslipTableProps) {
     const isPayslipRunLocked = (ps: Payslip) => {
         if (!ps.payrollBatchId) return false;
         const run = runs.find((r) => r.id === ps.payrollBatchId);
@@ -54,7 +55,7 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, onRe
     const [signedFilter, setSignedFilter] = useState("all");
     const [searchTerm, setSearchTerm] = useState("");
     const [page, setPage] = useState(1);
-    const pageSize = 50;
+    const pageSize = 10;
     const [detailId, setDetailId] = useState<string | null>(null);
     const [sigViewId, setSigViewId] = useState<string | null>(null);
     const [markPaidId, setMarkPaidId] = useState<string | null>(null);
@@ -336,6 +337,8 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, onRe
                 <PayslipDetail
                     payslip={detailPayslip}
                     employeeName={getEmpName(detailPayslip.employeeId)}
+                    department={getEmpDetails?.(detailPayslip.employeeId)?.department}
+                    jobTitle={getEmpDetails?.(detailPayslip.employeeId)?.jobTitle}
                     open={!!detailId}
                     onClose={() => setDetailId(null)}
                 />
@@ -441,6 +444,7 @@ export function PayslipTable({ payslips, runs = [], getEmpName, onMarkPaid, onRe
                             <div className="mt-1">
                                 {proofPreview ? (
                                     <div className="relative border rounded-md overflow-hidden">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
                                         <img 
                                             src={proofPreview} 
                                             alt="Payment proof preview" 

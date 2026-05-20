@@ -36,13 +36,25 @@ export interface ProjectQrPayload {
 
 function getServerSecret(): string {
   const secret = process.env.QR_HMAC_SECRET;
-  if (!secret || secret.length < 32) {
-    throw new Error(
-      "QR_HMAC_SECRET env is missing or shorter than 32 chars. " +
-        "Set it in .env (production must use a strong random value).",
-    );
+  if (secret && secret.length >= 32) return secret;
+
+  // Fall back to SUPABASE_SERVICE_ROLE_KEY — it's always present in production,
+  // server-only, and is a strong enough key (200+ char JWT).
+  const fallback = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (fallback && fallback.length >= 32) {
+    if (process.env.NODE_ENV !== "test") {
+      console.warn(
+        "[qr-utils] QR_HMAC_SECRET not set — falling back to SUPABASE_SERVICE_ROLE_KEY. " +
+          "Add QR_HMAC_SECRET to your environment variables for explicit configuration.",
+      );
+    }
+    return fallback;
   }
-  return secret;
+
+  throw new Error(
+    "QR_HMAC_SECRET env is missing or shorter than 32 chars. " +
+      "Set it in .env (production must use a strong random value).",
+  );
 }
 
 function base64url(buf: Buffer): string {

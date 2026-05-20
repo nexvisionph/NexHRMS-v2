@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useLocationStore } from "@/store/location.store";
+import * as locationService from "@/services/location-actions.service";
 import { useProjectsStore } from "@/store/projects.store";
 import { isWithinGeofence } from "@/lib/geofence";
 import { notifyGeofenceViolation, notifyLocationDisabled } from "@/lib/notifications";
@@ -18,7 +19,6 @@ interface LocationTrackerProps {
 
 export function LocationTracker({ employeeId, employeeName, employeeEmail, active }: LocationTrackerProps) {
     const config = useLocationStore((s) => s.config);
-    const addPing = useLocationStore((s) => s.addPing);
     const purgeOldPings = useLocationStore((s) => s.purgeOldPings);
     const getProjectForEmployee = useProjectsStore((s) => s.getProjectForEmployee);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -61,7 +61,7 @@ export function LocationTracker({ employeeId, employeeName, employeeEmail, activ
                     }
                 }
 
-                addPing({
+                locationService.addPing({
                     employeeId,
                     timestamp: new Date().toISOString(),
                     lat,
@@ -89,7 +89,7 @@ export function LocationTracker({ employeeId, employeeName, employeeEmail, activ
             },
             { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
         );
-    }, [employeeId, employeeName, employeeEmail, config, addPing, getProjectForEmployee]);
+    }, [employeeId, employeeName, employeeEmail, config, getProjectForEmployee]);
 
     useEffect(() => {
         if (!config.enabled || !active) {

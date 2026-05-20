@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -54,7 +54,7 @@ import {
     Briefcase,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useEffect, useMemo, useCallback, memo } from "react";
+import { useEffect, useMemo, memo } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 const iconMap: Record<string, React.ElementType> = {
@@ -94,6 +94,7 @@ const iconMap: Record<string, React.ElementType> = {
 
 function SidebarComponent() {
     const pathname = usePathname();
+    const router = useRouter();
     
     // Consolidated auth store selector
     const { role, currentUserId, currentUserEmail, currentUserName } = useAuthStore(
@@ -208,10 +209,22 @@ function SidebarComponent() {
             .filter((g) => sectionMap.has(g.key))
             .map((g) => ({ ...g, items: sectionMap.get(g.key)! }));
         return { topLevel, sections };
-    }, [filtered.systemItems]);
+    }, [filtered]);
 
     // Build role-prefixed paths
     const rolePrefix = `/${role}`;
+
+    // Prefetch all nav routes on mount for instant page transitions
+    useEffect(() => {
+        if (!role) return;
+        const routes = filtered.systemItems.map((item) =>
+            item.absolute ? item.href : `${rolePrefix}${item.href}`
+        );
+        // Prefetch in batches to avoid overwhelming the browser
+        routes.forEach((route, i) => {
+            setTimeout(() => router.prefetch(route), i * 100);
+        });
+    }, [role, rolePrefix, filtered.systemItems, router]);
 
     // Close mobile sidebar on route change
     useEffect(() => {
@@ -226,6 +239,21 @@ function SidebarComponent() {
         window.addEventListener("resize", onResize);
         return () => window.removeEventListener("resize", onResize);
     }, [setMobileSidebarOpen]);
+
+    // Keyboard shortcut: Ctrl+. to toggle sidebar (desktop only)
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.ctrlKey && e.key === ".") {
+                // Don't toggle when typing in inputs
+                const tag = (e.target as HTMLElement)?.tagName;
+                if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+                e.preventDefault();
+                toggleSidebar();
+            }
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [toggleSidebar]);
 
     /* ---------- Shared navigation content ---------- */
     const navContent = (showLabel: boolean, isMobile: boolean) => {
@@ -296,21 +324,33 @@ function SidebarComponent() {
             <div className={cn("flex h-16 items-center px-4", showLabel || isMobile ? "justify-between" : "justify-center")}>
                 <Link href={`${rolePrefix}/dashboard`} className="flex items-center gap-2.5">
                     {logoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                             src={logoUrl}
                             alt={companyName}
                             className="sidebar-logo h-9 max-w-[140px] object-contain transition-all duration-300"
                         />
                     ) : (
-                        <Image
-                            src="/android-chrome-512x512.png"
-                            alt={companyName}
-                            width={showLabel ? 140 : 36}
-                            height={36}
-                            className="sidebar-logo transition-all duration-300 dark:brightness-0 dark:invert"
-                            style={{ width: "auto", height: "auto", maxHeight: 36 }}
-                            priority
-                        />
+                        <>
+                            <Image
+                                src="/logo.png"
+                                alt={companyName}
+                                width={showLabel ? 140 : 36}
+                                height={36}
+                                className="sidebar-logo transition-all duration-300 dark:hidden"
+                                style={{ width: "auto", height: "auto", maxHeight: 36 }}
+                                priority
+                            />
+                            <Image
+                                src="/darklogo.png"
+                                alt={companyName}
+                                width={showLabel ? 140 : 36}
+                                height={36}
+                                className="sidebar-logo transition-all duration-300 hidden dark:block"
+                                style={{ width: "auto", height: "auto", maxHeight: 36 }}
+                                priority
+                            />
+                        </>
                     )}
                     {showLabel && logoTextVisible && logoUrl && (
                         <span className="text-sm font-bold truncate">{companyName}</span>

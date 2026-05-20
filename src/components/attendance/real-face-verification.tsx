@@ -57,7 +57,6 @@ export function RealFaceVerification({
     disabled,
     autoStart = false,
     employeeId,
-    required: _required = false,
 }: RealFaceVerificationProps) {
     const currentUserId = useAuthStore((s) => s.currentUser?.id);
     const [phase, setPhase] = useState<Phase>("loading");
@@ -231,7 +230,7 @@ export function RealFaceVerification({
 
                     // Log every 4th frame to avoid console spam
                     if (trackFrameCount % 4 === 1) {
-                        console.log(`[face-verify] Track #${trackFrameCount}: ${result ? `score=${result.score.toFixed(2)} yaw=${result.yaw.toFixed(2)} faces=${result.faceCount} ratio=${(result.box.width / (videoRef.current?.videoWidth || 640)).toFixed(2)}` : "no face"} stable=${stableCountRef.current} guidance=${guidanceColor}`);
+                        console.log(`[face-verify] Track #${trackFrameCount}: ${result ? `score=${result.score.toFixed(2)} yaw=${result.yaw.toFixed(2)} faces=${result.faceCount} ratio=${(result.box.width / (videoRef.current?.videoWidth || 640)).toFixed(2)}` : "no face"} stable=${stableCountRef.current}`);
                     }
 
                     if (!result) {
@@ -468,7 +467,7 @@ export function RealFaceVerification({
             setErrorHint("Check your internet connection and try again.");
             setPhase("failed");
         }
-    }, [videoReady, employeeId, onVerified, cleanup, isMobile]);
+    }, [videoReady, employeeId, currentUserId, onVerified, cleanup, isMobile]);
 
     // ── Auto-scan when face is stable ──
     useEffect(() => {

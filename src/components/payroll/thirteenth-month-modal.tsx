@@ -27,7 +27,6 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
     Gift,
     AlertTriangle,
@@ -195,7 +194,7 @@ export function ThirteenthMonthModal({
     const toggleEmployee = useCallback((id: string) => {
         setSelectedEmployeeIds((prev) => {
             const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
+            if (next.has(id)) { next.delete(id); } else { next.add(id); }
             return next;
         });
     }, []);

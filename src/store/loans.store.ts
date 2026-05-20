@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { Loan, LoanDeduction, LoanRepaymentSchedule, LoanBalanceHistory } from "@/types";
 import { SEED_LOANS } from "@/data/seed";
@@ -34,8 +32,7 @@ interface LoansState {
 }
 
 export const useLoansStore = create<LoansState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             loans: SEED_LOANS,
 
             createLoan: (data) =>
@@ -189,15 +186,35 @@ export const useLoansStore = create<LoansState>()(
             },
 
             recordCappedDeduction: (loanId, payslipId, employeeNetPay) => {
-                const loan = get().loans.find((l) => l.id === loanId);
+                const state = get();
+                const loan = state.loans.find((l) => l.id === loanId);
                 if (!loan || loan.status !== "active") {
                     return { deducted: 0, skipped: true, reason: "frozen" };
                 }
-                const cap = (loan.deductionCapPercent / 100) * employeeNetPay;
-                const maxDeduction = Math.min(loan.monthlyDeduction, loan.remainingBalance, cap);
+
+                // Aggregate cap: compute total already deducted from all active loans for this employee in this payslip
+                const employeeLoans = state.loans.filter(
+                    (l) => l.employeeId === loan.employeeId && l.status === "active"
+                );
+                const aggregateDeducted = employeeLoans.reduce((sum, l) => {
+                    const lastDeduction = l.deductions?.find((d) => d.payslipId === payslipId);
+                    return sum + (lastDeduction?.amount ?? 0);
+                }, 0);
+
+                // Aggregate cap: total loan deductions cannot exceed deductionCapPercent of net pay
+                const aggregateCap = (loan.deductionCapPercent / 100) * employeeNetPay;
+                const remainingAggregateCap = Math.max(0, aggregateCap - aggregateDeducted);
+
+                const perLoanCap = (loan.deductionCapPercent / 100) * employeeNetPay;
+                const maxDeduction = Math.min(
+                    loan.monthlyDeduction,
+                    loan.remainingBalance,
+                    perLoanCap,
+                    remainingAggregateCap
+                );
 
                 if (maxDeduction <= 0) {
-                    // Carry-forward: insufficient net pay
+                    // Carry-forward: insufficient net pay or aggregate cap reached
                     return { deducted: 0, skipped: true, reason: "insufficient_net_pay" };
                 }
 
@@ -205,12 +222,5 @@ export const useLoansStore = create<LoansState>()(
                 return { deducted: maxDeduction, skipped: false };
             },
             resetToSeed: () => set({ loans: SEED_LOANS }),
-        }),
-        {
-            name: "soren-loans",
-            version: 2,
-            storage: safePersistStorage,
-            migrate: () => ({ loans: SEED_LOANS }),
-        }
-    )
+        })
 );
