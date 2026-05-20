@@ -1,6 +1,6 @@
 ---
 description:
-globs: 
+globs:
 alwaysApply: false
 ---
 
@@ -20,4 +20,4 @@ This is the task that needs to be solved:
 
 # Main Task
 
-- Included in this conversation is a folder that contains changes from my other project. Now, that ther project that I am talking about is just another HRIS copy of this system that I am working with. now, that system is much updated tan this one. Now, I want you to migrate the changes that are included in that folder to this project. Make sure that you don't break any existing features of this project. Make sure that all teh canges that is inside of that folder is included in this project.
+- Now, I want you to read the codebase and guide me on how are we going to use the biometrics for regestrering new emplooyee, attendance, and time-outs and make it reflect on the system's dashboard with respect of the user's role on the system.

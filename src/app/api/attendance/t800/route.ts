@@ -499,7 +499,7 @@ export async function POST(request: NextRequest) {
           employee_id: employee.id,
           date: scanDay,
           check_in: timeStr,
-          check_in_method: "biometric",
+          check_in_method: "fingerprint",
           status: "present",
           updated_at: nowISO,
         },
@@ -523,17 +523,18 @@ export async function POST(request: NextRequest) {
         return buildResponse("ERROR_MISSING_CHECK_IN");
       }
 
-      // Enforce same-method rule: if checked in via non-biometric, block biometric check-out
+      // Enforce same-method rule: if checked in via web/QR, block device check-out
       const existingMethod = (existingLog as Record<string, unknown>)?.check_in_method as string | undefined;
-      if (existingMethod && existingMethod !== "biometric" && existingMethod !== "manual") {
-        // Employee checked in via web/QR — can't check out via biometric
+      const deviceMethods = ["fingerprint", "face", "palm", "rfid", "pin"];
+      if (existingMethod && !deviceMethods.includes(existingMethod) && existingMethod !== "manual") {
+        // Employee checked in via web/QR — can't check out via biometric device
         return buildResponse("OK"); // Silently ignore (device can't show errors)
       }
 
       const logUpdate = {
         check_in: checkIn,
         check_out: timeStr,
-        check_out_method: "biometric",
+        check_out_method: "fingerprint",
         hours: calculateHours(checkIn, timeStr),
         status: "present",
         updated_at: nowISO,
