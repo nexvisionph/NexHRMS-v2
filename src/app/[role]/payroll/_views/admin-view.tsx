@@ -43,7 +43,7 @@ import { PrintablePayslip } from "@/components/payroll/printable-payslip";
 import { PayrollReadinessChecklist } from "@/components/payroll/payroll-readiness-checklist";
 import { format, endOfMonth, subMonths, getYear, getMonth, parseISO, differenceInCalendarDays, getDaysInMonth } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
-import { dispatchNotification, notifyPayslipOnHold } from "@/lib/notifications";
+import { dispatchNotification, dispatchBatchNotifications, notifyPayslipOnHold } from "@/lib/notifications";
 import { useAuditStore } from "@/store/audit.store";
 import { payrollDb } from "@/services/db.service";
 import type { DeductionType, DeductionOverrideMode, DeductionTemplate, DeductionTemplateType, DeductionCalculationMode, Department, Project } from "@/types";
@@ -71,7 +71,7 @@ interface AdminPayrollViewProps {
 export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewProps) {
     const params = useParams();
     const role = params.role as string;
-    const { payslips, runs, adjustments, finalPayComputations, issuePayslip, confirmPayslip, publishPayslip, recordPayment, confirmPaidByFinance, holdPayment, releasePaymentHold, rejectHoldSignature, lockRun, unlockRun, publishRun, endRun, markRunPaid, approveAdjustment, applyAdjustment, createAdjustment, computeFinalPay, generate13thMonth, exportBankFile, createDraftRun, validateRun, resetToSeed, paySchedule, updatePaySchedule, signatureConfig, updateSignatureConfig, deductionOverrides, setDeductionOverride, removeDeductionOverride, clearEmployeeOverrides, getDeductionOverride, getEmployeeOverrides, globalDefaults, updateGlobalDefault, getGlobalDefault, updatePayslipFromServer, isPayslipRunLocked } = usePayrollStore();
+    const { payslips, runs, adjustments, finalPayComputations, issuePayslip, confirmPayslip, publishPayslip, recordPayment, confirmPaidByFinance, holdPayment, releasePaymentHold, rejectHoldSignature, lockRun, unlockRun, publishRun, endRun, markRunPaid, approveAdjustment, applyAdjustment, createAdjustment, computeFinalPay, generate13thMonth, exportBankFile, createDraftRun, validateRun, resetToSeed, paySchedule, updatePaySchedule, signatureConfig, updateSignatureConfig, deductionOverrides, setDeductionOverride, removeDeductionOverride, clearEmployeeOverrides, getDeductionOverride, getEmployeeOverrides, globalDefaults, updateGlobalDefault, getGlobalDefault, updatePayslipFromServer, isPayslipRunLocked, batchPublishPayslips, batchRecordPayment } = usePayrollStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
     const { getActiveByEmployee, recordDeduction } = useLoansStore();
@@ -575,8 +575,9 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                 });
                 const autoDedTotal = autoBreakdown.totalDeductions;
 
-                const netPay = grossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - empLoanDeduction - customDedTotal - autoDedTotal;
-                if (netPay <= 0) { toast.error(`Skipped ${emp.name}: Net pay would be ≤ 0`); return; }
+                const rawNetPay = grossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - empLoanDeduction - customDedTotal - autoDedTotal;
+                const netPay = Math.max(0, rawNetPay);
+                if (rawNetPay <= 0) zeroNetPayCount++;
 
                 issuePayslip({
                     employeeId: empId, periodStart: cutoffDates.start, periodEnd: cutoffDates.end, payFrequency: freq,
@@ -692,12 +693,14 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         if (draftSlips.length === 0) { toast.error("No draft payslips in a locked payroll run to publish"); return; }
         setBatchProcessing(true);
         try {
+            batchPublishPayslips(draftSlips.map((ps) => ps.id));
             draftSlips.forEach((ps) => {
-                publishPayslip(ps.id);
                 useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payroll_published", performedBy: currentUser.id });
-                dispatchNotification("payslip_published", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}`, amount: formatCurrency(ps.netPay) }, ps.employeeId);
             });
-            toast.success(`Published ${draftSlips.length} payslip${draftSlips.length > 1 ? "s" : ""}`);
+            dispatchBatchNotifications(
+                draftSlips.map((ps) => ({ trigger: "payslip_published" as const, vars: { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}`, amount: formatCurrency(ps.netPay) }, recipientEmployeeId: ps.employeeId })),
+                `Published ${draftSlips.length} payslip${draftSlips.length > 1 ? "s" : ""}`
+            );
         } catch (err) {
             toast.error(`Failed to publish payslips: ${err instanceof Error ? err.message : "Unknown error"}`);
         } finally {
@@ -710,12 +713,14 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         if (signedSlips.length === 0) { toast.error("No signed payslips to record payment for"); return; }
         setBatchProcessing(true);
         try {
+            batchRecordPayment(signedSlips.map((ps) => ps.id), "bank_transfer", `BATCH-REF-${Date.now()}`);
             signedSlips.forEach((ps) => {
-                recordPayment(ps.id, "bank_transfer", `BATCH-REF-${Date.now()}-${ps.id}`);
                 useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payment_recorded", performedBy: currentUser.id });
-                dispatchNotification("payment_confirmed", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}`, amount: formatCurrency(ps.netPay) }, ps.employeeId);
             });
-            toast.success(`Recorded payment for ${signedSlips.length} payslip${signedSlips.length > 1 ? "s" : ""}`);
+            dispatchBatchNotifications(
+                signedSlips.map((ps) => ({ trigger: "payment_confirmed" as const, vars: { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}`, amount: formatCurrency(ps.netPay) }, recipientEmployeeId: ps.employeeId })),
+                `Recorded payment for ${signedSlips.length} payslip${signedSlips.length > 1 ? "s" : ""}`
+            );
         } catch (err) {
             toast.error(`Failed to record payments: ${err instanceof Error ? err.message : "Unknown error"}`);
         } finally {
@@ -1847,15 +1852,24 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                                                         <AlertDialogFooter>
                                                                                             <AlertDialogCancel>Cancel</AlertDialogCancel>
                                                                                             <AlertDialogAction onClick={() => {
-                                                                                                payslips
-                                                                                                    .filter((p) => (runObj?.payslipIds ?? []).includes(p.id) && p.status === "published" && !p.signedAt)
-                                                                                                    .forEach((p) => {
-                                                                                                        holdPayment(p.id);
-                                                                                                        dispatchNotification("payslip_on_hold", { name: getEmpName(p.employeeId), period: `${p.periodStart} - ${p.periodEnd}`, reason: "Late compliance to payroll submission. Please coordinate with the payroll team to resolve this issue." }, p.employeeId);
-                                                                                                    });
+                                                                                                const onHoldPayslips = payslips
+                                                                                                    .filter((p) => (runObj?.payslipIds ?? []).includes(p.id) && p.status === "published" && !p.signedAt);
+                                                                                                onHoldPayslips.forEach((p) => {
+                                                                                                    holdPayment(p.id);
+                                                                                                    dispatchNotification(
+                                                                                                        "payslip_on_hold",
+                                                                                                        { name: getEmpName(p.employeeId), period: `${p.periodStart} - ${p.periodEnd}`, reason: "Late compliance to payroll submission. Please coordinate with the payroll team to resolve this issue." },
+                                                                                                        p.employeeId,
+                                                                                                        undefined,
+                                                                                                        undefined,
+                                                                                                        undefined,
+                                                                                                        { suppressToast: true }
+                                                                                                    );
+                                                                                                });
                                                                                                 endRun(run.date);
                                                                                                 useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_ended", performedBy: currentUser.id });
-                                                                                                toast.success("Payroll cycle ended");
+                                                                                                const employeeCount = new Set(onHoldPayslips.map((p) => p.employeeId)).size;
+                                                                                                toast.success(`Payroll cycle ended. On-hold notifications sent to ${employeeCount} employee${employeeCount !== 1 ? "s" : ""}.`);
                                                                                             }}>End Cycle</AlertDialogAction>
                                                                                         </AlertDialogFooter>
                                                                                     </AlertDialogContent>

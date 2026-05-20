@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { Employee, EmployeeStatus, WorkType, SalaryChangeRequest, SalaryHistoryEntry, EmployeeDocument } from "@/types";
 import { SEED_EMPLOYEES } from "@/data/seed";
@@ -53,6 +51,8 @@ function dedupeById(employees: Employee[]): Employee[] {
 
 // Helper to deduplicate employees by email — for each duplicate email group,
 // prefer the record that has a profileId (linked auth account), else keep first.
+// Note: The discarded record's references (attendance, salary history) remain intact
+// since they reference by employee ID which is preserved in the kept record.
 function dedupeByEmail(employees: Employee[]): Employee[] {
     const emailMap = new Map<string, Employee>();
     for (const e of employees) {
@@ -62,7 +62,14 @@ function dedupeByEmail(employees: Employee[]): Employee[] {
             emailMap.set(key, e);
         } else if (!existing.profileId && e.profileId) {
             // Prefer the record that is linked to a real auth account
-            emailMap.set(key, e);
+            // Merge any additional data from the discarded record
+            const merged = {
+                ...e,
+                salary: e.salary || existing.salary,
+                department: e.department || existing.department,
+                jobTitle: e.jobTitle || existing.jobTitle,
+            };
+            emailMap.set(key, merged);
         }
     }
     return Array.from(emailMap.values());
@@ -73,8 +80,7 @@ function dedupeAll(employees: Employee[]): Employee[] {
 }
 
 export const useEmployeesStore = create<EmployeesState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             employees: SEED_EMPLOYEES,
             deletedEmployeeIds: [],
             salaryRequests: [],
@@ -194,6 +200,9 @@ export const useEmployeesStore = create<EmployeesState>()(
                     if (!req || req.status !== "pending") return {};
                     const emp = s.employees.find((e) => e.id === req.employeeId);
                     if (!emp) return {};
+                    // Validate effective date is not in the past (allow today)
+                    const today = new Date().toISOString().split("T")[0];
+                    if (req.effectiveDate < today) return {};
                     // Close any open salary history entry
                     const updatedHistory = s.salaryHistory.map((h) =>
                         h.employeeId === req.employeeId && !h.effectiveTo
@@ -255,65 +264,4 @@ export const useEmployeesStore = create<EmployeesState>()(
                     departmentFilter: "all",
                 }),
         }),
-        {
-            name: "soren-employees",
-            version: 13,
-            storage: safePersistStorage,
-            migrate: (persisted, fromVersion) => {
-                const state = persisted as Partial<EmployeesState> & { employees?: Employee[]; deletedEmployeeIds?: string[] };
-                if (fromVersion < 7) {
-                    return { employees: SEED_EMPLOYEES, deletedEmployeeIds: [], salaryRequests: [], salaryHistory: [], documents: {}, searchQuery: "", statusFilter: "all" as const, workTypeFilter: "all" as const, roleFilter: "all", departmentFilter: "all" };
-                }
-                const deletedIds = new Set(state.deletedEmployeeIds ?? []);
-                const SYSTEM_ROLES = new Set(["admin", "hr", "finance", "employee", "supervisor", "payroll_admin", "auditor"]);
-                const seedIds = new Set(SEED_EMPLOYEES.map((e) => e.id));
-                // v7→v8: reset productivity to 0 for non-seed employees with hardcoded 80
-                // v8→v9: deduplicate by email (keeps profileId-linked record)
-                // v9→v10: if role is a job title (not a system role), move to jobTitle and default role to "employee"
-                // v10→v11: merge newly added payroll test seed employees (EMP-PAYROLL-*)
-                // v11→v12: same merge, ensures payroll test employees added to SEED_EMPLOYEES are present
-                const existingEmployees = (state.employees ?? SEED_EMPLOYEES).filter((e) => !deletedIds.has(e.id)).map((e) => {
-                    let updated = e;
-                    if (!seedIds.has(e.id) && e.productivity === 80) updated = { ...updated, productivity: 0 };
-                    if (!SYSTEM_ROLES.has(e.role)) {
-                        updated = { ...updated, jobTitle: updated.jobTitle ?? e.role, role: "employee" };
-                    }
-                    return updated;
-                });
-                const existingIds = new Set(existingEmployees.map((e) => e.id));
-                const existingEmails = new Set(existingEmployees.map((e) => e.email?.toLowerCase()).filter(Boolean));
-                const shouldMergeSeeds = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-                const newSeedEmployees = shouldMergeSeeds
-                    ? SEED_EMPLOYEES.filter(
-                        (e) => !deletedIds.has(e.id) && !existingIds.has(e.id) && !existingEmails.has(e.email?.toLowerCase())
-                    )
-                    : [];
-                const employees = dedupeAll([...existingEmployees, ...newSeedEmployees]);
-                return { ...state, deletedEmployeeIds: Array.from(deletedIds), employees };
-            },
-            // Auto-deduplicate AND auto-merge missing seed employees on every rehydration
-            merge: (persisted, current) => {
-                const persistedState = persisted as Partial<EmployeesState> | undefined;
-                const currentState = current as EmployeesState;
-                if (!persistedState) return currentState;
-                const deletedIds = new Set(persistedState.deletedEmployeeIds ?? []);
-                const persistedEmployees = dedupeAll(persistedState.employees ?? currentState.employees)
-                    .filter((employee) => !deletedIds.has(employee.id));
-                // Self-healing seed merge is demo-only. In production it can resurrect real deletes.
-                const existingIds = new Set(persistedEmployees.map((e) => e.id));
-                const existingEmails = new Set(persistedEmployees.map((e) => e.email?.toLowerCase()).filter(Boolean));
-                const missingSeed = process.env.NEXT_PUBLIC_DEMO_MODE === "true"
-                    ? SEED_EMPLOYEES.filter(
-                        (e) => !deletedIds.has(e.id) && !existingIds.has(e.id) && !existingEmails.has(e.email?.toLowerCase())
-                    )
-                    : [];
-                return {
-                    ...currentState,
-                    ...persistedState,
-                    deletedEmployeeIds: Array.from(deletedIds),
-                    employees: dedupeAll([...persistedEmployees, ...missingSeed]),
-                };
-            },
-        }
-    )
 );
