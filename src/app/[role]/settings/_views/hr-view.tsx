@@ -64,6 +64,7 @@ export default function HrSettingsView() {
 
     const handleChangePassword = () => {
         if (pwNew !== pwConfirm) { toast.error("Passwords do not match."); return; }
+        if (/\s/.test(pwNew) || /\s/.test(pwConfirm)) { toast.error("Password cannot contain spaces."); return; }
         const result = changePassword(currentUser.id, pwOld, pwNew);
         if (!result.ok) { toast.error(result.error); return; }
         toast.success("Password changed successfully.");
@@ -337,8 +338,8 @@ export default function HrSettingsView() {
                                 </button>
                             </div>
                         </div>
-                        <div className="space-y-1.5"><label className="text-sm font-medium">New Password</label><Input type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value)} placeholder="Min. 6 characters" /></div>
-                        <div className="space-y-1.5"><label className="text-sm font-medium">Confirm New Password</label><Input type="password" value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} placeholder="Re-enter new password" /></div>
+                        <div className="space-y-1.5"><label className="text-sm font-medium">New Password</label><Input type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value.replace(/\s/g, ""))} placeholder="Min. 6 characters" /></div>
+                        <div className="space-y-1.5"><label className="text-sm font-medium">Confirm New Password</label><Input type="password" value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value.replace(/\s/g, ""))} placeholder="Re-enter new password" /></div>
                         <Button className="w-full" onClick={handleChangePassword} disabled={!pwOld || !pwNew || !pwConfirm}><KeyRound className="w-4 h-4 mr-1.5" /> Update Password</Button>
                     </div>
                 </CardContent>

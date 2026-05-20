@@ -37,7 +37,7 @@ import { toast } from "sonner";
 import {
     ListTodo, CheckCircle2, Clock, Eye, AlertTriangle, Plus, Search, MoreHorizontal,
     Pencil, Trash2, Users, FolderOpen, ArrowUpDown, XCircle, ChevronRight, ChevronLeft, ChevronDown,
-    Layers, LayoutGrid, Table2, FolderPlus, Send, Tag, Briefcase, RefreshCw,
+    Layers, LayoutGrid, Table2, FolderPlus, Send, Tag, Briefcase,
     ClipboardCheck, Filter, CalendarDays,
 } from "lucide-react";
 import { FullScreenCalendar, type CalendarItem, type CalendarItemColor } from "@/components/ui/fullscreen-calendar";

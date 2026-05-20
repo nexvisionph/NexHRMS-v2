@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useDeductionsStore } from "@/store/deductions.store";
 import { usePayrollStore } from "@/store/payroll.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -26,7 +26,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PayScheduleSettings } from "@/components/payroll/pay-schedule-settings";
-import { Switch } from "@/components/ui/switch";
 import { Plus, Trash2, Edit, Settings, Users, Calculator, CalendarDays, ArrowLeft, Layers } from "lucide-react";
 import { toast } from "sonner";
 import type { DeductionTemplateType, DeductionCalculationMode, DeductionTemplate, EmployeeDeductionAssignment, Employee, Role, Department, Project } from "@/types";

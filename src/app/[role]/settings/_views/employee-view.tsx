@@ -149,6 +149,7 @@ export default function EmployeeSettingsView() {
     };
 
     const handleChangePassword = async () => {
+        if (/\s/.test(pwNew) || /\s/.test(pwConfirm)) { toast.error("Password cannot contain spaces."); return; }
         if (pwNew.length < 8) { toast.error("New password must be at least 8 characters."); return; }
         if (pwNew !== pwConfirm) { toast.error("Passwords do not match."); return; }
         setPwLoading(true);
@@ -529,7 +530,7 @@ export default function EmployeeSettingsView() {
                                                         id="pw-new"
                                                         type={showNew ? "text" : "password"}
                                                         value={pwNew}
-                                                        onChange={(e) => setPwNew(e.target.value)}
+                                                        onChange={(e) => setPwNew(e.target.value.replace(/\s/g, ""))}
                                                         placeholder="Min. 8 characters"
                                                         autoComplete="new-password"
                                                         className="h-9 text-sm pr-9"
@@ -553,7 +554,7 @@ export default function EmployeeSettingsView() {
                                                     id="pw-confirm"
                                                     type="password"
                                                     value={pwConfirm}
-                                                    onChange={(e) => setPwConfirm(e.target.value)}
+                                                    onChange={(e) => setPwConfirm(e.target.value.replace(/\s/g, ""))}
                                                     placeholder="Re-enter new password"
                                                     autoComplete="new-password"
                                                     className="h-9 text-sm"

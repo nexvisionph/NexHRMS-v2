@@ -450,7 +450,7 @@ function VerificationBadge({ method, onUpdate }: { method: VerificationMethod; o
         <Select value={method} onValueChange={(v) => onUpdate(v as VerificationMethod)}>
             <SelectTrigger className={cn("h-7 w-auto text-xs border-0 gap-1.5 px-2 rounded-full", meta.color)}>
                 <Icon className="h-3 w-3" />
-                <SelectValue />
+                <span>{meta.label}</span>
             </SelectTrigger>
             <SelectContent>
                 <SelectItem value="face_only"><span className="flex items-center gap-1.5"><ScanFace className="h-3 w-3" /> Face Only</span></SelectItem>

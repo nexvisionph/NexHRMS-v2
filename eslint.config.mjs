@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Coverage reports — not application code
+    "coverage/**",
+    // Migration test/validation scripts — intentional patterns
+    "scripts/test-migration-045.ts",
   ]),
 ]);
 

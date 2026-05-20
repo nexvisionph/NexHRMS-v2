@@ -21,6 +21,7 @@ import { PrintablePayslip } from "@/components/payroll/printable-payslip";
 import { notifyPayslipSigned } from "@/lib/notifications";
 import { formatCurrency } from "@/lib/format";
 import { keysToCamel } from "@/lib/db-utils";
+import { useAppearanceStore } from "@/store/appearance.store";
 
 /* ═══════════════════════════════════════════════════════════════
    EMPLOYEE PAYROLL VIEW — "My Payslips"
@@ -60,6 +61,7 @@ export default function EmployeePayrollView() {
     }, [employees, currentUser.email, currentUser.id, currentUser.name]);
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
+    const logoUrl = useAppearanceStore((s) => s.logoUrl);
 
     const myPayslips = useMemo(() => {
         if (!myEmployee) return [];
@@ -641,6 +643,9 @@ export default function EmployeePayrollView() {
                         payslip={printPS}
                         employeeName={myEmployee?.name || printPS.employeeId}
                         department={myEmployee?.department || ""}
+                        jobTitle={myEmployee?.jobTitle}
+                        employeeId={myEmployee?.id}
+                        logoUrl={logoUrl}
                         authorizedSignature={signatureConfig}
                         open={!!printPayslipId}
                         onClose={() => setPrintPayslipId(null)}

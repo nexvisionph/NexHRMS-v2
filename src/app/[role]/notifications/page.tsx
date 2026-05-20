@@ -4,7 +4,7 @@ import { useNotificationsStore } from "@/store/notifications.store";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useRolesStore } from "@/store/roles.store";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -75,7 +75,7 @@ const channelIcons: Record<string, string> = {
 };
 
 export default function NotificationsPage() {
-    const { logs, clearLogs, markAsRead, markAllAsRead, getLogsByEmployee } = useNotificationsStore();
+    const { logs, clearLogs, markAsRead, markAllAsRead } = useNotificationsStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
     const router = useRouter();
@@ -92,7 +92,9 @@ export default function NotificationsPage() {
         }
         // Always navigate if there's a link; otherwise stay on notifications page
         if (link) {
-            router.push(rh(link));
+            // Normalize link: strip any existing role prefix before applying current role
+            const normalizedLink = link.replace(/^\/(admin|hr|finance|employee|supervisor|payroll_admin|auditor)/, "");
+            router.push(rh(normalizedLink));
         }
     };
 

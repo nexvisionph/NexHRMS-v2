@@ -173,6 +173,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     const [signPage, setSignPage] = useState(1);
     const [runsPage, setRunsPage] = useState(1);
     const pageSize = 50;
+    const runsPageSize = 10;
 
     // ─── Dialog states ───────────────────────────────────────────
     const [printPayslipId, setPrintPayslipId] = useState<string | null>(null);
@@ -640,11 +641,11 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         }).sort((a, b) => b.date.localeCompare(a.date));
     }, [runs, payslips]);
 
-    const runsTotalPages = Math.max(1, Math.ceil(payrollRuns.length / pageSize));
+    const runsTotalPages = Math.max(1, Math.ceil(payrollRuns.length / runsPageSize));
     const runsSafePage = Math.min(runsPage, runsTotalPages);
     const paginatedRuns = useMemo(
-        () => payrollRuns.slice((runsSafePage - 1) * pageSize, runsSafePage * pageSize),
-        [payrollRuns, pageSize, runsSafePage]
+        () => payrollRuns.slice((runsSafePage - 1) * runsPageSize, runsSafePage * runsPageSize),
+        [payrollRuns, runsPageSize, runsSafePage]
     );
 
     const isRunLocked = (runDate: string) => runs.find((r) => r.periodLabel === runDate)?.locked ?? false;
