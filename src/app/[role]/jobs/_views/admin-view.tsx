@@ -601,7 +601,7 @@ export default function JobsAdminView() {
                                     <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground border border-dashed rounded-lg">
                                         <Inbox className="h-8 w-8 mb-2 text-muted-foreground/30" />
                                         <p className="text-sm">No applicants yet.</p>
-                                        <p className="text-xs mt-1">Click "Add Applicant" to log an application.</p>
+                                        <p className="text-xs mt-1">Click &quot;Add Applicant&quot; to log an application.</p>
                                     </div>
                                 ) : (
                                     <div className="space-y-2">

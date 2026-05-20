@@ -1,6 +1,6 @@
 // ─── Core Types ──────────────────────────────────────────────
 
-export type Role = "admin" | "hr" | "finance" | "employee" | "supervisor" | "payroll_admin" | "auditor";
+export type Role = "admin" | "hr" | "finance" | "employee" | "supervisor" | "payroll_admin" | "auditor" | "support_admin" | "finance_admin" | "analyst";
 
 export type EmployeeStatus = "active" | "inactive" | "resigned";
 export type WorkType = "WFH" | "WFO" | "HYBRID" | "ONSITE";
@@ -447,6 +447,9 @@ export interface PenaltyRecord {
   resolved: boolean;     // admin can manually clear
 }
 
+/** Attendance method used for check-in/out */
+export type AttendanceMethod = "biometric" | "web_face" | "qr" | "manual" | "self_checkin";
+
 /** Computed daily summary — derived from events + rule set + shift */
 export interface AttendanceLog {
   id: string;
@@ -463,6 +466,9 @@ export interface AttendanceLog {
   };
   faceVerified?: boolean;
   lateMinutes?: number;
+  approvedOTHours?: number;
+  checkInMethod?: AttendanceMethod;   // Method used for Time IN
+  checkOutMethod?: AttendanceMethod;  // Method used for Time OUT
   shiftId?: string;
   flags?: AttendanceFlag[];
   createdAt?: string;  // ISO 8601
@@ -694,6 +700,17 @@ export interface Payslip {
   overtimePay?: number;          // auto: ot_hours * hourly_rate * multiplier
   dailyRate?: number;            // snapshot at issuance
   hourlyRate?: number;           // snapshot at issuance
+  // ─── Attendance snapshot (for receipt display) ──
+  attendanceDaysPresent?: number;    // # of present logs in period
+  attendanceDaysAbsent?: number;     // # of absent logs in period
+  attendanceLateMinutes?: number;    // total late minutes in period
+  attendanceUndertimeHours?: number; // total undertime hours in period (shift - actual)
+  // ─── Gross override ──
+  grossOverrideApplied?: boolean;    // true when admin manually overrode gross for this payslip
+  // ─── BIR Compliance (migration 056) ──
+  taxCategories?: TaxCategoryBreakdown;          // BIR earnings categorization
+  taxableCompensation?: number;                  // taxable total this period
+  nonTaxableCompensation?: number;               // non-taxable total this period
 }
 
 export interface PolicySnapshot {
@@ -944,7 +961,6 @@ export type Permission =
   // Messaging
   | "page:messages" | "messages:send_announcement" | "messages:manage_channels"
   | "messages:send_whatsapp" | "messages:send_email"
-  // Jobs / Talent Acquisition
   | "page:jobs" | "jobs:create" | "jobs:edit" | "jobs:close"
   | "jobs:view_applications" | "jobs:manage_applications"
   // Events
@@ -997,6 +1013,21 @@ export type WidgetType =
   | "events_widget" | "events_widget_readonly" | "birthdays_widget"
   // Attendance
   | "attendance_live_stats" | "enrollment_reminder";
+
+// ─── Custom Page (Page Builder) ──────────────────────────────
+
+export interface CustomPage {
+  id: string;
+  title: string;
+  slug: string;
+  icon: string;
+  description?: string;
+  allowedRoles: string[];
+  widgets: WidgetConfig[];
+  showInSidebar: boolean;
+  order: number;
+  createdAt: string;
+}
 
 // ─── Site Survey Photo ───────────────────────────────────────
 
@@ -1093,12 +1124,13 @@ export interface TaskGroup {
 
 export interface Task {
   id: string;
-  groupId: string;
+  groupId?: string;
   projectId?: string;
   title: string;
   description: string;
   priority: TaskPriority;
   status: TaskStatus;
+  startDate?: string;
   dueDate?: string;
   assignedTo: string[];
   createdBy: string;
@@ -1329,13 +1361,6 @@ export type BIREmploymentClassification = "R" | "C" | "CP" | "S" | "P" | "AL";
 export type BIRTaxStatus = "S" | "M" | "ME" | "MX";
 export type BIRTaxResidency = "resident" | "non_resident";
 export type BIRSeparationType = "resigned" | "terminated" | "end_of_contract";
-export type AnnualTaxStatus = "open" | "reconciled" | "finalized" | "exported";
-export type AnnualTaxAdjustmentType = "over_withheld" | "under_withheld" | "balanced";
-export type Form2316Status = "draft" | "for_signature" | "released" | "downloaded" | "revoked";
-export type AlphalistScheduleType = "schedule_1" | "schedule_2" | "both";
-export type AlphalistExportFormat = "csv" | "xlsx" | "dat";
-export type AlphalistValidationStatus = "passed" | "has_warnings" | "has_errors";
-export type EFPSStatus = "draft" | "validated" | "ready" | "submitted" | "payment_pending" | "paid" | "completed";
 
 /**
  * BIR earnings categorization on a single payslip.
@@ -1387,6 +1412,16 @@ export interface TaxCategoryBreakdown {
   taxableTotal: number;                  // sum of taxable items
   nonTaxableTotal: number;               // sum of non-taxable items + MWE exempt + de minimis within cap
 }
+
+// ─── BIR Compliance Engine (continued) ──────────────────────
+
+export type AnnualTaxStatus = "open" | "reconciled" | "finalized" | "exported";
+export type AnnualTaxAdjustmentType = "over_withheld" | "under_withheld" | "balanced";
+export type Form2316Status = "draft" | "for_signature" | "released" | "downloaded" | "revoked";
+export type AlphalistScheduleType = "schedule_1" | "schedule_2" | "both";
+export type AlphalistExportFormat = "csv" | "xlsx" | "dat";
+export type AlphalistValidationStatus = "passed" | "has_warnings" | "has_errors";
+export type EFPSStatus = "draft" | "validated" | "ready" | "submitted" | "payment_pending" | "paid" | "completed";
 
 /** Per-employee BIR profile (1:1 with employees). */
 export interface EmployeeTaxProfile {
@@ -1534,6 +1569,10 @@ export interface AlphalistRow {
 
 // ─── Performance Management ──────────────────────────────────
 
+import type { SalaryAdjustmentStatus as _SalaryAdjustmentStatus } from "./performance";
+
+export type { PerformanceCriterion, PerformanceRating, PerformanceReview, PerformanceCycle, PerformanceSalaryBand, PerformanceCycleStatus, ReviewStatus, SalaryAdjustmentStatus, PerformanceAuditLog, CreateCycleInput, UpdateCycleInput, CreateCriterionInput, CreateReviewInput, SubmitReviewInput, AcknowledgeReviewInput, CreateSalaryBandInput, ApproveAdjustmentInput } from "./performance";
+
 export interface PerformanceSalaryAdjustment {
   id: string;
   employee_id: string;
@@ -1542,7 +1581,7 @@ export interface PerformanceSalaryAdjustment {
   recommended_amount: number;
   finance_approved_amount?: number;
   override_reason?: string;
-  status: "pending" | "approved" | "rejected";
+  status: _SalaryAdjustmentStatus;
   created_at: string;
   approved_at?: string;
   approved_by?: string;
@@ -1559,3 +1598,4 @@ export interface PerformanceSalaryAdjustment {
     description?: string;
   };
 }
+

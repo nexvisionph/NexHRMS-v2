@@ -3,7 +3,7 @@
  * Bridges performance management adjustments with payroll processing
  */
 
-import { createClient } from "@/services/supabase-server";
+import { createServerSupabaseClient } from "@/services/supabase-server";
 import type { PerformanceSalaryAdjustment } from "@/types";
 
 type ApplyAdjustmentResult =
@@ -24,7 +24,7 @@ type ApplyAdjustmentResult =
  * Retrieves all approved salary adjustments that haven't been applied yet
  */
 export async function getApprovedAdjustmentsForPayroll() {
-  const supabase = await createClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from("performance_salary_adjustments")
@@ -52,7 +52,7 @@ export async function applyAdjustmentsToPayrollRun(
   payrollRunId: string,
   adjustmentIds: string[]
 ) {
-  const supabase = await createClient();
+  const supabase = await createServerSupabaseClient();
   const results: ApplyAdjustmentResult[] = [];
 
   for (const adjustmentId of adjustmentIds) {
@@ -146,7 +146,7 @@ export async function applyAdjustmentsToPayrollRun(
 export async function getAdjustmentImpactSummary(
   adjustmentIds: string[]
 ) {
-  const supabase = await createClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: adjustments, error } = await supabase
     .from("performance_salary_adjustments")
@@ -193,7 +193,7 @@ export async function filterAdjustmentsForPayrollRun(
   payrollRunId: string,
   adjustments: PerformanceSalaryAdjustment[]
 ) {
-  const supabase = await createClient();
+  const supabase = await createServerSupabaseClient();
 
   // Get payroll run details
   const { data: payrollRun, error: runError } = await supabase
@@ -219,7 +219,7 @@ export async function filterAdjustmentsForPayrollRun(
 export async function validateAdjustmentsForPayroll(
   adjustmentIds: string[]
 ) {
-  const supabase = await createClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: adjustments, error } = await supabase
     .from("performance_salary_adjustments")
