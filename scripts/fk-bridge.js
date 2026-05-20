@@ -38,16 +38,22 @@ function log(level, message, data) {
 }
 
 function extractJsonFromBuffer(buf) {
-  try {
-    const s = buf.toString('utf8');
-    const start = s.indexOf('{');
-    const end = s.lastIndexOf('}');
-    if (start !== -1 && end !== -1 && end > start) {
-      const part = s.slice(start, end + 1);
-      return JSON.parse(part);
+  const s = buf.toString('utf8');
+  const end = s.lastIndexOf('}');
+  if (end === -1) return null;
+
+  // Try each '{' position — FK F80 devices prepend a 4-byte binary length
+  // header whose first byte (0x7b) is '{' in ASCII, so the first match is
+  // usually the header byte, not the real JSON start.
+  let pos = -1;
+  while (true) {
+    pos = s.indexOf('{', pos + 1);
+    if (pos === -1 || pos >= end) break;
+    try {
+      return JSON.parse(s.slice(pos, end + 1));
+    } catch {
+      // try next '{'
     }
-  } catch {
-    // ignore
   }
   return null;
 }
