@@ -48,8 +48,11 @@ export async function POST(req: Request) {
   const empByName = new Map<string, string>();
   const empByEmail = new Map<string, string>();
   const empNameById = new Map<string, string>();
+  function normaliseEmpName(n: string): string {
+    return n.replace(/[.,\-_]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+  }
   for (const e of employees || []) {
-    empByName.set((e.name as string).toLowerCase(), e.id as string);
+    empByName.set(normaliseEmpName(e.name as string), e.id as string);
     empByEmail.set((e.email as string).toLowerCase(), e.id as string);
     empNameById.set(e.id as string, e.name as string);
   }
@@ -71,6 +74,13 @@ export async function POST(req: Request) {
   const errors: string[] = [];
 
   const VALID_PAY_FREQUENCIES = ["monthly", "semi_monthly", "bi_weekly", "weekly"];
+  // Normalise common variants before validation
+  function normaliseFreq(raw: string): string {
+    const s = raw.toLowerCase().replace(/[\s-]/g, "_");
+    if (s === "semi_monthly" || s === "semimonthly") return "semi_monthly";
+    if (s === "bi_weekly" || s === "biweekly") return "bi_weekly";
+    return s;
+  }
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
   for (let i = 0; i < rows.length; i++) {
@@ -89,7 +99,7 @@ export async function POST(req: Request) {
     }
 
     const employeeId =
-      empByName.get(empName.toLowerCase()) ||
+      empByName.get(normaliseEmpName(empName)) ||
       empByEmail.get(empEmail.toLowerCase());
 
     if (!employeeId) {
@@ -123,7 +133,7 @@ export async function POST(req: Request) {
       continue;
     }
 
-    const payFreq = String(row["Pay Frequency"] || "monthly").toLowerCase();
+    const payFreq = normaliseFreq(String(row["Pay Frequency"] || "monthly"));
     if (!VALID_PAY_FREQUENCIES.includes(payFreq)) {
       const msg = `Row ${rowNum}: Invalid pay frequency "${payFreq}"`;
       errors.push(msg);

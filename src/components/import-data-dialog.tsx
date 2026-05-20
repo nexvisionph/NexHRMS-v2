@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useMemo } from "react";
+import * as XLSX from "xlsx";
 import {
   downloadImportTemplate,
   parseImportFile,
@@ -9,6 +10,8 @@ import {
   ATTENDANCE_TEMPLATE_HEADERS,
   EMPLOYEES_TEMPLATE_HEADERS,
 } from "@/lib/export-utils";
+import { useEmployeesStore } from "@/store/employees.store";
+import { usePayrollStore } from "@/store/payroll.store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -37,6 +40,8 @@ import {
   Trash2,
   ArrowRight,
   Pencil,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -165,47 +170,68 @@ function isPBFormat(headers: string[]): boolean {
  * Converts a raw row array parsed from a PB XLS file (no header row —
  * sheet_to_json called with header:1) into a PayrollRow matching the template.
  *
- * The PB sheet contains two employee pay-slip blocks side-by-side:
- *   Left  block → value column = col index 7
- *   Right block → value column = col index 15
+ * The REAL PB files from KEI have MULTIPLE SHEETS — one per employee.
+ * Each sheet has two identical blocks side-by-side (left + right).
+ * Both blocks have "NAME" as placeholder and fall back to row 0 col 18.
+ *
+ * Block layout (per sheet):
+ *   Left  block → name col = 4, value col = 7, period-start col = 3
+ *   Right block → name col = 12, value col = 15, period-start col = 11
  */
 function convertPBRawToPayrollRows(
-  rawRows: Record<string, unknown>[]
+  rawRows: Record<string, unknown>[],
+  allSheets?: Array<Record<string, unknown>[]>
 ): PayrollRow[] {
-  // rawRows from parseImportFile will arrive with numeric string keys when
-  // the file has no header row — but parseImportFile calls xlsx sheet_to_json
-  // which uses the first row as keys. For a PB file the first row is mostly
-  // blank so numeric keys end up as "0","1",... We re-key to numbers for clarity.
-  const raw = rawRows.map((r) =>
-    Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v]))
-  );
+  // If allSheets provided, process each sheet; otherwise process single sheet
+  const sheetsToProcess = allSheets && allSheets.length > 0 ? allSheets : [rawRows];
 
   function parseDateSerial(v: unknown): string {
     if (v === null || v === undefined || v === "") return "";
-    if (typeof v === "string" && v.includes("-")) return v.split(" ")[0];
+    // Excel serial number (e.g. 46112)
     if (typeof v === "number") {
       const d = new Date(Math.round((v - 25569) * 86400 * 1000));
-      return d.toISOString().split("T")[0];
+      if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
     }
-    return String(v).split(" ")[0];
+    const s = String(v).trim();
+    // Already ISO format (YYYY-MM-DD)
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.split("T")[0].split(" ")[0];
+    // DD-Mon-YY or D-Mon-YY (e.g. "11-Apr-26", "26-Mar-26")
+    const dmy = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/);
+    if (dmy) {
+      const months: Record<string, string> = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
+      const mon = months[dmy[2].toLowerCase()];
+      if (mon) {
+        const yr = dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3];
+        return `${yr}-${mon}-${dmy[1].padStart(2, "0")}`;
+      }
+    }
+    // MM-DD-YYYY or M/D/YYYY fallback
+    const mdy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (mdy) return `${mdy[3]}-${mdy[1].padStart(2, "0")}-${mdy[2].padStart(2, "0")}`;
+    return s.split(" ")[0];
   }
 
-  function getCell(rows: typeof raw, rowIdx: number, colIdx: number): unknown {
+  function getCell(rows: Record<string, unknown>[], rowIdx: number, colIdx: number): unknown {
     const row = rows[rowIdx];
     if (!row) return null;
-    // keys could be numeric strings or the actual header value
     const v = row[colIdx] ?? row[String(colIdx)];
     return v === undefined || v === null || v === "" ? null : v;
   }
 
-  function numCell(rows: typeof raw, rowIdx: number, colIdx: number): number {
+  function numCell(rows: Record<string, unknown>[], rowIdx: number, colIdx: number): number {
     const v = getCell(rows, rowIdx, colIdx);
     if (v === null) return 0;
-    const f = parseFloat(String(v));
+    if (typeof v === "number") return isNaN(v) ? 0 : v;
+    // Strip commas, "- 0", currency symbols, spaces
+    let s = String(v).replace(/,/g, "").replace(/[₱P\s]/g, "").trim();
+    // Handle "- 0" pattern (common in PB files for zero values)
+    if (s === "-0" || s === "-" || s === "- 0") return 0;
+    if (s.startsWith("- ")) s = "-" + s.slice(2);
+    const f = parseFloat(s);
     return isNaN(f) ? 0 : f;
   }
 
-  function strCell(rows: typeof raw, rowIdx: number, colIdx: number): string {
+  function strCell(rows: Record<string, unknown>[], rowIdx: number, colIdx: number): string {
     const v = getCell(rows, rowIdx, colIdx);
     return v === null ? "" : String(v).trim();
   }
@@ -217,72 +243,91 @@ function convertPBRawToPayrollRows(
 
   const employees: PayrollRow[] = [];
 
-  for (const blk of blocks) {
-    const name =
-      strCell(raw, 4, blk.nameCol) || strCell(raw, 0, 18);
-    if (!name || name === "NAME") continue;
+  for (const sheetRows of sheetsToProcess) {
+    const raw = sheetRows.map((r) =>
+      Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v]))
+    );
 
-    const periodFrom = parseDateSerial(getCell(raw, 2, blk.fromCol));
-    const periodTo = parseDateSerial(getCell(raw, 2, blk.fromCol + 2));
-    const position = strCell(raw, 5, blk.nameCol);
-    const project = strCell(raw, 6, blk.nameCol);
+    // Skip sheets with too few rows (empty sheets)
+    if (raw.length < 15) continue;
 
-    const totalBasic = numCell(raw, 15, blk.valCol);
-    const overtimePay = numCell(raw, 17, blk.valCol);
-    const mealAllowance = numCell(raw, 18, blk.valCol);
-    const projectAllow = numCell(raw, 19, blk.valCol);
-    const taxiFare = numCell(raw, 20, blk.valCol);
-    const othersAllow = numCell(raw, 21, blk.valCol);
-    const totalAllowances = numCell(raw, 22, blk.valCol);
-    const withholdingTax = numCell(raw, 24, blk.valCol);
-    const sss = numCell(raw, 25, blk.valCol);
-    const sssLoan = numCell(raw, 26, blk.valCol);
-    const philhealth = numCell(raw, 27, blk.valCol);
-    const pagibig = numCell(raw, 28, blk.valCol);
-    const pagibigLoan = numCell(raw, 29, blk.valCol);
-    const taxDef = numCell(raw, 30, blk.valCol);
-    const communityTax = numCell(raw, 31, blk.valCol);
-    const netPay = numCell(raw, 33, blk.valCol);
+    for (const blk of blocks) {
+      // Employee name: row 4 at nameCol; fallback to row 0 col 18-19
+      let name = strCell(raw, 4, blk.nameCol);
+      if (!name || name.toUpperCase() === "NAME") {
+        // Fallback: row 0 col 18 or col 19 (name is typically one cell to the right of "NAME" label)
+        name = strCell(raw, 0, 19) || strCell(raw, 0, 18);
+      }
+      if (!name || name.toUpperCase() === "NAME") continue;
 
-    const grossPay = totalBasic + totalAllowances;
-    const loanDeduction = sssLoan + pagibigLoan;
-    const customDeductions = taxDef + communityTax;
-    const lwop = numCell(raw, 13, blk.valCol);
-    const tardiness = numCell(raw, 14, blk.valCol);
-    const adj = numCell(raw, 12, blk.valCol);
-    const otherDeductions = lwop + tardiness + adj;
+      const periodFrom = parseDateSerial(getCell(raw, 2, blk.fromCol));
+      const periodTo = parseDateSerial(getCell(raw, 2, blk.fromCol + 2));
+      const position = strCell(raw, 5, blk.nameCol);
+      const project = strCell(raw, 6, blk.nameCol);
 
-    const noteParts: string[] = [];
-    if (project) noteParts.push(`Project: ${project}`);
-    if (overtimePay > 0) noteParts.push(`OT: ${overtimePay.toFixed(2)}`);
-    if (mealAllowance > 0) noteParts.push(`Meal: ${mealAllowance.toFixed(2)}`);
-    if (taxiFare > 0) noteParts.push(`Taxi: ${taxiFare.toFixed(2)}`);
-    if (projectAllow > 0) noteParts.push(`Proj allowance: ${projectAllow.toFixed(2)}`);
-    if (othersAllow > 0) noteParts.push(`Others: ${othersAllow.toFixed(2)}`);
+      const totalBasic = numCell(raw, 15, blk.valCol);
+      const overtimePay = numCell(raw, 17, blk.valCol);
+      const mealAllowance = numCell(raw, 18, blk.valCol);
+      const projectAllow = numCell(raw, 19, blk.valCol);
+      const taxiFare = numCell(raw, 20, blk.valCol);
+      const othersAllow = numCell(raw, 21, blk.valCol);
+      const totalAllowances = numCell(raw, 22, blk.valCol);
+      const withholdingTax = numCell(raw, 24, blk.valCol);
+      const sss = numCell(raw, 25, blk.valCol);
+      const sssLoan = numCell(raw, 26, blk.valCol);
+      const philhealth = numCell(raw, 27, blk.valCol);
+      const pagibig = numCell(raw, 28, blk.valCol);
+      const pagibigLoan = numCell(raw, 29, blk.valCol);
+      const taxDef = numCell(raw, 30, blk.valCol);
+      const healthcard = numCell(raw, 31, blk.valCol);
+      const netPay = numCell(raw, 33, blk.valCol);
 
-    employees.push({
-      "Employee Name": name,
-      Email: "",
-      Department: "",
-      "Job Title": position,
-      "Period Start": String(periodFrom),
-      "Period End": String(periodTo),
-      "Pay Frequency": "Semi-monthly",
-      "Gross Pay": grossPay.toFixed(2),
-      Allowances: totalAllowances.toFixed(2),
-      "Holiday Pay": "0.00",
-      SSS: sss.toFixed(2),
-      PhilHealth: philhealth.toFixed(2),
-      "Pag-IBIG": pagibig.toFixed(2),
-      Tax: withholdingTax.toFixed(2),
-      "Loan Deduction": loanDeduction.toFixed(2),
-      "Custom Deductions": customDeductions.toFixed(2),
-      "Other Deductions": otherDeductions.toFixed(2),
-      "Net Pay": netPay.toFixed(2),
-      "Payment Method": "",
-      "Bank Reference": "",
-      Notes: noteParts.join(" | "),
-    });
+      const grossPay = totalBasic + totalAllowances;
+      const loanDeduction = sssLoan + pagibigLoan;
+      const customDeductions = taxDef + healthcard;
+      const lwop = numCell(raw, 13, blk.valCol);
+      const tardiness = numCell(raw, 14, blk.valCol);
+      const adj = numCell(raw, 12, blk.valCol);
+      // "Other deductions" = only explicit deduction-type items.
+      // Row 12 (Adjustment/OT) is already factored into totalBasic (row 15),
+      // so only include it if negative (meaning it was a deduction).
+      const otherDeductions = lwop + tardiness + (adj < 0 ? Math.abs(adj) : 0);
+
+      // Skip blocks where everything is zero (empty / no real data)
+      if (totalBasic === 0 && netPay === 0 && grossPay === 0) continue;
+
+      const noteParts: string[] = [];
+      if (project) noteParts.push(`Project: ${project}`);
+      if (overtimePay > 0) noteParts.push(`OT: ${overtimePay.toFixed(2)}`);
+      if (mealAllowance > 0) noteParts.push(`Meal: ${mealAllowance.toFixed(2)}`);
+      if (taxiFare > 0) noteParts.push(`Taxi: ${taxiFare.toFixed(2)}`);
+      if (projectAllow > 0) noteParts.push(`Proj allowance: ${projectAllow.toFixed(2)}`);
+      if (othersAllow > 0) noteParts.push(`Others: ${othersAllow.toFixed(2)}`);
+
+      employees.push({
+        "Employee Name": name,
+        Email: "",
+        Department: project || "",
+        "Job Title": position,
+        "Period Start": String(periodFrom),
+        "Period End": String(periodTo),
+        "Pay Frequency": "Semi-monthly",
+        "Gross Pay": grossPay.toFixed(2),
+        Allowances: totalAllowances.toFixed(2),
+        "Holiday Pay": "0.00",
+        SSS: sss.toFixed(2),
+        PhilHealth: philhealth.toFixed(2),
+        "Pag-IBIG": pagibig.toFixed(2),
+        Tax: withholdingTax.toFixed(2),
+        "Loan Deduction": loanDeduction.toFixed(2),
+        "Custom Deductions": customDeductions.toFixed(2),
+        "Other Deductions": otherDeductions.toFixed(2),
+        "Net Pay": netPay.toFixed(2),
+        "Payment Method": "",
+        "Bank Reference": "",
+        Notes: noteParts.join(" | "),
+      });
+    }
   }
 
   return employees;
@@ -332,6 +377,13 @@ interface PBPreviewDialogProps {
   fileName: string;
 }
 
+/** Normalise name for fuzzy comparison */
+function normaliseForMatch(raw: string): string {
+  return raw.replace(/[.,\-_]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+type PBRowStatus = "matched" | "warning" | "unmatched";
+
 function PBPreviewDialog({
   open,
   onOpenChange,
@@ -341,6 +393,9 @@ function PBPreviewDialog({
   confirming,
   fileName,
 }: PBPreviewDialogProps) {
+  const employees = useEmployeesStore((s) => s.employees);
+  const existingPayslips = usePayrollStore((s) => s.payslips);
+
   const updateCell = useCallback(
     (rowIdx: number, col: string, value: string) => {
       onRowsChange(
@@ -349,6 +404,85 @@ function PBPreviewDialog({
     },
     [rows, onRowsChange]
   );
+
+  // ── Employee matching & status computation ─────────────────────────────────
+  const rowStatuses = useMemo(() => {
+    // Build a set of existing (employeeId|periodStart|periodEnd) keys for O(1) lookup
+    const existingKeys = new Set(
+      existingPayslips.map((p) => `${p.employeeId}|${p.periodStart}|${p.periodEnd}`)
+    );
+
+    return rows.map((row, rowIdx) => {
+      const name = (row["Employee Name"] || "").trim();
+      const email = (row["Email"] || "").trim();
+      const netPay = parseFloat(row["Net Pay"] || "0");
+      const periodStart = (row["Period Start"] || "").trim();
+      const periodEnd = (row["Period End"] || "").trim();
+
+      // Try to match employee by name
+      const normName = normaliseForMatch(name);
+      const matchedEmployee = employees.find(
+        (e) => normaliseForMatch(e.name) === normName
+      );
+
+      const hints: string[] = [];
+      let status: PBRowStatus = "matched";
+
+      if (!matchedEmployee) {
+        status = "unmatched";
+        hints.push(`No employee matched for "${name}"`);
+      } else {
+        if (!email && matchedEmployee.email) {
+          hints.push("Email auto-filled from employee record");
+        }
+        // ── Duplicate check against existing payslips ──────────────────
+        if (periodStart && periodEnd) {
+          const dupKey = `${matchedEmployee.id}|${periodStart}|${periodEnd}`;
+          if (existingKeys.has(dupKey)) {
+            status = "warning";
+            hints.push(`Duplicate — payslip already exists for ${periodStart} – ${periodEnd}`);
+          }
+        }
+        // ── Duplicate within this import batch (same name + period) ────
+        const batchDup = rows.slice(0, rowIdx).some((prev) => {
+          const prevNorm = normaliseForMatch((prev["Employee Name"] || "").trim());
+          return (
+            prevNorm === normName &&
+            (prev["Period Start"] || "") === periodStart &&
+            (prev["Period End"] || "") === periodEnd
+          );
+        });
+        if (batchDup) {
+          if (status !== "unmatched") status = "warning";
+          hints.push("Duplicate within this import — same employee and period appears above");
+        }
+      }
+
+      if (!periodStart || !periodEnd) {
+        if (status !== "unmatched") status = "warning";
+        hints.push("Pay period missing — check PB file");
+      }
+      if (isNaN(netPay) || netPay === 0) {
+        if (status !== "unmatched") status = "warning";
+        hints.push("Net pay is zero — verify before importing");
+      }
+
+      return { status, hints, matchedEmployee };
+    });
+  }, [rows, employees, existingPayslips]);
+
+  // Counts
+  const counts = useMemo(() => {
+    let matched = 0;
+    let warning = 0;
+    let unmatched = 0;
+    for (const rs of rowStatuses) {
+      if (rs.status === "matched") matched++;
+      else if (rs.status === "warning") warning++;
+      else unmatched++;
+    }
+    return { matched, warning, unmatched };
+  }, [rowStatuses]);
 
   const deleteRow = useCallback(
     (rowIdx: number) => {
@@ -399,187 +533,231 @@ function PBPreviewDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col gap-0 p-0">
+
         {/* ── Header ─────────────────────────────────────────────────── */}
-        <DialogHeader className="shrink-0 px-6 pt-6 pb-4 border-b border-border/60">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1">
-              <DialogTitle className="flex items-center gap-2 text-base">
-                <Pencil className="h-4 w-4 text-muted-foreground" />
-                Review Converted Payroll Data
-              </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">{fileName}</span>
-                {" "}was converted from PB format.{" "}
-                Edit any field below before confirming the import.
-              </DialogDescription>
+        <DialogHeader className="shrink-0 px-6 pt-5 pb-4 border-b border-border/60">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <FileSpreadsheet className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <DialogTitle className="text-sm font-semibold leading-none">
+                  Review Converted Payroll Data
+                </DialogTitle>
+                <DialogDescription className="text-[11px] text-muted-foreground mt-1 truncate">
+                  {fileName} · PB format · {rows.length} record{rows.length !== 1 ? "s" : ""}
+                </DialogDescription>
+              </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Badge variant="outline" className="text-[10px] h-5 gap-1">
-                <FileSpreadsheet className="h-3 w-3" />
-                {rows.length} record{rows.length !== 1 ? "s" : ""}
-              </Badge>
-              {missingEmailCount > 0 && (
-                <Badge
-                  variant="outline"
-                  className="text-[10px] h-5 gap-1 border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-400"
-                >
-                  <AlertTriangle className="h-3 w-3" />
-                  {missingEmailCount} email{missingEmailCount !== 1 ? "s" : ""} missing
-                </Badge>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                <CheckCircle className="h-3 w-3" />{counts.matched}
+              </span>
+              {counts.warning > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                  <AlertTriangle className="h-3 w-3" />{counts.warning}
+                </span>
+              )}
+              {counts.unmatched > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-red-500/10 text-red-700 dark:text-red-400 border border-red-500/20">
+                  <XCircle className="h-3 w-3" />{counts.unmatched}
+                </span>
               )}
             </div>
           </div>
         </DialogHeader>
 
-        {/* ── Email warning ───────────────────────────────────────────── */}
-        {missingEmailCount > 0 && (
-          <div className="shrink-0 mx-6 mt-4 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-            <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-            <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
-              <strong>Email is required</strong> for each record. Fill in the Email
-              fields below — they were not present in the PB file.
-            </p>
-          </div>
-        )}
-
-        {/* ── Scrollable records ──────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-          {rows.map((row, rowIdx) => (
-            <div
-              key={rowIdx}
-              className="rounded-2xl border border-border/60 bg-card overflow-hidden"
-            >
-              {/* Record header */}
-              <div className="flex items-center justify-between px-4 py-3 bg-muted/30 border-b border-border/40">
-                <div className="flex items-center gap-2.5">
-                  <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
-                    <span className="text-[10px] font-semibold text-primary">
-                      {rowIdx + 1}
-                    </span>
-                  </div>
-                  <span className="text-sm font-medium leading-none">
-                    {row["Employee Name"] || (
-                      <span className="text-muted-foreground italic">Unnamed employee</span>
-                    )}
-                  </span>
-                  {row["Job Title"] && (
-                    <span className="text-xs text-muted-foreground">· {row["Job Title"]}</span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  title="Remove record"
-                  onClick={() => deleteRow(rowIdx)}
-                  className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+        {/* ── Summary tiles ──────────────────────────────────────────── */}
+        <div className="shrink-0 px-6 pt-4 grid grid-cols-3 gap-3">
+          {([
+            { label: "Matched",   count: counts.matched,   Icon: UserCheck,     color: "emerald" },
+            { label: "Warnings",  count: counts.warning,   Icon: AlertTriangle, color: "amber"   },
+            { label: "Unmatched", count: counts.unmatched, Icon: UserX,         color: "red"     },
+          ] as const).map(({ label, count, Icon, color }) => (
+            <div key={label} className={`flex items-center gap-3 rounded-lg border p-3
+              ${color === "emerald" ? "border-emerald-500/20 bg-emerald-500/5" : ""}
+              ${color === "amber"   ? "border-amber-500/20  bg-amber-500/5"   : ""}
+              ${color === "red"     ? "border-red-500/20    bg-red-500/5"     : ""}
+            `}>
+              <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0
+                ${color === "emerald" ? "bg-emerald-500/15" : ""}
+                ${color === "amber"   ? "bg-amber-500/15"   : ""}
+                ${color === "red"     ? "bg-red-500/15"     : ""}
+              `}>
+                <Icon className={`h-4 w-4
+                  ${color === "emerald" ? "text-emerald-600 dark:text-emerald-400" : ""}
+                  ${color === "amber"   ? "text-amber-600   dark:text-amber-400"   : ""}
+                  ${color === "red"     ? "text-red-600     dark:text-red-400"     : ""}
+                `} />
               </div>
-
-              {/* FieldSet body */}
-              <div className="px-5 py-4 space-y-5">
-                {sections.map((section, sIdx) => (
-                  <div key={section.legend}>
-                    {/* FieldSet equivalent */}
-                    <fieldset className="flex flex-col gap-3">
-                      <SectionLegend>{section.legend}</SectionLegend>
-                      {/* FieldGroup responsive grid */}
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
-                        {section.fields.map((col) => {
-                          const val = row[col] ?? "";
-                          const isRequired = requiredFields.has(col);
-                          const isEmpty = isRequired && !val.trim();
-                          return (
-                            <LabeledField
-                              key={col}
-                              label={col}
-                              required={isRequired}
-                              description={
-                                isEmpty ? "Required — please fill in" : undefined
-                              }
-                            >
-                              <Input
-                                value={val}
-                                placeholder={isRequired ? `${col} (required)` : col}
-                                onChange={(e) =>
-                                  updateCell(rowIdx, col, e.target.value)
-                                }
-                                className={[
-                                  "h-8 text-xs",
-                                  isEmpty
-                                    ? "border-destructive/60 bg-destructive/5 focus-visible:ring-destructive/40"
-                                    : "",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" ")}
-                              />
-                            </LabeledField>
-                          );
-                        })}
-                      </div>
-                    </fieldset>
-
-                    {/* Separator between sections (not after last) */}
-                    {sIdx < sections.length - 1 && (
-                      <Separator className="mt-5" />
-                    )}
-                  </div>
-                ))}
+              <div>
+                <p className={`text-xl font-bold leading-none
+                  ${color === "emerald" ? "text-emerald-700 dark:text-emerald-400" : ""}
+                  ${color === "amber"   ? "text-amber-700   dark:text-amber-400"   : ""}
+                  ${color === "red"     ? "text-red-700     dark:text-red-400"     : ""}
+                `}>{count}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{label}</p>
               </div>
             </div>
           ))}
+        </div>
 
-          {rows.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-center gap-2">
-              <XCircle className="h-8 w-8 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">
-                All records removed. Go back to upload a new file.
+        {/* ── Alert banners ───────────────────────────────────────────── */}
+        <div className="shrink-0 px-6 pt-3 space-y-2">
+          {counts.unmatched > 0 && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5">
+              <UserX className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
+              <p className="text-[11px] text-red-700 dark:text-red-300 leading-relaxed">
+                <strong>{counts.unmatched} record{counts.unmatched !== 1 ? "s" : ""} unmatched</strong> — no employee found in the system.
+                Fill in the Email manually or remove these records before importing.
+              </p>
+            </div>
+          )}
+          {missingEmailCount > 0 && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
+              <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                <strong>{missingEmailCount} email{missingEmailCount !== 1 ? "s" : ""} missing</strong> — Email is required for every record before importing.
               </p>
             </div>
           )}
         </div>
 
+        {/* ── Scrollable records ──────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {rows.map((row, rowIdx) => {
+            const rs = rowStatuses[rowIdx];
+            const isUnmatched = rs?.status === "unmatched";
+            const isWarning   = rs?.status === "warning";
+
+            const cardBorder = isUnmatched ? "border-red-500/30"   : isWarning ? "border-amber-500/30"  : "border-border/60";
+            const headerBg   = isUnmatched ? "bg-red-500/5"        : isWarning ? "bg-amber-500/5"       : "bg-muted/30";
+            const iconBg     = isUnmatched ? "bg-red-500/10"       : isWarning ? "bg-amber-500/10"      : "bg-emerald-500/10";
+            const iconColor  = isUnmatched ? "text-red-600 dark:text-red-400" : isWarning ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400";
+            const StatusIcon = isUnmatched ? UserX : isWarning ? AlertTriangle : UserCheck;
+            const statusPill = isUnmatched
+              ? <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium bg-red-500/10 text-red-700 dark:text-red-400 border border-red-500/20">Unmatched</span>
+              : isWarning
+              ? <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">Warning</span>
+              : <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">Matched</span>;
+
+            return (
+              <div key={rowIdx} className={`rounded-xl border ${cardBorder} bg-card overflow-hidden`}>
+                {/* Card header */}
+                <div className={`flex items-center justify-between px-4 py-2.5 ${headerBg} border-b border-border/30`}>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`h-6 w-6 rounded-full ${iconBg} flex items-center justify-center shrink-0`}>
+                      <StatusIcon className={`h-3.5 w-3.5 ${iconColor}`} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium leading-none">
+                          {row["Employee Name"] || <span className="text-muted-foreground italic">Unnamed</span>}
+                        </span>
+                        {statusPill}
+                      </div>
+                      {(row["Job Title"] || row["Department"]) && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {[row["Job Title"], row["Department"]].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <button type="button" title="Remove record" onClick={() => deleteRow(rowIdx)}
+                    className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0 ml-2">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                {/* Inline hints */}
+                {rs && rs.hints.length > 0 && (
+                  <div className={`px-4 py-2 flex flex-wrap gap-x-4 gap-y-1 border-b border-border/20
+                    ${isUnmatched ? "bg-red-500/5" : "bg-amber-500/5"}
+                  `}>
+                    {rs.hints.map((h, i) => (
+                      <span key={i} className={`text-[10px] flex items-center gap-1
+                        ${isUnmatched ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}
+                      `}>
+                        {isUnmatched ? <XCircle className="h-3 w-3 shrink-0" /> : <AlertTriangle className="h-3 w-3 shrink-0" />}
+                        {h}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Field sections */}
+                <div className="px-4 py-4 space-y-4">
+                  {sections.map((section, sIdx) => (
+                    <div key={section.legend}>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">
+                        {section.legend}
+                      </p>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 sm:grid-cols-3 lg:grid-cols-4">
+                        {section.fields.map((col) => {
+                          const val = row[col] ?? "";
+                          const isRequired = requiredFields.has(col);
+                          const isEmpty = isRequired && !val.trim();
+                          return (
+                            <div key={col} className="flex flex-col gap-1">
+                              <label className="text-[10px] font-medium text-muted-foreground leading-none">
+                                {col}{isRequired && <span className="text-destructive ml-0.5">*</span>}
+                              </label>
+                              <Input
+                                value={val}
+                                placeholder={isRequired ? `${col} (required)` : "—"}
+                                onChange={(e) => updateCell(rowIdx, col, e.target.value)}
+                                className={["h-7 text-xs px-2",
+                                  isEmpty ? "border-destructive/60 bg-destructive/5 focus-visible:ring-destructive/40" : "border-border/50",
+                                ].filter(Boolean).join(" ")}
+                              />
+                              {isEmpty && <p className="text-[9px] text-destructive leading-none">Required</p>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {sIdx < sections.length - 1 && <Separator className="mt-4" />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
+          {rows.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-muted/50 flex items-center justify-center">
+                <XCircle className="h-6 w-6 text-muted-foreground/40" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">All records removed</p>
+                <p className="text-xs text-muted-foreground/60 mt-0.5">Go back to upload a new file.</p>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* ── Footer ─────────────────────────────────────────────────── */}
-        <DialogFooter className="shrink-0 border-t border-border/60 px-6 py-4 flex-row items-center justify-between gap-3">
-          <p className="text-[11px] text-muted-foreground leading-relaxed max-w-xs">
-            {rows.length} record{rows.length !== 1 ? "s" : ""} ready to import.{" "}
-            {missingEmailCount > 0 && (
-              <span className="text-amber-600 dark:text-amber-400">
-                Fill in {missingEmailCount} missing email{missingEmailCount !== 1 ? "s" : ""} first.
-              </span>
+        <DialogFooter className="shrink-0 border-t border-border/60 px-6 py-3.5 flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="font-medium text-foreground">{rows.length}</span>
+            <span>record{rows.length !== 1 ? "s" : ""}</span>
+            {counts.unmatched > 0 && <span className="text-red-600 dark:text-red-400">· {counts.unmatched} unmatched</span>}
+            {missingEmailCount > 0 && <span className="text-amber-600 dark:text-amber-400">· {missingEmailCount} email{missingEmailCount !== 1 ? "s" : ""} missing</span>}
+            {counts.unmatched === 0 && missingEmailCount === 0 && rows.length > 0 && (
+              <span className="text-emerald-600 dark:text-emerald-400">· ready to import</span>
             )}
-          </p>
+          </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onOpenChange(false)}
-              className="text-xs"
-            >
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="text-xs h-8">
               Back
             </Button>
-            <Button
-              size="sm"
-              className="gap-1.5 text-xs"
-              onClick={onConfirm}
-              disabled={
-                rows.length === 0 ||
-                confirming ||
-                missingEmailCount > 0
+            <Button size="sm" className="gap-1.5 text-xs h-8" onClick={onConfirm}
+              disabled={rows.length === 0 || confirming || missingEmailCount > 0}>
+              {confirming
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Importing…</>
+                : <><Upload className="h-3.5 w-3.5" />Confirm Import<ArrowRight className="h-3.5 w-3.5" /></>
               }
-            >
-              {confirming ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Importing…
-                </>
-              ) : (
-                <>
-                  <Upload className="h-3.5 w-3.5" />
-                  Confirm Import
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </>
-              )}
             </Button>
           </div>
         </DialogFooter>
@@ -714,8 +892,30 @@ export function ImportDataDialog({
 
         // ── PB format detection (payroll module only) ───────────────────────
         if (isPayroll && isPBFormat(fileHeaders)) {
+          // Re-read with header:1 to get array-of-arrays keyed by col index
+          // Process ALL sheets — each sheet typically contains one employee
+          const buf = await f.arrayBuffer();
+          const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+
+          const allSheets: Array<Record<string, unknown>[]> = [];
+          for (const sheetName of wb.SheetNames) {
+            const ws = wb.Sheets[sheetName];
+            if (!ws) continue;
+            const arrayRows = XLSX.utils.sheet_to_json<unknown[]>(ws, {
+              header: 1,
+              defval: "",
+              raw: true,
+            });
+            // Convert each row array to Record<number, unknown>
+            const indexedRows = arrayRows.map((row) =>
+              Object.fromEntries((row as unknown[]).map((cell, i) => [i, cell]))
+            );
+            if (indexedRows.length > 5) allSheets.push(indexedRows);
+          }
+
           const converted = convertPBRawToPayrollRows(
-            rows as Record<string, unknown>[]
+            allSheets[0] ?? [],
+            allSheets
           );
           if (converted.length === 0) {
             toast.error(
@@ -724,10 +924,44 @@ export function ImportDataDialog({
             setLoading(false);
             return;
           }
-          toast.info(
-            `PB format detected — ${converted.length} record(s) converted. Review and edit before importing.`
-          );
-          setPbRows(converted);
+
+          // Deduplicate: same employee name + same period → keep first occurrence
+          const seen = new Set<string>();
+          const deduped = converted.filter((row) => {
+            const key = `${(row["Employee Name"] || "").trim().toLowerCase()}__${row["Period Start"] || ""}__${row["Period End"] || ""}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+
+          // Auto-match employees by name and fill in Email + Department
+          const allEmployees = useEmployeesStore.getState().employees;
+          let matchedCount = 0;
+          const enriched = deduped.map((row) => {
+            const name = (row["Employee Name"] || "").trim();
+            const normName = normaliseForMatch(name);
+            const emp = allEmployees.find((e) => normaliseForMatch(e.name) === normName);
+            if (emp) {
+              matchedCount++;
+              return {
+                ...row,
+                Email: row["Email"] || emp.email || "",
+                Department: row["Department"] || emp.department || "",
+                "Job Title": row["Job Title"] || emp.jobTitle || "",
+              };
+            }
+            return row;
+          });
+
+          const removedCount = converted.length - deduped.length;
+          const unmatchedCount = enriched.length - matchedCount;
+          const parts: string[] = [`PB format detected — ${enriched.length} record(s) converted`];
+          if (removedCount > 0) parts.push(`${removedCount} duplicate(s) removed`);
+          parts.push(`${matchedCount} matched`);
+          if (unmatchedCount > 0) parts.push(`${unmatchedCount} unmatched`);
+          toast.info(parts.join(", ") + ". Review before importing.");
+
+          setPbRows(enriched);
           setPbFileName(f.name);
           setLoading(false);
           setPbPreviewOpen(true);
@@ -928,6 +1162,9 @@ export function ImportDataDialog({
               <FileUp className="h-4 w-4" />
               Import {MODULE_LABELS[module]} Data
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Upload an XLSX or CSV file to import {MODULE_LABELS[module].toLowerCase()} data into the system.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 pt-2 overflow-y-auto pr-1">
