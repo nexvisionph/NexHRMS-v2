@@ -100,25 +100,47 @@ export default function Documents201AdminView() {
     const [hydrationTimedOut, setHydrationTimedOut] = useState(false);
 
     // Hydration detection (Req 11.1–11.5)
+    // The documents store is hydrated via the sync service (hydrateAllStores),
+    // not via Zustand persist middleware. We detect hydration by checking if
+    // the component has mounted on the client (stores are populated on login/mount).
     useEffect(() => {
-        const unsub = useDocumentsStore.persist.onFinishHydration(() => {
+        // If employees are already loaded, hydration is complete
+        if (employees.length > 0 || docs.length > 0) {
             setIsHydrated(true);
-        });
-        // If already hydrated by the time effect runs
-        if (useDocumentsStore.persist.hasHydrated()) {
-            setIsHydrated(true);
+            return;
         }
+
+        // Subscribe to store changes to detect when hydration completes
+        const unsubEmployees = useEmployeesStore.subscribe((state) => {
+            if (state.employees.length > 0) {
+                setIsHydrated(true);
+            }
+        });
+        const unsubDocs = useDocumentsStore.subscribe((state) => {
+            if (state.documents.length > 0) {
+                setIsHydrated(true);
+            }
+        });
 
         // 30-second timeout fallback for stalled hydration (Req 11.5)
         const timeout = setTimeout(() => {
-            if (!useDocumentsStore.persist.hasHydrated()) {
-                setHydrationTimedOut(true);
-            }
+            setIsHydrated((prev) => {
+                if (!prev) setHydrationTimedOut(true);
+                return prev;
+            });
         }, 30_000);
 
+        // Also mark hydrated after a short delay if stores remain empty
+        // (legitimate case: no employees/documents exist yet)
+        const emptyCheck = setTimeout(() => {
+            setIsHydrated(true);
+        }, 2_000);
+
         return () => {
-            unsub();
+            unsubEmployees();
+            unsubDocs();
             clearTimeout(timeout);
+            clearTimeout(emptyCheck);
         };
     }, []);
 

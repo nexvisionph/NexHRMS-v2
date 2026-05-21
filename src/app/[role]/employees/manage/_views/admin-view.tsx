@@ -170,6 +170,9 @@ export default function AdminEmployeesView() {
     // ─── Accounts Tab State ───
     const [acctSearch, setAcctSearch] = useState("");
     const [acctRoleFilter, setAcctRoleFilter] = useState("all");
+    const [acctStatusFilter, setAcctStatusFilter] = useState("all");
+    const [acctPage, setAcctPage] = useState(1);
+    const [acctPageSize, setAcctPageSize] = useState(10);
     const [resetPwUserId, setResetPwUserId] = useState<string | null>(null);
     const [resetPwValue, setResetPwValue] = useState("");
 
@@ -177,6 +180,7 @@ export default function AdminEmployeesView() {
     const [jtSearch, setJtSearch] = useState("");
     const [jtDeptFilter, setJtDeptFilter] = useState("all");
     const [jtStatusFilter, setJtStatusFilter] = useState<"all" | "active" | "inactive">("all");
+    const [jtTypeFilter, setJtTypeFilter] = useState<"all" | "lead" | "individual">("all");
     const [jtAddOpen, setJtAddOpen] = useState(false);
     const [jtEditOpen, setJtEditOpen] = useState(false);
     const [editingJt, setEditingJt] = useState<JobTitle | null>(null);
@@ -193,14 +197,15 @@ export default function AdminEmployeesView() {
     const [jtEditIsLead, setJtEditIsLead] = useState(false);
     const [jtEditColor, setJtEditColor] = useState("#6366f1");
 
-    const filteredJobTitles = useMemo(() => {
-        return jobTitles.filter((jt) => {
-            const matchSearch = !jtSearch || jt.name.toLowerCase().includes(jtSearch.toLowerCase()) || (jt.description?.toLowerCase().includes(jtSearch.toLowerCase()));
-            const matchDept = jtDeptFilter === "all" || jt.department === jtDeptFilter;
-            const matchStatus = jtStatusFilter === "all" || (jtStatusFilter === "active" ? jt.isActive : !jt.isActive);
-            return matchSearch && matchDept && matchStatus;
-        });
-    }, [jobTitles, jtSearch, jtDeptFilter, jtStatusFilter]);
+   const filteredJobTitles = useMemo(() => {
+    return jobTitles.filter((jt) => {
+        const matchSearch = !jtSearch || jt.name.toLowerCase().includes(jtSearch.toLowerCase()) || (jt.description?.toLowerCase().includes(jtSearch.toLowerCase()));
+        const matchDept = jtDeptFilter === "all" || jt.department === jtDeptFilter;
+        const matchStatus = jtStatusFilter === "all" || (jtStatusFilter === "active" ? jt.isActive : !jt.isActive);
+        const matchType = jtTypeFilter === "all" || (jtTypeFilter === "lead" ? jt.isLead : !jt.isLead);
+        return matchSearch && matchDept && matchStatus && matchType;
+    });
+}, [jobTitles, jtSearch, jtDeptFilter, jtStatusFilter, jtTypeFilter]);
 
     const handleAddJobTitle = () => {
         if (!jtNewName.trim()) { toast.error("Job title name is required."); return; }
@@ -384,22 +389,30 @@ export default function AdminEmployeesView() {
         toast.success(`Account for ${acc.name} deleted.`);
     };
 
-    const filteredAccounts = useMemo(() => {
-        return accounts.filter((acc) => {
-            const matchSearch = !acctSearch || acc.name.toLowerCase().includes(acctSearch.toLowerCase()) || acc.email.toLowerCase().includes(acctSearch.toLowerCase());
-            const matchRole = acctRoleFilter === "all" || acc.role === acctRoleFilter;
-            return matchSearch && matchRole;
-        });
-    }, [accounts, acctSearch, acctRoleFilter]);
-
-    const [sortKey, setSortKey] = useState<SortKey>("name");
+const filteredAccounts = useMemo(() => {
+    return accounts.filter((acc) => {
+        const matchSearch = !acctSearch || acc.name.toLowerCase().includes(acctSearch.toLowerCase()) || acc.email.toLowerCase().includes(acctSearch.toLowerCase());
+        const matchRole = acctRoleFilter === "all" || acc.role === acctRoleFilter;
+        const linkedEmp = employees.find((e) => e.profileId === acc.id || e.email === acc.email);
+        const empStatus = linkedEmp?.status ?? "active";
+        const matchStatus = acctStatusFilter === "all" ||
+            (acctStatusFilter === "active" && empStatus === "active" && !acc.mustChangePassword) ||
+            (acctStatusFilter === "pw_reset" && acc.mustChangePassword) ||
+            (acctStatusFilter === "inactive" && empStatus === "inactive");
+        return matchSearch && matchRole && matchStatus;
+    });
+}, [accounts, employees, acctSearch, acctRoleFilter, acctStatusFilter]);
+    const acctTotalPages = Math.max(1, Math.ceil(filteredAccounts.length / acctPageSize));
+    const acctSafePage = Math.min(acctPage, acctTotalPages);
+    const paginatedAccounts = filteredAccounts.slice((acctSafePage - 1) * acctPageSize, acctSafePage * acctPageSize);
+    const [sortKey, setSortKey] = useState<SortKey>("id");
     const [sortDir, setSortDir] = useState<SortDir>("asc");
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [salaryRange, setSalaryRange] = useState([0, 200000]);
-    const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({
-        id: true, biometricId: true, name: true, status: true, role: true, department: false, project: true, teamLeader: true, productivity: true, joinDate: true, salary: true, workType: true,
-    });
+   const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({
+    id: true, biometricId: true, name: true, status: true, role: true, department: true, project: false, teamLeader: false, productivity: false, joinDate: false, salary: true, workType: true,
+});
 
     // Add Employee Dialog
     const [addOpen, setAddOpen] = useState(false);
@@ -424,6 +437,8 @@ export default function AdminEmployeesView() {
     const [newAddress, setNewAddress] = useState("");
     // Deduction/Allowance templates for new employee
     const [newDeductionTemplateIds, setNewDeductionTemplateIds] = useState<string[]>([]);
+    const [newDedSearch, setNewDedSearch] = useState("");
+    const [newDedTypeFilter, setNewDedTypeFilter] = useState<"all" | "deduction" | "allowance">("all");
     // Tax overrides for new employee (optional - only if not using auto)
     const [newSssMode, setNewSssMode] = useState<DeductionOverrideMode>("auto");
     const [newSssValue, setNewSssValue] = useState("");
@@ -487,6 +502,8 @@ export default function AdminEmployeesView() {
     const [dirSearch, setDirSearch] = useState("");
     const [dirDept, setDirDept] = useState("all");
     const [dirStatus, setDirStatus] = useState("all");
+    const [dirPage, setDirPage] = useState(1);
+    const DIR_PAGE_SIZE = 12;
 
     const salaryDialogEmp = salaryDialogEmpId ? employees.find((e) => e.id === salaryDialogEmpId) : null;
 
@@ -496,6 +513,9 @@ export default function AdminEmployeesView() {
         const matchStatus = dirStatus === "all" || e.status === dirStatus;
         return matchSearch && matchDept && matchStatus;
     }), [employees, dirSearch, dirDept, dirStatus]);
+    const dirTotalPages = Math.max(1, Math.ceil(dirFiltered.length / DIR_PAGE_SIZE));
+    const dirSafePage = Math.min(dirPage, dirTotalPages);
+    const dirPaginated = dirFiltered.slice((dirSafePage - 1) * DIR_PAGE_SIZE, dirSafePage * DIR_PAGE_SIZE);
 
     const openSalaryDialog = (e: React.MouseEvent, empId: string, currentSalary: number) => {
         e.preventDefault(); e.stopPropagation();
@@ -558,13 +578,14 @@ export default function AdminEmployeesView() {
         if (!newName.trim()) { toast.error("Employee name is required"); return; }
         if (!newEmail.trim()) { toast.error("Email address is required"); return; }
         if (!newJobTitle || !newDept) { toast.error("Please fill all required fields (job title, department)"); return; }
-        const emailCheck = validateEmailDomain(newEmail.trim());
-        if (!emailCheck.valid) { toast.error(emailCheck.error || "Please enter a valid email address"); return; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) { toast.error("Please enter a valid email address"); return; }
+        // Fix 4 — Monthly Salary required and must be > 0
+        const salaryVal = Number(newSalary);
+        if (!newSalary || salaryVal <= 0) { toast.error("Monthly salary is required and must be greater than ₱0"); return; }
         if (!newPassword || newPassword.length < 8) { toast.error("Password is required and must be at least 8 characters"); return; }
         if (/\s/.test(newPassword)) { toast.error("Password cannot contain spaces."); return; }
         if (employees.some((e) => e.email.toLowerCase() === newEmail.trim().toLowerCase())) { toast.error("An employee with this email already exists"); return; }
         if (newBiometricId.trim() && employees.some((e) => e.biometricId === newBiometricId.trim())) { toast.error("This biometric ID is already assigned to another employee"); return; }
-        const salaryVal = Number(newSalary);
         if (newSalary && (isNaN(salaryVal) || salaryVal < 0)) { toast.error("Salary must be a non-negative number"); return; }
         
         // Validate phone number format if provided
@@ -576,6 +597,11 @@ export default function AdminEmployeesView() {
             }
         }
         
+        // Fix 1 — Normalize name (title case, trim extra spaces)
+        const normalizeName = (name: string) =>
+            name.trim().replace(/\s+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        const normalizedName = normalizeName(newName);
+        
         setAddingEmployee(true);
         const id = `EMP-${nanoid(6).toUpperCase()}`;
         
@@ -583,7 +609,7 @@ export default function AdminEmployeesView() {
         const formattedPhone = newPhone ? validatePhone(newPhone).formatted : undefined;
         
         const addResult = addEmployee({
-            id, name: newName.trim(), email: newEmail.trim(), role: newSystemRole, jobTitle: newJobTitle, department: newDept, workType: newWorkType,
+            id, name: normalizedName, email: newEmail.trim(), role: newSystemRole, jobTitle: newJobTitle, department: newDept, workType: newWorkType,
             salary: salaryVal || 0, joinDate: new Date().toISOString().split("T")[0], productivity: 0,
             status: "active", location: "", phone: formattedPhone, biometricId: newBiometricId.trim() || undefined,
             workDays: newWorkDays.length ? newWorkDays : undefined,
@@ -612,7 +638,7 @@ export default function AdminEmployeesView() {
         const resetForm = () => {
             setNewName(""); setNewEmail(""); setNewJobTitle(""); setNewDept(""); setNewWorkType("WFO"); setNewSalary(""); setNewPhone(""); setNewBiometricId(""); setNewPayFreq("company"); setNewSystemRole("employee"); setNewPassword(""); setNewMustChange(true); setNewWorkDays(["Mon", "Tue", "Wed", "Thu", "Fri"]); setNewProjectId("none"); setNewBirthday(""); setNewTeamLeader("none"); setNewShiftId("none"); setNewEmergencyContact(""); setNewAddress("");
             // Reset deduction/tax fields
-            setNewDeductionTemplateIds([]); setNewSssMode("auto"); setNewSssValue(""); setNewPhilhealthMode("auto"); setNewPhilhealthValue(""); setNewPagibigMode("auto"); setNewPagibigValue(""); setNewBirMode("auto"); setNewBirValue("");
+            setNewDeductionTemplateIds([]); setNewDedSearch(""); setNewDedTypeFilter("all"); setNewSssMode("auto"); setNewSssValue(""); setNewPhilhealthMode("auto"); setNewPhilhealthValue(""); setNewPagibigMode("auto"); setNewPagibigValue(""); setNewBirMode("auto"); setNewBirValue("");
         };
         
         // Handle project and shift assignments
@@ -650,11 +676,11 @@ export default function AdminEmployeesView() {
         
         if (newPassword) {
             if (USE_DEMO_MODE) {
-                const result = createAccount({ name: newName, email: newEmail, role: newSystemRole, password: newPassword, mustChangePassword: newMustChange, profileComplete: true }, currentUser.email);
+                const result = createAccount({ name: normalizedName, email: newEmail, role: newSystemRole, password: newPassword, mustChangePassword: newMustChange, profileComplete: true }, currentUser.email);
                 if (!result.ok) toast.warning(`Employee added but account creation failed: ${result.error}`);
                 else {
                     if (result.userId) updateEmployee(id, { profileId: result.userId });
-                    toast.success(`${newName} added with a login account.`);
+                    toast.success(`${normalizedName} added with a login account.`);
                 }
                 resetForm();
                 setAddingEmployee(false);
@@ -663,7 +689,7 @@ export default function AdminEmployeesView() {
                 toast.info(`Employee added. Creating login account...`);
                 // Create account in background - don't block UI
                 createUserAccount({
-                    name: newName,
+                    name: normalizedName,
                     email: newEmail,
                     role: newSystemRole,
                     password: newPassword,
@@ -678,7 +704,7 @@ export default function AdminEmployeesView() {
                     if (!result.ok) toast.warning(`Employee added but account creation failed: ${result.error}`);
                     else {
                         if (result.userId) updateEmployee(id, { profileId: result.userId });
-                        toast.success(`${newName} added with a login account.`);
+                        toast.success(`${normalizedName} added with a login account.`);
                         // Refresh accounts list in background
                         refreshAccounts();
                     }
@@ -688,7 +714,7 @@ export default function AdminEmployeesView() {
                 resetForm();
             }
         } else {
-            toast.success(`${newName} added successfully!`);
+            toast.success(`${normalizedName} added successfully!`);
             resetForm();
             setAddingEmployee(false);
         }
@@ -858,6 +884,22 @@ export default function AdminEmployeesView() {
                                     Export
                                 </Button>
                             )}
+                            {!USE_DEMO_MODE && canManage && (
+                                <Button
+                                    variant="outline"
+                                    className="gap-1.5"
+                                    onClick={async () => {
+                                        try {
+                                            await forceRehydrate();
+                                            toast.success("Employee list refreshed");
+                                        } catch {
+                                            toast.error("Failed to refresh");
+                                        }
+                                    }}
+                                >
+                                    <RefreshCw className="h-4 w-4" /> Refresh
+                                </Button>
+                            )}
                             <Dialog open={addOpen} onOpenChange={setAddOpen}>
                                 <DialogTrigger asChild>
                                     <Button className="gap-1.5" disabled={!canManage}><Plus className="h-4 w-4" /> Add Employee</Button>
@@ -913,7 +955,7 @@ export default function AdminEmployeesView() {
                                                 <div><label className="text-xs font-medium text-muted-foreground">Work Arrangement</label>
                                                     <Select value={newWorkType} onValueChange={(v) => setNewWorkType(v as WorkType)}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">Work From Office</SelectItem><SelectItem value="WFH">Work From Home</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Full Onsite</SelectItem></SelectContent></Select>
                                                 </div>
-                                                <div><label className="text-xs font-medium text-muted-foreground">Monthly Salary (₱)</label><Input type="number" value={newSalary} onChange={(e) => setNewSalary(e.target.value)} placeholder="e.g. 25000" className="mt-1 h-8 text-sm" /></div>
+                                                <div><label className="text-xs font-medium text-muted-foreground">Monthly Salary (₱) <span className="text-destructive">*</span></label><Input type="number" value={newSalary} onChange={(e) => setNewSalary(e.target.value)} placeholder="e.g. 25000" className="mt-1 h-8 text-sm" /></div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div><label className="text-xs font-medium text-muted-foreground">Pay Frequency</label>
@@ -921,9 +963,6 @@ export default function AdminEmployeesView() {
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div><label className="text-xs font-medium text-muted-foreground">Team Leader</label>
-                                                    <Select value={newTeamLeader} onValueChange={setNewTeamLeader}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select leader" /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{[...new Map(employees.filter((e) => e.status === "active" && e.id && e.role !== "admin").map((e) => [e.id, e])).values()].map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select>
-                                                </div>
                                                 <div><label className="text-xs font-medium text-muted-foreground">Shift Schedule</label>
                                                     <Select value={newShiftId} onValueChange={setNewShiftId}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select shift" /></SelectTrigger><SelectContent><SelectItem value="none">Default</SelectItem>{shiftTemplates.filter((s) => s.id).map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.startTime}–{s.endTime})</SelectItem>)}</SelectContent></Select>
                                                 </div>
@@ -967,8 +1006,9 @@ export default function AdminEmployeesView() {
                                                 </div>
                                             )}
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div><label className="text-xs font-medium text-muted-foreground">System Role</label>
+                                                <div><label className="text-xs font-medium text-muted-foreground">System Role <span className="text-destructive">*</span></label>
                                                     <Select value={newSystemRole} onValueChange={(v) => setNewSystemRole(v as Role)}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="employee">Employee</SelectItem><SelectItem value="supervisor">Supervisor</SelectItem><SelectItem value="hr">HR</SelectItem><SelectItem value="finance">Finance</SelectItem><SelectItem value="payroll_admin">Payroll Admin</SelectItem><SelectItem value="auditor">Auditor</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select>
+                                                    <p className="text-[11px] text-muted-foreground mt-1">Required — controls what pages this employee can access.</p>
                                                 </div>
                                                 <div><label className="text-xs font-medium text-muted-foreground">Initial Password <span className="text-red-500">*</span></label>
                                                     <div className="flex gap-1.5 mt-1">
@@ -991,19 +1031,23 @@ export default function AdminEmployeesView() {
                                             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Project Assignment</span>
                                             <span className="ml-auto text-[10px] font-normal text-muted-foreground/60">optional</span>
                                         </div>
-                                        <div className="p-4">
-                                            <label className="text-xs font-medium text-muted-foreground">Assign to Project</label>
-                                            <Select value={newProjectId} onValueChange={setNewProjectId}>
-                                                <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="No project — assign later" /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="none">No project</SelectItem>
-                                                    {projects.filter((p) => p.status !== "completed" && p.id).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                                                </SelectContent>
-                                            </Select>
-                                            {newProjectId && newProjectId !== "none" && (() => {
-                                                const proj = projects.find((p) => p.id === newProjectId);
-                                                return proj ? <p className="text-[11px] text-muted-foreground mt-1.5">{proj.assignedEmployeeIds?.length ?? 0} member{(proj.assignedEmployeeIds?.length ?? 0) !== 1 ? "s" : ""} currently on this project</p> : null;
-                                            })()}
+                                        <div className="p-4 space-y-3">
+                                            <div><label className="text-xs font-medium text-muted-foreground">Team Leader</label>
+                                                <Select value={newTeamLeader} onValueChange={setNewTeamLeader}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select leader" /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{[...new Map(employees.filter((e) => e.status === "active" && e.id && e.role !== "admin").map((e) => [e.id, e])).values()].map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select>
+                                            </div>
+                                            <div><label className="text-xs font-medium text-muted-foreground">Assign to Project</label>
+                                                <Select value={newProjectId} onValueChange={setNewProjectId}>
+                                                    <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="No project — assign later" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="none">No project</SelectItem>
+                                                        {projects.filter((p) => p.status !== "completed" && p.id).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                                {newProjectId && newProjectId !== "none" && (() => {
+                                                    const proj = projects.find((p) => p.id === newProjectId);
+                                                    return proj ? <p className="text-[11px] text-muted-foreground mt-1.5">{proj.assignedEmployeeIds?.length ?? 0} member{(proj.assignedEmployeeIds?.length ?? 0) !== 1 ? "s" : ""} currently on this project</p> : null;
+                                                })()}
+                                            </div>
                                         </div>
                                     </div>
 
@@ -1017,26 +1061,40 @@ export default function AdminEmployeesView() {
                                         <div className="p-4 space-y-2">
                                             {activeTemplates.length === 0 ? (
                                                 <p className="text-xs text-muted-foreground">No active templates available. Create templates in Payroll → Deduction/Allowance first.</p>
-                                            ) : (
-                                                activeTemplates.map((t) => (
-                                                    <label key={t.id} className="flex items-center gap-2 cursor-pointer">
-                                                        <Checkbox
-                                                            checked={newDeductionTemplateIds.includes(t.id)}
-                                                            onCheckedChange={(checked) => {
-                                                                if (checked) setNewDeductionTemplateIds([...newDeductionTemplateIds, t.id]);
-                                                                else setNewDeductionTemplateIds(newDeductionTemplateIds.filter(id => id !== t.id));
-                                                            }}
-                                                        />
-                                                        <span className="text-sm">{t.name}</span>
-                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.type === "allowance" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                                                            {t.type}
-                                                        </span>
-                                                        <span className="text-xs text-muted-foreground ml-auto">
-                                                            {t.calculationMode === "percentage" ? `${t.value}%` : `₱${t.value.toLocaleString()}`}
-                                                        </span>
-                                                    </label>
-                                                ))
-                                            )}
+                                            ) : (<>
+                                                {/* Search + Filter */}
+                                                <div className="flex gap-2 mb-2">
+                                                    <div className="relative flex-1">
+                                                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                                        <Input placeholder="Search templates..." value={newDedSearch} onChange={(e) => setNewDedSearch(e.target.value)} className="pl-8 h-7 text-xs" />
+                                                    </div>
+                                                    <Select value={newDedTypeFilter} onValueChange={(v) => setNewDedTypeFilter(v as "all" | "deduction" | "allowance")}>
+                                                        <SelectTrigger className="h-7 w-[120px] text-xs"><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="all">All Types</SelectItem>
+                                                            <SelectItem value="deduction">Deduction</SelectItem>
+                                                            <SelectItem value="allowance">Allowance</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                {/* Filtered Template List */}
+                                                {(() => {
+                                                    const filtered = activeTemplates.filter((t) => {
+                                                        const matchSearch = !newDedSearch || t.name.toLowerCase().includes(newDedSearch.toLowerCase());
+                                                        const matchType = newDedTypeFilter === "all" || t.type === newDedTypeFilter;
+                                                        return matchSearch && matchType;
+                                                    });
+                                                    if (filtered.length === 0) return <p className="text-xs text-muted-foreground text-center py-2">No templates match your search.</p>;
+                                                    return filtered.map((t) => (
+                                                        <label key={t.id} className="flex items-center gap-2 cursor-pointer">
+                                                            <Checkbox checked={newDeductionTemplateIds.includes(t.id)} onCheckedChange={(checked) => { if (checked) setNewDeductionTemplateIds([...newDeductionTemplateIds, t.id]); else setNewDeductionTemplateIds(newDeductionTemplateIds.filter(id => id !== t.id)); }} />
+                                                            <span className="text-sm">{t.name}</span>
+                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.type === "allowance" ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"}`}>{t.type}</span>
+                                                            <span className="text-xs text-muted-foreground ml-auto">{t.calculationMode === "percentage" ? `${t.value}%` : `₱${t.value.toLocaleString()}`}</span>
+                                                        </label>
+                                                    ));
+                                                })()}
+                                            </>)}
                                         </div>
                                     </div>
 
@@ -1444,25 +1502,12 @@ export default function AdminEmployeesView() {
                                     </SheetTrigger>
                                     <SheetContent className="w-[320px] sm:w-[360px] flex flex-col gap-0 p-0">
                                         {/* Header */}
-                                        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                                        <div className="flex items-center px-5 py-4 border-b border-border">
                                             <div>
                                                 <SheetTitle className="text-base font-semibold">Advanced Filters</SheetTitle>
                                                 <p className="text-xs text-muted-foreground mt-0.5">Narrow down the employee list</p>
                                             </div>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-xs text-muted-foreground hover:text-foreground h-7 px-2"
-                                                onClick={() => {
-                                                    setDepartmentFilter("all");
-                                                    setSalaryRange([0, 200000]);
-                                                    setVisibleCols({ id: true, biometricId: true, name: true, status: true, role: true, department: false, project: true, teamLeader: true, productivity: true, joinDate: true, salary: true, workType: true });
-                                                }}
-                                            >
-                                                Reset all
-                                            </Button>
                                         </div>
-
                                         {/* Scrollable body */}
                                         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
 
@@ -1551,10 +1596,22 @@ export default function AdminEmployeesView() {
                                         </div>
 
                                         {/* Footer */}
-                                        <div className="px-5 py-4 border-t border-border">
-                                            <p className="text-xs text-muted-foreground text-center">
+                                        <div className="px-5 py-4 border-t border-border flex items-center justify-between">
+                                            <p className="text-xs text-muted-foreground">
                                                 {filtered.length} employee{filtered.length !== 1 ? "s" : ""} match current filters
                                             </p>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-xs h-7 px-3"
+                                                onClick={() => {
+                                                    setDepartmentFilter("all");
+                                                    setSalaryRange([0, 200000]);
+                                                    setVisibleCols({ id: true, biometricId: true, name: true, status: true, role: true, department: true, project: false, teamLeader: false, productivity: false, joinDate: false, salary: true, workType: true });
+                                                }}
+                                            >
+                                                Reset all
+                                            </Button>
                                         </div>
                                     </SheetContent>
                                 </Sheet>
@@ -1614,23 +1671,23 @@ export default function AdminEmployeesView() {
                     {/* Desktop Table */}
                     <Card className="border border-border/50 hidden md:block">
                         <CardContent className="p-0">
-                            <div className="overflow-x-auto">
-                                <Table>
+                           <div className="overflow-x-auto w-full">
+                                <Table className="w-full">
                                     <TableHeader>
                                         <TableRow>
-                                            {visibleCols.id && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("id")}>ID{si("id")}</TableHead>}
-                                            {visibleCols.biometricId && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("biometricId")}>Biometric ID{si("biometricId")}</TableHead>}
-                                            {visibleCols.name && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("name")}>Name{si("name")}</TableHead>}
-                                            {visibleCols.status && <TableHead className="text-xs">Status</TableHead>}
-                                            {visibleCols.role && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("role")}>Role{si("role")}</TableHead>}
-                                            {visibleCols.department && <TableHead className="text-xs">Department</TableHead>}
+                                            {visibleCols.id && <TableHead className="cursor-pointer text-xs w-36" onClick={() => handleSort("id")}>ID{si("id")}</TableHead>}
+                                            {visibleCols.biometricId && <TableHead className="cursor-pointer text-xs w-28" onClick={() => handleSort("biometricId")}>Biometric ID{si("biometricId")}</TableHead>}
+                                            {visibleCols.name && <TableHead className="cursor-pointer text-xs w-56" onClick={() => handleSort("name")}>Name{si("name")}</TableHead>}
+                                            {visibleCols.role && <TableHead className="cursor-pointer text-xs w-24" onClick={() => handleSort("role")}>Role{si("role")}</TableHead>}
+                                            {visibleCols.department && <TableHead className="text-xs w-28">Department</TableHead>}
                                             {visibleCols.project && <TableHead className="text-xs">Project</TableHead>}
                                             {visibleCols.teamLeader && <TableHead className="text-xs">Team Leader</TableHead>}
                                             {visibleCols.productivity && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("productivity")}>Productivity{si("productivity")}</TableHead>}
                                             {visibleCols.joinDate && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("joinDate")}>Join Date{si("joinDate")}</TableHead>}
-                                            {visibleCols.salary && <TableHead className="cursor-pointer text-xs" onClick={() => handleSort("salary")}>Salary (Monthly){si("salary")}</TableHead>}
-                                            {visibleCols.workType && <TableHead className="text-xs">Work Type</TableHead>}
-                                            <TableHead className="text-xs w-28"></TableHead>
+                                            {visibleCols.salary && <TableHead className="cursor-pointer text-xs w-36" onClick={() => handleSort("salary")}>Salary (Monthly){si("salary")}</TableHead>}
+                                            {visibleCols.workType && <TableHead className="text-xs w-24">Work Type</TableHead>}
+                                            {visibleCols.status && <TableHead className="text-xs w-24">Status</TableHead>}
+                                            <TableHead className="text-xs w-48 text-center">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1640,8 +1697,7 @@ export default function AdminEmployeesView() {
                                                 <TableRow key={emp.id} className="group">
                                                     {visibleCols.id && <TableCell className="text-xs text-muted-foreground">{emp.id}</TableCell>}
                                                     {visibleCols.biometricId && <TableCell className="text-xs font-mono text-muted-foreground">{emp.biometricId || "—"}</TableCell>}
-                                                    {visibleCols.name && <TableCell><div className="flex items-center gap-2"><Avatar className="h-8 w-8"><AvatarFallback className="text-[10px] bg-muted">{getInitials(emp.name)}</AvatarFallback></Avatar><div><p className="text-sm font-medium">{emp.name}</p><p className="text-xs text-muted-foreground">{emp.email}</p></div></div></TableCell>}
-                                                    {visibleCols.status && <TableCell><Badge variant="secondary" className={emp.status === "active" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : emp.status === "resigned" ? "bg-orange-500/15 text-orange-700 dark:text-orange-400" : "bg-red-500/15 text-red-700 dark:text-red-400"}>{emp.status}</Badge></TableCell>}
+                                                    {visibleCols.name && <TableCell><div className="flex items-center gap-2 min-w-0"><Avatar className="h-8 w-8 shrink-0"><AvatarFallback className="text-[10px] bg-muted">{getInitials(emp.name)}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium truncate">{emp.name}</p><p className="text-xs text-muted-foreground truncate">{emp.email}</p></div></div></TableCell>}
                                                     {visibleCols.role && <TableCell className="text-xs">{emp.role}</TableCell>}
                                                     {visibleCols.department && <TableCell className="text-xs">{emp.department}</TableCell>}
                                                     {visibleCols.project && <TableCell className="text-xs">{assignedProject ? <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800">{assignedProject.name}</Badge> : <span className="text-muted-foreground">—</span>}</TableCell>}
@@ -1650,9 +1706,10 @@ export default function AdminEmployeesView() {
                                                     {visibleCols.joinDate && <TableCell className="text-xs text-muted-foreground">{formatDate(emp.joinDate)}</TableCell>}
                                                     {visibleCols.salary && <TableCell className="text-xs font-medium">{formatCurrency(emp.salary)}<span className="text-muted-foreground">/mo</span></TableCell>}
                                                     {visibleCols.workType && <TableCell><Badge variant="outline" className="text-[10px]">{emp.workType}</Badge></TableCell>}
+                                                    {visibleCols.status && <TableCell><Badge variant="secondary" className={emp.status === "active" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : emp.status === "resigned" ? "bg-orange-500/15 text-orange-700 dark:text-orange-400" : "bg-red-500/15 text-red-700 dark:text-red-400"}>{emp.status}</Badge></TableCell>}
                                                     <TableCell>
-                                                        <div className="flex items-center gap-1">
-                                                            <Link href={rh(`/employees/${emp.id}`)}><Button variant="ghost" size="icon" className="h-7 w-7"><Eye className="h-3.5 w-3.5" /></Button></Link>
+                                                         <div className="flex items-center justify-end gap-1">
+                                                             <Link href={rh(`/employees/${emp.id}`)}><Button variant="ghost" size="icon" className="h-7 w-7"><Eye className="h-3.5 w-3.5" /></Button></Link>
                                                             <Button variant="ghost" size="icon" className="h-7 w-7" disabled={!canManage} onClick={() => handleOpenEdit(emp)} title="Edit"><Pencil className="h-3.5 w-3.5" /></Button>
                                                             {canManage && emp.profileId && (
                                                                 <Button variant="ghost" size="icon" className="h-7 w-7" title="Reset password" onClick={() => {
@@ -1726,14 +1783,14 @@ export default function AdminEmployeesView() {
                     <div className="flex flex-wrap items-center gap-3">
                         <div className="relative flex-1 min-w-[200px]">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input placeholder="Search employees..." className="pl-9" value={dirSearch} onChange={(e) => setDirSearch(e.target.value)} />
+                            <Input placeholder="Search employees..." className="pl-9" value={dirSearch} onChange={(e) => { setDirSearch(e.target.value); setDirPage(1); }} />
                         </div>
-                        <Select value={dirDept} onValueChange={setDirDept}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Department" /></SelectTrigger><SelectContent><SelectItem value="all">All Departments</SelectItem>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
-                        <Select value={dirStatus} onValueChange={setDirStatus}><SelectTrigger className="w-full sm:w-[130px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select>
+                       <Select value={dirDept} onValueChange={(v) => { setDirDept(v); setDirPage(1); }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Department" /></SelectTrigger><SelectContent><SelectItem value="all">All Departments</SelectItem>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
+                        <Select value={dirStatus} onValueChange={(v) => { setDirStatus(v); setDirPage(1); }}><SelectTrigger className="w-full sm:w-[130px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">
-                        {dirFiltered.map((emp) => (
+                       {dirPaginated.map((emp) => (
                             <div key={emp.id} className="relative h-full">
                                 <Link href={rh(`/employees/${emp.id}`)} className="block h-full">
                                     <Card className="border border-border/50 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group h-full flex flex-col">
@@ -1746,7 +1803,11 @@ export default function AdminEmployeesView() {
                                                         <h3 className="text-sm font-semibold truncate group-hover:text-primary transition-colors">{emp.name}</h3>
                                                         <Badge variant="secondary" className={`text-[9px] shrink-0 ${emp.status === "active" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : "bg-red-500/15 text-red-700 dark:text-red-400"}`}>{emp.status}</Badge>
                                                     </div>
-                                                    <p className="text-xs text-muted-foreground mt-0.5 capitalize">{emp.role}</p>
+                                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                                        {emp.jobTitle && emp.department
+                                                            ? `${emp.jobTitle} | ${emp.department}`
+                                                            : emp.jobTitle || emp.department || emp.role}
+                                                    </p>
                                                 </div>
                                             </div>
                                             {/* Fixed-height info rows — always rendered for uniform card size */}
@@ -1774,6 +1835,24 @@ export default function AdminEmployeesView() {
                             </div>
                         ))}
                     </div>
+
+                     {/* Pagination Controls */}
+                    {dirTotalPages > 1 && (
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <p className="text-sm text-muted-foreground">
+                                Showing {((dirSafePage - 1) * DIR_PAGE_SIZE) + 1}–{Math.min(dirSafePage * DIR_PAGE_SIZE, dirFiltered.length)} of {dirFiltered.length} employees
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">Page {dirSafePage} of {dirTotalPages}</span>
+                                <Button variant="outline" size="icon" className="h-8 w-8" disabled={dirSafePage <= 1} onClick={() => setDirPage(dirSafePage - 1)}>
+                                    <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <Button variant="outline" size="icon" className="h-8 w-8" disabled={dirSafePage >= dirTotalPages} onClick={() => setDirPage(dirSafePage + 1)}>
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Pending Salary Proposals */}
                     {canDirectSet && salaryRequests.filter((r) => r.status === "pending").length > 0 && (
@@ -1817,9 +1896,9 @@ export default function AdminEmployeesView() {
                             <div className="flex flex-wrap items-center gap-3">
                                 <div className="relative flex-1 min-w-[200px]">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                    <Input placeholder="Search by name or email..." className="pl-9" value={acctSearch} onChange={(e) => setAcctSearch(e.target.value)} />
+                                    <Input placeholder="Search by name or email..." className="pl-9" value={acctSearch} onChange={(e) => { setAcctSearch(e.target.value); setAcctPage(1); }} />
                                 </div>
-                                <Select value={acctRoleFilter} onValueChange={setAcctRoleFilter}>
+                                <Select value={acctRoleFilter} onValueChange={(v) => { setAcctRoleFilter(v); setAcctPage(1); }}>
                                     <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="All Roles" /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">All Roles</SelectItem>
@@ -1828,11 +1907,20 @@ export default function AdminEmployeesView() {
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                {(acctSearch || acctRoleFilter !== "all") && (
+                                <Select value={acctStatusFilter} onValueChange={(v) => { setAcctStatusFilter(v); setAcctPage(1); }}>
+                                <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="All Status" /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="all">All Status</SelectItem>
+                                    <SelectItem value="active">Active</SelectItem>
+                                    <SelectItem value="pw_reset">Pw Reset</SelectItem>
+                                    <SelectItem value="inactive">Inactive</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {(acctSearch || acctRoleFilter !== "all" || acctStatusFilter !== "all") && (
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => { setAcctSearch(""); setAcctRoleFilter("all"); }}
+                                        onClick={() => { setAcctSearch(""); setAcctRoleFilter("all"); setAcctStatusFilter("all"); setAcctPage(1); }}
                                         className="h-9 text-xs gap-1"
                                     >
                                         <XCircle className="h-3 w-3" /> Clear
@@ -1862,18 +1950,18 @@ export default function AdminEmployeesView() {
                                 </div>
                             ) : (
                                 <div className="overflow-x-auto">
-                                    <Table>
+                                    <Table className="table-fixed w-full">
                                         <TableHeader>
                                             <TableRow>
-                                                <TableHead className="text-xs">User</TableHead>
-                                                <TableHead className="text-xs">Role</TableHead>
-                                                <TableHead className="text-xs">Status</TableHead>
-                                                {!USE_DEMO_MODE && <TableHead className="text-xs">Created</TableHead>}
-                                                <TableHead className="text-xs w-32 text-right">Actions</TableHead>
+                                               <TableHead className="text-xs w-72">User</TableHead>
+                                                <TableHead className="text-xs w-36">Role</TableHead>
+                                                <TableHead className="text-xs w-40">Status</TableHead>
+                                                {!USE_DEMO_MODE && <TableHead className="text-xs w-32">Created</TableHead>}
+                                                <TableHead className="text-xs w-24 text-center">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {filteredAccounts.map((acc) => {
+                                            {paginatedAccounts.map((acc) => {
                                                 const roleColors: Record<string, string> = {
                                                     admin: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
                                                     hr: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800",
@@ -1886,8 +1974,8 @@ export default function AdminEmployeesView() {
                                                 return (
                                                     <TableRow key={acc.id} className="group">
                                                         <TableCell>
-                                                            <div className="flex items-center gap-3">
-                                                                <Avatar className="h-9 w-9">
+                                                           <div className="flex items-center gap-3 min-w-0">
+                                                                <Avatar className="h-9 w-9 shrink-0">
                                                                     <AvatarFallback className="text-xs font-bold bg-primary/10 text-primary">{getInitials(acc.name)}</AvatarFallback>
                                                                 </Avatar>
                                                                 <div className="min-w-0">
@@ -1902,27 +1990,38 @@ export default function AdminEmployeesView() {
                                                             </Badge>
                                                         </TableCell>
                                                         <TableCell>
-                                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                                {acc.mustChangePassword && (
-                                                                    <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
-                                                                        <KeyRound className="h-2.5 w-2.5 mr-0.5" /> pw reset
-                                                                    </Badge>
-                                                                )}
-                                                                {!acc.mustChangePassword && (
-                                                                    <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700">
-                                                                        <ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> active
-                                                                    </Badge>
-                                                                )}
-                                                            </div>
-                                                        </TableCell>
+                                                            {(() => {
+                                                                    const linkedEmp = employees.find((e) => e.profileId === acc.id || e.email === acc.email);
+                                                                    const empStatus = linkedEmp?.status ?? "active";
+                                                                    return (
+                                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                                            {empStatus === "inactive" && (
+                                                                                <Badge variant="outline" className="text-[10px] text-red-600 border-red-300 dark:text-red-400 dark:border-red-700">
+                                                                                    inactive
+                                                                                </Badge>
+                                                                            )}
+                                                                           {acc.mustChangePassword && (
+                                                                                <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
+                                                                                    <KeyRound className="h-2.5 w-2.5 mr-0.5" /> pw reset
+                                                                                </Badge>
+                                                                            )}
+                                                                            {!acc.mustChangePassword && empStatus === "active" && (
+                                                                                <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700">
+                                                                                    <ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> active
+                                                                                </Badge>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })()}
+                                                                                                                    </TableCell>
                                                         {!USE_DEMO_MODE && (
                                                             <TableCell className="text-xs text-muted-foreground">
                                                                 {acc.createdAt ? formatDate(acc.createdAt.split("T")[0]) : "—"}
                                                             </TableCell>
                                                         )}
-                                                        <TableCell>
-                                                            <div className="flex items-center justify-end gap-1">
-                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Reset password"
+                                                       <TableCell className="text-center">
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Reset password"
                                                                     onClick={() => { setResetPwUserId(acc.id); setResetPwValue(""); }}>
                                                                     <KeyRound className="h-3.5 w-3.5" />
                                                                 </Button>
@@ -1962,7 +2061,27 @@ export default function AdminEmployeesView() {
                             )}
                         </CardContent>
                     </Card>
-
+                   {/* Pagination */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select value={String(acctPageSize)} onValueChange={(v) => { setAcctPageSize(Number(v)); setAcctPage(1); }}>
+                                <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    {PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Page {acctSafePage} of {acctTotalPages}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={acctSafePage <= 1} onClick={() => setAcctPage(acctSafePage - 1)}>
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={acctSafePage >= acctTotalPages} onClick={() => setAcctPage(acctSafePage + 1)}>
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
                     {/* Info Card */}
                     <Card className="border border-blue-500/20 bg-blue-500/5">
                         <CardContent className="p-4">
@@ -2047,15 +2166,23 @@ export default function AdminEmployeesView() {
                                     <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="All Status" /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">All Status</SelectItem>
-                                        <SelectItem value="active">Active</SelectItem>
+                                        <SelectItem value="active">Active</SelectItem>  
                                         <SelectItem value="inactive">Inactive</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                {(jtSearch || jtDeptFilter !== "all" || jtStatusFilter !== "all") && (
+                                <Select value={jtTypeFilter} onValueChange={(v) => setJtTypeFilter(v as "all" | "lead" | "individual")}>
+                                <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="All Types" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Types</SelectItem>
+                                    <SelectItem value="lead">Lead</SelectItem>
+                                    <SelectItem value="individual">Individual</SelectItem>
+                                </SelectContent>
+                            </Select>
+                               {(jtSearch || jtDeptFilter !== "all" || jtStatusFilter !== "all" || jtTypeFilter !== "all") && (
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => { setJtSearch(""); setJtDeptFilter("all"); setJtStatusFilter("all"); }}
+                                        onClick={() => { setJtSearch(""); setJtDeptFilter("all"); setJtStatusFilter("all"); setJtTypeFilter("all"); }}
                                         className="h-9 text-xs gap-1"
                                     >
                                         <XCircle className="h-3 w-3" /> Clear

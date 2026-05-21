@@ -29,6 +29,8 @@ const SEED_DEPARTMENTS: Department[] = DEPARTMENTS.map((name, idx) => {
     };
 });
 
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
+
 interface DepartmentsState {
     departments: Department[];
 
@@ -49,7 +51,7 @@ interface DepartmentsState {
 
 export const useDepartmentsStore = create<DepartmentsState>()(
     (set, get) => ({
-        departments: SEED_DEPARTMENTS,
+        departments: USE_DEMO_MODE ? SEED_DEPARTMENTS : [],
 
         // ── Add ───────────────────────────────────────────
         addDepartment: (data) => {

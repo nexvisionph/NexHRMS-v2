@@ -4,6 +4,8 @@ import { nanoid } from "nanoid";
 import type { Employee, EmployeeStatus, WorkType, SalaryChangeRequest, SalaryHistoryEntry, EmployeeDocument } from "@/types";
 import { SEED_EMPLOYEES } from "@/data/seed";
 
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
+
 interface EmployeesState {
     employees: Employee[];
     deletedEmployeeIds: string[];
@@ -81,7 +83,7 @@ function dedupeAll(employees: Employee[]): Employee[] {
 
 export const useEmployeesStore = create<EmployeesState>()(
     (set, get) => ({
-            employees: SEED_EMPLOYEES,
+            employees: USE_DEMO_MODE ? SEED_EMPLOYEES : [],
             deletedEmployeeIds: [],
             salaryRequests: [],
             salaryHistory: [],

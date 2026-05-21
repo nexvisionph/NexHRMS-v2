@@ -33,6 +33,8 @@ import {
   documents201Db,
   createClient,
 } from "./db.service";
+import { disciplinaryDb, documentsDb, performanceDb, birComplianceDb } from "./db.service";
+import { clearStaleStorage } from "@/lib/clear-stale-storage";
 import { keysToCamel } from "@/lib/db-utils";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useLeaveStore } from "@/store/leave.store";
@@ -50,6 +52,9 @@ import type { EmployeeNotifPrefs } from "@/store/notifications.store";
 import { useLocationStore } from "@/store/location.store";
 import { useDocumentsStore } from "@/store/documents.store";
 import { useAuthStore } from "@/store/auth.store";
+import { useDisciplinaryStore } from "@/store/disciplinary.store";
+import { usePerformanceStore } from "@/store/performance.store";
+import { useBIRComplianceStore } from "@/store/bir-compliance.store";
 
 let _hydrated = false;
 let _subscriptions: (() => void)[] = [];
@@ -98,6 +103,10 @@ export async function forceRehydrate(): Promise<void> {
 async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): Promise<void> {
   if (!shouldSync()) return;
   if (_hydrated) return;
+
+  // Wipe stale localStorage keys from old persist() stores before pulling
+  // fresh data from Supabase. This prevents zombie data from rehydrating.
+  clearStaleStorage();
 
   // Check for valid session before attempting to fetch data.
   // This prevents 406 errors when the refresh token is invalid.
@@ -364,6 +373,78 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
     // Hydrate documents 201 store — always set from DB so DB-side changes
     // (uploads, approvals, deletions) propagate on next login/refresh.
     useDocumentsStore.setState({ documents: fetchedDocuments });
+    // ── Batch 3: Disciplinary + Documents + Performance + BIR ────
+    // Use allSettled so missing tables (migration not yet applied) don't
+    // break the rest of hydration.
+    const batch3 = await Promise.allSettled([
+      disciplinaryDb.fetchCases(),
+      disciplinaryDb.fetchNTEs(),
+      disciplinaryDb.fetchNODs(),
+      documentsDb.fetchAll(),
+      performanceDb.fetchCycles(),
+      performanceDb.fetchCriteria(),
+      performanceDb.fetchSalaryBands(),
+      performanceDb.fetchReviews(),
+      performanceDb.fetchAdjustments(),
+      performanceDb.fetchAuditLogs(),
+      birComplianceDb.fetchTaxProfiles(),
+      birComplianceDb.fetchAnnualSummaries(),
+      birComplianceDb.fetchPreviousEmployerRecords(),
+      birComplianceDb.fetchForm2316Records(),
+      birComplianceDb.fetchAlphalistExports(),
+    ]);
+
+    const settled = <T,>(r: PromiseSettledResult<T[]>): T[] =>
+      r.status === "fulfilled" ? r.value : [];
+
+    // Hydrate disciplinary
+    const discCases = settled(batch3[0]);
+    const discNTEs = settled(batch3[1]);
+    const discNODs = settled(batch3[2]);
+    if (discCases.length > 0 || discNTEs.length > 0 || discNODs.length > 0) {
+      const st = useDisciplinaryStore.getState();
+      st.setCases(discCases);
+      st.setNTEs(discNTEs);
+      st.setNODs(discNODs);
+    }
+
+    // Hydrate documents
+    const docs201 = settled(batch3[3]);
+    if (docs201.length > 0) {
+      useDocumentsStore.getState().setDocuments(docs201);
+    }
+
+    // Hydrate performance
+    const perfCycles = settled(batch3[4]);
+    const perfCriteria = settled(batch3[5]);
+    const perfBands = settled(batch3[6]);
+    const perfReviews = settled(batch3[7]);
+    const perfAdjs = settled(batch3[8]);
+    const perfLogs = settled(batch3[9]);
+    if (perfCycles.length > 0 || perfReviews.length > 0) {
+      const st = usePerformanceStore.getState();
+      st.setCycles(perfCycles);
+      st.setCriteria(perfCriteria);
+      st.setSalaryBands(perfBands);
+      st.setReviews(perfReviews);
+      st.setAdjustments(perfAdjs);
+      st.setAuditLogs(perfLogs);
+    }
+
+    // Hydrate BIR compliance
+    const birProfiles = settled(batch3[10]);
+    const birSummaries = settled(batch3[11]);
+    const birPrevRecords = settled(batch3[12]);
+    const birForm2316 = settled(batch3[13]);
+    const birExports = settled(batch3[14]);
+    if (birProfiles.length > 0 || birSummaries.length > 0) {
+      const st = useBIRComplianceStore.getState();
+      st.setTaxProfiles(birProfiles);
+      st.setAnnualSummaries(birSummaries);
+      st.setPreviousEmployerRecords(birPrevRecords);
+      st.setForm2316Records(birForm2316);
+      st.setAlphalistExports(birExports);
+    }
 
     _hydrated = true;
     console.log("[sync] Stores hydrated from Supabase");
@@ -972,6 +1053,135 @@ export function startWriteThrough(): void {
         for (const prev of prevState.documents) {
           if (!state.documents.find((d) => d.id === prev.id)) {
             documents201Db.remove(prev.id);
+          }
+        }
+      }
+    )
+  );
+
+  // ─── Disciplinary write-through ────────────────────────────
+  _subscriptions.push(
+    useDisciplinaryStore.subscribe(
+      (state, prevState) => {
+        if (_writePaused) return;
+        // Cases
+        for (const c of state.cases) {
+          const prev = prevState.cases.find((p) => p.id === c.id);
+          if (!prev || prev.updatedAt !== c.updatedAt) {
+            disciplinaryDb.upsertCase(c);
+          }
+        }
+        // NTEs
+        for (const n of state.ntes) {
+          const prev = prevState.ntes.find((p) => p.id === n.id);
+          if (!prev || prev.updatedAt !== n.updatedAt) {
+            disciplinaryDb.upsertNTE(n);
+          }
+        }
+        // NODs
+        for (const n of state.nods) {
+          const prev = prevState.nods.find((p) => p.id === n.id);
+          if (!prev || prev.updatedAt !== n.updatedAt) {
+            disciplinaryDb.upsertNOD(n);
+          }
+        }
+      }
+    )
+  );
+
+  // ─── Documents write-through ──────────────────────────────
+  _subscriptions.push(
+    useDocumentsStore.subscribe(
+      (state, prevState) => {
+        if (_writePaused) return;
+        for (const d of state.documents) {
+          const prev = prevState.documents.find((p) => p.id === d.id);
+          if (!prev || prev.updatedAt !== d.updatedAt) {
+            documentsDb.upsert(d);
+          }
+        }
+      }
+    )
+  );
+
+  // ─── Performance write-through ────────────────────────────
+  _subscriptions.push(
+    usePerformanceStore.subscribe(
+      (state, prevState) => {
+        if (_writePaused) return;
+        // Cycles
+        for (const c of state.cycles) {
+          const prev = prevState.cycles.find((p) => p.id === c.id);
+          if (!prev || prev.updated_at !== c.updated_at) {
+            performanceDb.upsertCycle(c);
+          }
+        }
+        // Reviews
+        for (const r of state.reviews) {
+          const prev = prevState.reviews.find((p) => p.id === r.id);
+          if (!prev || prev.updated_at !== r.updated_at) {
+            performanceDb.upsertReview(r);
+          }
+        }
+        // Criteria
+        if (state.criteria !== prevState.criteria) {
+          for (const c of state.criteria) {
+            if (!prevState.criteria.some((p) => p.id === c.id)) {
+              performanceDb.upsertCriterion(c);
+            }
+          }
+        }
+        // Salary bands
+        if (state.salaryBands !== prevState.salaryBands) {
+          for (const b of state.salaryBands) {
+            if (!prevState.salaryBands.some((p) => p.id === b.id)) {
+              performanceDb.upsertSalaryBand(b);
+            }
+          }
+        }
+        // Adjustments
+        for (const a of state.adjustments) {
+          const prev = prevState.adjustments.find((p) => p.id === a.id);
+          if (!prev || JSON.stringify(prev) !== JSON.stringify(a)) {
+            performanceDb.upsertAdjustment(a);
+          }
+        }
+      }
+    )
+  );
+
+  // ─── BIR Compliance write-through ─────────────────────────
+  _subscriptions.push(
+    useBIRComplianceStore.subscribe(
+      (state, prevState) => {
+        if (_writePaused) return;
+        // Tax profiles
+        if (state.taxProfiles !== prevState.taxProfiles) {
+          for (const p of state.taxProfiles) {
+            if (!prevState.taxProfiles.some((pp) => pp.id === p.id)) {
+              birComplianceDb.upsertTaxProfile(p);
+            }
+          }
+        }
+        // Annual summaries
+        for (const s of state.annualSummaries) {
+          const prev = prevState.annualSummaries.find((p) => p.id === s.id);
+          if (!prev || prev.updatedAt !== s.updatedAt) {
+            birComplianceDb.upsertAnnualSummary(s);
+          }
+        }
+        // Form 2316
+        if (state.form2316Records !== prevState.form2316Records) {
+          for (const r of state.form2316Records) {
+            if (!prevState.form2316Records.some((p) => p.id === r.id)) {
+              birComplianceDb.upsertForm2316(r);
+            }
+          }
+        }
+        // Alphalist exports (insert-only)
+        for (const e of state.alphalistExports) {
+          if (!prevState.alphalistExports.some((p) => p.id === e.id)) {
+            birComplianceDb.addAlphalistExport(e);
           }
         }
       }
