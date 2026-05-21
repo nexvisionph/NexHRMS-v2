@@ -78,6 +78,7 @@ export default function AdminProjectsView() {
     const handleEditSave = () => {
         if (!editProject) return;
         if (!editName.trim()) { toast.error("Project name is required"); return; }
+        if (editName.trim().length > 50) { toast.error("Project name must be 50 characters or fewer"); return; }
         if (!editLat || !editLng) { toast.error("Location coordinates are required"); return; }
         const latNum = Number(editLat);
         const lngNum = Number(editLng);
@@ -110,6 +111,7 @@ export default function AdminProjectsView() {
 
     const handleAddProject = () => {
         if (!name.trim()) { toast.error("Project name is required"); return; }
+        if (name.trim().length > 50) { toast.error("Project name must be 50 characters or fewer"); return; }
         if (!lat || !lng) { toast.error("Location coordinates are required"); return; }
         const latNum = Number(lat);
         const lngNum = Number(lng);
@@ -201,12 +203,18 @@ export default function AdminProjectsView() {
                         <DialogHeader><DialogTitle>Create Project</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
                             <div>
-                                <label className="text-sm font-medium">Project Name *</label>
-                                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nexvision" className="mt-1" />
+                                <div className="flex items-center gap-2">
+                                    <label className="text-sm font-medium">Project Name *</label>
+                                    {name.length > 50
+                                        ? <span className="text-xs text-red-500">Exceeds 50 character limit ({name.length}/50)</span>
+                                        : <span className="text-xs text-muted-foreground">Max 50 characters ({name.length}/50)</span>
+                                    }
+                                </div>
+                                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nexvision" className={cn("mt-1", name.length > 50 && "border-red-500 focus-visible:ring-red-500")} maxLength={60} />
                             </div>
                             <div>
                                 <label className="text-sm font-medium">Description</label>
-                                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description..." className="mt-1" rows={2} />
+                                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description..." className="mt-1 resize-none" rows={2} />
                             </div>
                             <div>
                                 <label className="text-sm font-medium mb-2 block">Geofence Location *</label>
@@ -384,12 +392,18 @@ export default function AdminProjectsView() {
                     <DialogHeader><DialogTitle>Edit Project</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
                         <div>
-                            <label className="text-sm font-medium">Project Name *</label>
-                            <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nexvision" className="mt-1" />
+                            <div className="flex items-center gap-2">
+                                <label className="text-sm font-medium">Project Name *</label>
+                                {editName.length > 50
+                                    ? <span className="text-xs text-red-500">Exceeds 50 character limit ({editName.length}/50)</span>
+                                    : <span className="text-xs text-muted-foreground">Max 50 characters ({editName.length}/50)</span>
+                                }
+                            </div>
+                            <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nexvision" className={cn("mt-1", editName.length > 50 && "border-red-500 focus-visible:ring-red-500")} maxLength={60} />
                         </div>
                         <div>
                             <label className="text-sm font-medium">Description</label>
-                            <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Brief description..." className="mt-1" rows={2} />
+                            <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Brief description..." className="mt-1 resize-none" rows={2} />
                         </div>
                         <div>
                             <label className="text-sm font-medium mb-2 block">Geofence Location *</label>
