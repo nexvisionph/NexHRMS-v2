@@ -427,6 +427,8 @@ const filteredAccounts = useMemo(() => {
     const [newAddress, setNewAddress] = useState("");
     // Deduction/Allowance templates for new employee
     const [newDeductionTemplateIds, setNewDeductionTemplateIds] = useState<string[]>([]);
+    const [newDedSearch, setNewDedSearch] = useState("");
+    const [newDedTypeFilter, setNewDedTypeFilter] = useState<"all" | "deduction" | "allowance">("all");
     // Tax overrides for new employee (optional - only if not using auto)
     const [newSssMode, setNewSssMode] = useState<DeductionOverrideMode>("auto");
     const [newSssValue, setNewSssValue] = useState("");
@@ -567,10 +569,12 @@ const filteredAccounts = useMemo(() => {
         if (!newEmail.trim()) { toast.error("Email address is required"); return; }
         if (!newJobTitle || !newDept) { toast.error("Please fill all required fields (job title, department)"); return; }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) { toast.error("Please enter a valid email address"); return; }
+        // Fix 4 — Monthly Salary required and must be > 0
+        const salaryVal = Number(newSalary);
+        if (!newSalary || salaryVal <= 0) { toast.error("Monthly salary is required and must be greater than ₱0"); return; }
         if (!newPassword || newPassword.length < 8) { toast.error("Password is required and must be at least 8 characters"); return; }
         if (employees.some((e) => e.email.toLowerCase() === newEmail.trim().toLowerCase())) { toast.error("An employee with this email already exists"); return; }
         if (newBiometricId.trim() && employees.some((e) => e.biometricId === newBiometricId.trim())) { toast.error("This biometric ID is already assigned to another employee"); return; }
-        const salaryVal = Number(newSalary);
         if (newSalary && (isNaN(salaryVal) || salaryVal < 0)) { toast.error("Salary must be a non-negative number"); return; }
         
         // Validate phone number format if provided
@@ -582,6 +586,11 @@ const filteredAccounts = useMemo(() => {
             }
         }
         
+        // Fix 1 — Normalize name (title case, trim extra spaces)
+        const normalizeName = (name: string) =>
+            name.trim().replace(/\s+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        const normalizedName = normalizeName(newName);
+        
         setAddingEmployee(true);
         const id = `EMP-${nanoid(6).toUpperCase()}`;
         
@@ -589,7 +598,7 @@ const filteredAccounts = useMemo(() => {
         const formattedPhone = newPhone ? validatePhone(newPhone).formatted : undefined;
         
         const addResult = addEmployee({
-            id, name: newName.trim(), email: newEmail.trim(), role: newSystemRole, jobTitle: newJobTitle, department: newDept, workType: newWorkType,
+            id, name: normalizedName, email: newEmail.trim(), role: newSystemRole, jobTitle: newJobTitle, department: newDept, workType: newWorkType,
             salary: salaryVal || 0, joinDate: new Date().toISOString().split("T")[0], productivity: 0,
             status: "active", location: "", phone: formattedPhone, biometricId: newBiometricId.trim() || undefined,
             workDays: newWorkDays.length ? newWorkDays : undefined,
@@ -614,7 +623,7 @@ const filteredAccounts = useMemo(() => {
         const resetForm = () => {
             setNewName(""); setNewEmail(""); setNewJobTitle(""); setNewDept(""); setNewWorkType("WFO"); setNewSalary(""); setNewPhone(""); setNewBiometricId(""); setNewPayFreq("company"); setNewSystemRole("employee"); setNewPassword(""); setNewMustChange(true); setNewWorkDays(["Mon", "Tue", "Wed", "Thu", "Fri"]); setNewProjectId("none"); setNewBirthday(""); setNewTeamLeader("none"); setNewShiftId("none"); setNewEmergencyContact(""); setNewAddress("");
             // Reset deduction/tax fields
-            setNewDeductionTemplateIds([]); setNewSssMode("auto"); setNewSssValue(""); setNewPhilhealthMode("auto"); setNewPhilhealthValue(""); setNewPagibigMode("auto"); setNewPagibigValue(""); setNewBirMode("auto"); setNewBirValue("");
+            setNewDeductionTemplateIds([]); setNewDedSearch(""); setNewDedTypeFilter("all"); setNewSssMode("auto"); setNewSssValue(""); setNewPhilhealthMode("auto"); setNewPhilhealthValue(""); setNewPagibigMode("auto"); setNewPagibigValue(""); setNewBirMode("auto"); setNewBirValue("");
         };
         
         // Handle project and shift assignments
@@ -652,11 +661,11 @@ const filteredAccounts = useMemo(() => {
         
         if (newPassword) {
             if (USE_DEMO_MODE) {
-                const result = createAccount({ name: newName, email: newEmail, role: newSystemRole, password: newPassword, mustChangePassword: newMustChange, profileComplete: true }, currentUser.email);
+                const result = createAccount({ name: normalizedName, email: newEmail, role: newSystemRole, password: newPassword, mustChangePassword: newMustChange, profileComplete: true }, currentUser.email);
                 if (!result.ok) toast.warning(`Employee added but account creation failed: ${result.error}`);
                 else {
                     if (result.userId) updateEmployee(id, { profileId: result.userId });
-                    toast.success(`${newName} added with a login account.`);
+                    toast.success(`${normalizedName} added with a login account.`);
                 }
                 resetForm();
                 setAddingEmployee(false);
@@ -665,7 +674,7 @@ const filteredAccounts = useMemo(() => {
                 toast.info(`Employee added. Creating login account...`);
                 // Create account in background - don't block UI
                 createUserAccount({
-                    name: newName,
+                    name: normalizedName,
                     email: newEmail,
                     role: newSystemRole,
                     password: newPassword,
@@ -680,7 +689,7 @@ const filteredAccounts = useMemo(() => {
                     if (!result.ok) toast.warning(`Employee added but account creation failed: ${result.error}`);
                     else {
                         if (result.userId) updateEmployee(id, { profileId: result.userId });
-                        toast.success(`${newName} added with a login account.`);
+                        toast.success(`${normalizedName} added with a login account.`);
                         // Refresh accounts list in background
                         refreshAccounts();
                     }
@@ -690,7 +699,7 @@ const filteredAccounts = useMemo(() => {
                 resetForm();
             }
         } else {
-            toast.success(`${newName} added successfully!`);
+            toast.success(`${normalizedName} added successfully!`);
             resetForm();
             setAddingEmployee(false);
         }
@@ -859,6 +868,22 @@ const filteredAccounts = useMemo(() => {
                                     Export
                                 </Button>
                             )}
+                            {!USE_DEMO_MODE && canManage && (
+                                <Button
+                                    variant="outline"
+                                    className="gap-1.5"
+                                    onClick={async () => {
+                                        try {
+                                            await forceRehydrate();
+                                            toast.success("Employee list refreshed");
+                                        } catch {
+                                            toast.error("Failed to refresh");
+                                        }
+                                    }}
+                                >
+                                    <RefreshCw className="h-4 w-4" /> Refresh
+                                </Button>
+                            )}
                             <Dialog open={addOpen} onOpenChange={setAddOpen}>
                                 <DialogTrigger asChild>
                                     <Button className="gap-1.5" disabled={!canManage}><Plus className="h-4 w-4" /> Add Employee</Button>
@@ -914,7 +939,7 @@ const filteredAccounts = useMemo(() => {
                                                 <div><label className="text-xs font-medium text-muted-foreground">Work Arrangement</label>
                                                     <Select value={newWorkType} onValueChange={(v) => setNewWorkType(v as WorkType)}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">Work From Office</SelectItem><SelectItem value="WFH">Work From Home</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Full Onsite</SelectItem></SelectContent></Select>
                                                 </div>
-                                                <div><label className="text-xs font-medium text-muted-foreground">Monthly Salary (₱)</label><Input type="number" value={newSalary} onChange={(e) => setNewSalary(e.target.value)} placeholder="e.g. 25000" className="mt-1 h-8 text-sm" /></div>
+                                                <div><label className="text-xs font-medium text-muted-foreground">Monthly Salary (₱) <span className="text-destructive">*</span></label><Input type="number" value={newSalary} onChange={(e) => setNewSalary(e.target.value)} placeholder="e.g. 25000" className="mt-1 h-8 text-sm" /></div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div><label className="text-xs font-medium text-muted-foreground">Pay Frequency</label>
@@ -922,9 +947,6 @@ const filteredAccounts = useMemo(() => {
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div><label className="text-xs font-medium text-muted-foreground">Team Leader</label>
-                                                    <Select value={newTeamLeader} onValueChange={setNewTeamLeader}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select leader" /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{[...new Map(employees.filter((e) => e.status === "active" && e.id && e.role !== "admin").map((e) => [e.id, e])).values()].map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select>
-                                                </div>
                                                 <div><label className="text-xs font-medium text-muted-foreground">Shift Schedule</label>
                                                     <Select value={newShiftId} onValueChange={setNewShiftId}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select shift" /></SelectTrigger><SelectContent><SelectItem value="none">Default</SelectItem>{shiftTemplates.filter((s) => s.id).map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.startTime}–{s.endTime})</SelectItem>)}</SelectContent></Select>
                                                 </div>
@@ -968,8 +990,9 @@ const filteredAccounts = useMemo(() => {
                                                 </div>
                                             )}
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div><label className="text-xs font-medium text-muted-foreground">System Role</label>
+                                                <div><label className="text-xs font-medium text-muted-foreground">System Role <span className="text-destructive">*</span></label>
                                                     <Select value={newSystemRole} onValueChange={(v) => setNewSystemRole(v as Role)}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="employee">Employee</SelectItem><SelectItem value="supervisor">Supervisor</SelectItem><SelectItem value="hr">HR</SelectItem><SelectItem value="finance">Finance</SelectItem><SelectItem value="payroll_admin">Payroll Admin</SelectItem><SelectItem value="auditor">Auditor</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select>
+                                                    <p className="text-[11px] text-muted-foreground mt-1">Required — controls what pages this employee can access.</p>
                                                 </div>
                                                 <div><label className="text-xs font-medium text-muted-foreground">Initial Password <span className="text-red-500">*</span></label>
                                                     <div className="flex gap-1.5 mt-1">
@@ -992,19 +1015,23 @@ const filteredAccounts = useMemo(() => {
                                             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Project Assignment</span>
                                             <span className="ml-auto text-[10px] font-normal text-muted-foreground/60">optional</span>
                                         </div>
-                                        <div className="p-4">
-                                            <label className="text-xs font-medium text-muted-foreground">Assign to Project</label>
-                                            <Select value={newProjectId} onValueChange={setNewProjectId}>
-                                                <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="No project — assign later" /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="none">No project</SelectItem>
-                                                    {projects.filter((p) => p.status !== "completed" && p.id).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                                                </SelectContent>
-                                            </Select>
-                                            {newProjectId && newProjectId !== "none" && (() => {
-                                                const proj = projects.find((p) => p.id === newProjectId);
-                                                return proj ? <p className="text-[11px] text-muted-foreground mt-1.5">{proj.assignedEmployeeIds?.length ?? 0} member{(proj.assignedEmployeeIds?.length ?? 0) !== 1 ? "s" : ""} currently on this project</p> : null;
-                                            })()}
+                                        <div className="p-4 space-y-3">
+                                            <div><label className="text-xs font-medium text-muted-foreground">Team Leader</label>
+                                                <Select value={newTeamLeader} onValueChange={setNewTeamLeader}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Select leader" /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{[...new Map(employees.filter((e) => e.status === "active" && e.id && e.role !== "admin").map((e) => [e.id, e])).values()].map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select>
+                                            </div>
+                                            <div><label className="text-xs font-medium text-muted-foreground">Assign to Project</label>
+                                                <Select value={newProjectId} onValueChange={setNewProjectId}>
+                                                    <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="No project — assign later" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="none">No project</SelectItem>
+                                                        {projects.filter((p) => p.status !== "completed" && p.id).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                                {newProjectId && newProjectId !== "none" && (() => {
+                                                    const proj = projects.find((p) => p.id === newProjectId);
+                                                    return proj ? <p className="text-[11px] text-muted-foreground mt-1.5">{proj.assignedEmployeeIds?.length ?? 0} member{(proj.assignedEmployeeIds?.length ?? 0) !== 1 ? "s" : ""} currently on this project</p> : null;
+                                                })()}
+                                            </div>
                                         </div>
                                     </div>
 
@@ -1018,26 +1045,40 @@ const filteredAccounts = useMemo(() => {
                                         <div className="p-4 space-y-2">
                                             {activeTemplates.length === 0 ? (
                                                 <p className="text-xs text-muted-foreground">No active templates available. Create templates in Payroll → Deduction/Allowance first.</p>
-                                            ) : (
-                                                activeTemplates.map((t) => (
-                                                    <label key={t.id} className="flex items-center gap-2 cursor-pointer">
-                                                        <Checkbox
-                                                            checked={newDeductionTemplateIds.includes(t.id)}
-                                                            onCheckedChange={(checked) => {
-                                                                if (checked) setNewDeductionTemplateIds([...newDeductionTemplateIds, t.id]);
-                                                                else setNewDeductionTemplateIds(newDeductionTemplateIds.filter(id => id !== t.id));
-                                                            }}
-                                                        />
-                                                        <span className="text-sm">{t.name}</span>
-                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.type === "allowance" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                                                            {t.type}
-                                                        </span>
-                                                        <span className="text-xs text-muted-foreground ml-auto">
-                                                            {t.calculationMode === "percentage" ? `${t.value}%` : `₱${t.value.toLocaleString()}`}
-                                                        </span>
-                                                    </label>
-                                                ))
-                                            )}
+                                            ) : (<>
+                                                {/* Search + Filter */}
+                                                <div className="flex gap-2 mb-2">
+                                                    <div className="relative flex-1">
+                                                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                                        <Input placeholder="Search templates..." value={newDedSearch} onChange={(e) => setNewDedSearch(e.target.value)} className="pl-8 h-7 text-xs" />
+                                                    </div>
+                                                    <Select value={newDedTypeFilter} onValueChange={(v) => setNewDedTypeFilter(v as "all" | "deduction" | "allowance")}>
+                                                        <SelectTrigger className="h-7 w-[120px] text-xs"><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="all">All Types</SelectItem>
+                                                            <SelectItem value="deduction">Deduction</SelectItem>
+                                                            <SelectItem value="allowance">Allowance</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                {/* Filtered Template List */}
+                                                {(() => {
+                                                    const filtered = activeTemplates.filter((t) => {
+                                                        const matchSearch = !newDedSearch || t.name.toLowerCase().includes(newDedSearch.toLowerCase());
+                                                        const matchType = newDedTypeFilter === "all" || t.type === newDedTypeFilter;
+                                                        return matchSearch && matchType;
+                                                    });
+                                                    if (filtered.length === 0) return <p className="text-xs text-muted-foreground text-center py-2">No templates match your search.</p>;
+                                                    return filtered.map((t) => (
+                                                        <label key={t.id} className="flex items-center gap-2 cursor-pointer">
+                                                            <Checkbox checked={newDeductionTemplateIds.includes(t.id)} onCheckedChange={(checked) => { if (checked) setNewDeductionTemplateIds([...newDeductionTemplateIds, t.id]); else setNewDeductionTemplateIds(newDeductionTemplateIds.filter(id => id !== t.id)); }} />
+                                                            <span className="text-sm">{t.name}</span>
+                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.type === "allowance" ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"}`}>{t.type}</span>
+                                                            <span className="text-xs text-muted-foreground ml-auto">{t.calculationMode === "percentage" ? `${t.value}%` : `₱${t.value.toLocaleString()}`}</span>
+                                                        </label>
+                                                    ));
+                                                })()}
+                                            </>)}
                                         </div>
                                     </div>
 
