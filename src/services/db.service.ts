@@ -87,7 +87,12 @@ async function fetchAll<T>(table: string, options?: {
       await new Promise<void>((r) => setTimeout(r, 200 * (_attempt + 1)));
       return fetchAll(table, options, _attempt + 1);
     }
-    console.error(`[db] fetchAll ${table}:`, error.message);
+    // "Could not find the table" = migration not applied yet — expected, not an error.
+    if (error.message?.includes("schema cache")) {
+      console.debug(`[db] fetchAll ${table}: table not yet created (migration pending)`);
+    } else {
+      console.error(`[db] fetchAll ${table}:`, error.message);
+    }
     return [];
   }
   return ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => keysToCamel(row) as T);
@@ -103,6 +108,7 @@ async function upsertRow(table: string, row: Record<string, unknown>, onConflict
     // 23505 = unique_violation: row already exists via a different unique constraint.
     // Safe to suppress — the data is already in the DB.
     if (error.code === "23505") return true;
+    if (error.message?.includes("schema cache")) return false;
     console.error(`[db] upsert ${table}:`, error.message);
   }
   return !error;
@@ -163,6 +169,7 @@ async function insertRow(table: string, row: Record<string, unknown>) {
     // Suppress in demo mode — Supabase is not configured so the
     // anonymous client has no JWT that satisfies RLS predicates.
     if (error.code === "42501" && isDemoMode) return false;
+    if (error.message?.includes("schema cache")) return false;
     console.error(`[db] insert ${table}:`, error.message);
   }
   return !error;
@@ -175,6 +182,7 @@ async function updateRow(table: string, id: string, patch: Record<string, unknow
   if (error) {
     if (isNetworkError(error) && isDemoMode) return false;
     if (error.code === "42501" && isDemoMode) return false;
+    if (error.message?.includes("schema cache")) return false;
     console.error(`[db] update ${table}:`, error.message);
   }
   return !error;
