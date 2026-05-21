@@ -18,7 +18,6 @@ This is the task that needs to be solved:
 
 - Always make an implementation plan on an artifact first, so the developer can review the plan first.
 
-# Main Task
+# Main Task - Zustand Cleaning Up
 
-- I think the checklist of the payroll run is wrong because the even employees that have salaries is being read as negative and 0 paynet. The payroll run checklist is suppoed to be as robust as the one with soren from transfer folder.
-- Limit the lock run stage's table to 10 rows only like the other tables on the payroll run stages with pagination as well.
+- Now that the Zustands are ready to be cleaned up and we integrate the data flow directly to Supabase. Meaning, we're going to remove all the zustand and integrate with supabase now. Also, alongside with it, we will truncate all the table's data and clean up all the local zustand data for a proper starting point for testing. How can we do this?

@@ -40,6 +40,7 @@ import { useLocationStore } from "@/store/location.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useMessagingStore } from "@/store/messaging.store";
 import { pauseWriteThrough, resumeWriteThrough, forceRehydrate } from "@/services/sync.service";
+import { clearStaleStorage } from "@/lib/clear-stale-storage";
 import type { AttendanceRuleSet, PayFrequency } from "@/types";
 import Link from "next/link";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
@@ -693,7 +694,21 @@ export default function AdminSettingsView() {
                             </div>
                         </div>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="space-y-3">
+                        <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/30">
+                            <div>
+                                <p className="text-sm font-medium">Clear Local Cache</p>
+                                <p className="text-xs text-muted-foreground">Remove stale browser data and re-sync from server. Safe to run anytime.</p>
+                            </div>
+                            <Button variant="outline" size="sm" className="ml-4 shrink-0" onClick={async () => {
+                                const cleared = clearStaleStorage();
+                                if (!USE_DEMO_MODE) {
+                                    pauseWriteThrough();
+                                    try { await forceRehydrate(); } finally { resumeWriteThrough(); }
+                                }
+                                toast.success(cleared > 0 ? `Cleared ${cleared} stale cache key(s) and re-synced.` : "Cache is clean — re-synced from server.");
+                            }}><RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Clear Cache</Button>
+                        </div>
                         <div className="flex items-center justify-between p-3 rounded-lg border border-destructive/20 bg-destructive/5">
                             <div>
                                 <p className="text-sm font-medium">Reset All Data</p>
