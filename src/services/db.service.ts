@@ -27,8 +27,8 @@ import type {
   NotificationLog, NotificationRule,
   LocationPing, SiteSurveyPhoto, BreakRecord,
   DeductionOverride, DeductionGlobalDefault, PayrollSignatureConfig,
-  DisciplinaryCase, NTERecord, NODRecord,
   Employee201Document,
+  DisciplinaryCase, NTERecord, NODRecord,
   PerformanceCycle, PerformanceCriterion, PerformanceSalaryBand,
   PerformanceReview, PerformanceSalaryAdjustment, PerformanceAuditLog,
   EmployeeTaxProfile, AnnualTaxSummary, PreviousEmployerRecord,
@@ -1325,6 +1325,94 @@ export const locationDb = {
 
   async upsertBreak(br: BreakRecord): Promise<boolean> {
     return upsertRow("break_records", br as unknown as Record<string, unknown>);
+  },
+};
+
+// ─── 201 Documents ──────────────────────────────────────────────
+
+export const documents201Db = {
+  fetchAll: () => fetchAll<Employee201Document>("employee_201_documents"),
+
+  async upsert(doc: Employee201Document): Promise<boolean> {
+    return upsertRow("employee_201_documents", doc as unknown as Record<string, unknown>);
+  },
+
+  async batchUpsert(docs: Employee201Document[]): Promise<boolean> {
+    return batchUpsertRows("employee_201_documents", docs as unknown as Record<string, unknown>[]);
+  },
+
+  async remove(id: string): Promise<boolean> {
+    return deleteRow("employee_201_documents", id);
+  },
+
+  async fetchExpiring(daysAhead = 30): Promise<Employee201Document[]> {
+    const today = new Date();
+    const future = new Date();
+    future.setDate(today.getDate() + daysAhead);
+
+    const todayStr = today.toISOString().split("T")[0];
+    const futureStr = future.toISOString().split("T")[0];
+
+    const { data, error } = await supabase()
+      .from("employee_201_documents")
+      .select("*")
+      .gte("expiry_date", todayStr)
+      .lte("expiry_date", futureStr)
+      .not("status", "in", "(archived,expired)")
+      .order("expiry_date", { ascending: true });
+
+    if (error) {
+      console.error("[db] documents201Db.fetchExpiring:", error.message);
+      return [];
+    }
+    return ((data ?? []) as unknown as Record<string, unknown>[]).map(
+      (row) => keysToCamel(row) as unknown as Employee201Document
+    );
+  },
+};
+
+// ─── 201 Documents Storage ───────────────────────────────────────
+
+export const documents201Storage = {
+  async upload(
+    employeeId: string,
+    documentType: string,
+    file: File
+  ): Promise<{ path: string; error?: string }> {
+    try {
+      const path = `${employeeId}/${documentType}/${file.name}`;
+      const { error } = await supabase()
+        .storage.from("employee-documents")
+        .upload(path, file);
+
+      if (error) {
+        console.error("[db] documents201Storage.upload:", error.message);
+        return { path: "", error: error.message };
+      }
+
+      return { path };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Upload failed";
+      console.error("[db] documents201Storage.upload:", message);
+      return { path: "", error: message };
+    }
+  },
+
+  async getSignedUrl(path: string, expiresIn = 3600): Promise<string | null> {
+    try {
+      const { data, error } = await supabase()
+        .storage.from("employee-documents")
+        .createSignedUrl(path, expiresIn);
+
+      if (error) {
+        console.error("[db] documents201Storage.getSignedUrl:", error.message);
+        return null;
+      }
+      return data?.signedUrl ?? null;
+    } catch (err: unknown) {
+      console.error("[db] documents201Storage.getSignedUrl:", err instanceof Error ? err.message : "Failed to get signed URL");
+      return null;
+    }
   },
 };
 

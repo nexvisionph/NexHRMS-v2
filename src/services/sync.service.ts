@@ -30,6 +30,7 @@ import {
   notificationsDb,
   locationDb,
   loanExtrasDb,
+  documents201Db,
   createClient,
 } from "./db.service";
 import { disciplinaryDb, documentsDb, performanceDb, birComplianceDb } from "./db.service";
@@ -49,9 +50,9 @@ import { useTimesheetStore } from "@/store/timesheet.store";
 import { useNotificationsStore, DEFAULT_EMPLOYEE_PREFS } from "@/store/notifications.store";
 import type { EmployeeNotifPrefs } from "@/store/notifications.store";
 import { useLocationStore } from "@/store/location.store";
+import { useDocumentsStore } from "@/store/documents.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useDisciplinaryStore } from "@/store/disciplinary.store";
-import { useDocumentsStore } from "@/store/documents.store";
 import { usePerformanceStore } from "@/store/performance.store";
 import { useBIRComplianceStore } from "@/store/bir-compliance.store";
 
@@ -196,6 +197,7 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
       breakRecords,
       allLoanDeductions,
       allRepaymentSchedules,
+      fetchedDocuments,
     ] = await Promise.all([
       projectsDb.fetchAll(),
       auditDb.fetchAll(),
@@ -217,6 +219,7 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
       locationDb.fetchBreaks(),
       loanExtrasDb.fetchAllDeductions(),
       loanExtrasDb.fetchAllRepaymentSchedules(),
+      documents201Db.fetchAll(),
     ]);
 
     // Fetch employee-shift assignments separately (returns a mapping, not an array)
@@ -367,6 +370,9 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
       });
     }
 
+    // Hydrate documents 201 store — always set from DB so DB-side changes
+    // (uploads, approvals, deletions) propagate on next login/refresh.
+    useDocumentsStore.setState({ documents: fetchedDocuments });
     // ── Batch 3: Disciplinary + Documents + Performance + BIR ────
     // Use allSettled so missing tables (migration not yet applied) don't
     // break the rest of hydration.
@@ -1022,6 +1028,31 @@ export function startWriteThrough(): void {
           const prev = prevState.breaks.find((pb) => pb.id === br.id);
           if (!prev || JSON.stringify(prev) !== JSON.stringify(br)) {
             locationDb.upsertBreak(br);
+          }
+        }
+      }
+    )
+  );
+
+  // ─── Documents 201 write-through ──────────────────────
+  _subscriptions.push(
+    useDocumentsStore.subscribe(
+      (state, prevState) => {
+        if (_writePaused) return;
+        // Only admin/hr can write documents
+        if (!isAdminOrHr) return;
+
+        // Detect new or changed documents
+        for (const doc of state.documents) {
+          const prev = prevState.documents.find((d) => d.id === doc.id);
+          if (!prev || JSON.stringify(prev) !== JSON.stringify(doc)) {
+            documents201Db.upsert(doc);
+          }
+        }
+        // Detect deletions
+        for (const prev of prevState.documents) {
+          if (!state.documents.find((d) => d.id === prev.id)) {
+            documents201Db.remove(prev.id);
           }
         }
       }
