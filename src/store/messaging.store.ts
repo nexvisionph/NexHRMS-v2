@@ -13,6 +13,8 @@ import {
     SEED_TEXT_CHANNELS,
     SEED_CHANNEL_MESSAGES,
 } from "@/data/seed";
+
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 import { useAuditStore } from "@/store/audit.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useNotificationsStore } from "@/store/notifications.store";
@@ -75,9 +77,9 @@ interface MessagingState {
 
 export const useMessagingStore = create<MessagingState>()(
     (set, get) => ({
-            announcements: SEED_ANNOUNCEMENTS,
-            channels: SEED_TEXT_CHANNELS,
-            messages: SEED_CHANNEL_MESSAGES,
+            announcements: USE_DEMO_MODE ? SEED_ANNOUNCEMENTS : [],
+            channels: USE_DEMO_MODE ? SEED_TEXT_CHANNELS : [],
+            messages: USE_DEMO_MODE ? SEED_CHANNEL_MESSAGES : [],
             config: DEFAULT_CONFIG,
 
             // ── Announcements ─────────────────────────────────

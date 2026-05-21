@@ -16,6 +16,8 @@ import {
     SEED_TASK_COMMENTS,
     SEED_TASK_TAGS,
 } from "@/data/seed";
+
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 import { useAuditStore } from "@/store/audit.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -66,11 +68,11 @@ interface TasksState {
 
 export const useTasksStore = create<TasksState>()(
     (set, get) => ({
-            groups: SEED_TASK_GROUPS,
-            tasks: SEED_TASKS,
-            completionReports: SEED_COMPLETION_REPORTS,
-            comments: SEED_TASK_COMMENTS,
-            taskTags: SEED_TASK_TAGS,
+            groups: USE_DEMO_MODE ? SEED_TASK_GROUPS : [],
+            tasks: USE_DEMO_MODE ? SEED_TASKS : [],
+            completionReports: USE_DEMO_MODE ? SEED_COMPLETION_REPORTS : [],
+            comments: USE_DEMO_MODE ? SEED_TASK_COMMENTS : [],
+            taskTags: USE_DEMO_MODE ? SEED_TASK_TAGS : [],
 
             // ── Groups ────────────────────────────────────────
             addGroup: (data) => {

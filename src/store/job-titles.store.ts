@@ -36,6 +36,8 @@ const SEED_JOB_TITLES: JobTitle[] = ROLES.map((role, idx) => {
     };
 });
 
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
+
 interface JobTitlesState {
     jobTitles: JobTitle[];
 
@@ -57,7 +59,7 @@ interface JobTitlesState {
 
 export const useJobTitlesStore = create<JobTitlesState>()(
     (set, get) => ({
-        jobTitles: SEED_JOB_TITLES,
+        jobTitles: USE_DEMO_MODE ? SEED_JOB_TITLES : [],
 
         // ── Add ───────────────────────────────────────────
         addJobTitle: (data) => {

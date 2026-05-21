@@ -7,6 +7,8 @@ import type {
     Holiday, AttendanceMethod,
 } from "@/types";
 import { SEED_ATTENDANCE } from "@/data/seed";
+
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 import { DEFAULT_HOLIDAYS } from "@/lib/constants";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -119,7 +121,7 @@ export const useAttendanceStore = create<AttendanceState>()(
             events: [],
             evidence: [],
             exceptions: [],
-            logs: SEED_ATTENDANCE,
+            logs: USE_DEMO_MODE ? SEED_ATTENDANCE : [],
             overtimeRequests: [],
             shiftTemplates: DEFAULT_SHIFTS,
             employeeShifts: {},
