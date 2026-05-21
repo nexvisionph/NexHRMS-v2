@@ -161,14 +161,14 @@ export const NAV_ITEMS: {
             group: "hr",
         },
         // DEMO: hidden — uncomment moduleFlag to re-enable
-        // {
-        //     label: "Disciplinary",
-        //     href: "/disciplinary",
-        //     icon: "Gavel",
-        //     roles: ["admin", "hr"],
-        //     permission: "page:employees",
-        //     group: "hr",
-        // },
+        {
+            label: "Disciplinary",
+            href: "/disciplinary",
+            icon: "Gavel",
+            roles: ["admin", "hr"],
+            permission: "page:employees",
+            group: "hr",
+        },
         {
             label: "Jobs",
             href: "/jobs",
@@ -298,16 +298,15 @@ export const NAV_ITEMS: {
             permission: "reports:government",
             group: "payroll",
         },
-        // DEMO: hidden — uncomment to re-enable
-        // {
-        //     label: "BIR Compliance",
-        //     href: "/payroll/bir-compliance",
-        //     icon: "ReceiptText",
-        //     roles: ["admin", "finance", "payroll_admin"],
-        //     permission: "payroll:view_all",
-        //     moduleFlag: "birCompliance",
-        //     group: "payroll",
-        // },
+        {
+            label: "BIR Compliance",
+            href: "/payroll/bir-compliance",
+            icon: "ReceiptText",
+            roles: ["admin", "finance", "payroll_admin"],
+            permission: "payroll:view_all",
+            moduleFlag: "birCompliance",
+            group: "payroll",
+        },
 
         // ── Workflow ───────────────────────────────────────────────────────────
         {
@@ -441,6 +440,9 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
     supervisor: ["/dashboard", "/attendance", "/leave", "/my-payslips", "/timesheets", "/employees", "/projects", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings"],
     payroll_admin: ["/dashboard", "/payroll", "/payroll/settings", "/my-payslips", "/loans", "/reports", "/reports/government", "/timesheets", "/notifications", "/profile"],
     auditor: ["/dashboard", "/audit", "/reports", "/employees", "/notifications", "/profile", "/settings", "/my-payslips"],
+    support_admin: ["/dashboard", "/employees", "/attendance", "/leave", "/notifications", "/settings", "/profile", "/my-payslips"],
+    finance_admin: ["/dashboard", "/payroll", "/payroll/settings", "/my-payslips", "/loans", "/reports", "/reports/government", "/employees/directory", "/notifications", "/profile"],
+    analyst: ["/dashboard", "/reports", "/reports/government", "/employees", "/attendance", "/payroll", "/notifications", "/profile", "/my-payslips"],
 };
 
 /** Map a URL path to the permission needed to access it */
