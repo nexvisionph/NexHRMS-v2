@@ -172,8 +172,8 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
     const [publishPage, setPublishPage] = useState(1);
     const [signPage, setSignPage] = useState(1);
     const [runsPage, setRunsPage] = useState(1);
-    const pageSize = 50;
     const runsPageSize = 10;
+    const payslipPageSize = 10;
 
     // ─── Dialog states ───────────────────────────────────────────
     const [printPayslipId, setPrintPayslipId] = useState<string | null>(null);
@@ -304,26 +304,26 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
         return filtered.sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
     }, [activeRun, activeRunPayslips, searchTerm, statusFilter]);
 
-    const totalPages = Math.max(1, Math.ceil(filteredPayslips.length / pageSize));
+    const totalPages = Math.max(1, Math.ceil(filteredPayslips.length / payslipPageSize));
     const safePage = Math.min(page, totalPages);
-    const paginatedPayslips = useMemo(() => filteredPayslips.slice((safePage - 1) * pageSize, safePage * pageSize), [filteredPayslips, pageSize, safePage]);
+    const paginatedPayslips = useMemo(() => filteredPayslips.slice((safePage - 1) * payslipPageSize, safePage * payslipPageSize), [filteredPayslips, payslipPageSize, safePage]);
 
-    const publishTotalPages = Math.max(1, Math.ceil(filteredPayslips.length / pageSize));
+    const publishTotalPages = Math.max(1, Math.ceil(filteredPayslips.length / payslipPageSize));
     const publishSafePage = Math.min(publishPage, publishTotalPages);
     const paginatedPublishPayslips = useMemo(
-        () => filteredPayslips.slice((publishSafePage - 1) * pageSize, publishSafePage * pageSize),
-        [filteredPayslips, pageSize, publishSafePage]
+        () => filteredPayslips.slice((publishSafePage - 1) * payslipPageSize, publishSafePage * payslipPageSize),
+        [filteredPayslips, payslipPageSize, publishSafePage]
     );
 
     const signPayslips = useMemo(
         () => filteredPayslips.filter((p) => p.status === "published" || p.status === "payment_hold" || p.status === "signed"),
         [filteredPayslips]
     );
-    const signTotalPages = Math.max(1, Math.ceil(signPayslips.length / pageSize));
+    const signTotalPages = Math.max(1, Math.ceil(signPayslips.length / payslipPageSize));
     const signSafePage = Math.min(signPage, signTotalPages);
     const paginatedSignPayslips = useMemo(
-        () => signPayslips.slice((signSafePage - 1) * pageSize, signSafePage * pageSize),
-        [signPayslips, pageSize, signSafePage]
+        () => signPayslips.slice((signSafePage - 1) * payslipPageSize, signSafePage * payslipPageSize),
+        [signPayslips, payslipPageSize, signSafePage]
     );
 
     // Smart cutoff detection: periodStart uniquely identifies the cutoff — a payslip with the same
@@ -579,7 +579,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                 });
                 const autoDedTotal = autoBreakdown.totalDeductions;
 
-                const rawNetPay = grossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - empLoanDeduction - customDedTotal - autoDedTotal;
+                const rawNetPay = effectiveGrossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - empLoanDeduction - customDedTotal - autoDedTotal;
                 const netPay = Math.max(0, rawNetPay);
                 if (rawNetPay <= 0) zeroNetPayCount++;
 
@@ -2065,9 +2065,9 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                                         ps.periodEnd.includes(q);
                                                                 })
                                                                 : heldPs;
-                                                            const holdTotalPages = Math.max(1, Math.ceil(filteredHeld.length / pageSize));
+                                                            const holdTotalPages = Math.max(1, Math.ceil(filteredHeld.length / payslipPageSize));
                                                             const holdSafePage = Math.min(holdPage, holdTotalPages);
-                                                            const paginatedHeld = filteredHeld.slice((holdSafePage - 1) * pageSize, holdSafePage * pageSize);
+                                                            const paginatedHeld = filteredHeld.slice((holdSafePage - 1) * payslipPageSize, holdSafePage * payslipPageSize);
                                                             const unsignedHeld = paginatedHeld.filter((ps) => !ps.signedAt);
                                                             const signedHeld = paginatedHeld.filter((ps) => !!ps.signedAt);
 

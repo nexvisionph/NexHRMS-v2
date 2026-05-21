@@ -4,6 +4,8 @@ import { nanoid } from "nanoid";
 import type { Loan, LoanDeduction, LoanRepaymentSchedule, LoanBalanceHistory } from "@/types";
 import { SEED_LOANS } from "@/data/seed";
 
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
+
 interface LoansState {
     loans: Loan[];
     createLoan: (loan: Omit<Loan, "id" | "createdAt" | "remainingBalance" | "deductionCapPercent" | "approvedBy"> & { deductionCapPercent?: number; approvedBy?: string }) => void;
@@ -33,7 +35,7 @@ interface LoansState {
 
 export const useLoansStore = create<LoansState>()(
     (set, get) => ({
-            loans: SEED_LOANS,
+            loans: USE_DEMO_MODE ? SEED_LOANS : [],
 
             createLoan: (data) =>
                 set((s) => {

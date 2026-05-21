@@ -99,8 +99,6 @@
 [2026-05-08T04:49:08.380Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
 [2026-05-08T04:49:28.857Z] [info] post request received {"path":"/","remote":"192.168.0.155:60302","requestCode":"receive_cmd","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":308}
 [2026-05-08T04:49:28.858Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
-<<<<<<< Updated upstream
-=======
     [2026-05-20T03:17:04.818Z] [info] bridge listening {"port":8080,"target":"http://localhost:3000/api/attendance/t800","logFile":"C:\\xampp\\htdocs\\Github\\NexHRMS-v2\\scripts\\fk-bridge.log"}
     [2026-05-20T03:17:04.819Z] [info] local addresses {"addresses":["192.168.16.1","192.168.254.157"]}
     [2026-05-20T03:17:42.691Z] [info] non-post request received {"method":"GET","path":"/favicon.ico","remote":"192.168.254.157:58080"}
@@ -436,30 +434,39 @@
 [2026-05-20T10:30:25.758Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
 [2026-05-20T10:30:55.841Z] [info] post request received {"path":"/","remote":"192.168.254.132:40108","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
 [2026-05-20T10:30:55.842Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
-[2026-05-20T11:01:06.229Z] [info] bridge listening {"port":8080,"target":"http://localhost:3000/api/attendance/t800","logFile":"C:\\Repository\\NexHRMS-v2\\scripts\\fk-bridge.log"}
-[2026-05-20T11:01:06.230Z] [info] local addresses {"addresses":["172.22.144.1","192.168.56.1","192.168.254.115"]}
-[2026-05-20T11:01:35.512Z] [info] post request received {"path":"/","remote":"192.168.254.132:38221","requestCode":"realtime_glog","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":126}
-[2026-05-20T11:01:35.541Z] [error] forward error {"message":"fetch failed","stack":"TypeError: fetch failed\n    at node:internal/deps/undici/undici:15845:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async IncomingMessage.<anonymous> (C:\\Repository\\NexHRMS-v2\\scripts\\fk-bridge.js:298:24)"}
-[2026-05-20T11:01:35.959Z] [info] post request received {"path":"/","remote":"192.168.254.132:38222","requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"1","contentType":"application/octet-stream","bytes":5120}
-[2026-05-20T11:01:35.963Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"1","bytes":5120}
-[2026-05-20T11:01:36.009Z] [info] post request received {"path":"/","remote":"192.168.254.132:38223","requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"2","contentType":"application/octet-stream","bytes":5120}
-[2026-05-20T11:01:36.010Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"2","bytes":5120}
-[2026-05-20T11:01:36.271Z] [info] post request received {"path":"/","remote":"192.168.254.132:38224","requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"3","contentType":"application/octet-stream","bytes":5120}
-[2026-05-20T11:01:36.273Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"3","bytes":5120}
-[2026-05-20T11:01:36.319Z] [info] post request received {"path":"/","remote":"192.168.254.132:38225","requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"4","contentType":"application/octet-stream","bytes":5120}
-[2026-05-20T11:01:36.319Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"4","bytes":5120}
-[2026-05-20T11:01:36.582Z] [info] post request received {"path":"/","remote":"192.168.254.132:38226","requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"5","contentType":"application/octet-stream","bytes":5120}
-[2026-05-20T11:01:36.582Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"5","bytes":5120}
-[2026-05-20T11:01:36.706Z] [info] post request received {"path":"/","remote":"192.168.254.132:38227","requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":1952}
-[2026-05-20T11:01:36.707Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"0","bytes":1952}
-[2026-05-20T11:02:05.400Z] [info] post request received {"path":"/","remote":"192.168.254.132:38228","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
-[2026-05-20T11:02:05.401Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
-[2026-05-20T11:02:35.021Z] [info] post request received {"path":"/","remote":"192.168.254.132:38229","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
-[2026-05-20T11:02:35.023Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
-[2026-05-20T11:02:35.223Z] [info] post request received {"path":"/","remote":"192.168.254.132:38230","requestCode":"realtime_glog","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":126}
-[2026-05-20T11:02:35.230Z] [error] forward error {"message":"fetch failed","stack":"TypeError: fetch failed\n    at node:internal/deps/undici/undici:15845:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async IncomingMessage.<anonymous> (C:\\Repository\\NexHRMS-v2\\scripts\\fk-bridge.js:298:24)"}
-[2026-05-20T11:03:04.918Z] [info] post request received {"path":"/","remote":"192.168.254.132:38231","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
-[2026-05-20T11:03:04.920Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
-[2026-05-20T11:03:34.979Z] [info] post request received {"path":"/","remote":"192.168.254.132:38232","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
-[2026-05-20T11:03:34.980Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
->>>>>>> Stashed changes
+[2026-05-21T05:36:24.650Z] [info] bridge listening {"port":8080,"target":"https://nex-hrms-v2.vercel.app/api/attendance/t800","logFile":"C:\\xampp\\htdocs\\Github\\NexHRMS-v2\\scripts\\fk-bridge.log"}
+[2026-05-21T05:36:24.652Z] [info] local addresses {"addresses":["192.168.16.1","192.168.254.111"]}
+[2026-05-21T05:40:11.399Z] [info] post request received {"path":"/","remote":"192.168.254.132:46795","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
+[2026-05-21T05:40:11.401Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-21T05:40:40.808Z] [info] post request received {"path":"/","remote":"192.168.254.132:46796","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
+[2026-05-21T05:40:40.810Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-21T05:41:10.898Z] [info] post request received {"path":"/","remote":"192.168.254.132:46797","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
+[2026-05-21T05:41:10.899Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-21T05:41:41.008Z] [info] post request received {"path":"/","remote":"192.168.254.132:46798","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
+[2026-05-21T05:41:41.010Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-21T05:42:10.805Z] [info] post request received {"path":"/","remote":"192.168.254.132:46799","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
+[2026-05-21T05:42:10.806Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-21T05:42:41.017Z] [info] post request received {"path":"/","remote":"192.168.254.132:46800","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
+[2026-05-21T05:42:41.019Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-21T05:42:41.274Z] [info] post request received {"path":"/","remote":"192.168.254.132:46801","requestCode":"realtime_glog","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":126}
+[2026-05-21T05:42:43.132Z] [info] forwarded {"payload":{"request_code":"realtime_glog","user_id":"12","io_time":"20260521134204","io_mode":"1","dev_id":"2603161831","deviceId":"2603161831","biometricId":"12"},"status":200,"responseCode":"","text":""}
+[2026-05-21T05:45:08.479Z] [info] post request received {"path":"/","remote":"192.168.254.132:46802","requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"1","contentType":"application/octet-stream","bytes":5120}
+[2026-05-21T05:45:08.481Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"1","bytes":5120}
+[2026-05-21T05:45:08.594Z] [info] post request received {"path":"/","remote":"192.168.254.132:46803","requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"2","contentType":"application/octet-stream","bytes":5120}
+[2026-05-21T05:45:08.596Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"2","bytes":5120}
+[2026-05-21T05:45:08.638Z] [info] post request received {"path":"/","remote":"192.168.254.132:46804","requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"3","contentType":"application/octet-stream","bytes":5120}
+[2026-05-21T05:45:08.682Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"3","bytes":5120}
+[2026-05-21T05:45:08.818Z] [info] post request received {"path":"/","remote":"192.168.254.132:46805","requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"4","contentType":"application/octet-stream","bytes":5120}
+[2026-05-21T05:45:08.819Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"4","bytes":5120}
+[2026-05-21T05:45:08.856Z] [info] post request received {"path":"/","remote":"192.168.254.132:46806","requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"5","contentType":"application/octet-stream","bytes":5120}
+[2026-05-21T05:45:08.858Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"5","bytes":5120}
+[2026-05-21T05:45:09.091Z] [info] post request received {"path":"/","remote":"192.168.254.132:46807","requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":1331}
+[2026-05-21T05:45:09.092Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"2603161831","blkNo":"0","bytes":1331}
+[2026-05-21T05:45:09.299Z] [info] post request received {"path":"/","remote":"192.168.254.132:46808","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
+[2026-05-21T05:45:09.300Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-21T05:46:10.583Z] [info] post request received {"path":"/","remote":"192.168.254.132:46809","requestCode":"realtime_glog","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":126}
+[2026-05-21T05:46:11.596Z] [info] forwarded {"payload":{"request_code":"realtime_glog","user_id":"11","io_time":"20260521134456","io_mode":"1","dev_id":"2603161831","deviceId":"2603161831","biometricId":"11"},"status":200,"responseCode":"","text":""}
+[2026-05-21T05:46:12.055Z] [info] post request received {"path":"/","remote":"192.168.254.132:46810","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
+[2026-05-21T05:46:12.057Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-21T05:46:41.922Z] [info] post request received {"path":"/","remote":"192.168.254.132:46811","requestCode":"receive_cmd","devId":"2603161831","blkNo":"0","contentType":"application/octet-stream","bytes":296}
+[2026-05-21T05:46:41.923Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}

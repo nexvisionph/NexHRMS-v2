@@ -27,6 +27,12 @@ import type {
   NotificationLog, NotificationRule,
   LocationPing, SiteSurveyPhoto, BreakRecord,
   DeductionOverride, DeductionGlobalDefault, PayrollSignatureConfig,
+  Employee201Document,
+  DisciplinaryCase, NTERecord, NODRecord,
+  PerformanceCycle, PerformanceCriterion, PerformanceSalaryBand,
+  PerformanceReview, PerformanceSalaryAdjustment, PerformanceAuditLog,
+  EmployeeTaxProfile, AnnualTaxSummary, PreviousEmployerRecord,
+  Form2316Record, AlphalistExport,
 } from "@/types";
 
 // Re-export for convenience
@@ -81,7 +87,12 @@ async function fetchAll<T>(table: string, options?: {
       await new Promise<void>((r) => setTimeout(r, 200 * (_attempt + 1)));
       return fetchAll(table, options, _attempt + 1);
     }
-    console.error(`[db] fetchAll ${table}:`, error.message);
+    // "Could not find the table" = migration not applied yet — expected, not an error.
+    if (error.message?.includes("schema cache")) {
+      console.debug(`[db] fetchAll ${table}: table not yet created (migration pending)`);
+    } else {
+      console.error(`[db] fetchAll ${table}:`, error.message);
+    }
     return [];
   }
   return ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => keysToCamel(row) as T);
@@ -97,6 +108,7 @@ async function upsertRow(table: string, row: Record<string, unknown>, onConflict
     // 23505 = unique_violation: row already exists via a different unique constraint.
     // Safe to suppress — the data is already in the DB.
     if (error.code === "23505") return true;
+    if (error.message?.includes("schema cache")) return false;
     console.error(`[db] upsert ${table}:`, error.message);
   }
   return !error;
@@ -157,6 +169,7 @@ async function insertRow(table: string, row: Record<string, unknown>) {
     // Suppress in demo mode — Supabase is not configured so the
     // anonymous client has no JWT that satisfies RLS predicates.
     if (error.code === "42501" && isDemoMode) return false;
+    if (error.message?.includes("schema cache")) return false;
     console.error(`[db] insert ${table}:`, error.message);
   }
   return !error;
@@ -169,6 +182,7 @@ async function updateRow(table: string, id: string, patch: Record<string, unknow
   if (error) {
     if (isNetworkError(error) && isDemoMode) return false;
     if (error.code === "42501" && isDemoMode) return false;
+    if (error.message?.includes("schema cache")) return false;
     console.error(`[db] update ${table}:`, error.message);
   }
   return !error;
@@ -1314,6 +1328,94 @@ export const locationDb = {
   },
 };
 
+// ─── 201 Documents ──────────────────────────────────────────────
+
+export const documents201Db = {
+  fetchAll: () => fetchAll<Employee201Document>("employee_201_documents"),
+
+  async upsert(doc: Employee201Document): Promise<boolean> {
+    return upsertRow("employee_201_documents", doc as unknown as Record<string, unknown>);
+  },
+
+  async batchUpsert(docs: Employee201Document[]): Promise<boolean> {
+    return batchUpsertRows("employee_201_documents", docs as unknown as Record<string, unknown>[]);
+  },
+
+  async remove(id: string): Promise<boolean> {
+    return deleteRow("employee_201_documents", id);
+  },
+
+  async fetchExpiring(daysAhead = 30): Promise<Employee201Document[]> {
+    const today = new Date();
+    const future = new Date();
+    future.setDate(today.getDate() + daysAhead);
+
+    const todayStr = today.toISOString().split("T")[0];
+    const futureStr = future.toISOString().split("T")[0];
+
+    const { data, error } = await supabase()
+      .from("employee_201_documents")
+      .select("*")
+      .gte("expiry_date", todayStr)
+      .lte("expiry_date", futureStr)
+      .not("status", "in", "(archived,expired)")
+      .order("expiry_date", { ascending: true });
+
+    if (error) {
+      console.error("[db] documents201Db.fetchExpiring:", error.message);
+      return [];
+    }
+    return ((data ?? []) as unknown as Record<string, unknown>[]).map(
+      (row) => keysToCamel(row) as unknown as Employee201Document
+    );
+  },
+};
+
+// ─── 201 Documents Storage ───────────────────────────────────────
+
+export const documents201Storage = {
+  async upload(
+    employeeId: string,
+    documentType: string,
+    file: File
+  ): Promise<{ path: string; error?: string }> {
+    try {
+      const path = `${employeeId}/${documentType}/${file.name}`;
+      const { error } = await supabase()
+        .storage.from("employee-documents")
+        .upload(path, file);
+
+      if (error) {
+        console.error("[db] documents201Storage.upload:", error.message);
+        return { path: "", error: error.message };
+      }
+
+      return { path };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Upload failed";
+      console.error("[db] documents201Storage.upload:", message);
+      return { path: "", error: message };
+    }
+  },
+
+  async getSignedUrl(path: string, expiresIn = 3600): Promise<string | null> {
+    try {
+      const { data, error } = await supabase()
+        .storage.from("employee-documents")
+        .createSignedUrl(path, expiresIn);
+
+      if (error) {
+        console.error("[db] documents201Storage.getSignedUrl:", error.message);
+        return null;
+      }
+      return data?.signedUrl ?? null;
+    } catch (err: unknown) {
+      console.error("[db] documents201Storage.getSignedUrl:", err instanceof Error ? err.message : "Failed to get signed URL");
+      return null;
+    }
+  },
+};
+
 // ─── Loan Deductions & Repayment ────────────────────────────────
 
 export const loanExtrasDb = {
@@ -1326,6 +1428,96 @@ export const loanExtrasDb = {
     fetchAll<LoanRepaymentSchedule>("loan_repayment_schedule", { filter: { loan_id: loanId }, order: { column: "due_date", ascending: true } }),
 
   fetchAllRepaymentSchedules: () => fetchAll<LoanRepaymentSchedule>("loan_repayment_schedule"),
+};
+
+// ─── Disciplinary ───────────────────────────────────────────────
+
+export const disciplinaryDb = {
+  fetchCases: () => fetchAll<DisciplinaryCase>("disciplinary_cases"),
+  fetchNTEs: () => fetchAll<NTERecord>("nte_records"),
+  fetchNODs: () => fetchAll<NODRecord>("nod_records"),
+
+  async upsertCase(c: DisciplinaryCase): Promise<boolean> {
+    return upsertRow("disciplinary_cases", c as unknown as Record<string, unknown>);
+  },
+  async upsertNTE(n: NTERecord): Promise<boolean> {
+    return upsertRow("nte_records", n as unknown as Record<string, unknown>);
+  },
+  async upsertNOD(n: NODRecord): Promise<boolean> {
+    return upsertRow("nod_records", n as unknown as Record<string, unknown>);
+  },
+  async removeCase(id: string): Promise<boolean> {
+    return deleteRow("disciplinary_cases", id);
+  },
+};
+
+// ─── Documents (201 Files) ──────────────────────────────────────
+
+export const documentsDb = {
+  fetchAll: () => fetchAll<Employee201Document>("employee_201_documents"),
+
+  async upsert(doc: Employee201Document): Promise<boolean> {
+    return upsertRow("employee_201_documents", doc as unknown as Record<string, unknown>);
+  },
+  async remove(id: string): Promise<boolean> {
+    return deleteRow("employee_201_documents", id);
+  },
+};
+
+// ─── Performance ────────────────────────────────────────────────
+
+export const performanceDb = {
+  fetchCycles: () => fetchAll<PerformanceCycle>("performance_cycles"),
+  fetchCriteria: () => fetchAll<PerformanceCriterion>("performance_criteria"),
+  fetchSalaryBands: () => fetchAll<PerformanceSalaryBand>("performance_salary_bands"),
+  fetchReviews: () => fetchAll<PerformanceReview>("performance_reviews"),
+  fetchAdjustments: () => fetchAll<PerformanceSalaryAdjustment>("performance_salary_adjustments"),
+  fetchAuditLogs: () => fetchAll<PerformanceAuditLog>("performance_audit_logs"),
+
+  async upsertCycle(c: PerformanceCycle): Promise<boolean> {
+    return upsertRow("performance_cycles", c as unknown as Record<string, unknown>);
+  },
+  async upsertCriterion(c: PerformanceCriterion): Promise<boolean> {
+    return upsertRow("performance_criteria", c as unknown as Record<string, unknown>);
+  },
+  async upsertSalaryBand(b: PerformanceSalaryBand): Promise<boolean> {
+    return upsertRow("performance_salary_bands", b as unknown as Record<string, unknown>);
+  },
+  async upsertReview(r: PerformanceReview): Promise<boolean> {
+    return upsertRow("performance_reviews", r as unknown as Record<string, unknown>);
+  },
+  async upsertAdjustment(a: PerformanceSalaryAdjustment): Promise<boolean> {
+    return upsertRow("performance_salary_adjustments", a as unknown as Record<string, unknown>);
+  },
+  async insertAuditLog(log: PerformanceAuditLog): Promise<boolean> {
+    return insertRow("performance_audit_logs", log as unknown as Record<string, unknown>);
+  },
+};
+
+// ─── BIR Compliance ─────────────────────────────────────────────
+
+export const birComplianceDb = {
+  fetchTaxProfiles: () => fetchAll<EmployeeTaxProfile>("employee_tax_profiles"),
+  fetchAnnualSummaries: () => fetchAll<AnnualTaxSummary>("annual_tax_summaries"),
+  fetchPreviousEmployerRecords: () => fetchAll<PreviousEmployerRecord>("previous_employer_records"),
+  fetchForm2316Records: () => fetchAll<Form2316Record>("form_2316_records"),
+  fetchAlphalistExports: () => fetchAll<AlphalistExport>("alphalist_exports"),
+
+  async upsertTaxProfile(p: EmployeeTaxProfile): Promise<boolean> {
+    return upsertRow("employee_tax_profiles", p as unknown as Record<string, unknown>);
+  },
+  async upsertAnnualSummary(s: AnnualTaxSummary): Promise<boolean> {
+    return upsertRow("annual_tax_summaries", s as unknown as Record<string, unknown>);
+  },
+  async upsertPreviousEmployerRecord(r: PreviousEmployerRecord): Promise<boolean> {
+    return upsertRow("previous_employer_records", r as unknown as Record<string, unknown>);
+  },
+  async upsertForm2316(r: Form2316Record): Promise<boolean> {
+    return upsertRow("form_2316_records", r as unknown as Record<string, unknown>);
+  },
+  async addAlphalistExport(e: AlphalistExport): Promise<boolean> {
+    return insertRow("alphalist_exports", e as unknown as Record<string, unknown>);
+  },
 };
 
 // ─── Sync Check ─────────────────────────────────────────────────

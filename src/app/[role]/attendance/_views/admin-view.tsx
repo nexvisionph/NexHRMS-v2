@@ -40,7 +40,7 @@ import {
     Clock, LogIn, LogOut, Download, MapPin, CheckCircle, XCircle, Navigation,
     BellRing, UserX, ShieldCheck, Timer, ThumbsUp, ThumbsDown, RotateCcw,
     AlertTriangle, Zap, CalendarDays, Plus, Pencil, Trash2, UploadCloud,
-    ShieldAlert, Gauge, Camera, ListChecks, MoreHorizontal, Undo2, Loader2,
+    ShieldAlert, Gauge, Camera, ListChecks, MoreHorizontal, Undo2, Loader2, Fingerprint,
 } from "lucide-react";
 import { toast } from "sonner";
 import { isWithinGeofence } from "@/lib/geofence";
@@ -50,6 +50,7 @@ import { LocationTracker } from "@/components/attendance/location-tracker";
 import { BreakTimer } from "@/components/attendance/break-timer";
 import { ExportBackupDialog } from "@/components/export-backup-dialog";
 import { ImportDataDialog } from "@/components/import-data-dialog";
+import { BiometricImportDialog, type BiometricImportRecord } from "@/components/attendance/biometric-import-dialog";
 import { EmployeeCombobox } from "@/components/ui/employee-combobox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SiteSurveyGallery } from "@/components/attendance/site-survey-gallery";
@@ -246,6 +247,9 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     // CSV import ref
     const csvInputRef = useRef<HTMLInputElement>(null);
 
+    // Biometric XLSX import dialog
+    const [biometricImportOpen, setBiometricImportOpen] = useState(false);
+
     // Override state
     const [overrideOpen, setOverrideOpen] = useState(false);
     const [editingLog, setEditingLog] = useState<typeof logs[0] | null>(null);
@@ -429,6 +433,34 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
         reader.readAsText(file); e.target.value = "";
     };
 
+    /** Commit biometric XLSX import → upserts logs and appends an audit event. */
+    const handleBiometricImport = (rows: BiometricImportRecord[]) => {
+        const importable = rows.filter((r) => r.importStatus !== "error" && r.employeeId);
+        if (importable.length === 0) {
+            toast.error("Nothing to import");
+            return;
+        }
+        bulkUpsertLogs(
+            importable.map((r) => ({
+                employeeId: r.employeeId,
+                date: r.date,
+                checkIn: r.checkIn,
+                checkOut: r.checkOut,
+                hours: r.hours,
+                status: r.status,
+            }))
+        );
+        appendEvent({
+            employeeId: currentUser.id || "SYSTEM",
+            eventType: "CSV_IMPORTED",
+            timestampUTC: new Date().toISOString(),
+            performedBy: currentUser.id,
+            description: `Imported ${importable.length} biometric attendance record(s)`,
+            metadata: { source: "biometric_xlsx", imported: importable.length },
+        });
+        toast.success(`Imported ${importable.length} attendance records successfully`);
+    };
+
     const handleSubmitOT = () => {
         if (!myEmployeeId) { toast.error("Unable to identify employee"); return; }
         if (!otDate) { toast.error("Please select a date"); return; }
@@ -592,6 +624,16 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                 <UploadCloud className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Import DB</span>
                             </Button>
                         } />
+                        {canImportCSV && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="gap-1.5 text-xs h-7 px-2.5 rounded-md"
+                                onClick={() => setBiometricImportOpen(true)}
+                            >
+                                <Fingerprint className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Import Biometric</span>
+                            </Button>
+                        )}
                         {canImportCSV && (<>
                             <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportCSV} />
                             <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 px-2.5 rounded-md" onClick={() => csvInputRef.current?.click()}>
@@ -1500,6 +1542,15 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Biometric XLSX/CSV Import Dialog */}
+            <BiometricImportDialog
+                open={biometricImportOpen}
+                onOpenChange={setBiometricImportOpen}
+                onImport={handleBiometricImport}
+                employees={employees}
+                existingLogs={logs}
+            />
         </div>
     );
 }

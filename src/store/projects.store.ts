@@ -4,6 +4,8 @@ import { nanoid } from "nanoid";
 import type { Project } from "@/types";
 import { SEED_PROJECTS } from "@/data/seed";
 
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
+
 interface ProjectsState {
     projects: Project[];
     addProject: (data: Omit<Project, "id" | "createdAt">) => void;
@@ -17,7 +19,7 @@ interface ProjectsState {
 
 export const useProjectsStore = create<ProjectsState>()(
     (set, get) => ({
-        projects: SEED_PROJECTS,
+        projects: USE_DEMO_MODE ? SEED_PROJECTS : [],
         addProject: (data) => {
             const newProject: Project = {
                 ...data,

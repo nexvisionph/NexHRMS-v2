@@ -3,6 +3,8 @@ import { create } from "zustand";
 import { nanoid } from "nanoid";
 import type { CalendarEvent } from "@/types";
 import { SEED_EVENTS } from "@/data/seed";
+
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 import { eventsDb } from "@/services/db.service";
 
 interface EventsState {
@@ -15,7 +17,7 @@ interface EventsState {
 
 export const useEventsStore = create<EventsState>()(
     (set) => ({
-        events: SEED_EVENTS,
+        events: USE_DEMO_MODE ? SEED_EVENTS : [],
         addEvent: (event) => {
             const newEvent: CalendarEvent = { ...event, id: `EVT-${nanoid(8)}` };
             set((s) => ({ events: [...s.events, newEvent] }));

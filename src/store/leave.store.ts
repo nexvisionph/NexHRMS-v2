@@ -3,6 +3,8 @@ import { create } from "zustand";
 import { nanoid } from "nanoid";
 import type { LeaveRequest, LeaveStatus, LeavePolicy, LeaveBalance, LeaveType, LeaveDuration } from "@/types";
 import { SEED_LEAVES } from "@/data/seed";
+
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 
@@ -126,7 +128,7 @@ interface LeaveState {
 
 export const useLeaveStore = create<LeaveState>()(
     (set, get) => ({
-            requests: SEED_LEAVES,
+            requests: USE_DEMO_MODE ? SEED_LEAVES : [],
             policies: DEFAULT_LEAVE_POLICIES,
             balances: [],
 
