@@ -20,4 +20,5 @@ This is the task that needs to be solved:
 
 # Main Task
 
-- Now, I want you to read the codebase and guide me on how are we going to use the biometrics for regestrering new emplooyee, attendance, and time-outs and make it reflect on the system's dashboard with respect of the user's role on the system.
+- I think the checklist of the payroll run is wrong because the even employees that have salaries is being read as negative and 0 paynet. The payroll run checklist is suppoed to be as robust as the one with soren from transfer folder.
+- Limit the lock run stage's table to 10 rows only like the other tables on the payroll run stages with pagination as well.
