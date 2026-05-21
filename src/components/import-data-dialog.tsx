@@ -12,9 +12,17 @@ import {
 } from "@/lib/export-utils";
 import { useEmployeesStore } from "@/store/employees.store";
 import { usePayrollStore } from "@/store/payroll.store";
+import { useDepartmentsStore } from "@/store/departments.store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -395,6 +403,7 @@ function PBPreviewDialog({
 }: PBPreviewDialogProps) {
   const employees = useEmployeesStore((s) => s.employees);
   const existingPayslips = usePayrollStore((s) => s.payslips);
+  const departments = useDepartmentsStore((s) => s.departments);
 
   const updateCell = useCallback(
     (rowIdx: number, col: string, value: string) => {
@@ -453,7 +462,7 @@ function PBPreviewDialog({
           );
         });
         if (batchDup) {
-          if (status !== "unmatched") status = "warning";
+          if (status = "unmatched") status = "warning";
           hints.push("Duplicate within this import — same employee and period appears above");
         }
       }
@@ -693,24 +702,53 @@ function PBPreviewDialog({
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">
                         {section.legend}
                       </p>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 sm:grid-cols-3 lg:grid-cols-4">
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 sm:grid-cols-3 lg:grid-cols-4 auto-rows-fr">
                         {section.fields.map((col) => {
                           const val = row[col] ?? "";
                           const isRequired = requiredFields.has(col);
                           const isEmpty = isRequired && !val.trim();
+                          const isDept = col === "Department";
                           return (
                             <div key={col} className="flex flex-col gap-1">
                               <label className="text-[10px] font-medium text-muted-foreground leading-none">
                                 {col}{isRequired && <span className="text-destructive ml-0.5">*</span>}
                               </label>
-                              <Input
-                                value={val}
-                                placeholder={isRequired ? `${col} (required)` : "—"}
-                                onChange={(e) => updateCell(rowIdx, col, e.target.value)}
-                                className={["h-7 text-xs px-2",
-                                  isEmpty ? "border-destructive/60 bg-destructive/5 focus-visible:ring-destructive/40" : "border-border/50",
-                                ].filter(Boolean).join(" ")}
-                              />
+                              {isDept ? (
+                                <Select
+                                  value={val || "none"}
+                                  onValueChange={(v) => updateCell(rowIdx, col, v === "none" ? "" : v)}
+                                >
+                                  <SelectTrigger
+                                    className={[
+                                      "!h-7 min-h-0 w-full px-2 text-xs",
+                                      "[&>span]:truncate",
+                                      "[&>svg]:h-3 [&>svg]:w-3 [&>svg]:shrink-0",
+                                      isEmpty
+                                        ? "border-destructive/60 bg-destructive/5 focus-visible:ring-destructive/40"
+                                        : "border-border/50",
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" ")}
+                                  >
+                                    <SelectValue placeholder="Select department" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">Select...</SelectItem>
+                                    {departments.filter((d) => d.isActive).map((d) => (
+                                      <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Input
+                                  value={val}
+                                  placeholder={isRequired ? `${col} (required)` : "—"}
+                                  onChange={(e) => updateCell(rowIdx, col, e.target.value)}
+                                  className={["h-7 text-xs px-2",
+                                    isEmpty ? "border-destructive/60 bg-destructive/5 focus-visible:ring-destructive/40" : "border-border/50",
+                                  ].filter(Boolean).join(" ")}
+                                />
+                              )}
                               {isEmpty && <p className="text-[9px] text-destructive leading-none">Required</p>}
                             </div>
                           );
