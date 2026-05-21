@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useDocumentsStore, REQUIRED_201_DOC_TYPES } from "@/store/documents.store";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -23,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import {
     FolderArchive, Search, Upload, CheckCircle2, XCircle,
     FileText, Clock, AlertTriangle, ShieldCheck, TrendingUp,
+    ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { getInitials } from "@/lib/format";
 import { toast } from "sonner";
@@ -56,6 +58,9 @@ const VISIBILITY_OPTIONS: Document201Visibility[] = [
     "hr_only", "manager", "employee", "payroll", "admin_only",
 ];
 
+const ITEMS_PER_PAGE = 10;
+const PAGE_SIZES = [10, 20, 50];
+
 function StatusBadge({ status }: { status: Employee201Document["status"] }) {
     const map: Record<Employee201Document["status"], string> = {
         pending_upload: "bg-slate-100 text-slate-700",
@@ -88,6 +93,46 @@ export default function Documents201AdminView() {
     const stats = useMemo(() => getStats(), [docs, getStats]);
 
     const [search, setSearch] = useState("");
+    const [departmentFilter, setDepartmentFilter] = useState<string>("all");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
+    const [isHydrated, setIsHydrated] = useState(false);
+    const [hydrationTimedOut, setHydrationTimedOut] = useState(false);
+
+    // Hydration detection (Req 11.1–11.5)
+    useEffect(() => {
+        const unsub = useDocumentsStore.persist.onFinishHydration(() => {
+            setIsHydrated(true);
+        });
+        // If already hydrated by the time effect runs
+        if (useDocumentsStore.persist.hasHydrated()) {
+            setIsHydrated(true);
+        }
+
+        // 30-second timeout fallback for stalled hydration (Req 11.5)
+        const timeout = setTimeout(() => {
+            if (!useDocumentsStore.persist.hasHydrated()) {
+                setHydrationTimedOut(true);
+            }
+        }, 30_000);
+
+        return () => {
+            unsub();
+            clearTimeout(timeout);
+        };
+    }, []);
+
+    const uniqueDepartments = useMemo(() =>
+        [...new Set(
+            employees.filter(e => e.status === "active").map(e => e.department).filter(Boolean)
+        )].sort(),
+    [employees]);
+
+    // Reset page to 1 whenever filters change (Req 5.4, 8.1, 8.2, 8.3)
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [departmentFilter, search, pageSize]);
+
     const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null);
     const [uploadOpen, setUploadOpen] = useState(false);
     const [uploadForm, setUploadForm] = useState({
@@ -105,6 +150,11 @@ export default function Documents201AdminView() {
         const q = search.trim().toLowerCase();
         return employees
             .filter((e) => e.status === "active")
+            .filter((e) => {
+                if (departmentFilter === "all") return true;
+                if (!e.department) return false;
+                return e.department === departmentFilter;
+            })
             .filter((e) => !q || e.name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q) || e.id.toLowerCase().includes(q))
             .map((e) => ({
                 emp: e,
@@ -113,7 +163,21 @@ export default function Documents201AdminView() {
                 docCount: getByEmployee(e.id).length,
             }))
             .sort((a, b) => a.completeness - b.completeness);
-    }, [employees, search, docs, getCompleteness, getMissing, getByEmployee]);
+    }, [employees, search, departmentFilter, docs, getCompleteness, getMissing, getByEmployee]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
+
+    // Clamp currentPage to totalPages when it exceeds after filter changes
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
+
+    const paginatedEmployees = filteredEmployees.slice(
+        (currentPage - 1) * pageSize,
+        currentPage * pageSize
+    );
 
     const selectedEmp = selectedEmpId ? employees.find((e) => e.id === selectedEmpId) : null;
     const selectedDocs = selectedEmpId ? getByEmployee(selectedEmpId) : [];
@@ -153,8 +217,8 @@ export default function Documents201AdminView() {
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <FolderArchive className="h-6 w-6 text-primary" /> 201 Files
+                    <h1 className="text-2xl font-bold">
+                        201 Files
                     </h1>
                     <p className="text-sm text-muted-foreground">Centralized employee document repository</p>
                 </div>
@@ -178,22 +242,32 @@ export default function Documents201AdminView() {
                 </CardContent>
             </Card>
 
-            {/* Search */}
-            <div className="relative max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                    placeholder="Search employee by name, email or ID…"
-                    className="pl-9"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                />
+            {/* Search + Department Filter */}
+            <div className="flex items-center gap-3">
+                <div className="relative max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Search employee by name, email or ID…"
+                        className="pl-9"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
+                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                    <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="All Departments" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All Departments</SelectItem>
+                        {uniqueDepartments.map((dept) => (
+                            <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
             </div>
 
             {/* Employee table */}
             <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Employees</CardTitle>
-                </CardHeader>
                 <CardContent className="p-0">
                     <div className="overflow-x-auto">
                         <Table>
@@ -208,14 +282,22 @@ export default function Documents201AdminView() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredEmployees.length === 0 ? (
+                                {!isHydrated && hydrationTimedOut ? (
+                                    <TableRow>
+                                        <TableCell colSpan={6} className="text-center text-destructive py-8">
+                                            Employee data could not be loaded
+                                        </TableCell>
+                                    </TableRow>
+                                ) : !isHydrated ? (
+                                    <TableSkeleton />
+                                ) : paginatedEmployees.length === 0 ? (
                                     <TableRow>
                                         <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                                             No employees found.
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    filteredEmployees.map(({ emp, completeness, missing, docCount }) => {
+                                    paginatedEmployees.map(({ emp, completeness, missing, docCount }) => {
                                         const pct = Math.round(completeness * 100);
                                         const tone = pct >= 100 ? "bg-emerald-500" : pct >= 60 ? "bg-amber-500" : "bg-red-500";
                                         return (
@@ -264,6 +346,24 @@ export default function Documents201AdminView() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Pagination footer */}
+            {totalPages > 1 && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Rows per page:</span>
+                        <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
+                            <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                            <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                        <Button variant="outline" size="icon" className="h-8 w-8" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}><ChevronLeft className="h-4 w-4" /></Button>
+                        <Button variant="outline" size="icon" className="h-8 w-8" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}><ChevronRight className="h-4 w-4" /></Button>
+                    </div>
+                </div>
+            )}
 
             {/* Drilldown dialog */}
             <Dialog open={!!selectedEmp} onOpenChange={(o) => !o && setSelectedEmpId(null)}>
@@ -488,9 +588,39 @@ function DocTile({
             </div>
             <div className="flex items-end gap-2">
                 <span className={`text-3xl font-bold tabular-nums leading-none ${s.value}`}>{value}</span>
-                {value > 0 && <span className={`mb-0.5 h-1.5 w-1.5 rounded-full ${s.dot}`} />}
             </div>
         </div>
     );
 }
+
+function TableSkeleton() {
+    return (
+        <>
+            {Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                    <TableCell>
+                        <div className="flex items-center gap-3">
+                            <Skeleton className="h-9 w-9 rounded-full" />
+                            <div className="space-y-1.5">
+                                <Skeleton className="h-4 w-28" />
+                                <Skeleton className="h-3 w-36" />
+                            </div>
+                        </div>
+                    </TableCell>
+                    <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                    <TableCell>
+                        <div className="flex items-center gap-2">
+                            <Skeleton className="h-2 flex-1 rounded-full" />
+                            <Skeleton className="h-3 w-8" />
+                        </div>
+                    </TableCell>
+                    <TableCell><Skeleton className="h-5 w-8 rounded-md" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-8 w-14 ml-auto rounded-md" /></TableCell>
+                </TableRow>
+            ))}
+        </>
+    );
+}
+
 
