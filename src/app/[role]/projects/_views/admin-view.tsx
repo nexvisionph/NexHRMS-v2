@@ -199,22 +199,21 @@ export default function AdminProjectsView() {
                     <DialogTrigger asChild>
                         <Button className="gap-1.5"><Plus className="h-4 w-4" /> New Project</Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
                         <DialogHeader><DialogTitle>Create Project</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
                             <div>
                                 <div className="flex items-center gap-2">
                                     <label className="text-sm font-medium">Project Name *</label>
-                                    {name.length > 50
-                                        ? <span className="text-xs text-red-500">Exceeds 50 character limit ({name.length}/50)</span>
-                                        : <span className="text-xs text-muted-foreground">Max 50 characters ({name.length}/50)</span>
-                                    }
+                                    {name.length > 50 && (
+                                        <span className="text-xs text-red-500">Exceeds 50 character limit</span>
+                                    )}
                                 </div>
-                                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nexvision" className={cn("mt-1", name.length > 50 && "border-red-500 focus-visible:ring-red-500")} maxLength={60} />
+                                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nexvision" className={cn("mt-1 w-full overflow-hidden", name.length > 50 && "border-red-500 focus-visible:ring-red-500")} maxLength={60} />
                             </div>
                             <div>
                                 <label className="text-sm font-medium">Description</label>
-                                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description..." className="mt-1 resize-none" rows={2} />
+                                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description..." className="mt-1 resize-none w-full overflow-x-hidden text-justify [overflow-wrap:anywhere]" rows={2} />
                             </div>
                             <div>
                                 <label className="text-sm font-medium mb-2 block">Geofence Location *</label>
@@ -388,22 +387,21 @@ export default function AdminProjectsView() {
 
             {/* ── Edit Project Dialog ───────────────────────────────── */}
             <Dialog open={editOpen} onOpenChange={setEditOpen}>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
                     <DialogHeader><DialogTitle>Edit Project</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
                         <div>
                             <div className="flex items-center gap-2">
                                 <label className="text-sm font-medium">Project Name *</label>
-                                {editName.length > 50
-                                    ? <span className="text-xs text-red-500">Exceeds 50 character limit ({editName.length}/50)</span>
-                                    : <span className="text-xs text-muted-foreground">Max 50 characters ({editName.length}/50)</span>
-                                }
+                                {editName.length > 50 && (
+                                    <span className="text-xs text-red-500">Exceeds 50 character limit</span>
+                                )}
                             </div>
-                            <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nexvision" className={cn("mt-1", editName.length > 50 && "border-red-500 focus-visible:ring-red-500")} maxLength={60} />
+                            <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nexvision" className={cn("mt-1 w-full overflow-hidden", editName.length > 50 && "border-red-500 focus-visible:ring-red-500")} maxLength={60} />
                         </div>
                         <div>
                             <label className="text-sm font-medium">Description</label>
-                            <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Brief description..." className="mt-1 resize-none" rows={2} />
+                            <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Brief description..." className="mt-1 resize-none w-full overflow-x-hidden text-justify [overflow-wrap:anywhere]" rows={2} />
                         </div>
                         <div>
                             <label className="text-sm font-medium mb-2 block">Geofence Location *</label>
