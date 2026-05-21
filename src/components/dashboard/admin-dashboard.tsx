@@ -50,7 +50,7 @@ return (
                 <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" asChild>
                         <Link href={rh("/employees/manage")}>
-                            <UserPlus className="h-4 w-4 mr-1.5" /> Add Employee
+                            <UserPlus className="h-4 w-4 mr-1.5" /> Manage Employees
                         </Link>
                     </Button>
                     <Button size="sm" asChild>
@@ -101,7 +101,6 @@ function KpiStatsRow() {
     const logs = useAttendanceStore((s) => s.logs);
     const leaveRequests = useLeaveStore((s) => s.requests);
     const overtimeRequests = useAttendanceStore((s) => s.overtimeRequests);
-    const rh = useRoleHref();
 
     useEffect(() => {
         forceRehydrate().catch(() => { /* keep current dashboard state if refresh fails */ });
@@ -168,8 +167,6 @@ function KpiStatsRow() {
             changeType: newThisMonth > 0 ? "positive" as const : "neutral" as const,
             icon: Users,
             iconBg: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-            href: rh("/employees/manage"),
-            clickable: true,
         },
         {
             label: "Present",
@@ -178,8 +175,6 @@ function KpiStatsRow() {
             changeType: attendancePct >= 80 ? "positive" as const : attendancePct >= 60 ? "neutral" as const : "negative" as const,
             icon: UserCheck,
             iconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-            href: rh("/attendance"),
-            clickable: false,
         },
         {
             label: "Absent",
@@ -188,8 +183,6 @@ function KpiStatsRow() {
             changeType: absentCount > Math.round(activeEmployees * 0.15) ? "negative" as const : "neutral" as const,
             icon: UserX,
             iconBg: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-            href: rh("/attendance"),
-            clickable: false,
         },
         {
             label: "On Leave",
@@ -198,8 +191,6 @@ function KpiStatsRow() {
             changeType: pendingLeaves > 0 ? "warning" as const : "neutral" as const,
             icon: CalendarOff,
             iconBg: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-            href: rh("/leave"),
-            clickable: true,
         },
     ];
 
@@ -214,11 +205,6 @@ function KpiStatsRow() {
                         <Card
                             className={`
                                 border border-border/50 transition-all
-                                ${
-                                    stat.clickable
-                                        ? "hover:border-border hover:shadow-sm cursor-pointer group"
-                                        : "cursor-pointer group"
-                                }
                             `}
                         >
                             <CardContent className="px-4 py-4">
@@ -265,11 +251,6 @@ function KpiStatsRow() {
                                         className={`
                                             p-2.5 rounded-xl
                                             ${stat.iconBg}
-                                            ${
-                                                stat.clickable
-                                                    ? "group-hover:scale-110"
-                                                    : ""
-                                            }
                                             transition-transform
                                         `}
                                     >
@@ -280,11 +261,7 @@ function KpiStatsRow() {
                         </Card>
                     );
 
-                    return stat.clickable ? (
-                        <Link key={stat.label} href={stat.href}>
-                            {cardContent}
-                        </Link>
-                    ) : (
+                    return (
                         <div key={stat.label}>
                             {cardContent}
                         </div>
@@ -399,9 +376,16 @@ function AttendanceTrendChart() {
 /* ─── 3. Department Distribution (Donut Chart) ──────────────── */
 
 const DEPT_COLORS = [
-    "var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)",
-    "var(--color-chart-4)", "var(--color-chart-5)", "#8b5cf6", "#06b6d4",
-    "#f43f5e", "#10b981", "#f59e0b",
+    "var(--color-chart-1)",
+    "var(--color-chart-2)",
+    "var(--color-chart-3)",
+    "var(--color-chart-4)",
+    "var(--color-chart-5)",
+    "#8b5cf6",
+    "#06b6d4",
+    "#f43f5e",
+    "#10b981",
+    "#f59e0b",
 ];
 
 function DepartmentDistributionChart() {
@@ -409,36 +393,73 @@ function DepartmentDistributionChart() {
     const rh = useRoleHref();
 
     const data = useMemo(() => {
-        const active = employees.filter((e) => e.status === "active");
+        const active = employees.filter(
+            (e) => e.status === "active"
+        );
+
         const deptMap = new Map<string, number>();
+
         active.forEach((e) => {
             const dept = e.department || "Unassigned";
-            deptMap.set(dept, (deptMap.get(dept) || 0) + 1);
+            deptMap.set(
+                dept,
+                (deptMap.get(dept) || 0) + 1
+            );
         });
-        return Array.from(deptMap, ([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value);
+
+        return Array.from(
+            deptMap,
+            ([name, value]) => ({
+                name,
+                value,
+            })
+        )
+            .sort((a, b) => b.value - a.value)
+            .map((item, index) => ({
+                ...item,
+                index,
+            }));
     }, [employees]);
 
-    const total = data.reduce((sum, d) => sum + d.value, 0);
+    const total = data.reduce(
+        (sum, d) => sum + d.value,
+        0
+    );
 
     return (
         <Card className="border border-border/50 h-full">
             <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div>
-                        <CardTitle className="text-lg font-semibold">Employees by Department</CardTitle>
-                        <p className="text-sm text-muted-foreground mt-0.5">{total} total active</p>
+                        <CardTitle className="text-lg font-semibold">
+                            Employees by Department
+                        </CardTitle>
+
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                            {total} total active
+                        </p>
                     </div>
-                    <Button variant="ghost" size="sm" className="text-sm gap-1" asChild>
+
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-sm gap-1"
+                        asChild
+                    >
                         <Link href={rh("/employees/manage")}>
-                            View <ChevronRight className="h-3 w-3" />
+                            View
+                            <ChevronRight className="h-3 w-3" />
                         </Link>
                     </Button>
                 </div>
             </CardHeader>
+
             <CardContent className="pb-4 flex flex-col lg:flex-row items-center gap-5">
                 <div className="h-[220px] w-full lg:w-[55%] shrink-0">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
+                    <ResponsiveContainer
+                        width="100%"
+                        height="100%"
+                    >
                         <PieChart>
                             <Pie
                                 data={data}
@@ -450,50 +471,121 @@ function DepartmentDistributionChart() {
                                 dataKey="value"
                                 strokeWidth={0}
                             >
-                                {data.map((_, i) => (
-                                    <Cell key={i} fill={DEPT_COLORS[i % DEPT_COLORS.length]} />
+                                {data.map((dept) => (
+                                    <Cell
+                                        key={dept.index}
+                                        fill={
+                                            DEPT_COLORS[
+                                                dept.index %
+                                                    DEPT_COLORS.length
+                                            ]
+                                        }
+                                    />
                                 ))}
                             </Pie>
+
                             <RechartsTooltip
-                                contentStyle={{
-                                    backgroundColor: "#171717",
-                                    border: "1px solid rgba(255,255,255,.08)",
-                                    borderRadius: "12px",
-                                    color: "#fff",
-                                    fontSize: "12px"
-                                }}
-                                itemStyle={{
-                                    color:"#fff"
-                                }}
-                                formatter={(value, name, props) => {
+                                content={({ active, payload }) => {
+                                    if (
+                                        !active ||
+                                        !payload?.length
+                                    )
+                                        return null;
+
+                                    const item =
+                                        payload[0];
 
                                     const color =
-                                        DEPT_COLORS[props.payload.index % DEPT_COLORS.length];
+                                        DEPT_COLORS[
+                                            item.payload.index %
+                                                DEPT_COLORS.length
+                                        ];
 
-                                    return [
-                                        <span style={{color}}>
-                                            {value} employees
-                                        </span>,
-                                        name
-                                    ];
+                                    return (
+                                        <div
+                                            style={{
+                                                backgroundColor:
+                                                    "#171717",
+                                                border:
+                                                    "1px solid rgba(255,255,255,.08)",
+                                                borderRadius:
+                                                    "12px",
+                                                padding:
+                                                    "8px 12px",
+                                                fontSize:
+                                                    "12px",
+                                            }}
+                                        >
+                                            <div
+                                                style={{
+                                                    color,
+                                                    fontWeight: 600,
+                                                    marginBottom: 4,
+                                                }}
+                                            >
+                                                {item.name}
+                                            </div>
+
+                                            <div
+                                                style={{
+                                                    color:
+                                                        "#fff",
+                                                }}
+                                            >
+                                                {
+                                                    item.value
+                                                }{" "}
+                                                employees
+                                            </div>
+                                        </div>
+                                    );
                                 }}
                             />
                         </PieChart>
                     </ResponsiveContainer>
                 </div>
+
                 <div className="grid grid-cols-1 gap-y-2 w-full lg:w-[45%]">
-                    {data.slice(0, 8).map((dept, i) => (
-                        <div key={dept.name}className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors text-xs">
-                            <span className="flex items-center gap-1.5 truncate">
-                                <span
-                                    className="h-2 w-2 rounded-full shrink-0"
-                                    style={{ backgroundColor: DEPT_COLORS[i % DEPT_COLORS.length] }}
-                                />
-                                <span className="truncate text-muted-foreground">{dept.name}</span>
-                            </span>
-                            <span className="font-medium ml-1">{dept.value}</span>
-                        </div>
-                    ))}
+                    {data
+                        .slice(0, 8)
+                        .map((dept, i) => (
+                            <div
+                                key={dept.name}
+                                className="group flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors text-xs"
+                            >
+                                <span className="flex items-center gap-1.5 truncate">
+                                    <span
+                                        className="h-2 w-2 rounded-full shrink-0"
+                                        style={{
+                                            backgroundColor:
+                                                DEPT_COLORS[
+                                                    i %
+                                                        DEPT_COLORS.length
+                                                ],
+                                        }}
+                                    />
+
+                                    <span
+                                        className="truncate text-muted-foreground transition-colors group-hover:text-[var(--dept-color)]"
+                                        style={
+                                            {
+                                                "--dept-color":
+                                                    DEPT_COLORS[
+                                                        i %
+                                                            DEPT_COLORS.length
+                                                    ],
+                                            } as React.CSSProperties
+                                        }
+                                    >
+                                        {dept.name}
+                                    </span>
+                                </span>
+
+                                <span className="font-medium ml-1">
+                                    {dept.value}
+                                </span>
+                            </div>
+                        ))}
                 </div>
             </CardContent>
         </Card>
