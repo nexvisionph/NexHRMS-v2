@@ -1358,6 +1358,51 @@ export const documents201Db = {
   },
 };
 
+// ─── 201 Documents Storage ───────────────────────────────────────
+
+export const documents201Storage = {
+  async upload(
+    employeeId: string,
+    documentType: string,
+    file: File
+  ): Promise<{ path: string; error?: string }> {
+    try {
+      const path = `${employeeId}/${documentType}/${file.name}`;
+      const { error } = await supabase()
+        .storage.from("employee-documents")
+        .upload(path, file);
+
+      if (error) {
+        console.error("[db] documents201Storage.upload:", error.message);
+        return { path: "", error: error.message };
+      }
+
+      return { path };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Upload failed";
+      console.error("[db] documents201Storage.upload:", message);
+      return { path: "", error: message };
+    }
+  },
+
+  async getSignedUrl(path: string, expiresIn = 3600): Promise<string | null> {
+    try {
+      const { data, error } = await supabase()
+        .storage.from("employee-documents")
+        .createSignedUrl(path, expiresIn);
+
+      if (error) {
+        console.error("[db] documents201Storage.getSignedUrl:", error.message);
+        return null;
+      }
+      return data?.signedUrl ?? null;
+    } catch (err: unknown) {
+      console.error("[db] documents201Storage.getSignedUrl:", err instanceof Error ? err.message : "Failed to get signed URL");
+      return null;
+    }
+  },
+};
+
 // ─── Loan Deductions & Repayment ────────────────────────────────
 
 export const loanExtrasDb = {

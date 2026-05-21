@@ -39,36 +39,36 @@ Wire the existing `useDocumentsStore` Zustand store to Supabase by adding a `doc
 - [x] 3. Checkpoint - Ensure hydration works
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4. Add write-through subscription for documents store in sync.service.ts
-  - [ ] 4.1 Add subscription block
+- [x] 4. Add write-through subscription for documents store in sync.service.ts
+  - [x] 4.1 Add subscription block
     - Add a new `_subscriptions.push(useDocumentsStore.subscribe(...))` block in `startWriteThrough()`
     - _Requirements: 3.1_
-  - [ ] 4.2 Add writePaused and role guards
+  - [x] 4.2 Add writePaused and role guards
     - Guard the subscription with `if (_writePaused) return` at the top of the callback
     - Guard the subscription with `if (!isAdminOrHr) return` to match RLS policies
     - _Requirements: 3.5, 6.1_
-  - [ ] 4.3 Detect changes and upsert
+  - [x] 4.3 Detect changes and upsert
     - Detect new or changed documents by comparing `state.documents` against `prevState.documents` using JSON.stringify, and call `documents201Db.upsert(doc)` for each changed document
     - _Requirements: 3.1, 3.2, 3.3_
-  - [ ] 4.4 Detect deletions and remove
+  - [x] 4.4 Detect deletions and remove
     - Detect deleted documents (present in prevState but not in state) and call `documents201Db.remove(prev.id)` for each
     - _Requirements: 3.4_
 
-- [ ] 5. Checkpoint - Ensure write-through works
+- [x] 5. Checkpoint - Ensure write-through works
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 6. Add optional file upload helper (documents201Storage)
-  - [ ] 6.1 Create upload method
+- [x] 6. Add optional file upload helper (documents201Storage)
+  - [x] 6.1 Create upload method
     - Create `documents201Storage.upload(employeeId, documentType, file)` that uploads to path `${employeeId}/${documentType}/${file.name}` in the `employee-documents` bucket and returns `{ path, error? }`
     - _Requirements: 5.1, 5.4_
-  - [ ] 6.2 Create getSignedUrl method
+  - [x] 6.2 Create getSignedUrl method
     - Create `documents201Storage.getSignedUrl(path, expiresIn = 3600)` that creates a signed URL for the given file path
     - _Requirements: 5.2_
-  - [ ] 6.3 Add error handling
+  - [x] 6.3 Add error handling
     - Handle upload errors gracefully — return `{ path: "", error: errorMessage }` without modifying any document record
     - _Requirements: 5.3_
 
-- [ ] 7. Final checkpoint - Ensure all tests pass
+- [x] 7. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

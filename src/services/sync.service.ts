@@ -953,6 +953,31 @@ export function startWriteThrough(): void {
     )
   );
 
+  // ─── Documents 201 write-through ──────────────────────
+  _subscriptions.push(
+    useDocumentsStore.subscribe(
+      (state, prevState) => {
+        if (_writePaused) return;
+        // Only admin/hr can write documents
+        if (!isAdminOrHr) return;
+
+        // Detect new or changed documents
+        for (const doc of state.documents) {
+          const prev = prevState.documents.find((d) => d.id === doc.id);
+          if (!prev || JSON.stringify(prev) !== JSON.stringify(doc)) {
+            documents201Db.upsert(doc);
+          }
+        }
+        // Detect deletions
+        for (const prev of prevState.documents) {
+          if (!state.documents.find((d) => d.id === prev.id)) {
+            documents201Db.remove(prev.id);
+          }
+        }
+      }
+    )
+  );
+
   console.log("[sync] Write-through subscriptions active");
 }
 
