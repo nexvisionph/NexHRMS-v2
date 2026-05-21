@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type {
     DisciplinaryCase,
@@ -84,8 +82,7 @@ function setCaseStatus(
 }
 
 export const useDisciplinaryStore = create<DisciplinaryState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             cases: [],
             ntes: [],
             nods: [],
@@ -305,8 +302,6 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 };
             },
 
-            resetToSeed: () => set({ cases: [], ntes: [], nods: [] }),
-        }),
-        { name: "soren-disciplinary", version: 1, storage: safePersistStorage }
-    )
+        resetToSeed: () => set({ cases: [], ntes: [], nods: [] }),
+    }),
 );

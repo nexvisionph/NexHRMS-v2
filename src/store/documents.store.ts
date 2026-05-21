@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type {
     Employee201Document,
@@ -54,8 +52,7 @@ function nowIso() {
 }
 
 export const useDocumentsStore = create<DocumentsState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             documents: [],
 
             upload: (data) => {
@@ -189,8 +186,6 @@ export const useDocumentsStore = create<DocumentsState>()(
                 };
             },
 
-            resetToSeed: () => set({ documents: [] }),
-        }),
-        { name: "soren-documents", version: 1, storage: safePersistStorage }
-    )
+        resetToSeed: () => set({ documents: [] }),
+    }),
 );

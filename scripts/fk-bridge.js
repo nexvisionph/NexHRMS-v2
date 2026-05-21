@@ -20,7 +20,7 @@ const LISTEN_PORT = process.env.PORT
   ? Number(process.env.PORT)
   : process.env.FK_BRIDGE_PORT
   ? Number(process.env.FK_BRIDGE_PORT)
-  : 5006;
+  : 8080;
 const TARGET = process.env.T800_BRIDGE_TARGET_URL || process.env.HRMS_URL || 'http://localhost:3000/api/attendance/t800';
 const KIOSK_API_KEY = process.env.KIOSK_API_KEY || '';
 const LOG_FILE = process.env.FK_BRIDGE_LOG_FILE || path.resolve(process.cwd(), 'scripts', 'fk-bridge.log');
@@ -38,16 +38,22 @@ function log(level, message, data) {
 }
 
 function extractJsonFromBuffer(buf) {
-  try {
-    const s = buf.toString('utf8');
-    const start = s.indexOf('{');
-    const end = s.lastIndexOf('}');
-    if (start !== -1 && end !== -1 && end > start) {
-      const part = s.slice(start, end + 1);
-      return JSON.parse(part);
+  const s = buf.toString('utf8');
+  const end = s.lastIndexOf('}');
+  if (end === -1) return null;
+
+  // Try each '{' position — FK F80 devices prepend a 4-byte binary length
+  // header whose first byte (0x7b) is '{' in ASCII, so the first match is
+  // usually the header byte, not the real JSON start.
+  let pos = -1;
+  while (true) {
+    pos = s.indexOf('{', pos + 1);
+    if (pos === -1 || pos >= end) break;
+    try {
+      return JSON.parse(s.slice(pos, end + 1));
+    } catch {
+      // try next '{'
     }
-  } catch {
-    // ignore
   }
   return null;
 }

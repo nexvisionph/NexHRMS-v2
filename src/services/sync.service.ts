@@ -32,6 +32,7 @@ import {
   loanExtrasDb,
   createClient,
 } from "./db.service";
+import { clearStaleStorage } from "@/lib/clear-stale-storage";
 import { keysToCamel } from "@/lib/db-utils";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useLeaveStore } from "@/store/leave.store";
@@ -96,6 +97,10 @@ export async function forceRehydrate(): Promise<void> {
 async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): Promise<void> {
   if (!shouldSync()) return;
   if (_hydrated) return;
+
+  // Wipe stale localStorage keys from old persist() stores before pulling
+  // fresh data from Supabase. This prevents zombie data from rehydrating.
+  clearStaleStorage();
 
   // Check for valid session before attempting to fetch data.
   // This prevents 406 errors when the refresh token is invalid.
