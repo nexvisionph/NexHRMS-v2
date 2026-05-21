@@ -27,6 +27,12 @@ import type {
   NotificationLog, NotificationRule,
   LocationPing, SiteSurveyPhoto, BreakRecord,
   DeductionOverride, DeductionGlobalDefault, PayrollSignatureConfig,
+  DisciplinaryCase, NTERecord, NODRecord,
+  Employee201Document,
+  PerformanceCycle, PerformanceCriterion, PerformanceSalaryBand,
+  PerformanceReview, PerformanceSalaryAdjustment, PerformanceAuditLog,
+  EmployeeTaxProfile, AnnualTaxSummary, PreviousEmployerRecord,
+  Form2316Record, AlphalistExport,
 } from "@/types";
 
 // Re-export for convenience
@@ -1326,6 +1332,96 @@ export const loanExtrasDb = {
     fetchAll<LoanRepaymentSchedule>("loan_repayment_schedule", { filter: { loan_id: loanId }, order: { column: "due_date", ascending: true } }),
 
   fetchAllRepaymentSchedules: () => fetchAll<LoanRepaymentSchedule>("loan_repayment_schedule"),
+};
+
+// ─── Disciplinary ───────────────────────────────────────────────
+
+export const disciplinaryDb = {
+  fetchCases: () => fetchAll<DisciplinaryCase>("disciplinary_cases"),
+  fetchNTEs: () => fetchAll<NTERecord>("nte_records"),
+  fetchNODs: () => fetchAll<NODRecord>("nod_records"),
+
+  async upsertCase(c: DisciplinaryCase): Promise<boolean> {
+    return upsertRow("disciplinary_cases", c as unknown as Record<string, unknown>);
+  },
+  async upsertNTE(n: NTERecord): Promise<boolean> {
+    return upsertRow("nte_records", n as unknown as Record<string, unknown>);
+  },
+  async upsertNOD(n: NODRecord): Promise<boolean> {
+    return upsertRow("nod_records", n as unknown as Record<string, unknown>);
+  },
+  async removeCase(id: string): Promise<boolean> {
+    return deleteRow("disciplinary_cases", id);
+  },
+};
+
+// ─── Documents (201 Files) ──────────────────────────────────────
+
+export const documentsDb = {
+  fetchAll: () => fetchAll<Employee201Document>("employee_201_documents"),
+
+  async upsert(doc: Employee201Document): Promise<boolean> {
+    return upsertRow("employee_201_documents", doc as unknown as Record<string, unknown>);
+  },
+  async remove(id: string): Promise<boolean> {
+    return deleteRow("employee_201_documents", id);
+  },
+};
+
+// ─── Performance ────────────────────────────────────────────────
+
+export const performanceDb = {
+  fetchCycles: () => fetchAll<PerformanceCycle>("performance_cycles"),
+  fetchCriteria: () => fetchAll<PerformanceCriterion>("performance_criteria"),
+  fetchSalaryBands: () => fetchAll<PerformanceSalaryBand>("performance_salary_bands"),
+  fetchReviews: () => fetchAll<PerformanceReview>("performance_reviews"),
+  fetchAdjustments: () => fetchAll<PerformanceSalaryAdjustment>("performance_salary_adjustments"),
+  fetchAuditLogs: () => fetchAll<PerformanceAuditLog>("performance_audit_logs"),
+
+  async upsertCycle(c: PerformanceCycle): Promise<boolean> {
+    return upsertRow("performance_cycles", c as unknown as Record<string, unknown>);
+  },
+  async upsertCriterion(c: PerformanceCriterion): Promise<boolean> {
+    return upsertRow("performance_criteria", c as unknown as Record<string, unknown>);
+  },
+  async upsertSalaryBand(b: PerformanceSalaryBand): Promise<boolean> {
+    return upsertRow("performance_salary_bands", b as unknown as Record<string, unknown>);
+  },
+  async upsertReview(r: PerformanceReview): Promise<boolean> {
+    return upsertRow("performance_reviews", r as unknown as Record<string, unknown>);
+  },
+  async upsertAdjustment(a: PerformanceSalaryAdjustment): Promise<boolean> {
+    return upsertRow("performance_salary_adjustments", a as unknown as Record<string, unknown>);
+  },
+  async insertAuditLog(log: PerformanceAuditLog): Promise<boolean> {
+    return insertRow("performance_audit_logs", log as unknown as Record<string, unknown>);
+  },
+};
+
+// ─── BIR Compliance ─────────────────────────────────────────────
+
+export const birComplianceDb = {
+  fetchTaxProfiles: () => fetchAll<EmployeeTaxProfile>("employee_tax_profiles"),
+  fetchAnnualSummaries: () => fetchAll<AnnualTaxSummary>("annual_tax_summaries"),
+  fetchPreviousEmployerRecords: () => fetchAll<PreviousEmployerRecord>("previous_employer_records"),
+  fetchForm2316Records: () => fetchAll<Form2316Record>("form_2316_records"),
+  fetchAlphalistExports: () => fetchAll<AlphalistExport>("alphalist_exports"),
+
+  async upsertTaxProfile(p: EmployeeTaxProfile): Promise<boolean> {
+    return upsertRow("employee_tax_profiles", p as unknown as Record<string, unknown>);
+  },
+  async upsertAnnualSummary(s: AnnualTaxSummary): Promise<boolean> {
+    return upsertRow("annual_tax_summaries", s as unknown as Record<string, unknown>);
+  },
+  async upsertPreviousEmployerRecord(r: PreviousEmployerRecord): Promise<boolean> {
+    return upsertRow("previous_employer_records", r as unknown as Record<string, unknown>);
+  },
+  async upsertForm2316(r: Form2316Record): Promise<boolean> {
+    return upsertRow("form_2316_records", r as unknown as Record<string, unknown>);
+  },
+  async addAlphalistExport(e: AlphalistExport): Promise<boolean> {
+    return insertRow("alphalist_exports", e as unknown as Record<string, unknown>);
+  },
 };
 
 // ─── Sync Check ─────────────────────────────────────────────────

@@ -19,20 +19,29 @@ import type { StateStorage } from "zustand/middleware";
 import { createJSONStorage } from "zustand/middleware";
 
 // Priority order for eviction (lowest first — evict these first).
-// These are large, fully DB-backed, and will be re-hydrated on next sync.
+// NOTE: Most DB-backed stores no longer use persist() middleware,
+// so their keys shouldn't appear here. Only stores that still
+// persist to localStorage (auth, appearance, kiosk, etc.) would
+// be candidates, but those are critical and should NOT be evicted.
+// This list is kept for legacy cleanup — old installs may still
+// have these keys in localStorage.
 const EVICTION_ORDER: string[] = [
-  "soren-audit",         // audit logs — read-only, always re-fetched
-  "soren-location",      // pings/photos — large, transient
-  "soren-timesheet",     // fully DB-backed
-  "soren-messaging",     // channels/messages — DB-backed
-  "soren-attendance",    // events/logs — large, DB-backed
-  "soren-notifications", // logs — DB-backed, capped at 500
-  "soren-payroll",       // payslips/runs — DB-backed
-  "soren-tasks",         // groups/tasks/reports — DB-backed
-  "soren-employees",     // fully DB-backed
-  "nexhrms-deductions",  // deduction templates — DB-backed
-  "hrms-departments",    // departments — DB-backed
-  "hrms-job-titles",     // job titles — DB-backed
+  "soren-audit",         // legacy — no longer persisted
+  "soren-location",      // legacy — no longer persisted
+  "soren-timesheet",     // legacy — no longer persisted
+  "soren-messaging",     // legacy — no longer persisted
+  "soren-attendance",    // legacy — no longer persisted
+  "soren-notifications", // legacy — no longer persisted
+  "soren-payroll",       // legacy — no longer persisted
+  "soren-tasks",         // legacy — no longer persisted
+  "soren-employees",     // legacy — no longer persisted
+  "nexhrms-deductions",  // legacy — no longer persisted
+  "hrms-departments",    // legacy — no longer persisted
+  "hrms-job-titles",     // legacy — no longer persisted
+  "nexhrms-bir-compliance", // removed in this migration
+  "soren-disciplinary",     // removed in this migration
+  "soren-documents",        // removed in this migration
+  "performance-store",      // removed in this migration
 ];
 
 /**

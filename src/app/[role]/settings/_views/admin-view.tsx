@@ -40,7 +40,7 @@ import { useLocationStore } from "@/store/location.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useMessagingStore } from "@/store/messaging.store";
 import { pauseWriteThrough, resumeWriteThrough, forceRehydrate } from "@/services/sync.service";
-import { clearStaleStorage } from "@/lib/clear-stale-storage";
+import { clearStaleStorage, clearAllZustandStorage } from "@/lib/clear-stale-storage";
 import type { AttendanceRuleSet, PayFrequency } from "@/types";
 import Link from "next/link";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
@@ -701,7 +701,7 @@ export default function AdminSettingsView() {
                                 <p className="text-xs text-muted-foreground">Remove stale browser data and re-sync from server. Safe to run anytime.</p>
                             </div>
                             <Button variant="outline" size="sm" className="ml-4 shrink-0" onClick={async () => {
-                                const cleared = clearStaleStorage();
+                                const cleared = clearAllZustandStorage();
                                 if (!USE_DEMO_MODE) {
                                     pauseWriteThrough();
                                     try { await forceRehydrate(); } finally { resumeWriteThrough(); }

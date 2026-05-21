@@ -45,6 +45,9 @@ interface DocumentsState {
     };
 
     resetToSeed: () => void;
+
+    // Hydration setter (called by sync.service.ts)
+    setDocuments: (d: Employee201Document[]) => void;
 }
 
 function nowIso() {
@@ -187,5 +190,7 @@ export const useDocumentsStore = create<DocumentsState>()(
             },
 
         resetToSeed: () => set({ documents: [] }),
+
+        setDocuments: (d) => set({ documents: d }),
     }),
 );
