@@ -27,10 +27,10 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Soren Data Solutions Inc. — Human Resource Management System",
+  title: "NexHRIS - Human Resource Information System",
   description: "Modern, high-performance SaaS HRMS application built with Next.js",
   appleWebApp: {
-    title: "SDSI HRMS",
+    title: "NexHRIS",
   },
 };
 
