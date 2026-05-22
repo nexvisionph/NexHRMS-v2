@@ -203,20 +203,32 @@ export default function AdminProjectsView() {
                         <DialogHeader><DialogTitle>Create Project</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
                             <div>
-                                <div className="flex items-center gap-2">
-                                    <label className="text-sm font-medium">Project Name *</label>
-                                    {name.length > 50 && (
-                                        <span className="text-xs text-red-500">Exceeds 50 character limit</span>
-                                    )}
-                                </div>
-                                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nexvision" className={cn("mt-1 w-full overflow-hidden", name.length > 50 && "border-red-500 focus-visible:ring-red-500")} maxLength={60} />
+                                <label className="text-sm font-medium">Project Name <span className="text-destructive">*</span></label>
+                                <Input
+                                    value={name}
+                                    onChange={(e) => {
+                                        if (e.target.value.length <= 50) {
+                                            setName(e.target.value);
+                                        }
+                                    }}
+                                    placeholder="Nexvision"
+                                    className="mt-1 w-full overflow-hidden"
+                                    maxLength={50}
+                                />
+                                <p className={`text-xs mt-1 ${(50 - name.length) <= 0 ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                                    {50 - name.length} characters remaining
+                                </p>
                             </div>
-                            <div>
+                            <div className="grid gap-2">
                                 <label className="text-sm font-medium">Description</label>
-                                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description..." className="mt-1 resize-none w-full overflow-x-hidden text-justify [overflow-wrap:anywhere]" rows={2} />
+                                <Textarea value={description}
+                                 onChange={(e) => setDescription(e.target.value)}
+                                 placeholder="Brief description..." 
+                                 rows={6} 
+                                 className="resize-none max-h-[9rem] overflow-y-auto"/>
                             </div>
                             <div>
-                                <label className="text-sm font-medium mb-2 block">Geofence Location *</label>
+                                <label className="text-sm font-medium mb-2 block">Geofence Location <span className="text-destructive">*</span></label>
                                 <MapSelector key={addOpen ? "add-map" : "add-map-closed"} lat={lat} lng={lng} radius={radius} onLatChange={setLat} onLngChange={setLng} onRadiusChange={setRadius} onAddressChange={setLocationAddress} />
                             </div>
                             <div>
@@ -391,20 +403,32 @@ export default function AdminProjectsView() {
                     <DialogHeader><DialogTitle>Edit Project</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
                         <div>
-                            <div className="flex items-center gap-2">
-                                <label className="text-sm font-medium">Project Name *</label>
-                                {editName.length > 50 && (
-                                    <span className="text-xs text-red-500">Exceeds 50 character limit</span>
-                                )}
-                            </div>
-                            <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nexvision" className={cn("mt-1 w-full overflow-hidden", editName.length > 50 && "border-red-500 focus-visible:ring-red-500")} maxLength={60} />
+                            <label className="text-sm font-medium">Project Name <span className="text-destructive">*</span></label>
+                            <Input
+                                value={editName}
+                                onChange={(e) => {
+                                    if (e.target.value.length <= 50) {
+                                        setEditName(e.target.value);
+                                    }
+                                }}
+                                placeholder="Nexvision"
+                                className="mt-1 w-full overflow-hidden"
+                                maxLength={50}
+                            />
+                            <p className={`text-xs mt-1 ${(50 - editName.length) <= 0 ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                                {50 - editName.length} characters remaining
+                            </p>
                         </div>
-                        <div>
+                        <div className="grid gap-2">
                             <label className="text-sm font-medium">Description</label>
-                            <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Brief description..." className="mt-1 resize-none w-full overflow-x-hidden text-justify [overflow-wrap:anywhere]" rows={2} />
+                            <Textarea value={editDescription} 
+                            onChange={(e) => setEditDescription(e.target.value)} 
+                            placeholder="Brief description..."  
+                            rows={6} 
+                            className="resize-none max-h-[9rem] overflow-y-auto"/>
                         </div>
                         <div>
-                            <label className="text-sm font-medium mb-2 block">Geofence Location *</label>
+                            <label className="text-sm font-medium mb-2 block">Geofence Location <span className="text-destructive">*</span></label>
                             <MapSelector
                                 key={editOpen ? "edit-map" : "edit-map-closed"}
                                 lat={editLat}
