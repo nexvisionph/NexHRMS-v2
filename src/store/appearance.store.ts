@@ -170,6 +170,7 @@ export interface ModuleFlags {
   messages: boolean;
   events: boolean;
   documentCenter: boolean;
+  birCompliance: boolean;
   // ── Premium / unpaid features (hidden until client upgrades) ──────────────
   jobs: boolean;
 }
@@ -191,6 +192,7 @@ export const DEFAULT_MODULE_FLAGS: ModuleFlags = {
   messages: true,
   events: true,
   documentCenter: true,
+  birCompliance: true,
   // ── Premium / unpaid features (off by default) ────────────────────────────
   jobs: false,
 };
@@ -212,6 +214,7 @@ export const MODULE_INFO: Record<keyof ModuleFlags, { label: string; description
   messages: { label: "Messaging Hub", description: "Channels, announcements, multi-channel messaging", icon: "MessageSquare" },
   events: { label: "Events & Meetings", description: "Company events, meetings, calendar management", icon: "Calendar" },
   documentCenter: { label: "201 Files / Document Center", description: "Employee 201 document repository, uploads, approvals", icon: "FolderArchive" },
+  birCompliance: { label: "BIR Compliance", description: "Tax profiles, Form 2316, Alphalist export, annual reconciliation", icon: "ReceiptText" },
   // ── Premium / unpaid features ─────────────────────────────────────────────
   jobs: { label: "Jobs / Talent Acquisition", description: "Job postings, applications, and hiring pipeline", icon: "Briefcase" },
 };
