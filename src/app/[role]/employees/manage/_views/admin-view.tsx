@@ -411,7 +411,7 @@ const filteredAccounts = useMemo(() => {
     const [pageSize, setPageSize] = useState(10);
     const [salaryRange, setSalaryRange] = useState([0, 200000]);
    const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({
-    id: true, biometricId: true, name: true, status: true, role: true, department: true, project: false, teamLeader: false, productivity: false, joinDate: false, salary: true, workType: true,
+    id: true, biometricId: true, name: true, status: true, department: true, project: false, teamLeader: false, productivity: false, joinDate: false, salary: true, workType: true,
 });
 
     // Add Employee Dialog
@@ -543,7 +543,9 @@ const filteredAccounts = useMemo(() => {
     };
 
     const filtered = useMemo(() => {
+        const ADMIN_ACCESSED_ROLES = ["admin", "hr", "payroll_admin", "finance"];
         const result = employees.filter((e) => {
+            if (ADMIN_ACCESSED_ROLES.includes(e.role)) return false;
             const matchSearch = !searchQuery || e.name.toLowerCase().includes(searchQuery.toLowerCase()) || e.email.toLowerCase().includes(searchQuery.toLowerCase()) || e.id.toLowerCase().includes(searchQuery.toLowerCase()) || e.biometricId?.toLowerCase().includes(searchQuery.toLowerCase());
             const matchStatus = statusFilter === "all" || e.status === statusFilter;
             const matchWork = workTypeFilter === "all" || e.workType === workTypeFilter;
@@ -857,7 +859,7 @@ const filteredAccounts = useMemo(() => {
         <div className="space-y-4">
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">Employees</h1>
-                <p className="text-sm text-muted-foreground mt-0.5">{employees.length} total employees</p>
+                <p className="text-sm text-muted-foreground mt-0.5">{filtered.length} total employees</p>
             </div>
 
             <Tabs defaultValue="management">
@@ -1208,18 +1210,18 @@ const filteredAccounts = useMemo(() => {
 
                     {/* Edit Employee Dialog */}
                     <Dialog open={editOpen} onOpenChange={setEditOpen}>
-                        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                        <DialogContent className="max-w-3xl max-h-[90vh] overflow-x-hidden">
                             <DialogHeader><DialogTitle>Edit Employee — {editingEmp?.id}</DialogTitle></DialogHeader>
                             <div className="space-y-4 pt-2">
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="text-sm font-medium">Full Name *</label><Input value={editName} onChange={(e) => setEditName(e.target.value)} className="mt-1" /></div>
-                                    <div><label className="text-sm font-medium">Email *</label><Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="mt-1" /></div>
+                                    <div><label className="text-sm font-medium">Full Name <span className="text-destructive">*</span></label><Input value={editName} onChange={(e) => setEditName(e.target.value)} className="mt-1" /></div>
+                                    <div><label className="text-sm font-medium">Email <span className="text-destructive">*</span></label><Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="mt-1" /></div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-sm font-medium">Job Title</label>
                                         <Select value={editJobTitle} onValueChange={setEditJobTitle}><SelectTrigger className="mt-1"><SelectValue placeholder="Select job title" /></SelectTrigger><SelectContent>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
                                     </div>
-                                    <div><label className="text-sm font-medium">Department *</label>
+                                    <div><label className="text-sm font-medium">Department <span className="text-destructive">*</span></label>
                                         <Select value={editDept} onValueChange={setEditDept}><SelectTrigger className="mt-1"><SelectValue placeholder="Select dept" /></SelectTrigger><SelectContent>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
                                     </div>
                                 </div>
@@ -1229,13 +1231,15 @@ const filteredAccounts = useMemo(() => {
                                     </div>
                                     <div className="flex items-end"><p className="text-xs text-muted-foreground pb-2">Controls what pages and features this employee can access.</p></div>
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-sm font-medium">Work Type</label>
-                                        <Select value={editWorkType} onValueChange={(v) => setEditWorkType(v as WorkType)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">Work From Office</SelectItem><SelectItem value="WFH">Work From Home</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Full Onsite</SelectItem></SelectContent></Select>
+                                        <Select value={editWorkType} onValueChange={(v) => setEditWorkType(v as WorkType)}><SelectTrigger className="mt-1 overflow-hidden"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">Work From Office</SelectItem><SelectItem value="WFH">Work From Home</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Full Onsite</SelectItem></SelectContent></Select>
                                     </div>
                                     <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="number" value={editSalary} onChange={(e) => setEditSalary(e.target.value)} className="mt-1" /></div>
+                                </div>
+                                   <div className="grid grid-cols-1 gap-3"> 
                                     <div><label className="text-sm font-medium">Pay Frequency</label>
-                                        <Select value={editPayFreq} onValueChange={setEditPayFreq}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="company">Company Default ({paySchedule.defaultFrequency.replace("_", "-")})</SelectItem><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="semi_monthly">Semi-Monthly</SelectItem><SelectItem value="bi_weekly">Bi-Weekly</SelectItem><SelectItem value="weekly">Weekly</SelectItem></SelectContent></Select>
+                                        <Select value={editPayFreq} onValueChange={setEditPayFreq}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="company">Default ({paySchedule.defaultFrequency.replace("_", "-")})</SelectItem><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="semi_monthly">Semi-Monthly</SelectItem><SelectItem value="bi_weekly">Bi-Weekly</SelectItem><SelectItem value="weekly">Weekly</SelectItem></SelectContent></Select>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
@@ -1451,10 +1455,6 @@ const filteredAccounts = useMemo(() => {
                                     <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="Work Type" /></SelectTrigger>
                                     <SelectContent><SelectItem value="all">All Types</SelectItem><SelectItem value="WFH">WFH</SelectItem><SelectItem value="WFO">WFO</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem></SelectContent>
                                 </Select>
-                                <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setPage(1); }}>
-                                    <SelectTrigger className="w-full sm:w-[130px]"><SelectValue placeholder="Role" /></SelectTrigger>
-                                    <SelectContent><SelectItem value="all">All Roles</SelectItem><SelectItem value="admin">Admin</SelectItem><SelectItem value="hr">HR</SelectItem><SelectItem value="finance">Finance</SelectItem><SelectItem value="payroll_admin">Payroll Admin</SelectItem><SelectItem value="supervisor">Supervisor</SelectItem><SelectItem value="employee">Employee</SelectItem><SelectItem value="auditor">Auditor</SelectItem></SelectContent>
-                                </Select>
                                 <Select value={departmentFilter} onValueChange={(v) => { setDepartmentFilter(v); setPage(1); }}>
                                     <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="All Departments" /></SelectTrigger>
                                     <SelectContent>
@@ -1464,7 +1464,7 @@ const filteredAccounts = useMemo(() => {
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                {(searchQuery || statusFilter !== "all" || workTypeFilter !== "all" || roleFilter !== "all" || departmentFilter !== "all") && (
+                                {(searchQuery || statusFilter !== "all" || workTypeFilter !== "all" || departmentFilter !== "all") && (
                                     <Button
                                         variant="ghost"
                                         size="sm"
@@ -1607,7 +1607,7 @@ const filteredAccounts = useMemo(() => {
                                                 onClick={() => {
                                                     setDepartmentFilter("all");
                                                     setSalaryRange([0, 200000]);
-                                                    setVisibleCols({ id: true, biometricId: true, name: true, status: true, role: true, department: true, project: false, teamLeader: false, productivity: false, joinDate: false, salary: true, workType: true });
+                                                    setVisibleCols({ id: true, biometricId: true, name: true, status: true, department: true, project: false, teamLeader: false, productivity: false, joinDate: false, salary: true, workType: true });
                                                 }}
                                             >
                                                 Reset all
@@ -1678,7 +1678,6 @@ const filteredAccounts = useMemo(() => {
                                             {visibleCols.id && <TableHead className="cursor-pointer text-xs w-36" onClick={() => handleSort("id")}>ID{si("id")}</TableHead>}
                                             {visibleCols.biometricId && <TableHead className="cursor-pointer text-xs w-28" onClick={() => handleSort("biometricId")}>Biometric ID{si("biometricId")}</TableHead>}
                                             {visibleCols.name && <TableHead className="cursor-pointer text-xs w-56" onClick={() => handleSort("name")}>Name{si("name")}</TableHead>}
-                                            {visibleCols.role && <TableHead className="cursor-pointer text-xs w-24" onClick={() => handleSort("role")}>Role{si("role")}</TableHead>}
                                             {visibleCols.department && <TableHead className="text-xs w-28">Department</TableHead>}
                                             {visibleCols.project && <TableHead className="text-xs">Project</TableHead>}
                                             {visibleCols.teamLeader && <TableHead className="text-xs">Team Leader</TableHead>}
@@ -1698,7 +1697,6 @@ const filteredAccounts = useMemo(() => {
                                                     {visibleCols.id && <TableCell className="text-xs text-muted-foreground">{emp.id}</TableCell>}
                                                     {visibleCols.biometricId && <TableCell className="text-xs font-mono text-muted-foreground">{emp.biometricId || "—"}</TableCell>}
                                                     {visibleCols.name && <TableCell><div className="flex items-center gap-2 min-w-0"><Avatar className="h-8 w-8 shrink-0"><AvatarFallback className="text-[10px] bg-muted">{getInitials(emp.name)}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium truncate">{emp.name}</p><p className="text-xs text-muted-foreground truncate">{emp.email}</p></div></div></TableCell>}
-                                                    {visibleCols.role && <TableCell className="text-xs">{emp.role}</TableCell>}
                                                     {visibleCols.department && <TableCell className="text-xs">{emp.department}</TableCell>}
                                                     {visibleCols.project && <TableCell className="text-xs">{assignedProject ? <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800">{assignedProject.name}</Badge> : <span className="text-muted-foreground">—</span>}</TableCell>}
                                                     {visibleCols.teamLeader && <TableCell className="text-xs text-muted-foreground">{emp.teamLeader ? employees.find((e) => e.id === emp.teamLeader)?.name || "—" : "—"}</TableCell>}

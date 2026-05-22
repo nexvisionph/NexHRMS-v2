@@ -75,6 +75,7 @@ export default function Documents201EmployeeView() {
     const allDocs = useDocumentsStore((s) => s.documents);
     const upload = useDocumentsStore((s) => s.upload);
     const updateDocument = useDocumentsStore((s) => s.updateDocument);
+    const fulfillRequest = useDocumentsStore((s) => s.fulfillRequest);
     const removeDoc = useDocumentsStore((s) => s.remove);
 
     const [helpOpen, setHelpOpen] = useState(false);
@@ -88,6 +89,9 @@ export default function Documents201EmployeeView() {
     const [editingDoc, setEditingDoc] = useState<Employee201Document | null>(null);
     const [editForm, setEditForm] = useState({ documentTitle: "", expiryDate: "", remarks: "" });
     const [deletingDoc, setDeletingDoc] = useState<Employee201Document | null>(null);
+    const [fulfillDoc, setFulfillDoc] = useState<Employee201Document | null>(null);
+    const [fulfillFiles, setFulfillFiles] = useState<UploadedFile[]>([]);
+    const [fulfilling, setFulfilling] = useState(false);
     const [uploadForm, setUploadForm] = useState({
         documentType: "government_id" as Employee201DocType,
         documentTitle: "",
@@ -105,13 +109,13 @@ export default function Documents201EmployeeView() {
         return () => { unsub(); clearTimeout(fallback); };
     }, []);
 
-    // Employee sees own docs: visible-to-employee OR self-uploaded
+    // Employee sees: own uploaded docs + pending_upload requests sent to them by HR
     const myDocs = useMemo(() =>
         allDocs.filter(
             (d) =>
                 d.employeeId === currentUser.id &&
                 d.status !== "archived" &&
-                (d.visibility === "employee" || d.uploadedBy === currentUser.id)
+                (d.visibility === "employee" || d.uploadedBy === currentUser.id || d.status === "pending_upload")
         ),
     [allDocs, currentUser.id]);
 
@@ -160,6 +164,7 @@ export default function Documents201EmployeeView() {
         approved: myDocs.filter((d) => d.status === "approved").length,
         rejected: myDocs.filter((d) => d.status === "rejected").length,
         expiring30: expiringCount,
+        pendingUpload: myDocs.filter((d) => d.status === "pending_upload").length,
     }), [myDocs, expiringCount]);
 
     const tone = completePct >= 100 ? "bg-emerald-500" : completePct >= 60 ? "bg-amber-500" : "bg-red-500";
@@ -246,7 +251,7 @@ export default function Documents201EmployeeView() {
                         <DocTile label="For Review" value={stats.forReview} icon={Clock} accent={stats.forReview > 0 ? "amber" : "muted"} />
                         <DocTile label="Approved" value={stats.approved} icon={CheckCircle2} accent="emerald" />
                         <DocTile label="Rejected" value={stats.rejected} icon={XCircle} accent={stats.rejected > 0 ? "red" : "muted"} />
-                        <DocTile label="Expiring in 30d" value={stats.expiring30} icon={AlertTriangle} accent={stats.expiring30 > 0 ? "orange" : "muted"} />
+                        <DocTile label="Pending Upload" value={stats.pendingUpload} icon={Upload} accent={stats.pendingUpload > 0 ? "amber" : "muted"} />
                         <DocTile label="Total on File" value={stats.total} icon={FileText} accent="muted" isLast />
                     </div>
                 </CardContent>
@@ -305,6 +310,7 @@ export default function Documents201EmployeeView() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">All Statuses</SelectItem>
+                                <SelectItem value="pending_upload">Pending Upload</SelectItem>
                                 <SelectItem value="for_review">For Review</SelectItem>
                                 <SelectItem value="approved">Approved</SelectItem>
                                 <SelectItem value="rejected">Rejected</SelectItem>
@@ -338,8 +344,13 @@ export default function Documents201EmployeeView() {
                                     </TableRow>
                                 ) : (
                                     filteredDocs.map((d) => (
-                                        <TableRow key={d.id}>
-                                            <TableCell className="font-medium">{d.documentTitle}</TableCell>
+                                        <TableRow key={d.id} className={d.status === "pending_upload" ? "bg-amber-500/10 dark:bg-amber-500/20 border-l-2 border-l-amber-500" : ""}>
+                                            <TableCell className="font-medium">
+                                                {d.documentTitle}
+                                                {d.status === "pending_upload" && (
+                                                    <span className="ml-2 text-xs text-amber-700 font-normal">(HR requested)</span>
+                                                )}
+                                            </TableCell>
                                             <TableCell className="text-xs text-muted-foreground">{DOC_TYPE_LABELS[d.documentType]}</TableCell>
                                             <TableCell><StatusBadge status={d.status} /></TableCell>
                                             <TableCell className="text-xs">
@@ -350,12 +361,18 @@ export default function Documents201EmployeeView() {
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex items-center justify-end gap-0.5">
+                                                    {d.status === "pending_upload" && (
+                                                        <Button size="sm" variant="ghost" className="h-7 px-2 text-amber-700 hover:text-amber-800" title="Upload requested file"
+                                                            onClick={() => { setFulfillDoc(d); setFulfillFiles([]); }}>
+                                                            <Upload className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    )}
                                                     {d.filePath && (
                                                         <Button size="sm" variant="ghost" className="h-7 px-2" title="View file" onClick={() => setPreviewDoc(d)}>
                                                             <Eye className="h-3.5 w-3.5" />
                                                         </Button>
                                                     )}
-                                                    {d.uploadedBy === currentUser.id && d.status !== "approved" && (
+                                                    {d.uploadedBy === currentUser.id && d.status !== "approved" && d.status !== "pending_upload" && (
                                                         <>
                                                             <Button size="sm" variant="ghost" className="h-7 px-2" title="Edit" onClick={() => {
                                                                 setEditingDoc(d);
@@ -382,6 +399,69 @@ export default function Documents201EmployeeView() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* ── Fulfill Request dialog ───────────────────────── */}
+            <Dialog open={!!fulfillDoc} onOpenChange={(o) => { if (!o) { setFulfillDoc(null); setFulfillFiles([]); } }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Upload Requested Document</DialogTitle>
+                    </DialogHeader>
+                    {fulfillDoc && (
+                        <div className="space-y-3">
+                            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                HR has requested your <span className="font-semibold">{DOC_TYPE_LABELS[fulfillDoc.documentType]}</span>.
+                                {fulfillDoc.remarks && <p className="mt-1 text-xs">{fulfillDoc.remarks}</p>}
+                            </div>
+                            <div>
+                                <Label>Document Type</Label>
+                                <div className="flex items-center h-9 px-3 rounded-md border bg-muted text-sm text-muted-foreground select-none">
+                                    {DOC_TYPE_LABELS[fulfillDoc.documentType]}
+                                </div>
+                            </div>
+                            <div>
+                                <Label>Document Title</Label>
+                                <div className="flex items-center h-9 px-3 rounded-md border bg-muted text-sm text-muted-foreground select-none">
+                                    {fulfillDoc.documentTitle}
+                                </div>
+                            </div>
+                            <div>
+                                <Label>Files <span className="text-muted-foreground font-normal text-xs">(PDF, JPG, PNG — max 10 MB)</span></Label>
+                                <DocumentFileUpload files={fulfillFiles} onChange={setFulfillFiles} disabled={fulfilling} />
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setFulfillDoc(null); setFulfillFiles([]); }}>Cancel</Button>
+                        <Button
+                            disabled={fulfillFiles.length === 0 || fulfilling}
+                            onClick={async () => {
+                                if (!fulfillDoc) return;
+                                setFulfilling(true);
+                                try {
+                                    const result = await uploadDocumentFiles(fulfillFiles, currentUser.id);
+                                    if (!result) { toast.error("File upload failed"); return; }
+                                    fulfillRequest(
+                                        fulfillDoc.id,
+                                        result.paths.join(","),
+                                        result.fileType,
+                                        result.totalSize,
+                                        currentUser.id,
+                                    );
+                                    toast.success("Document submitted — awaiting HR review");
+                                    setFulfillDoc(null);
+                                    setFulfillFiles([]);
+                                } catch (err) {
+                                    toast.error(err instanceof Error ? err.message : "Upload failed");
+                                } finally {
+                                    setFulfilling(false);
+                                }
+                            }}
+                        >
+                            {fulfilling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading…</> : "Submit"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* ── Upload dialog ─────────────────────────────────── */}
             <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>

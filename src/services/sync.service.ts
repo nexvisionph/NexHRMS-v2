@@ -31,6 +31,8 @@ import {
   locationDb,
   loanExtrasDb,
   documents201Db,
+  departmentsDb,
+  jobTitlesDb,
   createClient,
 } from "./db.service";
 import { disciplinaryDb, documentsDb, performanceDb, birComplianceDb } from "./db.service";
@@ -55,6 +57,8 @@ import { useAuthStore } from "@/store/auth.store";
 import { useDisciplinaryStore } from "@/store/disciplinary.store";
 import { usePerformanceStore } from "@/store/performance.store";
 import { useBIRComplianceStore } from "@/store/bir-compliance.store";
+import { useDepartmentsStore } from "@/store/departments.store";
+import { useJobTitlesStore } from "@/store/job-titles.store";
 
 let _hydrated = false;
 let _subscriptions: (() => void)[] = [];
@@ -103,6 +107,13 @@ export async function forceRehydrate(): Promise<void> {
 async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): Promise<void> {
   if (!shouldSync()) return;
   if (_hydrated) return;
+
+  // Pause write-through for the duration of this hydration pass.
+  // Without this, setState() calls below trigger write-through subscribers
+  // that try to re-upsert every fetched row — causing RLS errors for
+  // non-admin roles and unnecessary DB round-trips for all roles.
+  const wasWritePaused = _writePaused;
+  _writePaused = true;
 
   // Wipe stale localStorage keys from old persist() stores before pulling
   // fresh data from Supabase. This prevents zombie data from rehydrating.
@@ -198,6 +209,8 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
       allLoanDeductions,
       allRepaymentSchedules,
       fetchedDocuments,
+      fetchedDepartments,
+      fetchedJobTitles,
     ] = await Promise.all([
       projectsDb.fetchAll(),
       auditDb.fetchAll(),
@@ -220,6 +233,8 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
       loanExtrasDb.fetchAllDeductions(),
       loanExtrasDb.fetchAllRepaymentSchedules(),
       documents201Db.fetchAll(),
+      departmentsDb.fetchAll(),
+      jobTitlesDb.fetchAll(),
     ]);
 
     // Fetch employee-shift assignments separately (returns a mapping, not an array)
@@ -373,6 +388,15 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
     // Hydrate documents 201 store — always set from DB so DB-side changes
     // (uploads, approvals, deletions) propagate on next login/refresh.
     useDocumentsStore.setState({ documents: fetchedDocuments });
+
+    // Hydrate departments + job titles stores from Supabase
+    if (fetchedDepartments.length > 0) {
+      useDepartmentsStore.setState({ departments: fetchedDepartments });
+    }
+    if (fetchedJobTitles.length > 0) {
+      useJobTitlesStore.setState({ jobTitles: fetchedJobTitles });
+    }
+
     // ── Batch 3: Disciplinary + Documents + Performance + BIR ────
     // Use allSettled so missing tables (migration not yet applied) don't
     // break the rest of hydration.
@@ -450,6 +474,9 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
     console.log("[sync] Stores hydrated from Supabase");
   } catch (err) {
     console.error("[sync] Failed to hydrate stores:", err);
+  } finally {
+    // Restore write-through state so mutations after hydration sync normally
+    _writePaused = wasWritePaused;
   }
 }
 
@@ -1165,6 +1192,46 @@ export function startWriteThrough(): void {
         for (const e of state.alphalistExports) {
           if (!prevState.alphalistExports.some((p) => p.id === e.id)) {
             birComplianceDb.addAlphalistExport(e);
+          }
+        }
+      }
+    )
+  );
+
+  // ─── Departments write-through (admin/hr only) ───────────────────────
+  _subscriptions.push(
+    useDepartmentsStore.subscribe(
+      (state, prevState) => {
+        if (_writePaused || !isAdminOrHr) return;
+        for (const dept of state.departments) {
+          const prev = prevState.departments.find((d) => d.id === dept.id);
+          if (!prev || JSON.stringify(prev) !== JSON.stringify(dept)) {
+            departmentsDb.upsert(dept);
+          }
+        }
+        for (const prev of prevState.departments) {
+          if (!state.departments.find((d) => d.id === prev.id)) {
+            departmentsDb.remove(prev.id);
+          }
+        }
+      }
+    )
+  );
+
+  // ─── Job Titles write-through (admin/hr only) ────────────────────────
+  _subscriptions.push(
+    useJobTitlesStore.subscribe(
+      (state, prevState) => {
+        if (_writePaused || !isAdminOrHr) return;
+        for (const jt of state.jobTitles) {
+          const prev = prevState.jobTitles.find((j) => j.id === jt.id);
+          if (!prev || JSON.stringify(prev) !== JSON.stringify(jt)) {
+            jobTitlesDb.upsert(jt);
+          }
+        }
+        for (const prev of prevState.jobTitles) {
+          if (!state.jobTitles.find((j) => j.id === prev.id)) {
+            jobTitlesDb.remove(prev.id);
           }
         }
       }

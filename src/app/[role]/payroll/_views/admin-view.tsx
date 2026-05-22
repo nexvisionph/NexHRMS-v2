@@ -2055,6 +2055,42 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                                                                 className="pl-9 h-9"
                                                             />
                                                         </div>
+                                                        {/* Batch Re-Issue All */}
+                                                        <AlertDialog>
+                                                            <AlertDialogTrigger asChild>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="w-full h-8 text-xs gap-1.5 text-amber-600 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                                                                    disabled={heldPs.length === 0}
+                                                                >
+                                                                    <RotateCcw className="h-3.5 w-3.5" />
+                                                                    Re-Issue All On-Hold ({heldPs.length})
+                                                                </Button>
+                                                            </AlertDialogTrigger>
+                                                            <AlertDialogContent>
+                                                                <AlertDialogHeader>
+                                                                    <AlertDialogTitle>Re-Issue All On-Hold Payslips?</AlertDialogTitle>
+                                                                    <AlertDialogDescription>
+                                                                        This will release {heldPs.length} on-hold payslip{heldPs.length !== 1 ? "s" : ""} back to published status. Employees will be notified to sign again.
+                                                                    </AlertDialogDescription>
+                                                                </AlertDialogHeader>
+                                                                <AlertDialogFooter>
+                                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                    <AlertDialogAction onClick={() => {
+                                                                        handleBatchReissue(heldPs);
+                                                                        const runIds = new Set(heldPs.map((ps) => ps.payrollBatchId).filter(Boolean));
+                                                                        runIds.forEach((runId) => {
+                                                                            const runObj = runs.find((r) => r.id === runId);
+                                                                            if (runObj?.status === "ended") reactivateRun(runObj.periodLabel);
+                                                                        });
+                                                                        setHoldModalOpen(false);
+                                                                    }}>
+                                                                        Re-Issue All
+                                                                    </AlertDialogAction>
+                                                                </AlertDialogFooter>
+                                                            </AlertDialogContent>
+                                                        </AlertDialog>
                                                         {(() => {
                                                             const filteredHeld = holdSearchTerm.trim()
                                                                 ? heldPs.filter((ps) => {
@@ -3202,7 +3238,7 @@ function DeductionTemplatesSection() {
                                 <TableHead className="text-xs">Assigned</TableHead>
                                 <TableHead className="text-xs">Conditions</TableHead>
                                 <TableHead className="text-xs">Status</TableHead>
-                                <TableHead className="text-xs w-28"></TableHead>
+                                <TableHead className="text-xs w-28 text-center">Actions</TableHead>
                             </TableRow></TableHeader>
                             <TableBody>
                                 {templates.length === 0 ? (

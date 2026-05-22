@@ -490,3 +490,15 @@
 [2026-05-22T02:38:32.718Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
 [2026-05-22T02:40:47.273Z] [info] post request received {"path":"/","remote":"192.168.254.175:47388","requestCode":"receive_cmd","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":308}
 [2026-05-22T02:40:47.274Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-22T05:50:28.908Z] [info] bridge listening {"port":8080,"target":"https://nex-hrms-v2.vercel.app/api/attendance/t800","logFile":"C:\\xampp\\htdocs\\Github\\NexHRMS-v2\\scripts\\fk-bridge.log"}
+[2026-05-22T05:50:28.909Z] [info] local addresses {"addresses":["192.168.16.1","192.168.254.111"]}
+[2026-05-22T05:51:08.796Z] [info] post request received {"path":"/","remote":"192.168.254.175:48402","requestCode":"realtime_enroll_data","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":27532}
+[2026-05-22T05:51:08.798Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"4E3037323515033A","blkNo":"0","bytes":27532}
+[2026-05-22T05:51:09.152Z] [info] post request received {"path":"/","remote":"192.168.254.175:48404","requestCode":"realtime_glog","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":142}
+[2026-05-22T05:51:10.892Z] [info] forwarded {"payload":{"request_code":"realtime_glog","user_id":"11","io_time":"20260522133639","io_mode":"285212681","dev_id":"4E3037323515033A","deviceId":"4E3037323515033A","biometricId":"11"},"status":200,"responseCode":"","text":""}
+[2026-05-22T05:51:11.057Z] [info] post request received {"path":"/","remote":"192.168.254.175:48406","requestCode":"receive_cmd","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":308}
+[2026-05-22T05:51:11.159Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-22T05:51:31.574Z] [info] post request received {"path":"/","remote":"192.168.254.175:48408","requestCode":"receive_cmd","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":308}
+[2026-05-22T05:51:31.575Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-22T06:27:30.990Z] [info] bridge listening {"port":8080,"target":"https://nex-hrms-v2.vercel.app/api/attendance/t800","logFile":"C:\\xampp\\htdocs\\Github\\NexHRMS-v2\\scripts\\fk-bridge.log"}
+[2026-05-22T06:27:30.992Z] [info] local addresses {"addresses":["192.168.16.1","192.168.254.111"]}

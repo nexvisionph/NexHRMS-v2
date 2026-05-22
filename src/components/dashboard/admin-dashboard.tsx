@@ -119,7 +119,8 @@ function KpiStatsRow() {
         };
     }, []);
 
-    const activeEmployees = employees.filter((e) => e.status === "active").length;
+    const ADMIN_ACCESSED_ROLES = ["admin", "hr", "payroll_admin", "finance"];
+    const activeEmployees = employees.filter((e) => e.status === "active" && !ADMIN_ACCESSED_ROLES.includes(e.role)).length;
 
     // Find the most recent date with SUBSTANTIAL attendance records (not just 1 stray log)
     // This handles the case where today might have 1 manual log but yesterday has full data

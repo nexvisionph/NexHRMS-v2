@@ -114,7 +114,8 @@ export default function OrganizationPage() {
 
     const deptCount = departments.length;
     const posCount = jobTitles.length;
-    const activeEmpCount = employees.filter((e) => e.status === "active").length;
+    const ADMIN_ACCESSED_ROLES = ["admin", "hr", "payroll_admin", "finance"];
+    const activeEmpCount = employees.filter((e) => e.status === "active" && !ADMIN_ACCESSED_ROLES.includes(e.role)).length;
 
     return (
         <div className="space-y-6">
@@ -187,7 +188,7 @@ export default function OrganizationPage() {
                                         <TableHead className="text-xs">Description</TableHead>
                                         <TableHead className="text-xs">Positions</TableHead>
                                         <TableHead className="text-xs">Active Employees</TableHead>
-                                        <TableHead className="text-xs w-20">Actions</TableHead>
+                                        <TableHead className="text-xs text-center">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -239,7 +240,7 @@ export default function OrganizationPage() {
                                         <TableHead className="text-xs">Title</TableHead>
                                         <TableHead className="text-xs">Department</TableHead>
                                         <TableHead className="text-xs">Type</TableHead>
-                                        <TableHead className="text-xs w-20">Actions</TableHead>
+                                        <TableHead className="text-xs text-center">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>

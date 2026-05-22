@@ -91,7 +91,7 @@ export type AuditAction =
   | "task_created" | "task_assigned" | "task_completed" | "task_verified" | "task_rejected"
   | "tag_created" | "tag_updated" | "tag_deleted"
   | "announcement_sent" | "channel_created"
-  | "doc_uploaded" | "doc_approved" | "doc_rejected" | "doc_archived"
+  | "doc_uploaded" | "doc_approved" | "doc_rejected" | "doc_archived" | "doc_requested"
   | "case_created" | "nte_issued" | "nte_acknowledged" | "nte_explained"
   | "nod_issued" | "nod_acknowledged" | "case_closed";
 
