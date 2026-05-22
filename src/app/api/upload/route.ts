@@ -1,16 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient, createServerSupabaseClient } from "@/services/supabase-server";
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB for avatars
+const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024; // 10MB for 201 documents
+
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
+const ALLOWED_DOCUMENT_TYPES = ["image/jpeg", "image/png", "application/pdf"] as const;
+
 const ALLOWED_BUCKETS = {
   avatars: {
     public: true,
     roles: null,
+    maxSize: MAX_IMAGE_SIZE,
+    allowedTypes: ALLOWED_IMAGE_TYPES as readonly string[],
+    typeError: "Invalid file type. Please upload a JPG, PNG, GIF, or WebP image.",
   },
   "payment-proofs": {
     public: true,
     roles: ["admin", "finance", "payroll_admin"],
+    maxSize: MAX_IMAGE_SIZE,
+    allowedTypes: ALLOWED_IMAGE_TYPES as readonly string[],
+    typeError: "Invalid file type. Please upload a JPG, PNG, GIF, or WebP image.",
+  },
+  "employee-documents": {
+    public: false,
+    roles: null, // All authenticated users can upload (RLS on storage handles folder-level access)
+    maxSize: MAX_DOCUMENT_SIZE,
+    allowedTypes: ALLOWED_DOCUMENT_TYPES as readonly string[],
+    typeError: "Invalid file type. Please upload a JPG, PNG, or PDF file.",
   },
 } as const;
 
@@ -30,8 +47,9 @@ function extensionFor(file: File) {
     "image/png": "png",
     "image/gif": "gif",
     "image/webp": "webp",
+    "application/pdf": "pdf",
   };
-  return byType[file.type] ?? "jpg";
+  return byType[file.type] ?? "bin";
 }
 
 async function ensureBucket(bucket: AllowedBucket) {
@@ -43,8 +61,8 @@ async function ensureBucket(bucket: AllowedBucket) {
 
   const { error: createError } = await admin.storage.createBucket(bucket, {
     public: config.public,
-    fileSizeLimit: MAX_FILE_SIZE,
-    allowedMimeTypes: [...ALLOWED_IMAGE_TYPES],
+    fileSizeLimit: config.maxSize,
+    allowedMimeTypes: [...config.allowedTypes],
   });
 
   if (createError && !createError.message.toLowerCase().includes("already exists")) {
@@ -91,6 +109,8 @@ export async function POST(request: NextRequest) {
     }
 
     const bucketConfig = ALLOWED_BUCKETS[bucket];
+
+    // Role-based access check
     if (bucketConfig.roles) {
       const admin = await createAdminSupabaseClient();
       const { data: profile, error: profileError } = await admin
@@ -107,28 +127,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Validate file type for image uploads
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number])) {
+    // Validate file type
+    if (!bucketConfig.allowedTypes.includes(file.type)) {
       return NextResponse.json(
-        { error: "Invalid file type. Please upload a JPG, PNG, GIF, or WebP image." },
+        { error: bucketConfig.typeError },
         { status: 400 }
       );
     }
 
-    // Max file size: 5MB
-    if (file.size > MAX_FILE_SIZE) {
+    // Validate file size
+    if (file.size > bucketConfig.maxSize) {
+      const maxMB = Math.round(bucketConfig.maxSize / (1024 * 1024));
       return NextResponse.json(
-        { error: "File too large. Maximum size is 5MB." },
+        { error: `File too large. Maximum size is ${maxMB}MB.` },
         { status: 400 }
       );
     }
 
     // Generate unique filename
     const ext = extensionFor(file);
-    const timestamp = `${Date.now()}-${crypto.randomUUID()}`;
+    const timestamp = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 60);
     const fileName = folder 
-      ? `${safePathSegment(folder)}/${timestamp}.${ext}`
-      : `${timestamp}.${ext}`;
+      ? `${safePathSegment(folder)}/${timestamp}-${safeName}`
+      : `${timestamp}-${safeName}`;
 
     // Convert File to ArrayBuffer (Supabase Storage expects this)
     const arrayBuffer = await file.arrayBuffer();
@@ -152,14 +174,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get public URL
-    const { data: { publicUrl } } = storageClient.storage
-      .from(bucket)
-      .getPublicUrl(data.path);
+    // For public buckets, return the public URL
+    // For private buckets, return the storage path (signed URLs generated on demand)
+    if (bucketConfig.public) {
+      const { data: { publicUrl } } = storageClient.storage
+        .from(bucket)
+        .getPublicUrl(data.path);
 
+      return NextResponse.json({
+        url: publicUrl,
+        path: data.path,
+        size: file.size,
+        type: file.type,
+      });
+    }
+
+    // Private bucket — return path only (client will use signed URLs for viewing)
     return NextResponse.json({
-      url: publicUrl,
+      url: null,
       path: data.path,
+      size: file.size,
+      type: file.type,
     });
   } catch (err) {
     console.error("[api/upload] error:", err);

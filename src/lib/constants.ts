@@ -160,6 +160,15 @@ export const NAV_ITEMS: {
             moduleFlag: "documentCenter",
             group: "hr",
         },
+        {
+            label: "201 Files",
+            href: "/employees/201-files",
+            icon: "FolderArchive",
+            roles: ["employee"],
+            permission: "page:dashboard",
+            moduleFlag: "documentCenter",
+            group: "hr",
+        },
         // DEMO: hidden — uncomment moduleFlag to re-enable
         {
             label: "Disciplinary",
@@ -436,10 +445,13 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
     ],
     hr: ["/dashboard", "/employees", "/projects", "/tasks", "/messages", "/attendance", "/leave", "/reports", "/notifications", "/timesheets", "/settings/shifts", "/kiosk", "/profile", "/my-payslips"],
     finance: ["/dashboard", "/payroll", "/payroll/settings", "/my-payslips", "/loans", "/reports", "/reports/government", "/employees/directory", "/employees/manage", "/notifications", "/profile"],
-    employee: ["/dashboard", "/attendance", "/leave", "/my-payslips", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings"],
+    employee: ["/dashboard", "/attendance", "/leave", "/my-payslips", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings", "/employees/201-files"],
     supervisor: ["/dashboard", "/attendance", "/leave", "/my-payslips", "/timesheets", "/employees", "/projects", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings"],
     payroll_admin: ["/dashboard", "/payroll", "/payroll/settings", "/my-payslips", "/loans", "/reports", "/reports/government", "/timesheets", "/notifications", "/profile"],
     auditor: ["/dashboard", "/audit", "/reports", "/employees", "/notifications", "/profile", "/settings", "/my-payslips"],
+    support_admin: ["/dashboard", "/employees", "/attendance", "/leave", "/notifications", "/settings", "/profile", "/my-payslips"],
+    finance_admin: ["/dashboard", "/payroll", "/payroll/settings", "/my-payslips", "/loans", "/reports", "/reports/government", "/employees/directory", "/notifications", "/profile"],
+    analyst: ["/dashboard", "/reports", "/reports/government", "/employees", "/attendance", "/payroll", "/notifications", "/profile", "/my-payslips"],
 };
 
 /** Map a URL path to the permission needed to access it */
@@ -472,4 +484,5 @@ export const PATH_TO_PERMISSION: Record<string, Permission> = {
     "/audit": "page:audit",
     "/kiosk": "page:kiosk",
     "/profile": "page:dashboard",
+    "/employees/201-files": "page:dashboard",
 };

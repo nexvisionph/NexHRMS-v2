@@ -29,11 +29,6 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "NexHRIS - Human Resource Information System",
   description: "Modern, high-performance SaaS HRMS application built with Next.js",
-  icons: {
-    icon: "/logo.svg",
-    shortcut: "/logo.svg",
-    apple: "/logo.svg",
-  },
   appleWebApp: {
     title: "NexHRIS",
   },

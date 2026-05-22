@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/services/supabase-server";
 import { getCurrentUser } from "@/services/auth.service";
 
-async function getCurrentEmployee(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
+async function getCurrentEmployee(supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>, userId: string) {
   const { data: byId } = await supabase
     .from("employees")
     .select("id, role, profile_id, company_id")

@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type {
     TaskGroup,
@@ -18,6 +16,8 @@ import {
     SEED_TASK_COMMENTS,
     SEED_TASK_TAGS,
 } from "@/data/seed";
+
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 import { useAuditStore } from "@/store/audit.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -67,13 +67,12 @@ interface TasksState {
 }
 
 export const useTasksStore = create<TasksState>()(
-    persist(
-        (set, get) => ({
-            groups: SEED_TASK_GROUPS,
-            tasks: SEED_TASKS,
-            completionReports: SEED_COMPLETION_REPORTS,
-            comments: SEED_TASK_COMMENTS,
-            taskTags: SEED_TASK_TAGS,
+    (set, get) => ({
+            groups: USE_DEMO_MODE ? SEED_TASK_GROUPS : [],
+            tasks: USE_DEMO_MODE ? SEED_TASKS : [],
+            completionReports: USE_DEMO_MODE ? SEED_COMPLETION_REPORTS : [],
+            comments: USE_DEMO_MODE ? SEED_TASK_COMMENTS : [],
+            taskTags: USE_DEMO_MODE ? SEED_TASK_TAGS : [],
 
             // ── Groups ────────────────────────────────────────
             addGroup: (data) => {
@@ -344,19 +343,5 @@ export const useTasksStore = create<TasksState>()(
                     comments: SEED_TASK_COMMENTS,
                     taskTags: SEED_TASK_TAGS,
                 }),
-        }),
-        { name: "soren-tasks", version: 2, storage: safePersistStorage,
-            migrate: (persisted) => {
-                const state = persisted as Partial<{ groups: unknown; tasks: unknown; completionReports: unknown; comments: unknown; taskTags: unknown[] }>;
-                // v1→v2: inject seed tags for existing users who had empty taskTags
-                const existingTags = state.taskTags ?? [];
-                const seedTagIds = new Set(SEED_TASK_TAGS.map((t) => t.id));
-                const mergedTags = [
-                    ...SEED_TASK_TAGS,
-                    ...existingTags.filter((t): t is typeof SEED_TASK_TAGS[0] => !seedTagIds.has((t as { id: string }).id)),
-                ];
-                return { ...state, taskTags: mergedTags };
-            },
-        }
-    )
+        })
 );

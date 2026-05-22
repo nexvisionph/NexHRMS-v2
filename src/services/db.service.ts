@@ -18,6 +18,7 @@ import type {
   Payslip, PayrollRun, PayrollAdjustment, FinalPayComputation, PayScheduleConfig,
   Loan, LoanDeduction, LoanRepaymentSchedule,
   Project, AuditLogEntry, CalendarEvent,
+  Department, JobTitle,
   SalaryChangeRequest, SalaryHistoryEntry,
   PenaltyRecord,
   Announcement, TextChannel, ChannelMessage,
@@ -26,6 +27,12 @@ import type {
   NotificationLog, NotificationRule,
   LocationPing, SiteSurveyPhoto, BreakRecord,
   DeductionOverride, DeductionGlobalDefault, PayrollSignatureConfig,
+  Employee201Document,
+  DisciplinaryCase, NTERecord, NODRecord,
+  PerformanceCycle, PerformanceCriterion, PerformanceSalaryBand,
+  PerformanceReview, PerformanceSalaryAdjustment, PerformanceAuditLog,
+  EmployeeTaxProfile, AnnualTaxSummary, PreviousEmployerRecord,
+  Form2316Record, AlphalistExport,
 } from "@/types";
 
 // Re-export for convenience
@@ -80,7 +87,12 @@ async function fetchAll<T>(table: string, options?: {
       await new Promise<void>((r) => setTimeout(r, 200 * (_attempt + 1)));
       return fetchAll(table, options, _attempt + 1);
     }
-    console.error(`[db] fetchAll ${table}:`, error.message);
+    // "Could not find the table" = migration not applied yet — expected, not an error.
+    if (error.message?.includes("schema cache")) {
+      console.debug(`[db] fetchAll ${table}: table not yet created (migration pending)`);
+    } else {
+      console.error(`[db] fetchAll ${table}:`, error.message);
+    }
     return [];
   }
   return ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => keysToCamel(row) as T);
@@ -96,14 +108,53 @@ async function upsertRow(table: string, row: Record<string, unknown>, onConflict
     // 23505 = unique_violation: row already exists via a different unique constraint.
     // Safe to suppress — the data is already in the DB.
     if (error.code === "23505") return true;
-    // Log the offending row for constraint violations so we can trace the bad value
-    if (error.code === "23514") {
-      console.error(`[db] upsert ${table}: constraint violation — offending row id="${dbRow.id}" status="${dbRow.status}"`, error.message);
-    } else {
-      console.error(`[db] upsert ${table}:`, error.message);
-    }
+    if (error.message?.includes("schema cache")) return false;
+    // AbortError from Web Locks API — transient race between auth token refresh
+    // and in-flight requests. Safe to ignore; the operation can retry next cycle.
+    if (error.message?.includes("Lock broken") || error.message?.includes("AbortError")) return false;
+    console.error(`[db] upsert ${table}:`, error.message);
   }
   return !error;
+}
+
+/** Generic batch upsert — sends one SQL statement per chunk (max 100 rows). */
+async function batchUpsertRows(table: string, rows: Record<string, unknown>[], onConflict = "id"): Promise<boolean> {
+  if (rows.length === 0) return true;
+  const dbRows = rows.map((r) => keysToSnake(r));
+  const CHUNK_SIZE = 100;
+  let allOk = true;
+  for (let i = 0; i < dbRows.length; i += CHUNK_SIZE) {
+    const chunk = dbRows.slice(i, i + CHUNK_SIZE);
+    const { error } = await supabase().from(table).upsert(chunk, { onConflict });
+    if (error) {
+      if (isNetworkError(error) && isDemoMode) { allOk = false; continue; }
+      if (error.code === "42501" && isDemoMode) { allOk = false; continue; }
+      if (error.code === "23505") continue; // duplicates are fine
+      console.error(`[db] batchUpsert ${table}:`, error.message);
+      allOk = false;
+    }
+  }
+  return allOk;
+}
+
+/** Generic batch insert — sends one SQL statement per chunk (max 100 rows). */
+async function batchInsertRows(table: string, rows: Record<string, unknown>[]): Promise<boolean> {
+  if (rows.length === 0) return true;
+  const dbRows = rows.map((r) => keysToSnake(r));
+  const CHUNK_SIZE = 100;
+  let allOk = true;
+  for (let i = 0; i < dbRows.length; i += CHUNK_SIZE) {
+    const chunk = dbRows.slice(i, i + CHUNK_SIZE);
+    const { error } = await supabase().from(table).insert(chunk);
+    if (error) {
+      if (error.code === "23505") continue;
+      if (isNetworkError(error) && isDemoMode) { allOk = false; continue; }
+      if (error.code === "42501" && isDemoMode) { allOk = false; continue; }
+      console.error(`[db] batchInsert ${table}:`, error.message);
+      allOk = false;
+    }
+  }
+  return allOk;
 }
 
 /** Generic insert */
@@ -121,6 +172,10 @@ async function insertRow(table: string, row: Record<string, unknown>) {
     // Suppress in demo mode — Supabase is not configured so the
     // anonymous client has no JWT that satisfies RLS predicates.
     if (error.code === "42501" && isDemoMode) return false;
+    if (error.message?.includes("schema cache")) return false;
+    // AbortError from Web Locks API — transient race between auth token refresh
+    // and in-flight requests. Safe to ignore; the operation can retry next cycle.
+    if (error.message?.includes("Lock broken") || error.message?.includes("AbortError")) return false;
     console.error(`[db] insert ${table}:`, error.message);
   }
   return !error;
@@ -133,6 +188,7 @@ async function updateRow(table: string, id: string, patch: Record<string, unknow
   if (error) {
     if (isNetworkError(error) && isDemoMode) return false;
     if (error.code === "42501" && isDemoMode) return false;
+    if (error.message?.includes("schema cache")) return false;
     console.error(`[db] update ${table}:`, error.message);
   }
   return !error;
@@ -452,13 +508,23 @@ export const payrollDb = {
     delete row.attendanceDaysAbsent;
     delete row.attendanceLateMinutes;
     delete row.attendanceUndertimeHours;
-    // Guard: ensure status is a valid DB enum value before upserting
-    const validStatuses = ["draft", "published", "signed", "paid", "payment_hold"];
-    if (!row.status || !validStatuses.includes(row.status as string)) {
-      console.warn(`[db] upsertPayslip: invalid status "${row.status}" for payslip ${ps.id}, defaulting to "draft"`);
-      row.status = "draft";
-    }
     return upsertRow("payslips", row);
+  },
+
+  /** Batch upsert payslips — single DB call per 100-row chunk. */
+  async batchUpsertPayslips(payslips: Payslip[]): Promise<boolean> {
+    const rows = payslips.map((ps) => {
+      const row: Record<string, unknown> = { ...(ps as unknown as Record<string, unknown>) };
+      delete row.holdNote;
+      delete row.heldAt;
+      delete row.grossOverrideApplied;
+      delete row.attendanceDaysPresent;
+      delete row.attendanceDaysAbsent;
+      delete row.attendanceLateMinutes;
+      delete row.attendanceUndertimeHours;
+      return row;
+    });
+    return batchUpsertRows("payslips", rows);
   },
 
   async updatePayslip(id: string, patch: Partial<Payslip>): Promise<boolean> {
@@ -1004,6 +1070,11 @@ export const auditDb = {
   async insert(entry: AuditLogEntry): Promise<boolean> {
     return insertRow("audit_logs", entry as unknown as Record<string, unknown>);
   },
+
+  /** Batch insert audit log entries — single DB call per 100-row chunk. */
+  async batchInsert(entries: AuditLogEntry[]): Promise<boolean> {
+    return batchInsertRows("audit_logs", entries as unknown as Record<string, unknown>[]);
+  },
 };
 
 // ─── Calendar Events ────────────────────────────────────────────
@@ -1017,6 +1088,34 @@ export const eventsDb = {
 
   async remove(id: string): Promise<boolean> {
     return deleteRow("calendar_events", id);
+  },
+};
+
+// ─── Departments ────────────────────────────────────────────
+
+export const departmentsDb = {
+  fetchAll: () => fetchAll<Department>("departments"),
+
+  async upsert(dept: Department): Promise<boolean> {
+    return upsertRow("departments", dept as unknown as Record<string, unknown>);
+  },
+
+  async remove(id: string): Promise<boolean> {
+    return deleteRow("departments", id);
+  },
+};
+
+// ─── Job Titles ─────────────────────────────────────────────
+
+export const jobTitlesDb = {
+  fetchAll: () => fetchAll<JobTitle>("job_titles"),
+
+  async upsert(jt: JobTitle): Promise<boolean> {
+    return upsertRow("job_titles", jt as unknown as Record<string, unknown>);
+  },
+
+  async remove(id: string): Promise<boolean> {
+    return deleteRow("job_titles", id);
   },
 };
 
@@ -1205,6 +1304,11 @@ export const notificationsDb = {
     return upsertRow("notification_logs", log as unknown as Record<string, unknown>);
   },
 
+  /** Batch insert notification logs — single DB call per 100-row chunk. */
+  async batchInsertLogs(logs: NotificationLog[]): Promise<boolean> {
+    return batchInsertRows("notification_logs", logs as unknown as Record<string, unknown>[]);
+  },
+
   async upsertRule(rule: NotificationRule): Promise<boolean> {
     return upsertRow("notification_rules", rule as unknown as Record<string, unknown>);
   },
@@ -1230,6 +1334,98 @@ export const locationDb = {
   },
 };
 
+// ─── 201 Documents ──────────────────────────────────────────────
+
+export const documents201Db = {
+  fetchAll: () => fetchAll<Employee201Document>("employee_201_documents"),
+
+  async upsert(doc: Employee201Document): Promise<boolean> {
+    return upsertRow("employee_201_documents", doc as unknown as Record<string, unknown>);
+  },
+
+  async batchUpsert(docs: Employee201Document[]): Promise<boolean> {
+    return batchUpsertRows("employee_201_documents", docs as unknown as Record<string, unknown>[]);
+  },
+
+  async remove(id: string): Promise<boolean> {
+    return deleteRow("employee_201_documents", id);
+  },
+
+  async fetchExpiring(daysAhead = 30): Promise<Employee201Document[]> {
+    const today = new Date();
+    const future = new Date();
+    future.setDate(today.getDate() + daysAhead);
+
+    const todayStr = today.toISOString().split("T")[0];
+    const futureStr = future.toISOString().split("T")[0];
+
+    const { data, error } = await supabase()
+      .from("employee_201_documents")
+      .select("*")
+      .gte("expiry_date", todayStr)
+      .lte("expiry_date", futureStr)
+      .not("status", "in", "(archived,expired)")
+      .order("expiry_date", { ascending: true });
+
+    if (error) {
+      console.error("[db] documents201Db.fetchExpiring:", error.message);
+      return [];
+    }
+    return ((data ?? []) as unknown as Record<string, unknown>[]).map(
+      (row) => keysToCamel(row) as unknown as Employee201Document
+    );
+  },
+};
+
+// ─── 201 Documents Storage ───────────────────────────────────────
+
+export const documents201Storage = {
+  async upload(
+    employeeId: string,
+    documentType: string,
+    file: File
+  ): Promise<{ path: string; error?: string }> {
+    try {
+      const path = `${employeeId}/${documentType}/${file.name}`;
+      const { error } = await supabase()
+        .storage.from("employee-documents")
+        .upload(path, file);
+
+      if (error) {
+        console.error("[db] documents201Storage.upload:", error.message);
+        return { path: "", error: error.message };
+      }
+
+      return { path };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Upload failed";
+      console.error("[db] documents201Storage.upload:", message);
+      return { path: "", error: message };
+    }
+  },
+
+  async getSignedUrl(path: string, expiresIn = 3600): Promise<string | null> {
+    try {
+      if (!path) return null;
+      const { data, error } = await supabase()
+        .storage.from("employee-documents")
+        .createSignedUrl(path, expiresIn);
+
+      if (error) {
+        // Don't log "Object not found" as an error — file may not exist in storage yet
+        if (!error.message?.includes("Object not found")) {
+          console.error("[db] documents201Storage.getSignedUrl:", error.message);
+        }
+        return null;
+      }
+      return data?.signedUrl ?? null;
+    } catch (err: unknown) {
+      console.error("[db] documents201Storage.getSignedUrl:", err instanceof Error ? err.message : "Failed to get signed URL");
+      return null;
+    }
+  },
+};
+
 // ─── Loan Deductions & Repayment ────────────────────────────────
 
 export const loanExtrasDb = {
@@ -1242,6 +1438,96 @@ export const loanExtrasDb = {
     fetchAll<LoanRepaymentSchedule>("loan_repayment_schedule", { filter: { loan_id: loanId }, order: { column: "due_date", ascending: true } }),
 
   fetchAllRepaymentSchedules: () => fetchAll<LoanRepaymentSchedule>("loan_repayment_schedule"),
+};
+
+// ─── Disciplinary ───────────────────────────────────────────────
+
+export const disciplinaryDb = {
+  fetchCases: () => fetchAll<DisciplinaryCase>("disciplinary_cases"),
+  fetchNTEs: () => fetchAll<NTERecord>("nte_records"),
+  fetchNODs: () => fetchAll<NODRecord>("nod_records"),
+
+  async upsertCase(c: DisciplinaryCase): Promise<boolean> {
+    return upsertRow("disciplinary_cases", c as unknown as Record<string, unknown>);
+  },
+  async upsertNTE(n: NTERecord): Promise<boolean> {
+    return upsertRow("nte_records", n as unknown as Record<string, unknown>);
+  },
+  async upsertNOD(n: NODRecord): Promise<boolean> {
+    return upsertRow("nod_records", n as unknown as Record<string, unknown>);
+  },
+  async removeCase(id: string): Promise<boolean> {
+    return deleteRow("disciplinary_cases", id);
+  },
+};
+
+// ─── Documents (201 Files) ──────────────────────────────────────
+
+export const documentsDb = {
+  fetchAll: () => fetchAll<Employee201Document>("employee_201_documents"),
+
+  async upsert(doc: Employee201Document): Promise<boolean> {
+    return upsertRow("employee_201_documents", doc as unknown as Record<string, unknown>);
+  },
+  async remove(id: string): Promise<boolean> {
+    return deleteRow("employee_201_documents", id);
+  },
+};
+
+// ─── Performance ────────────────────────────────────────────────
+
+export const performanceDb = {
+  fetchCycles: () => fetchAll<PerformanceCycle>("performance_cycles"),
+  fetchCriteria: () => fetchAll<PerformanceCriterion>("performance_criteria"),
+  fetchSalaryBands: () => fetchAll<PerformanceSalaryBand>("performance_salary_bands"),
+  fetchReviews: () => fetchAll<PerformanceReview>("performance_reviews"),
+  fetchAdjustments: () => fetchAll<PerformanceSalaryAdjustment>("performance_salary_adjustments"),
+  fetchAuditLogs: () => fetchAll<PerformanceAuditLog>("performance_audit_logs"),
+
+  async upsertCycle(c: PerformanceCycle): Promise<boolean> {
+    return upsertRow("performance_cycles", c as unknown as Record<string, unknown>);
+  },
+  async upsertCriterion(c: PerformanceCriterion): Promise<boolean> {
+    return upsertRow("performance_criteria", c as unknown as Record<string, unknown>);
+  },
+  async upsertSalaryBand(b: PerformanceSalaryBand): Promise<boolean> {
+    return upsertRow("performance_salary_bands", b as unknown as Record<string, unknown>);
+  },
+  async upsertReview(r: PerformanceReview): Promise<boolean> {
+    return upsertRow("performance_reviews", r as unknown as Record<string, unknown>);
+  },
+  async upsertAdjustment(a: PerformanceSalaryAdjustment): Promise<boolean> {
+    return upsertRow("performance_salary_adjustments", a as unknown as Record<string, unknown>);
+  },
+  async insertAuditLog(log: PerformanceAuditLog): Promise<boolean> {
+    return insertRow("performance_audit_logs", log as unknown as Record<string, unknown>);
+  },
+};
+
+// ─── BIR Compliance ─────────────────────────────────────────────
+
+export const birComplianceDb = {
+  fetchTaxProfiles: () => fetchAll<EmployeeTaxProfile>("employee_tax_profiles"),
+  fetchAnnualSummaries: () => fetchAll<AnnualTaxSummary>("annual_tax_summaries"),
+  fetchPreviousEmployerRecords: () => fetchAll<PreviousEmployerRecord>("previous_employer_records"),
+  fetchForm2316Records: () => fetchAll<Form2316Record>("form_2316_records"),
+  fetchAlphalistExports: () => fetchAll<AlphalistExport>("alphalist_exports"),
+
+  async upsertTaxProfile(p: EmployeeTaxProfile): Promise<boolean> {
+    return upsertRow("employee_tax_profiles", p as unknown as Record<string, unknown>);
+  },
+  async upsertAnnualSummary(s: AnnualTaxSummary): Promise<boolean> {
+    return upsertRow("annual_tax_summaries", s as unknown as Record<string, unknown>);
+  },
+  async upsertPreviousEmployerRecord(r: PreviousEmployerRecord): Promise<boolean> {
+    return upsertRow("previous_employer_records", r as unknown as Record<string, unknown>);
+  },
+  async upsertForm2316(r: Form2316Record): Promise<boolean> {
+    return upsertRow("form_2316_records", r as unknown as Record<string, unknown>);
+  },
+  async addAlphalistExport(e: AlphalistExport): Promise<boolean> {
+    return insertRow("alphalist_exports", e as unknown as Record<string, unknown>);
+  },
 };
 
 // ─── Sync Check ─────────────────────────────────────────────────

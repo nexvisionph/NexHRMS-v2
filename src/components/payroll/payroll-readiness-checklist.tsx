@@ -80,11 +80,6 @@ function ZeroNetPayFixModal({
 }: FixModalProps) {
     const [selected, setSelected] = useState<Set<string>>(new Set());
 
-    // Reset selection when modal opens or payslip list changes
-    useEffect(() => {
-        if (open) setSelected(new Set());
-    }, [open]);
-
     const allSelected = badPayslips.length > 0 && selected.size === badPayslips.length;
     const someSelected = selected.size > 0 && !allSelected;
 
@@ -124,7 +119,12 @@ function ZeroNetPayFixModal({
     };
 
     return (
-        <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+        <Dialog open={open} onOpenChange={(v) => {
+            if (!v) {
+                setSelected(new Set());
+                onClose();
+            }
+        }}>
             <DialogContent className="max-w-lg">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
@@ -274,8 +274,12 @@ export function PayrollReadinessChecklist({
         [payslips, payslipIds]
     );
 
-    const badNetPay = useMemo(
-        () => runPayslips.filter((p) => p.netPay <= 0),
+    const noSalaryPayslips = useMemo(
+        () => runPayslips.filter((p) => (p.grossPay || 0) <= 0),
+        [runPayslips]
+    );
+    const deductionHeavyPayslips = useMemo(
+        () => runPayslips.filter((p) => p.netPay <= 0 && (p.grossPay || 0) > 0),
         [runPayslips]
     );
 
@@ -319,25 +323,41 @@ export function PayrollReadinessChecklist({
             navHint: { label: "Issue Payslips", tab: "payslips" },
         };
 
-        // Check 3 — No zero/negative net pay (BLOCKING)
-        const bad = runPayslips.filter((p) => p.netPay <= 0);
-        const badNames = bad
+        // Check 3 — No employees with zero salary / no gross pay (BLOCKING)
+        const noSalary = runPayslips.filter((p) => (p.grossPay || 0) <= 0);
+        const noSalaryNames = noSalary
             .slice(0, 3)
             .map((p) => getEmpName(p.employeeId))
             .join(", ");
-        const badExtra = bad.length > 3 ? ` +${bad.length - 3} more` : "";
+        const noSalaryExtra = noSalary.length > 3 ? ` +${noSalary.length - 3} more` : "";
         const check3: CheckResult = {
-            id: "no-zero-netpay",
-            label: "No zero/negative net pay",
-            passed: bad.length === 0,
+            id: "no-zero-salary",
+            label: "All employees have salary",
+            passed: noSalary.length === 0,
             blocking: true,
             message:
-                bad.length === 0
-                    ? "All payslips have positive net pay"
-                    : `${bad.length} payslip(s) have ₱0 net pay: ${badNames}${badExtra}`,
-            count: bad.length,
+                noSalary.length === 0
+                    ? "All payslips have positive gross pay"
+                    : `${noSalary.length} employee(s) have ₱0 gross pay: ${noSalaryNames}${noSalaryExtra}`,
+            count: noSalary.length,
             icon: <Banknote className="h-4 w-4" />,
-            hasFixModal: bad.length > 0,
+            hasFixModal: noSalary.length > 0,
+        };
+
+        // Check 3b — Deduction-heavy payslips: net ≤ 0 but gross > 0 (WARNING)
+        // Normal for semi-monthly 2nd cutoff when all gov deductions are taken from one period
+        const dedHeavy = runPayslips.filter((p) => p.netPay <= 0 && (p.grossPay || 0) > 0);
+        const check3b: CheckResult = {
+            id: "deduction-heavy",
+            label: "No deduction-heavy payslips",
+            passed: dedHeavy.length === 0,
+            blocking: false,
+            message:
+                dedHeavy.length === 0
+                    ? "All payslips have positive net pay"
+                    : `${dedHeavy.length} payslip(s) have ₱0 net pay — deductions exceed period gross (normal for 2nd cutoff)`,
+            count: dedHeavy.length,
+            icon: <Banknote className="h-4 w-4" />,
         };
 
         // Check 4 — No pending leave requests (WARNING)
@@ -378,8 +398,8 @@ export function PayrollReadinessChecklist({
             navHint: { label: "View Management", tab: "management" },
         };
 
-        return [check1, check2, check3, check5, check6];
-    }, [exceptions, runPayslips, adjustments, getPendingLeaves, periodStart, periodEnd]);
+        return [check1, check2, check3, check3b, check5, check6];
+    }, [exceptions, runPayslips, adjustments, getPendingLeaves, periodStart, periodEnd, getEmpName, role]);
 
     const blockingFailed = checks.filter((c) => c.blocking && !c.passed);
     const warningsFailed = checks.filter((c) => !c.blocking && !c.passed);
@@ -574,7 +594,7 @@ export function PayrollReadinessChecklist({
             <ZeroNetPayFixModal
                 open={fixModalOpen}
                 onClose={() => setFixModalOpen(false)}
-                badPayslips={badNetPay}
+                badPayslips={noSalaryPayslips}
                 getEmpName={getEmpName}
                 deletePayslip={deletePayslip}
                 role={role}

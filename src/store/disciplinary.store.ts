@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type {
     DisciplinaryCase,
@@ -61,6 +59,11 @@ interface DisciplinaryState {
     };
 
     resetToSeed: () => void;
+
+    // Hydration setters (called by sync.service.ts)
+    setCases: (c: DisciplinaryCase[]) => void;
+    setNTEs: (n: NTERecord[]) => void;
+    setNODs: (n: NODRecord[]) => void;
 }
 
 function nowIso() { return new Date().toISOString(); }
@@ -84,8 +87,7 @@ function setCaseStatus(
 }
 
 export const useDisciplinaryStore = create<DisciplinaryState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             cases: [],
             ntes: [],
             nods: [],
@@ -305,8 +307,10 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 };
             },
 
-            resetToSeed: () => set({ cases: [], ntes: [], nods: [] }),
-        }),
-        { name: "soren-disciplinary", version: 1, storage: safePersistStorage }
-    )
+        resetToSeed: () => set({ cases: [], ntes: [], nods: [] }),
+
+        setCases: (c) => set({ cases: c }),
+        setNTEs: (n) => set({ ntes: n }),
+        setNODs: (n) => set({ nods: n }),
+    }),
 );

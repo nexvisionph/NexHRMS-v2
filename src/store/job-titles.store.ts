@@ -1,11 +1,8 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { JobTitle } from "@/types";
 import { ROLES, DEPARTMENTS } from "@/lib/constants";
-import { useAuditStore } from "@/store/audit.store";
 
 // ─── Seed Data (matches migration seed) ────────────────────────
 const SEED_JOB_TITLES: JobTitle[] = ROLES.map((role, idx) => {
@@ -39,10 +36,12 @@ const SEED_JOB_TITLES: JobTitle[] = ROLES.map((role, idx) => {
     };
 });
 
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
+
 interface JobTitlesState {
     jobTitles: JobTitle[];
 
-    // ── CRUD ─────────────────────────────────────────────────
+    // ── CRUD (kept for backward compat — prefer service layer) ──
     addJobTitle: (data: Omit<JobTitle, "id" | "createdAt" | "updatedAt">) => string;
     updateJobTitle: (id: string, patch: Partial<Omit<JobTitle, "id" | "createdAt" | "updatedAt">>) => void;
     deleteJobTitle: (id: string) => void;
@@ -59,69 +58,55 @@ interface JobTitlesState {
 }
 
 export const useJobTitlesStore = create<JobTitlesState>()(
-    persist(
-        (set, get) => ({
-            jobTitles: SEED_JOB_TITLES,
+    (set, get) => ({
+        jobTitles: USE_DEMO_MODE ? SEED_JOB_TITLES : [],
 
-            // ── Add ───────────────────────────────────────────
-            addJobTitle: (data) => {
-                const id = `jt_${nanoid(8)}`;
-                const now = new Date().toISOString();
-                set((s) => ({
-                    jobTitles: [
-                        ...s.jobTitles,
-                        { ...data, id, createdAt: now, updatedAt: now },
-                    ],
-                }));
-                useAuditStore.getState().log({
-                    entityType: "job_title",
-                    entityId: id,
-                    action: "tag_created", // reuse tag audit action
-                    performedBy: data.createdBy,
-                    afterSnapshot: { name: data.name, department: data.department },
-                });
-                return id;
-            },
+        // ── Add ───────────────────────────────────────────
+        addJobTitle: (data) => {
+            const id = `jt_${nanoid(8)}`;
+            const now = new Date().toISOString();
+            set((s) => ({
+                jobTitles: [
+                    ...s.jobTitles,
+                    { ...data, id, createdAt: now, updatedAt: now },
+                ],
+            }));
+            return id;
+        },
 
-            // ── Update ────────────────────────────────────────
-            updateJobTitle: (id, patch) =>
-                set((s) => ({
-                    jobTitles: s.jobTitles.map((jt) =>
-                        jt.id === id
-                            ? { ...jt, ...patch, updatedAt: new Date().toISOString() }
-                            : jt
-                    ),
-                })),
+        // ── Update ────────────────────────────────────────
+        updateJobTitle: (id, patch) =>
+            set((s) => ({
+                jobTitles: s.jobTitles.map((jt) =>
+                    jt.id === id
+                        ? { ...jt, ...patch, updatedAt: new Date().toISOString() }
+                        : jt
+                ),
+            })),
 
-            // ── Delete ────────────────────────────────────────
-            deleteJobTitle: (id) =>
-                set((s) => ({
-                    jobTitles: s.jobTitles.filter((jt) => jt.id !== id),
-                })),
+        // ── Delete ────────────────────────────────────────
+        deleteJobTitle: (id) =>
+            set((s) => ({
+                jobTitles: s.jobTitles.filter((jt) => jt.id !== id),
+            })),
 
-            // ── Toggle Active ─────────────────────────────────
-            toggleActive: (id) =>
-                set((s) => ({
-                    jobTitles: s.jobTitles.map((jt) =>
-                        jt.id === id
-                            ? { ...jt, isActive: !jt.isActive, updatedAt: new Date().toISOString() }
-                            : jt
-                    ),
-                })),
+        // ── Toggle Active ─────────────────────────────────
+        toggleActive: (id) =>
+            set((s) => ({
+                jobTitles: s.jobTitles.map((jt) =>
+                    jt.id === id
+                        ? { ...jt, isActive: !jt.isActive, updatedAt: new Date().toISOString() }
+                        : jt
+                ),
+            })),
 
-            // ── Selectors ─────────────────────────────────────
-            getById: (id) => get().jobTitles.find((jt) => jt.id === id),
-            getByName: (name) => get().jobTitles.find((jt) => jt.name.toLowerCase() === name.toLowerCase()),
-            getActive: () => get().jobTitles.filter((jt) => jt.isActive),
-            getByDepartment: (dept) => get().jobTitles.filter((jt) => jt.department === dept),
+        // ── Selectors ─────────────────────────────────────
+        getById: (id) => get().jobTitles.find((jt) => jt.id === id),
+        getByName: (name) => get().jobTitles.find((jt) => jt.name.toLowerCase() === name.toLowerCase()),
+        getActive: () => get().jobTitles.filter((jt) => jt.isActive),
+        getByDepartment: (dept) => get().jobTitles.filter((jt) => jt.department === dept),
 
-            // ── Reset ─────────────────────────────────────────
-            resetToSeed: () => set({ jobTitles: SEED_JOB_TITLES }),
-        }),
-        {
-            name: "hrms-job-titles",
-            version: 1,
-            storage: safePersistStorage,
-        }
-    )
+        // ── Reset ─────────────────────────────────────────
+        resetToSeed: () => set({ jobTitles: SEED_JOB_TITLES }),
+    })
 );

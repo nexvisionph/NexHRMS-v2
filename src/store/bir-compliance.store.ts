@@ -5,14 +5,10 @@
  * Form 2316 records, and Alphalist exports for the BIR Compliance Engine
  * (per bir_alphalist.md plan + migration 056).
  *
- * Persisted via Zustand with the same `safePersistStorage` pattern used by
- * the rest of the app stores. Server is the source of truth — these are
- * cached for fast UI rendering.
+ * Server is the source of truth — hydrated from Supabase on login.
  */
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import type {
     EmployeeTaxProfile,
     AnnualTaxSummary,
@@ -73,8 +69,7 @@ interface BIRComplianceState {
 }
 
 export const useBIRComplianceStore = create<BIRComplianceState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             taxProfiles: [],
             annualSummaries: [],
             previousEmployerRecords: [],
@@ -249,11 +244,5 @@ export const useBIRComplianceStore = create<BIRComplianceState>()(
                     alphalistExports: [],
                     lastValidationIssues: [],
                 }),
-        }),
-        {
-            name: "nexhrms-bir-compliance",
-            version: 1,
-            storage: safePersistStorage,
-        },
-    ),
+    }),
 );

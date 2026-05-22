@@ -40,6 +40,7 @@ import { useLocationStore } from "@/store/location.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useMessagingStore } from "@/store/messaging.store";
 import { pauseWriteThrough, resumeWriteThrough, forceRehydrate } from "@/services/sync.service";
+import { clearStaleStorage, clearAllZustandStorage } from "@/lib/clear-stale-storage";
 import type { AttendanceRuleSet, PayFrequency } from "@/types";
 import Link from "next/link";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
@@ -141,6 +142,7 @@ export default function AdminSettingsView() {
 
     const handleChangePassword = async () => {
         if (pwNew !== pwConfirm) { toast.error("Passwords do not match."); return; }
+        if (/\s/.test(pwNew) || /\s/.test(pwConfirm)) { toast.error("Password cannot contain spaces."); return; }
         if (pwNew.length < 6) { toast.error("Password must be at least 6 characters."); return; }
         if (USE_DEMO_MODE) {
             const result = demoChangePassword(currentUser.id, pwOld, pwNew);
@@ -651,8 +653,8 @@ export default function AdminSettingsView() {
                                 <button type="button" className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground" onClick={() => setShowPw((v) => !v)}>{showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
                             </div>
                         </div>
-                        <div className="space-y-1.5"><label className="text-sm font-medium">New Password</label><Input type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value)} placeholder="Minimum 6 characters" /></div>
-                        <div className="space-y-1.5"><label className="text-sm font-medium">Confirm Password</label><Input type="password" value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} placeholder="Type it again to confirm" /></div>
+                        <div className="space-y-1.5"><label className="text-sm font-medium">New Password</label><Input type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value.replace(/\s/g, ""))} placeholder="Minimum 6 characters" /></div>
+                        <div className="space-y-1.5"><label className="text-sm font-medium">Confirm Password</label><Input type="password" value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value.replace(/\s/g, ""))} placeholder="Type it again to confirm" /></div>
                         <Button className="w-full" onClick={handleChangePassword} disabled={!pwOld || !pwNew || !pwConfirm}><KeyRound className="w-4 h-4 mr-1.5" /> Update Password</Button>
                     </div>
                 </CardContent>
@@ -692,7 +694,21 @@ export default function AdminSettingsView() {
                             </div>
                         </div>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="space-y-3">
+                        <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/30">
+                            <div>
+                                <p className="text-sm font-medium">Clear Local Cache</p>
+                                <p className="text-xs text-muted-foreground">Remove stale browser data and re-sync from server. Safe to run anytime.</p>
+                            </div>
+                            <Button variant="outline" size="sm" className="ml-4 shrink-0" onClick={async () => {
+                                const cleared = clearAllZustandStorage();
+                                if (!USE_DEMO_MODE) {
+                                    pauseWriteThrough();
+                                    try { await forceRehydrate(); } finally { resumeWriteThrough(); }
+                                }
+                                toast.success(cleared > 0 ? `Cleared ${cleared} stale cache key(s) and re-synced.` : "Cache is clean — re-synced from server.");
+                            }}><RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Clear Cache</Button>
+                        </div>
                         <div className="flex items-center justify-between p-3 rounded-lg border border-destructive/20 bg-destructive/5">
                             <div>
                                 <p className="text-sm font-medium">Reset All Data</p>

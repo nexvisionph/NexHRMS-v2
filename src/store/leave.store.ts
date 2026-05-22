@@ -1,10 +1,10 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type { LeaveRequest, LeaveStatus, LeavePolicy, LeaveBalance, LeaveType, LeaveDuration } from "@/types";
 import { SEED_LEAVES } from "@/data/seed";
+
+const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 
@@ -16,6 +16,7 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
 /**
  * Calculate the number of leave days based on date range and duration type.
  * Half-day leaves count as 0.5 days. Hourly leaves count based on hours/8.
+ * Excludes weekends (Saturday and Sunday) from the count.
  */
 function calculateLeaveDays(
     startDate: string,
@@ -25,19 +26,29 @@ function calculateLeaveDays(
 ): number {
     const startD = new Date(startDate);
     const endD = new Date(endDate);
-    const fullDays = Math.ceil((endD.getTime() - startD.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     
     switch (duration) {
         case "half_day_am":
         case "half_day_pm":
             // Half-day only applies if it's a single-day request
-            return fullDays === 1 ? 0.5 : fullDays;
+            return 0.5;
         case "hourly":
             // Convert hours to days (8 hours = 1 day)
-            return hours ? Math.round((hours / 8) * 10) / 10 : fullDays;
+            return hours ? Math.round((hours / 8) * 10) / 10 : 1;
         case "full_day":
-        default:
-            return fullDays;
+        default: {
+            // Count working days (exclude weekends)
+            let workingDays = 0;
+            const current = new Date(startD);
+            while (current <= endD) {
+                const day = current.getDay();
+                if (day !== 0 && day !== 6) { // Not Sunday (0) or Saturday (6)
+                    workingDays++;
+                }
+                current.setDate(current.getDate() + 1);
+            }
+            return workingDays;
+        }
     }
 }
 
@@ -116,17 +127,18 @@ interface LeaveState {
 }
 
 export const useLeaveStore = create<LeaveState>()(
-    persist(
-        (set, get) => ({
-            requests: SEED_LEAVES,
+    (set, get) => ({
+            requests: USE_DEMO_MODE ? SEED_LEAVES : [],
             policies: DEFAULT_LEAVE_POLICIES,
             balances: [],
 
             // ─── Requests ─────────────────────────────────────────────
             addRequest: (req) => {
                 const policy = get().policies.find((p) => p.leaveType === req.type);
-                // Check balance
+                // Auto-initialize balances if not yet done for this employee/year
                 const year = new Date(req.startDate).getFullYear();
+                get().initBalances(req.employeeId, year);
+                // Check balance
                 const bal = get().balances.find(
                     (b) => b.employeeId === req.employeeId && b.leaveType === req.type && b.year === year
                 );
@@ -177,13 +189,16 @@ export const useLeaveStore = create<LeaveState>()(
                 const req = s.requests.find((r) => r.id === id);
                 if (!req) return;
 
+                // Auto-initialize balances if not yet done
+                const year = new Date(req.startDate).getFullYear();
+                get().initBalances(req.employeeId, year);
+
                 const updatedRequests = s.requests.map((r) =>
                     r.id === id
                         ? { ...r, status, reviewedBy, reviewedAt: new Date().toISOString().split("T")[0] }
                         : r
                 );
 
-                const year = new Date(req.startDate).getFullYear();
                 const days = calculateLeaveDays(req.startDate, req.endDate, req.duration, req.hours);
 
                 let actualStatus = status;
@@ -330,12 +345,5 @@ export const useLeaveStore = create<LeaveState>()(
                 });
             },
             resetToSeed: () => set({ requests: SEED_LEAVES, balances: [] }),
-        }),
-        {
-            name: "soren-leave",
-            version: 3,
-            storage: safePersistStorage,
-            migrate: () => ({ requests: SEED_LEAVES, balances: [] }),
-        }
-    )
+        })
 );

@@ -1,7 +1,5 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import { nanoid } from "nanoid";
 import type {
     Employee201Document,
@@ -24,6 +22,7 @@ interface DocumentsState {
     documents: Employee201Document[];
 
     upload: (data: Omit<Employee201Document, "id" | "createdAt" | "updatedAt" | "status"> & { status?: Document201Status }) => Employee201Document;
+    updateDocument: (id: string, patch: Partial<Pick<Employee201Document, "documentTitle" | "documentType" | "expiryDate" | "remarks" | "filePath" | "fileType" | "fileSize">>) => void;
     approve: (id: string, reviewerId: string, remarks?: string) => void;
     reject: (id: string, reviewerId: string, remarks: string) => void;
     archive: (id: string, by: string) => void;
@@ -47,6 +46,9 @@ interface DocumentsState {
     };
 
     resetToSeed: () => void;
+
+    // Hydration setter (called by sync.service.ts)
+    setDocuments: (d: Employee201Document[]) => void;
 }
 
 function nowIso() {
@@ -54,8 +56,7 @@ function nowIso() {
 }
 
 export const useDocumentsStore = create<DocumentsState>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             documents: [],
 
             upload: (data) => {
@@ -76,6 +77,13 @@ export const useDocumentsStore = create<DocumentsState>()(
                 });
                 return doc;
             },
+
+            updateDocument: (id, patch) =>
+                set((s) => ({
+                    documents: s.documents.map((d) =>
+                        d.id === id ? { ...d, ...patch, updatedAt: nowIso() } : d
+                    ),
+                })),
 
             approve: (id, reviewerId, remarks) =>
                 set((s) => ({
@@ -189,8 +197,8 @@ export const useDocumentsStore = create<DocumentsState>()(
                 };
             },
 
-            resetToSeed: () => set({ documents: [] }),
-        }),
-        { name: "soren-documents", version: 1, storage: safePersistStorage }
-    )
+        resetToSeed: () => set({ documents: [] }),
+
+        setDocuments: (d) => set({ documents: d }),
+    }),
 );

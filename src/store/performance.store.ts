@@ -1,8 +1,6 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { safePersistStorage } from "@/lib/storage";
 import type {
   PerformanceCycle,
   PerformanceCriterion,
@@ -83,7 +81,6 @@ const initialState = {
 };
 
 export const usePerformanceStore = create<PerformanceState>()(
-  persist(
     (set) => ({
       ...initialState,
 
@@ -165,13 +162,4 @@ export const usePerformanceStore = create<PerformanceState>()(
       // Reset
       reset: () => set(initialState),
     }),
-    {
-      name: "performance-store",
-      storage: safePersistStorage,
-      partialize: (state) => ({
-        activeCycleId: state.activeCycleId,
-        filterStatus: state.filterStatus,
-      }),
-    }
-  )
 );

@@ -137,6 +137,9 @@ export function Topbar() {
         supervisor: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400",
         payroll_admin: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
         auditor: "bg-rose-500/15 text-rose-700 dark:text-rose-400",
+        support_admin: "bg-teal-500/15 text-teal-700 dark:text-teal-400",
+        finance_admin: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
+        analyst: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400",
     };
 
     return (

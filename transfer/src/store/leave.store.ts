@@ -1,0 +1,347 @@
+"use client";
+import { create } from "zustand";
+import { nanoid } from "nanoid";
+import type { LeaveRequest, LeaveStatus, LeavePolicy, LeaveBalance, LeaveType, LeaveDuration } from "@/types";
+import { SEED_LEAVES } from "@/data/seed";
+import { useEmployeesStore } from "@/store/employees.store";
+import { useNotificationsStore } from "@/store/notifications.store";
+
+const LEAVE_TYPE_LABELS: Record<string, string> = {
+    VL: "Vacation", SL: "Sick", EL: "Emergency", OTHER: "Other",
+    ML: "Maternity", PL: "Paternity", SPL: "Solo Parent",
+};
+
+/**
+ * Calculate the number of leave days based on date range and duration type.
+ * Half-day leaves count as 0.5 days. Hourly leaves count based on hours/8.
+ * Excludes weekends (Saturday and Sunday) from the count.
+ */
+function calculateLeaveDays(
+    startDate: string,
+    endDate: string,
+    duration: LeaveDuration = "full_day",
+    hours?: number
+): number {
+    const startD = new Date(startDate);
+    const endD = new Date(endDate);
+    
+    switch (duration) {
+        case "half_day_am":
+        case "half_day_pm":
+            // Half-day only applies if it's a single-day request
+            return 0.5;
+        case "hourly":
+            // Convert hours to days (8 hours = 1 day)
+            return hours ? Math.round((hours / 8) * 10) / 10 : 1;
+        case "full_day":
+        default: {
+            // Count working days (exclude weekends)
+            let workingDays = 0;
+            const current = new Date(startD);
+            while (current <= endD) {
+                const day = current.getDay();
+                if (day !== 0 && day !== 6) { // Not Sunday (0) or Saturday (6)
+                    workingDays++;
+                }
+                current.setDate(current.getDate() + 1);
+            }
+            return workingDays;
+        }
+    }
+}
+
+// ─── Default PH Leave Policies ───────────────────────────────
+const DEFAULT_LEAVE_POLICIES: LeavePolicy[] = [
+    {
+        id: "LP-SL", leaveType: "SL", name: "Sick Leave",
+        accrualFrequency: "annual", annualEntitlement: 5,
+        carryForwardAllowed: false, maxCarryForward: 0, maxBalance: 5,
+        expiryMonths: 12, negativeLeaveAllowed: false, attachmentRequired: false,
+    },
+    {
+        id: "LP-VL", leaveType: "VL", name: "Vacation Leave",
+        accrualFrequency: "annual", annualEntitlement: 5,
+        carryForwardAllowed: true, maxCarryForward: 5, maxBalance: 10,
+        expiryMonths: 24, negativeLeaveAllowed: false, attachmentRequired: false,
+    },
+    {
+        id: "LP-EL", leaveType: "EL", name: "Emergency Leave",
+        accrualFrequency: "annual", annualEntitlement: 3,
+        carryForwardAllowed: false, maxCarryForward: 0, maxBalance: 3,
+        expiryMonths: 12, negativeLeaveAllowed: true, attachmentRequired: true,
+    },
+    {
+        id: "LP-OTH", leaveType: "OTHER", name: "Other Leave",
+        accrualFrequency: "annual", annualEntitlement: 2,
+        carryForwardAllowed: false, maxCarryForward: 0, maxBalance: 2,
+        expiryMonths: 12, negativeLeaveAllowed: false, attachmentRequired: false,
+    },
+    {
+        id: "LP-ML", leaveType: "ML", name: "Maternity Leave (RA 11210)",
+        accrualFrequency: "annual", annualEntitlement: 105,
+        carryForwardAllowed: false, maxCarryForward: 0, maxBalance: 105,
+        expiryMonths: 12, negativeLeaveAllowed: false, attachmentRequired: true,
+    },
+    {
+        id: "LP-PL", leaveType: "PL", name: "Paternity Leave (RA 8187)",
+        accrualFrequency: "annual", annualEntitlement: 7,
+        carryForwardAllowed: false, maxCarryForward: 0, maxBalance: 7,
+        expiryMonths: 12, negativeLeaveAllowed: false, attachmentRequired: false,
+    },
+    {
+        id: "LP-SPL", leaveType: "SPL", name: "Solo Parent Leave (RA 8972)",
+        accrualFrequency: "annual", annualEntitlement: 7,
+        carryForwardAllowed: false, maxCarryForward: 0, maxBalance: 7,
+        expiryMonths: 12, negativeLeaveAllowed: false, attachmentRequired: true,
+    },
+];
+
+interface LeaveState {
+    requests: LeaveRequest[];
+    policies: LeavePolicy[];
+    balances: LeaveBalance[];
+
+    // ─── Requests ─────────────────────────────────────
+    addRequest: (req: Omit<LeaveRequest, "id" | "status">) => void;
+    updateStatus: (id: string, status: LeaveStatus, reviewedBy: string) => void;
+    getByEmployee: (employeeId: string) => LeaveRequest[];
+    getPending: () => LeaveRequest[];
+
+    // ─── Policies ─────────────────────────────────────
+    addPolicy: (policy: Omit<LeavePolicy, "id">) => void;
+    updatePolicy: (id: string, data: Partial<LeavePolicy>) => void;
+    deletePolicy: (id: string) => void;
+    getPolicy: (leaveType: LeaveType) => LeavePolicy | undefined;
+
+    // ─── Balances ─────────────────────────────────────
+    initBalances: (employeeId: string, year: number) => void;
+    getBalance: (employeeId: string, leaveType: LeaveType, year: number) => LeaveBalance | undefined;
+    getEmployeeBalances: (employeeId: string, year: number) => LeaveBalance[];
+    accrueLeave: (employeeId: string, leaveType: LeaveType, year: number, days: number) => void;
+
+    // ─── Conflict detection ───────────────────────────
+    hasLeaveConflict: (employeeId: string, date: string) => boolean;
+    resetToSeed: () => void;
+}
+
+export const useLeaveStore = create<LeaveState>()(
+    (set, get) => ({
+            requests: SEED_LEAVES,
+            policies: DEFAULT_LEAVE_POLICIES,
+            balances: [],
+
+            // ─── Requests ─────────────────────────────────────────────
+            addRequest: (req) => {
+                const policy = get().policies.find((p) => p.leaveType === req.type);
+                // Auto-initialize balances if not yet done for this employee/year
+                const year = new Date(req.startDate).getFullYear();
+                get().initBalances(req.employeeId, year);
+                // Check balance
+                const bal = get().balances.find(
+                    (b) => b.employeeId === req.employeeId && b.leaveType === req.type && b.year === year
+                );
+                const days = calculateLeaveDays(req.startDate, req.endDate, req.duration, req.hours);
+
+                if (bal && bal.remaining < days && !(policy?.negativeLeaveAllowed)) {
+                    // Insufficient balance — still create but it will be noted
+                }
+
+                const leaveId = `LV-${nanoid(8)}`;
+                set((s) => ({
+                    requests: [
+                        ...s.requests,
+                        {
+                            ...req,
+                            duration: req.duration || "full_day",
+                            id: leaveId,
+                            status: "pending",
+                        },
+                    ],
+                }));
+
+                // Notify admin/HR about the new leave request
+                try {
+                    const employees = useEmployeesStore.getState().employees;
+                    const requester = employees.find((e) => e.id === req.employeeId);
+                    const requesterName = requester?.name ?? req.employeeId;
+                    const adminsAndHR = employees.filter(
+                        (e) => (e.role === "admin" || e.role === "hr") && e.status === "active" && e.id !== req.employeeId
+                    );
+                    adminsAndHR.forEach((recipient) => {
+                        useNotificationsStore.getState().dispatch(
+                            "leave_submitted",
+                            {
+                                name: requesterName,
+                                leaveType: req.type,
+                                dates: `${req.startDate} – ${req.endDate}`,
+                            },
+                            recipient.id,
+                            recipient.email ?? undefined,
+                        );
+                    });
+                } catch { /* best-effort */ }
+            },
+
+            updateStatus: (id, status, reviewedBy) => {
+                const s = get();
+                const req = s.requests.find((r) => r.id === id);
+                if (!req) return;
+
+                // Auto-initialize balances if not yet done
+                const year = new Date(req.startDate).getFullYear();
+                get().initBalances(req.employeeId, year);
+
+                const updatedRequests = s.requests.map((r) =>
+                    r.id === id
+                        ? { ...r, status, reviewedBy, reviewedAt: new Date().toISOString().split("T")[0] }
+                        : r
+                );
+
+                const days = calculateLeaveDays(req.startDate, req.endDate, req.duration, req.hours);
+
+                let actualStatus = status;
+
+                // If approving, deduct from balance (prevent negative unless allowed by policy)
+                if (status === "approved" && req.status !== "approved") {
+                    const bal = s.balances.find(
+                        (b) => b.employeeId === req.employeeId && b.leaveType === req.type && b.year === year
+                    );
+                    const policy = s.policies.find((p) => p.leaveType === req.type);
+                    if (bal && bal.remaining < days && !policy?.negativeLeaveAllowed) {
+                        // Insufficient balance — reject instead of approving
+                        actualStatus = "rejected";
+                        set({
+                            requests: s.requests.map((r) =>
+                                r.id === id
+                                    ? { ...r, status: "rejected" as const, reviewedBy, reviewedAt: new Date().toISOString().split("T")[0] }
+                                    : r
+                            ),
+                        });
+                    } else {
+                        set({
+                            requests: updatedRequests,
+                            balances: s.balances.map((b) =>
+                                b.employeeId === req.employeeId && b.leaveType === req.type && b.year === year
+                                    ? { ...b, used: b.used + days, remaining: b.remaining - days }
+                                    : b
+                            ),
+                        });
+                    }
+                } else if (status === "rejected" && req.status === "approved") {
+                    // If rejecting a previously approved leave, credit the balance back
+                    set({
+                        requests: updatedRequests,
+                        balances: s.balances.map((b) =>
+                            b.employeeId === req.employeeId && b.leaveType === req.type && b.year === year
+                                ? { ...b, used: Math.max(0, b.used - days), remaining: b.remaining + days }
+                                : b
+                        ),
+                    });
+                } else {
+                    set({ requests: updatedRequests });
+                }
+
+                // Notify the employee about their leave approval/rejection
+                try {
+                    const employees = useEmployeesStore.getState().employees;
+                    const requester = employees.find((e) => e.id === req.employeeId);
+                    const requesterName = requester?.name ?? req.employeeId;
+                    const trigger = actualStatus === "approved" ? "leave_approved" : "leave_rejected";
+                    if (actualStatus === "approved" || actualStatus === "rejected") {
+                        useNotificationsStore.getState().dispatch(
+                            trigger,
+                            {
+                                name: requesterName,
+                                leaveType: LEAVE_TYPE_LABELS[req.type] ?? req.type,
+                                dates: `${req.startDate} – ${req.endDate}`,
+                                status: actualStatus,
+                            },
+                            req.employeeId,
+                            requester?.email ?? undefined,
+                        );
+                    }
+                } catch { /* best-effort */ }
+            },
+
+            getByEmployee: (employeeId) =>
+                get().requests.filter((r) => r.employeeId === employeeId),
+            getPending: () => get().requests.filter((r) => r.status === "pending"),
+
+            // ─── Policies ─────────────────────────────────────────────
+            addPolicy: (policy) =>
+                set((s) => ({
+                    policies: [...s.policies, { ...policy, id: `LP-${nanoid(6)}` }],
+                })),
+
+            updatePolicy: (id, data) =>
+                set((s) => ({
+                    policies: s.policies.map((p) => (p.id === id ? { ...p, ...data } : p)),
+                })),
+
+            deletePolicy: (id) =>
+                set((s) => ({ policies: s.policies.filter((p) => p.id !== id) })),
+
+            getPolicy: (leaveType) =>
+                get().policies.find((p) => p.leaveType === leaveType),
+
+            // ─── Balances ─────────────────────────────────────────────
+            initBalances: (employeeId, year) =>
+                set((s) => {
+                    const existing = s.balances.filter(
+                        (b) => b.employeeId === employeeId && b.year === year
+                    );
+                    if (existing.length > 0) return {}; // already initialized
+                    const newBalances: LeaveBalance[] = s.policies.map((p) => {
+                        // Carry forward from previous year
+                        const prevBal = s.balances.find(
+                            (b) => b.employeeId === employeeId && b.leaveType === p.leaveType && b.year === year - 1
+                        );
+                        const carried = p.carryForwardAllowed && prevBal
+                            ? Math.min(prevBal.remaining, p.maxCarryForward)
+                            : 0;
+                        return {
+                            id: `BAL-${nanoid(8)}`,
+                            employeeId,
+                            leaveType: p.leaveType,
+                            year,
+                            entitled: p.annualEntitlement,
+                            used: 0,
+                            carriedForward: carried,
+                            remaining: p.annualEntitlement + carried,
+                        };
+                    });
+                    return { balances: [...s.balances, ...newBalances] };
+                }),
+
+            getBalance: (employeeId, leaveType, year) =>
+                get().balances.find(
+                    (b) => b.employeeId === employeeId && b.leaveType === leaveType && b.year === year
+                ),
+
+            getEmployeeBalances: (employeeId, year) =>
+                get().balances.filter((b) => b.employeeId === employeeId && b.year === year),
+
+            accrueLeave: (employeeId, leaveType, year, days) =>
+                set((s) => ({
+                    balances: s.balances.map((b) =>
+                        b.employeeId === employeeId && b.leaveType === leaveType && b.year === year
+                            ? {
+                                ...b,
+                                entitled: b.entitled + days,
+                                remaining: b.remaining + days,
+                                lastAccruedAt: new Date().toISOString(),
+                            }
+                            : b
+                    ),
+                })),
+
+            // ─── Conflict detection (§9 — clock-in on approved leave day) ─
+            hasLeaveConflict: (employeeId, date) => {
+                return get().requests.some((r) => {
+                    if (r.employeeId !== employeeId || r.status !== "approved") return false;
+                    return date >= r.startDate && date <= r.endDate;
+                });
+            },
+            resetToSeed: () => set({ requests: SEED_LEAVES, balances: [] }),
+        })
+);
