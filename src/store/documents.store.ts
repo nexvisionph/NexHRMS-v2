@@ -23,6 +23,8 @@ interface DocumentsState {
 
     upload: (data: Omit<Employee201Document, "id" | "createdAt" | "updatedAt" | "status"> & { status?: Document201Status }) => Employee201Document;
     updateDocument: (id: string, patch: Partial<Pick<Employee201Document, "documentTitle" | "documentType" | "expiryDate" | "remarks" | "filePath" | "fileType" | "fileSize">>) => void;
+    /** Fulfills a pending_upload request: attaches the file and transitions to for_review. */
+    fulfillRequest: (id: string, filePath: string, fileType: string | undefined, fileSize: number | undefined, uploadedBy: string) => void;
     approve: (id: string, reviewerId: string, remarks?: string) => void;
     reject: (id: string, reviewerId: string, remarks: string) => void;
     archive: (id: string, by: string) => void;
@@ -43,6 +45,7 @@ interface DocumentsState {
         approved: number;
         rejected: number;
         expiring30: number;
+        pendingUpload: number;
     };
 
     resetToSeed: () => void;
@@ -83,6 +86,22 @@ export const useDocumentsStore = create<DocumentsState>()(
                     documents: s.documents.map((d) =>
                         d.id === id ? { ...d, ...patch, updatedAt: nowIso() } : d
                     ),
+                })),
+
+            fulfillRequest: (id, filePath, fileType, fileSize, uploadedBy) =>
+                set((s) => ({
+                    documents: s.documents.map((d) => {
+                        if (d.id !== id) return d;
+                        useAuditStore.getState().log({
+                            entityType: "document",
+                            entityId: id,
+                            action: "doc_uploaded",
+                            performedBy: uploadedBy,
+                            beforeSnapshot: { status: d.status },
+                            afterSnapshot: { status: "for_review", filePath },
+                        });
+                        return { ...d, filePath, fileType, fileSize, uploadedBy, status: "for_review", updatedAt: nowIso() };
+                    }),
                 })),
 
             approve: (id, reviewerId, remarks) =>
@@ -194,6 +213,7 @@ export const useDocumentsStore = create<DocumentsState>()(
                     approved: docs.filter((d) => d.status === "approved").length,
                     rejected: docs.filter((d) => d.status === "rejected").length,
                     expiring30,
+                    pendingUpload: docs.filter((d) => d.status === "pending_upload").length,
                 };
             },
 

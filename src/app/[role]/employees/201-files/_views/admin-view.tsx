@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useDocumentsStore, REQUIRED_201_DOC_TYPES } from "@/store/documents.store";
+import { useAuditStore } from "@/store/audit.store";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -179,6 +180,8 @@ export default function Documents201AdminView() {
     const [editingDoc, setEditingDoc] = useState<Employee201Document | null>(null);
     const [editForm, setEditForm] = useState({ documentTitle: "", expiryDate: "", remarks: "" });
     const [deletingDoc, setDeletingDoc] = useState<Employee201Document | null>(null);
+    const [requestingDocType, setRequestingDocType] = useState<Employee201DocType | null>(null);
+    const [requestDescription, setRequestDescription] = useState("");
 
     // ── Upload Logs tab state ──
     const [logSearch, setLogSearch] = useState("");
@@ -346,7 +349,7 @@ export default function Documents201AdminView() {
                         <DocTile label="For Review" value={stats.forReview} icon={Clock} accent={stats.forReview > 0 ? "amber" : "muted"} />
                         <DocTile label="Approved" value={stats.approved} icon={CheckCircle2} accent="emerald" />
                         <DocTile label="Rejected" value={stats.rejected} icon={XCircle} accent={stats.rejected > 0 ? "red" : "muted"} />
-                        <DocTile label="Expiring in 30d" value={stats.expiring30} icon={AlertTriangle} accent={stats.expiring30 > 0 ? "orange" : "muted"} />
+                        <DocTile label="Pending Upload" value={stats.pendingUpload} icon={Upload} accent={stats.pendingUpload > 0 ? "amber" : "muted"} />
                         <DocTile label="Total on File" value={stats.total} icon={FileText} accent="muted" isLast />
                     </div>
                 </CardContent>
@@ -647,9 +650,14 @@ export default function Documents201AdminView() {
                                         </div>
                                         <div className="flex flex-wrap gap-2">
                                             {selectedMissing.map((t) => (
-                                                <Badge key={t} variant="outline" className="border-amber-300 text-amber-900">
+                                                <button
+                                                    key={t}
+                                                    type="button"
+                                                    onClick={() => { setRequestingDocType(t); setRequestDescription(""); }}
+                                                    className="inline-flex items-center rounded-full border border-amber-300 bg-white px-2.5 py-0.5 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100 hover:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
+                                                >
                                                     {DOC_TYPE_LABELS[t]}
-                                                </Badge>
+                                                </button>
                                             ))}
                                         </div>
                                     </CardContent>
@@ -691,6 +699,68 @@ export default function Documents201AdminView() {
                             </div>
                         </>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* ── Request File modal ───────────────────────────────── */}
+            <Dialog open={!!requestingDocType} onOpenChange={(o) => { if (!o) setRequestingDocType(null); }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Request File</DialogTitle>
+                    </DialogHeader>
+                    {requestingDocType && selectedEmp && (
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <Label>Document Type</Label>
+                                <div className="flex items-center h-9 px-3 rounded-md border bg-muted text-sm text-muted-foreground select-none">
+                                    {DOC_TYPE_LABELS[requestingDocType]}
+                                </div>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="request-desc">Description <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                                <Textarea
+                                    id="request-desc"
+                                    rows={4}
+                                    className="resize-none"
+                                    placeholder={`e.g. Please submit your ${DOC_TYPE_LABELS[requestingDocType]} at the earliest convenience.`}
+                                    value={requestDescription}
+                                    onChange={(e) => setRequestDescription(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setRequestingDocType(null)}>Cancel</Button>
+                        <Button onClick={() => {
+                            if (!requestingDocType || !selectedEmp) return;
+                            // Create a pending_upload document record so it shows in Upload Logs and the employee's table
+                            upload({
+                                employeeId: selectedEmp.id,
+                                documentType: requestingDocType,
+                                documentTitle: DOC_TYPE_LABELS[requestingDocType],
+                                visibility: "employee",
+                                remarks: requestDescription || undefined,
+                                uploadedBy: currentUser.id,
+                                status: "pending_upload",
+                            });
+                            useAuditStore.getState().log({
+                                entityType: "document",
+                                entityId: `${selectedEmp.id}-${requestingDocType}`,
+                                action: "doc_requested",
+                                performedBy: currentUser.id,
+                                afterSnapshot: {
+                                    employeeId: selectedEmp.id,
+                                    documentType: requestingDocType,
+                                    description: requestDescription || undefined,
+                                },
+                            });
+                            toast.success(`Document request sent to ${selectedEmp.name}`);
+                            setRequestingDocType(null);
+                            setRequestDescription("");
+                        }}>
+                            Send Request
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
