@@ -161,7 +161,8 @@ const DONUT_COLORS = [
 ];
 
 function KpiActiveEmployees() {
-    const count = useEmployeesStore((s) => s.employees.filter((e) => e.status === "active").length);
+    const ADMIN_ACCESSED_ROLES = ["admin", "hr", "payroll_admin", "finance"];
+    const count = useEmployeesStore((s) => s.employees.filter((e) => e.status === "active" && !ADMIN_ACCESSED_ROLES.includes(e.role)).length);
     return <KpiCard label="Active Employees" value={count} icon={Users} color="text-primary" bg="bg-primary/10" href="/employees/manage" />;
 }
 
