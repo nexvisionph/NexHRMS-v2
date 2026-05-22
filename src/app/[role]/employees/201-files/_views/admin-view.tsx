@@ -19,12 +19,13 @@ import {
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
     FolderArchive, Search, Upload, CheckCircle2, XCircle,
     FileText, Clock, AlertTriangle, ShieldCheck, TrendingUp,
-    ChevronLeft, ChevronRight,
+    ChevronLeft, ChevronRight, Eye, Download, X,
 } from "lucide-react";
 import { getInitials } from "@/lib/format";
 import { toast } from "sonner";
@@ -156,9 +157,12 @@ export default function Documents201AdminView() {
     }, [departmentFilter, search, pageSize]);
 
     const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null);
+    // uploadEmpId is set when Upload is triggered directly from the employee row
+    // (without opening the drilldown). handleUpload resolves: uploadEmpId ?? selectedEmpId.
+    const [uploadEmpId, setUploadEmpId] = useState<string | null>(null);
     const [uploadOpen, setUploadOpen] = useState(false);
     const [uploadForm, setUploadForm] = useState({
-        documentType: "employment_contract" as Employee201DocType,
+        documentType: "" as Employee201DocType | "",
         documentTitle: "",
         visibility: "hr_only" as Document201Visibility,
         expiryDate: "",
@@ -167,6 +171,56 @@ export default function Documents201AdminView() {
     });
     const [rejectingId, setRejectingId] = useState<string | null>(null);
     const [rejectReason, setRejectReason] = useState("");
+
+    // ── Upload Logs tab state ──
+    const [logSearch, setLogSearch] = useState("");
+    const [logStatusFilter, setLogStatusFilter] = useState<string>("all");
+    const [logPage, setLogPage] = useState(1);
+    const [logPageSize, setLogPageSize] = useState(ITEMS_PER_PAGE);
+    const [viewingDoc, setViewingDoc] = useState<Employee201Document | null>(null);
+    const [previewDoc, setPreviewDoc] = useState<Employee201Document | null>(null);
+    const [logRejectingId, setLogRejectingId] = useState<string | null>(null);
+    const [logRejectReason, setLogRejectReason] = useState("");
+
+    // Reset log page on filter change
+    useEffect(() => {
+        setLogPage(1);
+    }, [logSearch, logStatusFilter, logPageSize]);
+
+    const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+
+    // Upload logs: all non-archived docs, sorted newest first
+    const uploadLogs = useMemo(() => {
+        const q = logSearch.trim().toLowerCase();
+        return docs
+            .filter((d) => d.status !== "archived")
+            .filter((d) => {
+                if (logStatusFilter === "all") return true;
+                return d.status === logStatusFilter;
+            })
+            .filter((d) => {
+                if (!q) return true;
+                const emp = empMap.get(d.employeeId);
+                const name = emp?.name?.toLowerCase() ?? "";
+                return (
+                    name.includes(q) ||
+                    d.documentTitle.toLowerCase().includes(q) ||
+                    d.documentType.replace(/_/g, " ").includes(q)
+                );
+            })
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }, [docs, logSearch, logStatusFilter, empMap]);
+
+    const logTotalPages = Math.max(1, Math.ceil(uploadLogs.length / logPageSize));
+
+    useEffect(() => {
+        if (logPage > logTotalPages) setLogPage(logTotalPages);
+    }, [logPage, logTotalPages]);
+
+    const paginatedLogs = uploadLogs.slice(
+        (logPage - 1) * logPageSize,
+        logPage * logPageSize
+    );
 
     const filteredEmployees = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -206,14 +260,19 @@ export default function Documents201AdminView() {
     const selectedMissing = selectedEmpId ? getMissing(selectedEmpId) : [];
 
     const handleUpload = () => {
-        if (!selectedEmpId) return;
+        const targetEmpId = uploadEmpId ?? selectedEmpId;
+        if (!targetEmpId) return;
+        if (!uploadForm.documentType) {
+            toast.error("Please select a document type");
+            return;
+        }
         if (!uploadForm.documentTitle.trim()) {
             toast.error("Document title is required");
             return;
         }
         upload({
-            employeeId: selectedEmpId,
-            documentType: uploadForm.documentType,
+            employeeId: targetEmpId,
+            documentType: uploadForm.documentType as Employee201DocType,
             documentTitle: uploadForm.documentTitle.trim(),
             visibility: uploadForm.visibility,
             expiryDate: uploadForm.expiryDate || undefined,
@@ -224,8 +283,9 @@ export default function Documents201AdminView() {
         });
         toast.success("Document uploaded — awaiting review");
         setUploadOpen(false);
+        setUploadEmpId(null);
         setUploadForm({
-            documentType: "employment_contract",
+            documentType: "",
             documentTitle: "",
             visibility: "hr_only",
             expiryDate: "",
@@ -264,130 +324,260 @@ export default function Documents201AdminView() {
                 </CardContent>
             </Card>
 
-            {/* Search + Department Filter */}
-            <div className="flex items-center gap-3">
-                <div className="relative max-w-sm">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Search employee by name, email or ID…"
-                        className="pl-9"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
-                </div>
-                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                    <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="All Departments" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">All Departments</SelectItem>
-                        {uniqueDepartments.map((dept) => (
-                            <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
+            {/* ── Tabs ──────────────────────────────────────────── */}
+            <Tabs defaultValue="201files" className="space-y-4">
+                <TabsList>
+                    <TabsTrigger value="201files">201 Files</TabsTrigger>
+                    <TabsTrigger value="upload-logs">
+                        Upload Logs
+                        {stats.forReview > 0 && (
+                            <Badge className="ml-2 bg-amber-500 text-white hover:bg-amber-500 border-0 h-5 px-1.5 text-[10px]">{stats.forReview}</Badge>
+                        )}
+                    </TabsTrigger>
+                </TabsList>
 
-            {/* Employee table */}
-            <Card>
-                <CardContent className="p-0">
-                    <div className="overflow-x-auto">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Employee</TableHead>
-                                    <TableHead>Department</TableHead>
-                                    <TableHead className="w-[200px]">Completeness</TableHead>
-                                    <TableHead>Documents</TableHead>
-                                    <TableHead>Missing</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {!isHydrated && hydrationTimedOut ? (
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="text-center text-destructive py-8">
-                                            Employee data could not be loaded
-                                        </TableCell>
-                                    </TableRow>
-                                ) : !isHydrated ? (
-                                    <TableSkeleton />
-                                ) : paginatedEmployees.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                                            No employees found.
-                                        </TableCell>
-                                    </TableRow>
-                                ) : (
-                                    paginatedEmployees.map(({ emp, completeness, missing, docCount }) => {
-                                        const pct = Math.round(completeness * 100);
-                                        const tone = pct >= 100 ? "bg-emerald-500" : pct >= 60 ? "bg-amber-500" : "bg-red-500";
-                                        return (
-                                            <TableRow key={emp.id}>
-                                                <TableCell>
-                                                    <div className="flex items-center gap-3">
-                                                        <Avatar className="h-9 w-9">
-                                                            <AvatarFallback>{getInitials(emp.name)}</AvatarFallback>
-                                                        </Avatar>
-                                                        <div>
-                                                            <div className="font-medium">{emp.name}</div>
-                                                            <div className="text-xs text-muted-foreground">{emp.email}</div>
-                                                        </div>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="text-sm">{emp.department}</TableCell>
-                                                <TableCell>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                                                            <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
-                                                        </div>
-                                                        <span className="text-xs font-medium w-10 text-right">{pct}%</span>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell><Badge variant="secondary">{docCount}</Badge></TableCell>
-                                                <TableCell>
-                                                    {missing.length === 0 ? (
-                                                        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-0">
-                                                            <ShieldCheck className="h-3 w-3 mr-1" /> Complete
-                                                        </Badge>
-                                                    ) : (
-                                                        <span className="text-xs text-muted-foreground">{missing.length} of {REQUIRED_201_DOC_TYPES.length} missing</span>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <Button size="sm" variant="outline" onClick={() => setSelectedEmpId(emp.id)}>
-                                                        Open
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Pagination footer */}
-            {totalPages > 1 && (
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground">Rows per page:</span>
-                        <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
-                            <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
-                            <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                {/* ════════════ TAB 1: 201 Files (existing) ════════════ */}
+                <TabsContent value="201files" className="space-y-4">
+                    {/* Search + Department Filter */}
+                    <div className="flex items-center gap-3">
+                        <div className="relative max-w-sm">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search employee by name, email or ID…"
+                                className="pl-9"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                        </div>
+                        <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                            <SelectTrigger className="w-[180px]">
+                                <SelectValue placeholder="All Departments" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Departments</SelectItem>
+                                {uniqueDepartments.map((dept) => (
+                                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                ))}
+                            </SelectContent>
                         </Select>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
-                        <Button variant="outline" size="icon" className="h-8 w-8" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}><ChevronLeft className="h-4 w-4" /></Button>
-                        <Button variant="outline" size="icon" className="h-8 w-8" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}><ChevronRight className="h-4 w-4" /></Button>
-                    </div>
-                </div>
-            )}
 
-            {/* Drilldown dialog */}
+                    {/* Employee table */}
+                    <Card>
+                        <CardContent className="p-0">
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Employee</TableHead>
+                                            <TableHead>Department</TableHead>
+                                            <TableHead className="w-[200px]">Completeness</TableHead>
+                                            <TableHead>Documents</TableHead>
+                                            <TableHead>Missing</TableHead>
+                                            <TableHead className="text-right">Actions</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {!isHydrated && hydrationTimedOut ? (
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="text-center text-destructive py-8">
+                                                    Employee data could not be loaded
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : !isHydrated ? (
+                                            <TableSkeleton />
+                                        ) : paginatedEmployees.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                                                    No employees found.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            paginatedEmployees.map(({ emp, completeness, missing, docCount }) => {
+                                                const pct = Math.round(completeness * 100);
+                                                const tone = pct >= 100 ? "bg-emerald-500" : pct >= 60 ? "bg-amber-500" : "bg-red-500";
+                                                return (
+                                                    <TableRow key={emp.id}>
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-3">
+                                                                <Avatar className="h-9 w-9">
+                                                                    <AvatarFallback>{getInitials(emp.name)}</AvatarFallback>
+                                                                </Avatar>
+                                                                <div>
+                                                                    <div className="font-medium">{emp.name}</div>
+                                                                    <div className="text-xs text-muted-foreground">{emp.email}</div>
+                                                                </div>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-sm">{emp.department}</TableCell>
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                                                    <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
+                                                                </div>
+                                                                <span className="text-xs font-medium w-10 text-right">{pct}%</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell><Badge variant="secondary">{docCount}</Badge></TableCell>
+                                                        <TableCell>
+                                                            {missing.length === 0 ? (
+                                                                <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-0">
+                                                                    <ShieldCheck className="h-3 w-3 mr-1" /> Complete
+                                                                </Badge>
+                                                            ) : (
+                                                                <span className="text-xs text-muted-foreground">{missing.length} of {REQUIRED_201_DOC_TYPES.length} missing</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <Button size="icon" variant="ghost" className="h-8 w-8" title="View 201 file" onClick={() => setSelectedEmpId(emp.id)}>
+                                                                    <Eye className="h-4 w-4" />
+                                                                </Button>
+                                                                <Button size="icon" variant="ghost" className="h-8 w-8" title="Upload document" onClick={() => { setUploadEmpId(emp.id); setUploadOpen(true); }}>
+                                                                    <Upload className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Pagination footer */}
+                    {totalPages > 1 && (
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">Rows per page:</span>
+                                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
+                                    <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                    <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                                <Button variant="outline" size="icon" className="h-8 w-8" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}><ChevronLeft className="h-4 w-4" /></Button>
+                                <Button variant="outline" size="icon" className="h-8 w-8" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}><ChevronRight className="h-4 w-4" /></Button>
+                            </div>
+                        </div>
+                    )}
+                </TabsContent>
+
+                {/* ════════════ TAB 2: Upload Logs ════════════ */}
+                <TabsContent value="upload-logs" className="space-y-4">
+                    {/* Search + Status filter */}
+                    <div className="flex items-center gap-3">
+                        <div className="relative max-w-sm">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search by employee name or document…"
+                                className="pl-9"
+                                value={logSearch}
+                                onChange={(e) => setLogSearch(e.target.value)}
+                            />
+                        </div>
+                        <Select value={logStatusFilter} onValueChange={setLogStatusFilter}>
+                            <SelectTrigger className="w-[160px]">
+                                <SelectValue placeholder="All Statuses" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Statuses</SelectItem>
+                                <SelectItem value="uploaded">Uploaded</SelectItem>
+                                <SelectItem value="for_review">For Review</SelectItem>
+                                <SelectItem value="approved">Approved</SelectItem>
+                                <SelectItem value="rejected">Rejected</SelectItem>
+                                <SelectItem value="expired">Expired</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Upload logs table */}
+                    <Card>
+                        <CardContent className="p-0">
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Employee</TableHead>
+                                            <TableHead>Document</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead>Date Uploaded</TableHead>
+                                            <TableHead className="text-right">Actions</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {paginatedLogs.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                                                    No upload logs found.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            paginatedLogs.map((d) => {
+                                                const emp = empMap.get(d.employeeId);
+                                                return (
+                                                    <TableRow key={d.id}>
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-3">
+                                                                <Avatar className="h-8 w-8">
+                                                                    <AvatarFallback className="text-xs">{getInitials(emp?.name ?? "?")}</AvatarFallback>
+                                                                </Avatar>
+                                                                <div>
+                                                                    <div className="font-medium text-sm">{emp?.name ?? d.employeeId}</div>
+                                                                    <div className="text-xs text-muted-foreground">{emp?.department ?? ""}</div>
+                                                                </div>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <div>
+                                                                <div className="text-sm font-medium">{d.documentTitle}</div>
+                                                                <div className="text-xs text-muted-foreground">{DOC_TYPE_LABELS[d.documentType]}</div>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell><StatusBadge status={d.status} /></TableCell>
+                                                        <TableCell className="text-sm text-muted-foreground">
+                                                            {new Date(d.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <Button size="sm" variant="outline" className="h-7 px-3" onClick={() => setViewingDoc(d)}>
+                                                                <Eye className="h-3.5 w-3.5 mr-1.5" /> View
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Upload logs pagination */}
+                    {logTotalPages > 1 && (
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">Rows per page:</span>
+                                <Select value={String(logPageSize)} onValueChange={(v) => { setLogPageSize(Number(v)); setLogPage(1); }}>
+                                    <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                    <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">Page {logPage} of {logTotalPages}</span>
+                                <Button variant="outline" size="icon" className="h-8 w-8" disabled={logPage <= 1} onClick={() => setLogPage((p) => Math.max(1, p - 1))}><ChevronLeft className="h-4 w-4" /></Button>
+                                <Button variant="outline" size="icon" className="h-8 w-8" disabled={logPage >= logTotalPages} onClick={() => setLogPage((p) => Math.min(logTotalPages, p + 1))}><ChevronRight className="h-4 w-4" /></Button>
+                            </div>
+                        </div>
+                    )}
+                </TabsContent>
+            </Tabs>
+
+            {/* ── Employee drilldown dialog ─────────────────────── */}
             <Dialog open={!!selectedEmp} onOpenChange={(o) => !o && setSelectedEmpId(null)}>
                 <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                     {selectedEmp && (
@@ -416,11 +606,7 @@ export default function Documents201AdminView() {
                                 </Card>
                             )}
 
-                            <div className="flex justify-end">
-                                <Button onClick={() => setUploadOpen(true)} size="sm">
-                                    <Upload className="h-4 w-4 mr-2" /> Upload Document
-                                </Button>
-                            </div>
+
 
                             {/* Documents table */}
                             <div className="border rounded-md">
@@ -462,6 +648,15 @@ export default function Documents201AdminView() {
                                                     </TableCell>
                                                     <TableCell className="text-xs">{d.expiryDate ?? "—"}</TableCell>
                                                     <TableCell className="text-right space-x-1">
+                                                        <Button size="sm" variant="ghost" className="h-7 px-2" title="Upload document"
+                                                            onClick={() => setUploadOpen(true)}>
+                                                            <Upload className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                        {d.filePath && (
+                                                            <Button size="sm" variant="ghost" className="h-7 px-2" title="Preview file" onClick={() => setPreviewDoc(d)}>
+                                                                <Eye className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        )}
                                                         {(d.status === "for_review" || d.status === "uploaded") && (
                                                             <>
                                                                 <Button size="sm" variant="outline" className="h-7 px-2 text-emerald-700"
@@ -492,8 +687,8 @@ export default function Documents201AdminView() {
                 </DialogContent>
             </Dialog>
 
-            {/* Upload dialog */}
-            <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+            {/* ── Upload dialog ─────────────────────────────────── */}
+            <Dialog open={uploadOpen} onOpenChange={(o) => { setUploadOpen(o); if (!o) setUploadEmpId(null); }}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Upload 201 Document</DialogTitle>
@@ -503,7 +698,7 @@ export default function Documents201AdminView() {
                             <Label>Document Type</Label>
                             <Select value={uploadForm.documentType}
                                 onValueChange={(v) => setUploadForm((f) => ({ ...f, documentType: v as Employee201DocType }))}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectTrigger><SelectValue placeholder="Select document type" /></SelectTrigger>
                                 <SelectContent>
                                     {(Object.keys(DOC_TYPE_LABELS) as Employee201DocType[]).map((t) => (
                                         <SelectItem key={t} value={t}>{DOC_TYPE_LABELS[t]}</SelectItem>
@@ -547,8 +742,13 @@ export default function Documents201AdminView() {
                         </div>
                         <div>
                             <Label>Remarks (optional)</Label>
-                            <Textarea value={uploadForm.remarks}
-                                onChange={(e) => setUploadForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
+                            <Textarea
+                                value={uploadForm.remarks}
+                                onChange={(e) => setUploadForm((f) => ({ ...f, remarks: e.target.value }))}
+                                rows={5}
+                                className="resize-none overflow-y-auto"
+                                placeholder="Any notes or context for this document…"
+                            />
                         </div>
                     </div>
                     <DialogFooter>
@@ -558,7 +758,7 @@ export default function Documents201AdminView() {
                 </DialogContent>
             </Dialog>
 
-            {/* Reject dialog */}
+            {/* ── Reject dialog (employee drilldown) ────────────── */}
             <Dialog open={!!rejectingId} onOpenChange={(o) => !o && setRejectingId(null)}>
                 <DialogContent>
                     <DialogHeader>
@@ -580,6 +780,220 @@ export default function Documents201AdminView() {
                                 }
                             }}>Reject</Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── View Document modal (Upload Logs) ─────────────── */}
+            <Dialog open={!!viewingDoc} onOpenChange={(o) => !o && setViewingDoc(null)}>
+                <DialogContent className="max-w-lg">
+                    {viewingDoc && (() => {
+                        const emp = empMap.get(viewingDoc.employeeId);
+                        return (
+                            <>
+                                <DialogHeader>
+                                    <DialogTitle>Document Details</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                    {/* Summary grid */}
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Employee</p>
+                                            <p className="font-medium">{emp?.name ?? viewingDoc.employeeId}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Status</p>
+                                            <StatusBadge status={viewingDoc.status} />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Document Type</p>
+                                            <p className="font-medium">{DOC_TYPE_LABELS[viewingDoc.documentType]}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Document Title</p>
+                                            <p className="font-medium">{viewingDoc.documentTitle}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Visibility</p>
+                                            <p className="capitalize">{viewingDoc.visibility.replace("_", " ")}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Expiry Date</p>
+                                            <p>{viewingDoc.expiryDate ?? "—"}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Uploaded</p>
+                                            <p>{new Date(viewingDoc.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Uploaded By</p>
+                                            <p>{viewingDoc.uploadedBy ? (empMap.get(viewingDoc.uploadedBy)?.name ?? viewingDoc.uploadedBy) : "—"}</p>
+                                        </div>
+                                        {viewingDoc.remarks && (
+                                            <div className="col-span-2">
+                                                <p className="text-xs text-muted-foreground">Remarks</p>
+                                                <p className="text-sm">{viewingDoc.remarks}</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* File section */}
+                                    {viewingDoc.filePath && (
+                                        <Card className="border">
+                                            <CardContent className="p-3">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                                                        <button
+                                                            className="text-sm text-primary hover:underline truncate cursor-pointer"
+                                                            onClick={() => { setViewingDoc(null); setPreviewDoc(viewingDoc); }}
+                                                        >
+                                                            {viewingDoc.filePath.split("/").pop() ?? viewingDoc.filePath}
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => { setViewingDoc(null); setPreviewDoc(viewingDoc); }}>
+                                                            <Eye className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => {
+                                                            toast.success("Download started");
+                                                        }}>
+                                                            <Download className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    )}
+                                </div>
+
+                                {/* Action buttons */}
+                                <DialogFooter className="gap-2 sm:gap-0">
+                                    {(viewingDoc.status === "for_review" || viewingDoc.status === "uploaded") && (
+                                        <>
+                                            <Button variant="outline" className="text-red-700 border-red-200 hover:bg-red-50"
+                                                onClick={() => {
+                                                    setViewingDoc(null);
+                                                    setLogRejectingId(viewingDoc.id);
+                                                    setLogRejectReason("");
+                                                }}>
+                                                <XCircle className="h-4 w-4 mr-2" /> Reject
+                                            </Button>
+                                            <Button className="bg-emerald-600 hover:bg-emerald-700"
+                                                onClick={() => {
+                                                    approve(viewingDoc.id, currentUser.id);
+                                                    toast.success("Document approved");
+                                                    setViewingDoc(null);
+                                                }}>
+                                                <CheckCircle2 className="h-4 w-4 mr-2" /> Approve
+                                            </Button>
+                                        </>
+                                    )}
+                                    {viewingDoc.status !== "for_review" && viewingDoc.status !== "uploaded" && (
+                                        <Button variant="outline" onClick={() => setViewingDoc(null)}>Close</Button>
+                                    )}
+                                </DialogFooter>
+                            </>
+                        );
+                    })()}
+                </DialogContent>
+            </Dialog>
+
+            {/* ── Reject dialog (Upload Logs) ───────────────────── */}
+            <Dialog open={!!logRejectingId} onOpenChange={(o) => !o && setLogRejectingId(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Reject Document</DialogTitle>
+                    </DialogHeader>
+                    <div>
+                        <Label>Reason</Label>
+                        <Textarea value={logRejectReason} onChange={(e) => setLogRejectReason(e.target.value)} rows={3}
+                            placeholder="Explain why this document is being rejected…" />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setLogRejectingId(null)}>Cancel</Button>
+                        <Button variant="destructive" disabled={!logRejectReason.trim()}
+                            onClick={() => {
+                                if (logRejectingId) {
+                                    reject(logRejectingId, currentUser.id, logRejectReason.trim());
+                                    toast.success("Document rejected");
+                                    setLogRejectingId(null);
+                                }
+                            }}>Reject</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── File Preview modal ────────────────────────────── */}
+            <Dialog open={!!previewDoc} onOpenChange={(o) => !o && setPreviewDoc(null)}>
+                <DialogContent className="max-w-3xl max-h-[90vh]">
+                    {previewDoc && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <FileText className="h-5 w-5" /> {previewDoc.documentTitle}
+                                </DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                                {/* File info bar */}
+                                <div className="flex items-center justify-between bg-muted/50 rounded-lg px-4 py-3">
+                                    <div className="text-sm">
+                                        <span className="text-muted-foreground">File: </span>
+                                        <span className="font-mono text-xs">{previewDoc.filePath}</span>
+                                    </div>
+                                    <Button size="sm" variant="outline" onClick={() => {
+                                        toast.success("Download started");
+                                    }}>
+                                        <Download className="h-4 w-4 mr-2" /> Download
+                                    </Button>
+                                </div>
+
+                                {/* Preview area */}
+                                <div className="border rounded-lg bg-muted/30 flex items-center justify-center min-h-[400px]">
+                                    {previewDoc.filePath?.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                            src={previewDoc.filePath}
+                                            alt={previewDoc.documentTitle}
+                                            className="max-w-full max-h-[60vh] object-contain rounded"
+                                        />
+                                    ) : previewDoc.filePath?.match(/\.pdf$/i) ? (
+                                        <iframe
+                                            src={previewDoc.filePath}
+                                            className="w-full h-[60vh] rounded"
+                                            title={previewDoc.documentTitle}
+                                        />
+                                    ) : (
+                                        <div className="text-center py-12">
+                                            <FileText className="h-16 w-16 text-muted-foreground/30 mx-auto mb-4" />
+                                            <p className="text-sm text-muted-foreground mb-1">Preview not available for this file type</p>
+                                            <p className="text-xs text-muted-foreground mb-4 font-mono">{previewDoc.filePath}</p>
+                                            <Button variant="outline" size="sm" onClick={() => {
+                                                toast.success("Download started");
+                                            }}>
+                                                <Download className="h-4 w-4 mr-2" /> Download File
+                                            </Button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Document metadata */}
+                                <div className="grid grid-cols-3 gap-3 text-sm">
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">Type</p>
+                                        <p>{DOC_TYPE_LABELS[previewDoc.documentType]}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">Status</p>
+                                        <StatusBadge status={previewDoc.status} />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">Employee</p>
+                                        <p>{empMap.get(previewDoc.employeeId)?.name ?? previewDoc.employeeId}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </DialogContent>
             </Dialog>
         </div>
@@ -644,5 +1058,3 @@ function TableSkeleton() {
         </>
     );
 }
-
-
