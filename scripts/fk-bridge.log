@@ -472,3 +472,21 @@
 [2026-05-21T05:46:41.923Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
 [2026-05-21T10:43:05.144Z] [info] bridge listening {"port":8080,"target":"https://nex-hrms-v2.vercel.app/api/attendance/t800","logFile":"C:\\xampp\\htdocs\\Github\\NexHRMS-v2\\scripts\\fk-bridge.log"}
 [2026-05-21T10:43:05.145Z] [info] local addresses {"addresses":["192.168.16.1","192.168.254.111"]}
+[2026-05-22T02:29:34.954Z] [info] bridge listening {"port":8080,"target":"https://nex-hrms-v2.vercel.app/api/attendance/t800","logFile":"C:\\xampp\\htdocs\\Github\\NexHRMS-v2\\scripts\\fk-bridge.log"}
+[2026-05-22T02:29:34.956Z] [info] local addresses {"addresses":["192.168.16.1","192.168.254.111"]}
+[2026-05-22T02:36:48.925Z] [info] post request received {"path":"/","remote":"192.168.254.175:47366","requestCode":"realtime_enroll_data","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":28187}
+[2026-05-22T02:36:48.927Z] [info] accepted non-log/partial request {"requestCode":"realtime_enroll_data","devId":"4E3037323515033A","blkNo":"0","bytes":28187}
+[2026-05-22T02:36:49.204Z] [info] post request received {"path":"/","remote":"192.168.254.175:47368","requestCode":"receive_cmd","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":308}
+[2026-05-22T02:36:49.205Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-22T02:37:09.924Z] [info] post request received {"path":"/","remote":"192.168.254.175:47370","requestCode":"receive_cmd","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":308}
+[2026-05-22T02:37:09.925Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-22T02:37:30.474Z] [info] post request received {"path":"/","remote":"192.168.254.175:47372","requestCode":"receive_cmd","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":308}
+[2026-05-22T02:37:30.476Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-22T02:37:51.461Z] [info] post request received {"path":"/","remote":"192.168.254.175:47374","requestCode":"receive_cmd","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":308}
+[2026-05-22T02:37:51.462Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-22T02:38:12.286Z] [info] post request received {"path":"/","remote":"192.168.254.175:47376","requestCode":"receive_cmd","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":308}
+[2026-05-22T02:38:12.288Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-22T02:38:32.717Z] [info] post request received {"path":"/","remote":"192.168.254.175:47378","requestCode":"receive_cmd","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":308}
+[2026-05-22T02:38:32.718Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
+[2026-05-22T02:40:47.273Z] [info] post request received {"path":"/","remote":"192.168.254.175:47388","requestCode":"receive_cmd","devId":"4E3037323515033A","blkNo":"0","contentType":"application/octet-stream","bytes":308}
+[2026-05-22T02:40:47.274Z] [info] accepted non-attendance request {"requestCode":"receive_cmd","keys":["fk_info","fk_name","fk_time"]}
