@@ -240,10 +240,10 @@ export default function AdminProjectsView() {
                                     <TableHead className="text-xs">Project Name</TableHead>
                                     <TableHead className="text-xs">Location</TableHead>
                                     <TableHead className="text-xs">Radius</TableHead>
-                                    <TableHead className="text-xs">Status</TableHead>
-                                    <TableHead className="text-xs">Verification</TableHead>
+                                    <TableHead className="text-xs pl-10">Status</TableHead>
+                                    <TableHead className="text-xs pl-7">Verification</TableHead>
                                     <TableHead className="text-xs">Team</TableHead>
-                                    <TableHead className="text-xs w-32">Actions</TableHead>
+                                    <TableHead className="text-xs w-32 text-center">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>

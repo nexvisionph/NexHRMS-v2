@@ -187,7 +187,7 @@ export default function OrganizationPage() {
                                         <TableHead className="text-xs">Description</TableHead>
                                         <TableHead className="text-xs">Positions</TableHead>
                                         <TableHead className="text-xs">Active Employees</TableHead>
-                                        <TableHead className="text-xs w-20">Actions</TableHead>
+                                        <TableHead className="text-xs text-center">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -239,7 +239,7 @@ export default function OrganizationPage() {
                                         <TableHead className="text-xs">Title</TableHead>
                                         <TableHead className="text-xs">Department</TableHead>
                                         <TableHead className="text-xs">Type</TableHead>
-                                        <TableHead className="text-xs w-20">Actions</TableHead>
+                                        <TableHead className="text-xs text-center">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>

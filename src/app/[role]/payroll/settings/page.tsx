@@ -393,7 +393,7 @@ function DeductionTemplatesTab({
                                 <TableHead className="text-xs">Value</TableHead>
                                 <TableHead className="text-xs">Conditions</TableHead>
                                 <TableHead className="text-xs">Status</TableHead>
-                                <TableHead className="text-xs w-20"></TableHead>
+                                <TableHead className="text-xs text-center">Actions</TableHead>
                             </TableRow></TableHeader>
                             <TableBody>
                                 {templates.length === 0 ? (
@@ -420,8 +420,8 @@ function DeductionTemplatesTab({
                                                 {t.isActive ? "Active" : "Inactive"}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center gap-1">
+                                        <TableCell >
+                                            <div className="flex items-center gap-1 text-center justify-center">
                                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(t)}><Edit className="h-3.5 w-3.5" /></Button>
                                                 <AlertDialog>
                                                     <AlertDialogTrigger asChild>

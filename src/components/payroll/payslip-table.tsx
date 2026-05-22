@@ -230,7 +230,7 @@ export function PayslipTable({ payslips, runs = [], getEmpName, getEmpDetails, o
                                     <TableHead className="text-xs text-right">Net Pay</TableHead>
                                     <TableHead className="text-xs">Status</TableHead>
                                     <TableHead className="text-xs">Signed?</TableHead>
-                                    <TableHead className="text-xs">Actions</TableHead>
+                                    <TableHead className="text-xs text-center">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
