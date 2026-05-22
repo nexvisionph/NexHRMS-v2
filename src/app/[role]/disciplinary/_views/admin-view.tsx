@@ -211,7 +211,7 @@ export default function DisciplinaryAdminView() {
                                     <TableHead>Violation</TableHead>
                                     <TableHead>Incident</TableHead>
                                     <TableHead>Status</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
+                                    <TableHead className="text-right text-center">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>

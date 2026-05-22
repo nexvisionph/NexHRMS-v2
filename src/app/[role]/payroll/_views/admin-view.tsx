@@ -3238,7 +3238,7 @@ function DeductionTemplatesSection() {
                                 <TableHead className="text-xs">Assigned</TableHead>
                                 <TableHead className="text-xs">Conditions</TableHead>
                                 <TableHead className="text-xs">Status</TableHead>
-                                <TableHead className="text-xs w-28"></TableHead>
+                                <TableHead className="text-xs w-28 text-center">Actions</TableHead>
                             </TableRow></TableHeader>
                             <TableBody>
                                 {templates.length === 0 ? (
