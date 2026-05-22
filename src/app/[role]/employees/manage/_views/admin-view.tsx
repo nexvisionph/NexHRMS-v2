@@ -1210,18 +1210,18 @@ const filteredAccounts = useMemo(() => {
 
                     {/* Edit Employee Dialog */}
                     <Dialog open={editOpen} onOpenChange={setEditOpen}>
-                        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                        <DialogContent className="max-w-3xl max-h-[90vh] overflow-x-hidden">
                             <DialogHeader><DialogTitle>Edit Employee — {editingEmp?.id}</DialogTitle></DialogHeader>
                             <div className="space-y-4 pt-2">
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="text-sm font-medium">Full Name *</label><Input value={editName} onChange={(e) => setEditName(e.target.value)} className="mt-1" /></div>
-                                    <div><label className="text-sm font-medium">Email *</label><Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="mt-1" /></div>
+                                    <div><label className="text-sm font-medium">Full Name <span className="text-destructive">*</span></label><Input value={editName} onChange={(e) => setEditName(e.target.value)} className="mt-1" /></div>
+                                    <div><label className="text-sm font-medium">Email <span className="text-destructive">*</span></label><Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="mt-1" /></div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-sm font-medium">Job Title</label>
                                         <Select value={editJobTitle} onValueChange={setEditJobTitle}><SelectTrigger className="mt-1"><SelectValue placeholder="Select job title" /></SelectTrigger><SelectContent>{jobTitles.filter((jt) => jt.isActive).map((jt) => <SelectItem key={jt.id} value={jt.name}>{jt.name}</SelectItem>)}</SelectContent></Select>
                                     </div>
-                                    <div><label className="text-sm font-medium">Department *</label>
+                                    <div><label className="text-sm font-medium">Department <span className="text-destructive">*</span></label>
                                         <Select value={editDept} onValueChange={setEditDept}><SelectTrigger className="mt-1"><SelectValue placeholder="Select dept" /></SelectTrigger><SelectContent>{departments.filter((d) => d.isActive).map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select>
                                     </div>
                                 </div>
@@ -1231,13 +1231,15 @@ const filteredAccounts = useMemo(() => {
                                     </div>
                                     <div className="flex items-end"><p className="text-xs text-muted-foreground pb-2">Controls what pages and features this employee can access.</p></div>
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-sm font-medium">Work Type</label>
-                                        <Select value={editWorkType} onValueChange={(v) => setEditWorkType(v as WorkType)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">Work From Office</SelectItem><SelectItem value="WFH">Work From Home</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Full Onsite</SelectItem></SelectContent></Select>
+                                        <Select value={editWorkType} onValueChange={(v) => setEditWorkType(v as WorkType)}><SelectTrigger className="mt-1 overflow-hidden"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">Work From Office</SelectItem><SelectItem value="WFH">Work From Home</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Full Onsite</SelectItem></SelectContent></Select>
                                     </div>
                                     <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="number" value={editSalary} onChange={(e) => setEditSalary(e.target.value)} className="mt-1" /></div>
+                                </div>
+                                   <div className="grid grid-cols-1 gap-3"> 
                                     <div><label className="text-sm font-medium">Pay Frequency</label>
-                                        <Select value={editPayFreq} onValueChange={setEditPayFreq}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="company">Company Default ({paySchedule.defaultFrequency.replace("_", "-")})</SelectItem><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="semi_monthly">Semi-Monthly</SelectItem><SelectItem value="bi_weekly">Bi-Weekly</SelectItem><SelectItem value="weekly">Weekly</SelectItem></SelectContent></Select>
+                                        <Select value={editPayFreq} onValueChange={setEditPayFreq}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="company">Default ({paySchedule.defaultFrequency.replace("_", "-")})</SelectItem><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="semi_monthly">Semi-Monthly</SelectItem><SelectItem value="bi_weekly">Bi-Weekly</SelectItem><SelectItem value="weekly">Weekly</SelectItem></SelectContent></Select>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
