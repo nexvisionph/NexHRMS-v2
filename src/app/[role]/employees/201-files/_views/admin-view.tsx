@@ -25,13 +25,15 @@ import { Label } from "@/components/ui/label";
 import {
     FolderArchive, Search, Upload, CheckCircle2, XCircle,
     FileText, Clock, AlertTriangle, ShieldCheck, TrendingUp,
-    ChevronLeft, ChevronRight, Eye, Download, X,
+    ChevronLeft, ChevronRight, Eye, Download, X, Loader2, Pencil, Trash2,
 } from "lucide-react";
 import { getInitials } from "@/lib/format";
 import { toast } from "sonner";
 import type {
     Employee201Document, Employee201DocType, Document201Visibility,
 } from "@/types";
+import { DocumentFileUpload, uploadDocumentFiles, type UploadedFile } from "../_components/document-file-upload";
+import { useSignedUrl } from "../_components/use-signed-url";
 
 const DOC_TYPE_LABELS: Record<Employee201DocType, string> = {
     personal_info: "Personal Info Sheet",
@@ -80,6 +82,8 @@ export default function Documents201AdminView() {
     const currentUser = useAuthStore((s) => s.currentUser);
     const docs = useDocumentsStore((s) => s.documents);
     const upload = useDocumentsStore((s) => s.upload);
+    const updateDocument = useDocumentsStore((s) => s.updateDocument);
+    const removeDoc = useDocumentsStore((s) => s.remove);
     const approve = useDocumentsStore((s) => s.approve);
     const reject = useDocumentsStore((s) => s.reject);
     const archive = useDocumentsStore((s) => s.archive);
@@ -161,16 +165,20 @@ export default function Documents201AdminView() {
     // (without opening the drilldown). handleUpload resolves: uploadEmpId ?? selectedEmpId.
     const [uploadEmpId, setUploadEmpId] = useState<string | null>(null);
     const [uploadOpen, setUploadOpen] = useState(false);
+    const [uploadFiles, setUploadFiles] = useState<UploadedFile[]>([]);
+    const [uploading, setUploading] = useState(false);
     const [uploadForm, setUploadForm] = useState({
         documentType: "" as Employee201DocType | "",
         documentTitle: "",
         visibility: "hr_only" as Document201Visibility,
         expiryDate: "",
         remarks: "",
-        filePath: "",
     });
     const [rejectingId, setRejectingId] = useState<string | null>(null);
     const [rejectReason, setRejectReason] = useState("");
+    const [editingDoc, setEditingDoc] = useState<Employee201Document | null>(null);
+    const [editForm, setEditForm] = useState({ documentTitle: "", expiryDate: "", remarks: "" });
+    const [deletingDoc, setDeletingDoc] = useState<Employee201Document | null>(null);
 
     // ── Upload Logs tab state ──
     const [logSearch, setLogSearch] = useState("");
@@ -259,7 +267,7 @@ export default function Documents201AdminView() {
     const selectedDocs = selectedEmpId ? getByEmployee(selectedEmpId) : [];
     const selectedMissing = selectedEmpId ? getMissing(selectedEmpId) : [];
 
-    const handleUpload = () => {
+    const handleUpload = async () => {
         const targetEmpId = uploadEmpId ?? selectedEmpId;
         if (!targetEmpId) return;
         if (!uploadForm.documentType) {
@@ -270,28 +278,48 @@ export default function Documents201AdminView() {
             toast.error("Document title is required");
             return;
         }
-        upload({
-            employeeId: targetEmpId,
-            documentType: uploadForm.documentType as Employee201DocType,
-            documentTitle: uploadForm.documentTitle.trim(),
-            visibility: uploadForm.visibility,
-            expiryDate: uploadForm.expiryDate || undefined,
-            remarks: uploadForm.remarks || undefined,
-            filePath: uploadForm.filePath || undefined,
-            uploadedBy: currentUser.id,
-            status: "for_review",
-        });
-        toast.success("Document uploaded — awaiting review");
-        setUploadOpen(false);
-        setUploadEmpId(null);
-        setUploadForm({
-            documentType: "",
-            documentTitle: "",
-            visibility: "hr_only",
-            expiryDate: "",
-            remarks: "",
-            filePath: "",
-        });
+        if (uploadFiles.length === 0) {
+            toast.error("Please select at least one file to upload");
+            return;
+        }
+
+        setUploading(true);
+        try {
+            const result = await uploadDocumentFiles(uploadFiles, targetEmpId);
+            if (!result) {
+                toast.error("File upload failed");
+                return;
+            }
+
+            upload({
+                employeeId: targetEmpId,
+                documentType: uploadForm.documentType as Employee201DocType,
+                documentTitle: uploadForm.documentTitle.trim(),
+                visibility: uploadForm.visibility,
+                expiryDate: uploadForm.expiryDate || undefined,
+                remarks: uploadForm.remarks || undefined,
+                filePath: result.paths.join(","),
+                fileType: result.fileType,
+                fileSize: result.totalSize,
+                uploadedBy: currentUser.id,
+                status: "for_review",
+            });
+            toast.success("Document uploaded — awaiting review");
+            setUploadOpen(false);
+            setUploadEmpId(null);
+            setUploadFiles([]);
+            setUploadForm({
+                documentType: "",
+                documentTitle: "",
+                visibility: "hr_only",
+                expiryDate: "",
+                remarks: "",
+            });
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Upload failed");
+        } finally {
+            setUploading(false);
+        }
     };
 
     return (
@@ -436,6 +464,12 @@ export default function Documents201AdminView() {
                                                                 <Button size="icon" variant="ghost" className="h-8 w-8" title="Upload document" onClick={() => { setUploadEmpId(emp.id); setUploadOpen(true); }}>
                                                                     <Upload className="h-4 w-4" />
                                                                 </Button>
+                                                                <Button size="icon" variant="ghost" className="h-8 w-8" title="Edit documents" onClick={() => setSelectedEmpId(emp.id)}>
+                                                                    <Pencil className="h-4 w-4" />
+                                                                </Button>
+                                                                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" title="Delete documents" onClick={() => setSelectedEmpId(emp.id)}>
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
                                                             </div>
                                                         </TableCell>
                                                     </TableRow>
@@ -543,9 +577,25 @@ export default function Documents201AdminView() {
                                                             {new Date(d.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
                                                         </TableCell>
                                                         <TableCell className="text-right">
-                                                            <Button size="sm" variant="outline" className="h-7 px-3" onClick={() => setViewingDoc(d)}>
-                                                                <Eye className="h-3.5 w-3.5 mr-1.5" /> View
-                                                            </Button>
+                                                            <div className="flex items-center justify-end gap-0.5">
+                                                                <Button size="sm" variant="ghost" className="h-7 px-2" title="View" onClick={() => setViewingDoc(d)}>
+                                                                    <Eye className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                                <Button size="sm" variant="ghost" className="h-7 px-2" title="Edit" onClick={() => {
+                                                                    setEditingDoc(d);
+                                                                    setEditForm({
+                                                                        documentTitle: d.documentTitle,
+                                                                        expiryDate: d.expiryDate ?? "",
+                                                                        remarks: d.remarks ?? "",
+                                                                    });
+                                                                }}>
+                                                                    <Pencil className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                                <Button size="sm" variant="ghost" className="h-7 px-2 text-destructive hover:text-destructive" title="Delete"
+                                                                    onClick={() => setDeletingDoc(d)}>
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            </div>
                                                         </TableCell>
                                                     </TableRow>
                                                 );
@@ -579,10 +629,10 @@ export default function Documents201AdminView() {
 
             {/* ── Employee drilldown dialog ─────────────────────── */}
             <Dialog open={!!selectedEmp} onOpenChange={(o) => !o && setSelectedEmpId(null)}>
-                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="max-w-5xl max-h-[80vh] flex flex-col overflow-hidden">
                     {selectedEmp && (
                         <>
-                            <DialogHeader>
+                            <DialogHeader className="shrink-0">
                                 <DialogTitle className="flex items-center gap-2">
                                     <FolderArchive className="h-5 w-5" /> {selectedEmp.name} — 201 File
                                 </DialogTitle>
@@ -590,7 +640,7 @@ export default function Documents201AdminView() {
 
                             {/* Missing list */}
                             {selectedMissing.length > 0 && (
-                                <Card className="border-amber-200 bg-amber-50">
+                                <Card className="border-amber-200 bg-amber-50 shrink-0">
                                     <CardContent className="pt-4 pb-3">
                                         <div className="text-sm font-medium text-amber-900 mb-2 flex items-center gap-2">
                                             <AlertTriangle className="h-4 w-4" /> Missing required documents
@@ -606,76 +656,33 @@ export default function Documents201AdminView() {
                                 </Card>
                             )}
 
-
-
-                            {/* Documents table */}
-                            <div className="border rounded-md">
-                                <Table>
+                            {/* Documents table — scrollable within the fixed-height modal */}
+                            <div className="border rounded-md overflow-auto flex-1 min-h-0">
+                                <Table className="table-fixed w-full">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>Title</TableHead>
-                                            <TableHead>Type</TableHead>
-                                            <TableHead>Status</TableHead>
-                                            <TableHead>Visibility</TableHead>
-                                            <TableHead>Expiry</TableHead>
-                                            <TableHead className="text-right">Actions</TableHead>
+                                            <TableHead className="w-[28%]">Title</TableHead>
+                                            <TableHead className="w-[18%]">Type</TableHead>
+                                            <TableHead className="w-[24%]">Status</TableHead>
+                                            <TableHead className="w-[18%]">Visibility</TableHead>
+                                            <TableHead className="w-[12%]">Expiry</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {selectedDocs.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                                                <TableCell colSpan={5} className="text-center text-muted-foreground">
                                                     No documents on file yet.
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
                                             selectedDocs.map((d) => (
                                                 <TableRow key={d.id}>
-                                                    <TableCell className="font-medium">{d.documentTitle}</TableCell>
-                                                    <TableCell className="text-xs text-muted-foreground">{DOC_TYPE_LABELS[d.documentType]}</TableCell>
+                                                    <TableCell className="font-medium truncate max-w-0">{d.documentTitle}</TableCell>
+                                                    <TableCell className="text-xs text-muted-foreground truncate max-w-0">{DOC_TYPE_LABELS[d.documentType]}</TableCell>
                                                     <TableCell><StatusBadge status={d.status} /></TableCell>
-                                                    <TableCell>
-                                                        <Select value={d.visibility} onValueChange={(v) => setVisibility(d.id, v as Document201Visibility)}>
-                                                            <SelectTrigger className="h-7 text-xs w-[110px]">
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {VISIBILITY_OPTIONS.map((v) => (
-                                                                    <SelectItem key={v} value={v}>{v.replace("_", " ")}</SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </TableCell>
+                                                    <TableCell className="text-xs capitalize">{d.visibility.replace(/_/g, " ")}</TableCell>
                                                     <TableCell className="text-xs">{d.expiryDate ?? "—"}</TableCell>
-                                                    <TableCell className="text-right space-x-1">
-                                                        <Button size="sm" variant="ghost" className="h-7 px-2" title="Upload document"
-                                                            onClick={() => setUploadOpen(true)}>
-                                                            <Upload className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                        {d.filePath && (
-                                                            <Button size="sm" variant="ghost" className="h-7 px-2" title="Preview file" onClick={() => setPreviewDoc(d)}>
-                                                                <Eye className="h-3.5 w-3.5" />
-                                                            </Button>
-                                                        )}
-                                                        {(d.status === "for_review" || d.status === "uploaded") && (
-                                                            <>
-                                                                <Button size="sm" variant="outline" className="h-7 px-2 text-emerald-700"
-                                                                    onClick={() => { approve(d.id, currentUser.id); toast.success("Document approved"); }}>
-                                                                    Approve
-                                                                </Button>
-                                                                <Button size="sm" variant="outline" className="h-7 px-2 text-red-700"
-                                                                    onClick={() => { setRejectingId(d.id); setRejectReason(""); }}>
-                                                                    Reject
-                                                                </Button>
-                                                            </>
-                                                        )}
-                                                        {d.status !== "archived" && (
-                                                            <Button size="sm" variant="ghost" className="h-7 px-2"
-                                                                onClick={() => { archive(d.id, currentUser.id); toast.success("Archived"); }}>
-                                                                Archive
-                                                            </Button>
-                                                        )}
-                                                    </TableCell>
                                                 </TableRow>
                                             ))
                                         )}
@@ -732,13 +739,12 @@ export default function Documents201AdminView() {
                             </div>
                         </div>
                         <div>
-                            <Label>File Path / URL (optional)</Label>
-                            <Input value={uploadForm.filePath}
-                                onChange={(e) => setUploadForm((f) => ({ ...f, filePath: e.target.value }))}
-                                placeholder="employee-documents/EMP-123/contract.pdf" />
-                            <p className="text-xs text-muted-foreground mt-1">
-                                Storage upload UI is coming. For now, paste the path of an already-uploaded file.
-                            </p>
+                            <Label>Files</Label>
+                            <DocumentFileUpload
+                                files={uploadFiles}
+                                onChange={setUploadFiles}
+                                disabled={uploading}
+                            />
                         </div>
                         <div>
                             <Label>Remarks (optional)</Label>
@@ -752,8 +758,10 @@ export default function Documents201AdminView() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setUploadOpen(false)}>Cancel</Button>
-                        <Button onClick={handleUpload}>Upload</Button>
+                        <Button variant="outline" onClick={() => setUploadOpen(false)} disabled={uploading}>Cancel</Button>
+                        <Button onClick={handleUpload} disabled={uploading}>
+                            {uploading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading…</> : "Upload"}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -847,50 +855,35 @@ export default function Documents201AdminView() {
                                                             className="text-sm text-primary hover:underline truncate cursor-pointer"
                                                             onClick={() => { setViewingDoc(null); setPreviewDoc(viewingDoc); }}
                                                         >
-                                                            {viewingDoc.filePath.split("/").pop() ?? viewingDoc.filePath}
+                                                            {viewingDoc.filePath.split(",")[0].split("/").pop() ?? viewingDoc.filePath}
                                                         </button>
                                                     </div>
-                                                    <div className="flex items-center gap-1 shrink-0">
-                                                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => { setViewingDoc(null); setPreviewDoc(viewingDoc); }}>
-                                                            <Eye className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => {
-                                                            toast.success("Download started");
-                                                        }}>
-                                                            <Download className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                    </div>
+                                                    <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={() => { setViewingDoc(null); setPreviewDoc(viewingDoc); }}>
+                                                        <Eye className="h-3.5 w-3.5" />
+                                                    </Button>
                                                 </div>
                                             </CardContent>
                                         </Card>
                                     )}
                                 </div>
-
-                                {/* Action buttons */}
-                                <DialogFooter className="gap-2 sm:gap-0">
+                                <DialogFooter>
                                     {(viewingDoc.status === "for_review" || viewingDoc.status === "uploaded") && (
                                         <>
-                                            <Button variant="outline" className="text-red-700 border-red-200 hover:bg-red-50"
-                                                onClick={() => {
-                                                    setViewingDoc(null);
-                                                    setLogRejectingId(viewingDoc.id);
-                                                    setLogRejectReason("");
-                                                }}>
-                                                <XCircle className="h-4 w-4 mr-2" /> Reject
+                                            <Button
+                                                variant="destructive"
+                                                onClick={() => { setViewingDoc(null); setLogRejectingId(viewingDoc.id); setLogRejectReason(""); }}
+                                            >
+                                                Reject
                                             </Button>
-                                            <Button className="bg-emerald-600 hover:bg-emerald-700"
-                                                onClick={() => {
-                                                    approve(viewingDoc.id, currentUser.id);
-                                                    toast.success("Document approved");
-                                                    setViewingDoc(null);
-                                                }}>
-                                                <CheckCircle2 className="h-4 w-4 mr-2" /> Approve
+                                            <Button
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                                onClick={() => { approve(viewingDoc.id, currentUser.id); toast.success("Document approved"); setViewingDoc(null); }}
+                                            >
+                                                Approve
                                             </Button>
                                         </>
                                     )}
-                                    {viewingDoc.status !== "for_review" && viewingDoc.status !== "uploaded" && (
-                                        <Button variant="outline" onClick={() => setViewingDoc(null)}>Close</Button>
-                                    )}
+                                    <Button variant="outline" onClick={() => setViewingDoc(null)}>Close</Button>
                                 </DialogFooter>
                             </>
                         );
@@ -923,80 +916,163 @@ export default function Documents201AdminView() {
                 </DialogContent>
             </Dialog>
 
+            {/* ── Edit document dialog ──────────────────────────── */}
+            <Dialog open={!!editingDoc} onOpenChange={(o) => !o && setEditingDoc(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit Document</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <div>
+                            <Label>Document Title</Label>
+                            <Input value={editForm.documentTitle}
+                                onChange={(e) => setEditForm((f) => ({ ...f, documentTitle: e.target.value }))}
+                                placeholder="Document title" />
+                        </div>
+                        <div>
+                            <Label>Expiry Date (optional)</Label>
+                            <Input type="date" value={editForm.expiryDate}
+                                onChange={(e) => setEditForm((f) => ({ ...f, expiryDate: e.target.value }))} />
+                        </div>
+                        <div>
+                            <Label>Remarks (optional)</Label>
+                            <Textarea value={editForm.remarks}
+                                onChange={(e) => setEditForm((f) => ({ ...f, remarks: e.target.value }))} rows={3}
+                                placeholder="Any notes…" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditingDoc(null)}>Cancel</Button>
+                        <Button onClick={() => {
+                            if (!editingDoc) return;
+                            if (!editForm.documentTitle.trim()) {
+                                toast.error("Document title is required");
+                                return;
+                            }
+                            updateDocument(editingDoc.id, {
+                                documentTitle: editForm.documentTitle.trim(),
+                                expiryDate: editForm.expiryDate || undefined,
+                                remarks: editForm.remarks || undefined,
+                            });
+                            toast.success("Document updated");
+                            setEditingDoc(null);
+                        }}>Save Changes</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── Delete confirmation dialog ────────────────────── */}
+            <Dialog open={!!deletingDoc} onOpenChange={(o) => !o && setDeletingDoc(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete Document</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm text-muted-foreground">
+                        Are you sure you want to delete <strong className="text-foreground">{deletingDoc?.documentTitle}</strong>? This action cannot be undone.
+                    </p>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDeletingDoc(null)}>Cancel</Button>
+                        <Button variant="destructive" onClick={() => {
+                            if (!deletingDoc) return;
+                            removeDoc(deletingDoc.id);
+                            toast.success("Document deleted");
+                            setDeletingDoc(null);
+                        }}>Delete</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* ── File Preview modal ────────────────────────────── */}
             <Dialog open={!!previewDoc} onOpenChange={(o) => !o && setPreviewDoc(null)}>
-                <DialogContent className="max-w-3xl max-h-[90vh]">
-                    {previewDoc && (
-                        <>
-                            <DialogHeader>
-                                <DialogTitle className="flex items-center gap-2">
-                                    <FileText className="h-5 w-5" /> {previewDoc.documentTitle}
-                                </DialogTitle>
-                            </DialogHeader>
-                            <div className="space-y-4">
-                                {/* File info bar */}
-                                <div className="flex items-center justify-between bg-muted/50 rounded-lg px-4 py-3">
-                                    <div className="text-sm">
-                                        <span className="text-muted-foreground">File: </span>
-                                        <span className="font-mono text-xs">{previewDoc.filePath}</span>
-                                    </div>
-                                    <Button size="sm" variant="outline" onClick={() => {
-                                        toast.success("Download started");
-                                    }}>
-                                        <Download className="h-4 w-4 mr-2" /> Download
-                                    </Button>
-                                </div>
-
-                                {/* Preview area */}
-                                <div className="border rounded-lg bg-muted/30 flex items-center justify-center min-h-[400px]">
-                                    {previewDoc.filePath?.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img
-                                            src={previewDoc.filePath}
-                                            alt={previewDoc.documentTitle}
-                                            className="max-w-full max-h-[60vh] object-contain rounded"
-                                        />
-                                    ) : previewDoc.filePath?.match(/\.pdf$/i) ? (
-                                        <iframe
-                                            src={previewDoc.filePath}
-                                            className="w-full h-[60vh] rounded"
-                                            title={previewDoc.documentTitle}
-                                        />
-                                    ) : (
-                                        <div className="text-center py-12">
-                                            <FileText className="h-16 w-16 text-muted-foreground/30 mx-auto mb-4" />
-                                            <p className="text-sm text-muted-foreground mb-1">Preview not available for this file type</p>
-                                            <p className="text-xs text-muted-foreground mb-4 font-mono">{previewDoc.filePath}</p>
-                                            <Button variant="outline" size="sm" onClick={() => {
-                                                toast.success("Download started");
-                                            }}>
-                                                <Download className="h-4 w-4 mr-2" /> Download File
-                                            </Button>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Document metadata */}
-                                <div className="grid grid-cols-3 gap-3 text-sm">
-                                    <div>
-                                        <p className="text-xs text-muted-foreground">Type</p>
-                                        <p>{DOC_TYPE_LABELS[previewDoc.documentType]}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-muted-foreground">Status</p>
-                                        <StatusBadge status={previewDoc.status} />
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-muted-foreground">Employee</p>
-                                        <p>{empMap.get(previewDoc.employeeId)?.name ?? previewDoc.employeeId}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </>
-                    )}
+                <DialogContent className="max-w-3xl">
+                    {previewDoc && <AdminFilePreviewContent doc={previewDoc} empMap={empMap} />}
                 </DialogContent>
             </Dialog>
         </div>
+    );
+}
+
+function AdminFilePreviewContent({ doc, empMap }: { doc: Employee201Document; empMap: Map<string, { name: string }> }) {
+    const { url: signedUrl, loading, error } = useSignedUrl(doc.filePath);
+    const fileName = doc.filePath?.split(",")[0]?.split("/").pop() ?? doc.filePath;
+    const isImage = fileName?.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i);
+    const isPdf = fileName?.match(/\.pdf$/i);
+
+    return (
+        <>
+            <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" /> {doc.documentTitle}
+                </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+                {/* File info bar */}
+                <div className="flex items-center justify-between bg-muted/50 rounded-lg px-4 py-3">
+                    <div className="text-sm truncate mr-3">
+                        <span className="text-muted-foreground">File: </span>
+                        <span className="font-mono text-xs">{fileName}</span>
+                    </div>
+                    {signedUrl && (
+                        <Button size="sm" variant="outline" asChild className="shrink-0">
+                            <a href={signedUrl} download={fileName} target="_blank" rel="noopener noreferrer">
+                                <Download className="h-4 w-4 mr-2" /> Download
+                            </a>
+                        </Button>
+                    )}
+                </div>
+
+                {/* Preview area — fixed height, no scroll */}
+                <div className="border rounded-lg bg-muted/30 flex items-center justify-center h-[450px] overflow-hidden">
+                    {loading ? (
+                        <div className="text-center">
+                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
+                            <p className="text-sm text-muted-foreground">Loading preview…</p>
+                        </div>
+                    ) : error || !signedUrl ? (
+                        <div className="text-center py-12">
+                            <FileText className="h-16 w-16 text-muted-foreground/30 mx-auto mb-4" />
+                            <p className="text-sm text-muted-foreground mb-1">File not available for preview</p>
+                            <p className="text-xs text-muted-foreground font-mono">{fileName}</p>
+                        </div>
+                    ) : isImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={signedUrl}
+                            alt={doc.documentTitle}
+                            className="max-w-full max-h-full object-contain"
+                        />
+                    ) : isPdf ? (
+                        <iframe
+                            src={signedUrl}
+                            className="w-full h-full rounded"
+                            title={doc.documentTitle}
+                        />
+                    ) : (
+                        <div className="text-center py-12">
+                            <FileText className="h-16 w-16 text-muted-foreground/30 mx-auto mb-4" />
+                            <p className="text-sm text-muted-foreground mb-1">Preview not available for this file type</p>
+                            <p className="text-xs text-muted-foreground font-mono">{fileName}</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Document metadata */}
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div>
+                        <p className="text-xs text-muted-foreground">Type</p>
+                        <p>{DOC_TYPE_LABELS[doc.documentType]}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs text-muted-foreground">Status</p>
+                        <StatusBadge status={doc.status} />
+                    </div>
+                    <div>
+                        <p className="text-xs text-muted-foreground">Employee</p>
+                        <p>{empMap.get(doc.employeeId)?.name ?? doc.employeeId}</p>
+                    </div>
+                </div>
+            </div>
+        </>
     );
 }
 

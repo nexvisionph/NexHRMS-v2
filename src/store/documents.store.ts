@@ -22,6 +22,7 @@ interface DocumentsState {
     documents: Employee201Document[];
 
     upload: (data: Omit<Employee201Document, "id" | "createdAt" | "updatedAt" | "status"> & { status?: Document201Status }) => Employee201Document;
+    updateDocument: (id: string, patch: Partial<Pick<Employee201Document, "documentTitle" | "documentType" | "expiryDate" | "remarks" | "filePath" | "fileType" | "fileSize">>) => void;
     approve: (id: string, reviewerId: string, remarks?: string) => void;
     reject: (id: string, reviewerId: string, remarks: string) => void;
     archive: (id: string, by: string) => void;
@@ -76,6 +77,13 @@ export const useDocumentsStore = create<DocumentsState>()(
                 });
                 return doc;
             },
+
+            updateDocument: (id, patch) =>
+                set((s) => ({
+                    documents: s.documents.map((d) =>
+                        d.id === id ? { ...d, ...patch, updatedAt: nowIso() } : d
+                    ),
+                })),
 
             approve: (id, reviewerId, remarks) =>
                 set((s) => ({

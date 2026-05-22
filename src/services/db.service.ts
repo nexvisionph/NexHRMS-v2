@@ -109,6 +109,9 @@ async function upsertRow(table: string, row: Record<string, unknown>, onConflict
     // Safe to suppress — the data is already in the DB.
     if (error.code === "23505") return true;
     if (error.message?.includes("schema cache")) return false;
+    // AbortError from Web Locks API — transient race between auth token refresh
+    // and in-flight requests. Safe to ignore; the operation can retry next cycle.
+    if (error.message?.includes("Lock broken") || error.message?.includes("AbortError")) return false;
     console.error(`[db] upsert ${table}:`, error.message);
   }
   return !error;
@@ -170,6 +173,9 @@ async function insertRow(table: string, row: Record<string, unknown>) {
     // anonymous client has no JWT that satisfies RLS predicates.
     if (error.code === "42501" && isDemoMode) return false;
     if (error.message?.includes("schema cache")) return false;
+    // AbortError from Web Locks API — transient race between auth token refresh
+    // and in-flight requests. Safe to ignore; the operation can retry next cycle.
+    if (error.message?.includes("Lock broken") || error.message?.includes("AbortError")) return false;
     console.error(`[db] insert ${table}:`, error.message);
   }
   return !error;
@@ -1400,12 +1406,16 @@ export const documents201Storage = {
 
   async getSignedUrl(path: string, expiresIn = 3600): Promise<string | null> {
     try {
+      if (!path) return null;
       const { data, error } = await supabase()
         .storage.from("employee-documents")
         .createSignedUrl(path, expiresIn);
 
       if (error) {
-        console.error("[db] documents201Storage.getSignedUrl:", error.message);
+        // Don't log "Object not found" as an error — file may not exist in storage yet
+        if (!error.message?.includes("Object not found")) {
+          console.error("[db] documents201Storage.getSignedUrl:", error.message);
+        }
         return null;
       }
       return data?.signedUrl ?? null;

@@ -1039,8 +1039,6 @@ export function startWriteThrough(): void {
     useDocumentsStore.subscribe(
       (state, prevState) => {
         if (_writePaused) return;
-        // Only admin/hr can write documents
-        if (!isAdminOrHr) return;
 
         // Detect new or changed documents
         for (const doc of state.documents) {
@@ -1083,21 +1081,6 @@ export function startWriteThrough(): void {
           const prev = prevState.nods.find((p) => p.id === n.id);
           if (!prev || prev.updatedAt !== n.updatedAt) {
             disciplinaryDb.upsertNOD(n);
-          }
-        }
-      }
-    )
-  );
-
-  // ─── Documents write-through ──────────────────────────────
-  _subscriptions.push(
-    useDocumentsStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        for (const d of state.documents) {
-          const prev = prevState.documents.find((p) => p.id === d.id);
-          if (!prev || prev.updatedAt !== d.updatedAt) {
-            documentsDb.upsert(d);
           }
         }
       }
