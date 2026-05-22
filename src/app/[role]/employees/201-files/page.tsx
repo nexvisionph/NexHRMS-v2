@@ -6,6 +6,7 @@ import { lazy } from "react";
 const AdminView = lazy(() => import("./_views/admin-view"));
 const HrView = () => <AdminView />;
 const ReadonlyView = lazy(() => import("./_views/readonly-view"));
+const EmployeeView = lazy(() => import("./_views/employee-view"));
 
 export default function Documents201Page() {
     return (
@@ -14,6 +15,7 @@ export default function Documents201Page() {
                 admin: AdminView,
                 hr: HrView,
                 auditor: ReadonlyView,
+                employee: EmployeeView,
             }}
         />
     );
