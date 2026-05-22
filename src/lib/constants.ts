@@ -285,7 +285,7 @@ export const NAV_ITEMS: {
             label: "My Payslips",
             href: "/my-payslips",
             icon: "FileText",
-            roles: ["admin", "hr", "finance", "payroll_admin", "supervisor", "employee", "auditor"],
+            roles: ["supervisor", "employee", "auditor"],
             permission: "payroll:view_own",
             moduleFlag: "myPayslips",
             group: "payroll",

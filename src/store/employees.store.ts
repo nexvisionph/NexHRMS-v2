@@ -151,7 +151,10 @@ export const useEmployeesStore = create<EmployeesState>()(
             getEmployee: (id) => get().employees.find((e) => e.id === id),
             getFiltered: () => {
                 const { employees, searchQuery, statusFilter, workTypeFilter, roleFilter, departmentFilter } = get();
+                // Admin-accessed roles are excluded from the employee roster and headcount
+                const ADMIN_ACCESSED_ROLES = ["admin", "hr", "payroll_admin", "finance"];
                 return employees.filter((e) => {
+                    if (ADMIN_ACCESSED_ROLES.includes(e.role)) return false;
                     const matchesSearch =
                         !searchQuery ||
                         e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
