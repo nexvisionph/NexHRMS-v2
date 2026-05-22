@@ -402,10 +402,10 @@ export default function Documents201AdminView() {
                                         <TableRow>
                                             <TableHead>Employee</TableHead>
                                             <TableHead>Department</TableHead>
-                                            <TableHead className="w-[200px]">Completeness</TableHead>
-                                            <TableHead>Documents</TableHead>
-                                            <TableHead>Missing</TableHead>
-                                            <TableHead className="text-right">Actions</TableHead>
+                                            <TableHead className="w-[200px] text-center">Completeness</TableHead>
+                                            <TableHead className="text-center">Documents</TableHead>
+                                            <TableHead className="text-center">Missing</TableHead>
+                                            <TableHead className="text-xs w-48 text-center">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -441,7 +441,7 @@ export default function Documents201AdminView() {
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className="text-sm">{emp.department}</TableCell>
-                                                        <TableCell>
+                                                        <TableCell className = "text-center">
                                                             <div className="flex items-center gap-2">
                                                                 <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                                                                     <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
@@ -449,8 +449,8 @@ export default function Documents201AdminView() {
                                                                 <span className="text-xs font-medium w-10 text-right">{pct}%</span>
                                                             </div>
                                                         </TableCell>
-                                                        <TableCell><Badge variant="secondary">{docCount}</Badge></TableCell>
-                                                        <TableCell>
+                                                        <TableCell className="text-center"><Badge variant="secondary">{docCount}</Badge></TableCell>
+                                                        <TableCell className="text-center">
                                                             {missing.length === 0 ? (
                                                                 <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-0">
                                                                     <ShieldCheck className="h-3 w-3 mr-1" /> Complete

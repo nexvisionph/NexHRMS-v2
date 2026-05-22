@@ -957,11 +957,11 @@ export default function AdminTasksView() {
                                                 className="cursor-pointer select-none hidden md:table-cell"
                                                 onClick={() => toggleSort("dueDate")}
                                             >
-                                                <span className="flex items-center gap-1">
+                                                <span className="flex items-center gap-1 ">
                                                     Due <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
                                                 </span>
                                             </TableHead>
-                                            <TableHead className="w-28 text-right">Actions</TableHead>
+                                            <TableHead className="w-28 text-center">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody className="[&_tr:last-child_td]:pb-2">
