@@ -50,6 +50,7 @@ import { LocationTracker } from "@/components/attendance/location-tracker";
 import { BreakTimer } from "@/components/attendance/break-timer";
 import { ExportBackupDialog } from "@/components/export-backup-dialog";
 import { ImportDataDialog } from "@/components/import-data-dialog";
+import { AttendanceExportDialog } from "@/components/attendance-export-dialog";
 import { BiometricImportDialog, type BiometricImportRecord } from "@/components/attendance/biometric-import-dialog";
 import { EmployeeCombobox } from "@/components/ui/employee-combobox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -612,8 +613,13 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                     {/* Action buttons group */}
                     <div className="flex items-center rounded-lg border border-border/40 bg-muted/20 p-0.5 gap-0.5">
                         <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 px-2.5 rounded-md" onClick={handleExportCSV}>
-                            <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Export</span>
+                            <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Export CSV</span>
                         </Button>
+                        <AttendanceExportDialog trigger={
+                            <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 px-2.5 rounded-md">
+                                <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Export</span>
+                            </Button>
+                        } />
                         <ExportBackupDialog module="attendance" trigger={
                             <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 px-2.5 rounded-md">
                                 <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Backup</span>

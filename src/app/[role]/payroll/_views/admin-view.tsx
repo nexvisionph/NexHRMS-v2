@@ -53,6 +53,7 @@ import { useProjectsStore } from "@/store/projects.store";
 import { ThirteenthMonthModal } from "@/components/payroll/thirteenth-month-modal";
 import { ExportBackupDialog } from "@/components/export-backup-dialog";
 import { ImportDataDialog } from "@/components/import-data-dialog";
+import { PayrollExportDialog } from "@/components/payroll-export-dialog";
 import PayrollPaymentWizard, { type WizardStep, usePayrollProgress } from "@/features/payroll-payment/payroll-payment-wizard";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -873,6 +874,7 @@ export default function AdminPayrollView({ mode = "admin" }: AdminPayrollViewPro
                             <Gift className="h-4 w-4" /> <span className="hidden sm:inline">13th Month</span>
                         </Button>
                         <ExportBackupDialog module="payroll" />
+                        <PayrollExportDialog />
                         <ImportDataDialog module="payroll" onImportComplete={() => toast.success("Payroll data imported — refresh to see changes")} />
                         <Dialog open={open} onOpenChange={(isOpen) => {
                             if (isOpen && isCutoffPeriodLocked) {
