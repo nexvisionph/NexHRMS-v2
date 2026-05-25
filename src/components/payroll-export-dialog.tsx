@@ -17,7 +17,7 @@ import {
 import { Download, FileSpreadsheet, FileText, Loader2, X, Users, Building2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { format, getDaysInMonth } from "date-fns";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -99,226 +99,513 @@ interface EmployeePayrollData {
 // Uses the exact structure from the Payroll-Export-Template.xlsx
 
 function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
-  // We'll build a wide sheet: columns A-H for payslip, columns I-W for DTR/OT
-  // Using AOA (array of arrays) approach for full control
+  // ── Row index constants (0-based, matching template exactly) ──
+  // Template observed layout (openpyxl row numbers, subtract 1 for 0-idx):
+  //  R0  = title banner (COMPANY NAME / OT title)
+  //  R1  = subtitle (PAYSLIP RECORD / DTR label)
+  //  R2  = spacer / DTR data rows begin
+  //  R3  = PAY PERIOD header / DTR col headers
+  //  R4  = Pay period values / DTR data row 1
+  //  R5  = spacer
+  //  R6  = EMPLOYEE INFORMATION header
+  //  R7  = Employee No. / Monthly Salary       (white)
+  //  R8  = Full Name / Daily Rate              (ltGray)
+  //  R9  = Position / Hourly Rate              (white)
+  //  R10 = Project / Semi-Monthly Pay          (ltGray)
+  //  R11 = Civil Status                        (white)
+  //  R12 = No. of Dependents                   (ltGray)
+  //  R13 = spacer
+  //  R14 = EARNINGS header
+  //  R15 = Semi-Monthly Basic Salary           (warmGray — text near-white)
+  //  R16 = Overtime Pay                        (white)
+  //  R17 = Meal Allowance                      (ltGray)
+  //  R18 = Project Allowance                   (white)  [template: Taxi Fare row]
+  //  R19 = Taxi Fare / COLA / Others alternating
+  //  R20 = COLA
+  //  R21 = Others / Adjustment
+  //  R22 = TOTAL BASIC SALARY header
+  //  R23 = spacer
+  //  R24 = DEDUCTIONS header
+  //  R25 = Withholding Tax                     (ltGray)
+  //  R26 = SSS Contribution                    (white)
+  //  R27 = SSS Salary Loan                     (ltGray)
+  //  R28 = PhilHealth Contribution             (white)
+  //  R29 = Pag-IBIG Contribution               (ltGray)
+  //  R30 = Pag-IBIG Loan                       (white)
+  //  R31 = Leave w/o Pay                       (ltGray)
+  //  R32 = Tardiness / Undertime               (white)
+  //  R33 = Tax Deficiency / Refund             (ltGray)
+  //  R34 = Community Tax Cert.                 (white)
+  //  R35 = PhilHealth Refund                   (ltGray)
+  //  R36 = SSS Provident Fund                  (white)
+  //  R37 = TOTAL DEDUCTIONS header
+  //  R38 = spacer
+  //  R39 = NET PAY  (no fill, navy text)
 
-  const dtrHeaderRow = 2; // DTR starts at row 3 (0-indexed row 2)
-  const dtrDataStartRow = 3;
+  // DTR data on right side begins at R4 (same row as pay period values)
+  const DTR_DATA_START = 4;   // row index where DTR rows begin (matches template R5 = row 5)
+  const dtrRows = emp.dtr.length;
+
+  // Total rows: left side ends at R40, right side needs DTR + totals + sig
+  // DTR totals row = DTR_DATA_START + dtrRows
+  // Sig header    = totals + 1
+  // Sig labels    = totals + 3
+  const dtrTotalsR = DTR_DATA_START + dtrRows;
+  const sigHeaderR = dtrTotalsR + 1;
+  const sigLabelsR = dtrTotalsR + 3;
+  const totalRows  = Math.max(42, sigLabelsR + 2);
 
   // Pre-calculate DTR totals
-  const totalHrs = emp.dtr.reduce((s, d) => s + d.totalHrs, 0);
-  const totalOt = emp.dtr.reduce((s, d) => s + d.otHrs, 0);
-  const totalTardHr = emp.dtr.reduce((s, d) => s + d.tardinessHr, 0);
-  const totalTardMin = emp.dtr.reduce((s, d) => s + d.tardinessMin, 0);
-  const totalAbsences = emp.dtr.reduce((s, d) => s + d.absences, 0);
+  const totalHrs      = emp.dtr.reduce((s, d) => s + d.totalHrs,     0);
+  const totalOt       = emp.dtr.reduce((s, d) => s + d.otHrs,        0);
+  const totalTardHr   = emp.dtr.reduce((s, d) => s + d.tardinessHr,  0);
+  const totalTardMin  = emp.dtr.reduce((s, d) => s + d.tardinessMin, 0);
+  const totalAbsences = emp.dtr.reduce((s, d) => s + d.absences,     0);
 
-  // Maximum rows needed
-  const maxDtrRows = emp.dtr.length;
-  const totalRows = Math.max(45, dtrDataStartRow + maxDtrRows + 5);
-
-  // Initialize empty grid
-  const grid: (string | number | null)[][] = Array.from({ length: totalRows }, () =>
-    Array(23).fill(null)
+  // ── Build grid (0-indexed rows, 0-indexed cols A=0 … Y=24) ───
+  // Cols: A=0 B=1 C=2 D=3 E=4 F=5 G=6 H=7 I=8 J=9 K=10 … Y=24
+  const grid: (string | number | null)[][] = Array.from(
+    { length: totalRows }, () => Array(25).fill(null)
   );
 
-  // ═══ LEFT SIDE: PAYSLIP (Columns A-H, 0-7) ═══
+  // R0: title banners
+  grid[0][0] = "COMPANY NAME";                                           // A1 merged A1:H1
+  grid[0][9] = "COMPUTATION OF INDIVIDUAL OVERTIME PAY & ALLOWANCES";   // J1 merged J1:Y1
 
-  // Row 0: Header
-  grid[0][1] = "COMPANY NAME";
-  grid[0][9] = "COMPUTATION OF INDIVIDUAL OVERTIME PAY & ALLOWANCES";
+  // R1: subtitles
+  grid[1][0] = "PAYSLIP RECORD";           // A2 merged A2:H2 — no fill, italic gray
+  grid[1][9] = "DAILY TIME RECORD (DTR)";  // J2 merged J2:Y2 — teal fill, white bold
 
-  // Row 1: Sub-header
-  grid[1][1] = "PAYSLIP RECORD";
-  grid[1][9] = "DAILY TIME RECORD (DTR)";
+  // R3: PAY PERIOD bar (left) + DTR column headers (right)
+  grid[3][1] = "PAY PERIOD";                          // B4 — dark gray, merged B4:E4
+  grid[3][5] = "RANGE";                               // F4 — dark gray, merged F4:H4
+  grid[3][4] = emp.periodFrom + " – " + emp.periodTo; // E4 value (in merged range)
+  grid[3][7] = emp.range;                              // H4 value
 
-  // Row 2: blank + DTR headers
-  // DTR column headers (cols I onwards = index 8+)
-  grid[2][9] = "Date";
-  grid[2][10] = "Day";
-  grid[2][11] = "Time In";
-  grid[2][12] = "Time Out";
-  grid[2][13] = "Total Hrs";
-  grid[2][14] = "OT / UT Hrs";
-  grid[2][15] = "Tardiness Hr";
-  grid[2][16] = "Tardiness Min";
-  grid[2][17] = "Absences (Days)";
-  grid[2][18] = "Reg. OT";
-  grid[2][19] = "Sat/Sun & Spl. Holiday";
-  grid[2][20] = "Reg. Holiday";
-  grid[2][21] = "Night Diff";
+  // DTR column headers at R3
+  grid[3][9]  = "Date";
+  grid[3][10] = "Day";
+  grid[3][11] = "Time In";
+  grid[3][12] = "Time Out";
+  grid[3][13] = "Total Hrs";
+  grid[3][14] = "OT / UT Hrs";
+  grid[3][15] = "Tardiness Hr";
+  grid[3][16] = "Tardiness Min";
+  grid[3][17] = "Absences (Days)";
+  grid[3][18] = "Reg. OT\n(up to 8hrs / excess)";            // S4 merged S4:T4
+  grid[3][20] = "Sat/Sun & Spl. Holiday\n(up to 8hrs / excess)"; // U4 merged U4:V4
+  grid[3][22] = "Reg. Holiday\n(up to 8hrs / excess)";        // W4 merged W4:X4
+  grid[3][24] = "Night Diff";                                  // Y4
 
-  // Row 3: PAY PERIOD
-  grid[3][2] = "PAY PERIOD";
-  grid[3][4] = emp.periodFrom + " - " + emp.periodTo;
-  grid[3][6] = "RANGE";
-  grid[3][7] = emp.range;
+  // R6: EMPLOYEE INFORMATION header
+  grid[6][1] = "EMPLOYEE INFORMATION";  // B7 merged B7:H7
 
-  // Row 5: EMPLOYEE INFORMATION
-  grid[5][2] = "EMPLOYEE INFORMATION";
+  // R7–R12: Employee fields
+  //         Label in B (merged B:D), Value in E (merged E:E), right-label in F (merged F:G), right-val in H
+  grid[7][1]  = "Employee No.";    grid[7][4]  = emp.id;
+  grid[7][5]  = "Monthly Salary";  grid[7][7]  = emp.monthlySalary;
+  grid[8][1]  = "Full Name";       grid[8][4]  = emp.name;
+  grid[8][5]  = "Daily Rate";      grid[8][7]  = emp.dailyRate;
+  grid[9][1]  = "Position";        grid[9][4]  = emp.position;
+  grid[9][5]  = "Hourly Rate";     grid[9][7]  = emp.hourlyRate;
+  grid[10][1] = "Project";         grid[10][4] = emp.project;
+  grid[10][5] = "Semi-Monthly Pay"; grid[10][7] = emp.semiMonthlySalary;
+  grid[11][1] = "Civil Status";    grid[11][4] = "";
+  grid[12][1] = "No. of Dependents"; grid[12][4] = "";
 
-  // Row 6-11: Employee details
-  grid[6][2] = "Employee No.";
-  grid[6][4] = emp.id;
-  grid[6][6] = "Monthly Salary";
-  grid[6][7] = emp.monthlySalary;
+  // R14: EARNINGS header
+  grid[14][1] = "EARNINGS";  // B15 merged B15:H15
 
-  grid[7][2] = "Full Name";
-  grid[7][4] = emp.name;
-  grid[7][6] = "Daily Rate";
-  grid[7][7] = emp.dailyRate;
+  // R15–R21: Earnings line items (label in B merged B:G, value in H)
+  grid[15][1] = "Semi-Monthly Basic Salary"; grid[15][7] = emp.semiMonthlySalary;
+  grid[16][1] = "Overtime Pay";              grid[16][7] = emp.overtimePay;
+  grid[17][1] = "Meal Allowance";            grid[17][7] = emp.mealAllowance;
+  grid[18][1] = "Project Allowance";         grid[18][7] = emp.projectAllowance;
+  grid[19][1] = "Taxi Fare";                 grid[19][7] = emp.taxiFare;
+  grid[20][1] = "COLA";                      grid[20][7] = emp.cola;
+  grid[21][1] = "Others / Adjustment";       grid[21][7] = emp.othersAdjustment;
 
-  grid[8][2] = "Position";
-  grid[8][4] = emp.position;
-  grid[8][6] = "Hourly Rate";
-  grid[8][7] = emp.hourlyRate;
+  // R22: TOTAL BASIC SALARY header
+  grid[22][1] = "TOTAL BASIC SALARY";  grid[22][7] = emp.totalBasicSalary;
 
-  grid[9][2] = "Project";
-  grid[9][4] = emp.project;
-  grid[9][6] = "Semi-Monthly Pay";
-  grid[9][7] = emp.semiMonthlySalary;
+  // R24: DEDUCTIONS header
+  grid[24][1] = "DEDUCTIONS";  // B25 merged B25:H25
 
-  // Row 12: EARNINGS
-  grid[12][2] = "EARNINGS";
+  // R25–R36: Deduction line items
+  grid[25][1] = "Withholding Tax";          grid[25][7] = emp.withholdingTax;
+  grid[26][1] = "SSS Contribution";         grid[26][7] = emp.sssContribution;
+  grid[27][1] = "SSS Salary Loan";          grid[27][7] = emp.sssSalaryLoan;
+  grid[28][1] = "PhilHealth Contribution";  grid[28][7] = emp.philhealthContribution;
+  grid[29][1] = "Pag-IBIG Contribution";    grid[29][7] = emp.pagibigContribution;
+  grid[30][1] = "Pag-IBIG Loan";            grid[30][7] = emp.pagibigLoan;
+  grid[31][1] = "Leave w/o Pay";            grid[31][7] = emp.leaveWithoutPay;
+  grid[32][1] = "Tardiness / Undertime";    grid[32][7] = emp.tardinessUndertime;
+  grid[33][1] = "Tax Deficiency / Refund";  grid[33][7] = emp.taxDeficiency;
+  grid[34][1] = "Community Tax Cert.";      grid[34][7] = emp.communityTax;
+  grid[35][1] = "PhilHealth Refund";        grid[35][7] = emp.philhealthRefund;
+  grid[36][1] = "SSS Provident Fund";       grid[36][7] = emp.sssProvidentFund;
 
-  grid[13][2] = "Semi-Monthly Basic Salary";
-  grid[13][7] = emp.semiMonthlySalary;
+  // R37: TOTAL DEDUCTIONS header
+  grid[37][1] = "TOTAL DEDUCTIONS";  grid[37][7] = emp.totalDeductions;
 
-  grid[14][2] = "Overtime Pay";
-  grid[14][7] = emp.overtimePay;
+  // R39: NET PAY (no fill, navy text)
+  grid[39][1] = "NET PAY";  grid[39][7] = emp.netPay;
 
-  grid[15][2] = "Meal Allowance";
-  grid[15][7] = emp.mealAllowance;
-
-  grid[16][2] = "Project Allowance";
-  grid[16][7] = emp.projectAllowance;
-
-  grid[17][2] = "Taxi Fare";
-  grid[17][7] = emp.taxiFare;
-
-  grid[18][2] = "COLA";
-  grid[18][7] = emp.cola;
-
-  grid[19][2] = "Others / Adjustment";
-  grid[19][7] = emp.othersAdjustment;
-
-  grid[20][2] = "TOTAL BASIC SALARY";
-  grid[20][7] = emp.totalBasicSalary;
-
-  // Row 22: DEDUCTIONS
-  grid[22][2] = "DEDUCTIONS";
-
-  grid[23][2] = "Withholding Tax";
-  grid[23][7] = emp.withholdingTax;
-
-  grid[24][2] = "SSS Contribution";
-  grid[24][7] = emp.sssContribution;
-
-  grid[25][2] = "SSS Salary Loan";
-  grid[25][7] = emp.sssSalaryLoan;
-
-  grid[26][2] = "PhilHealth Contribution";
-  grid[26][7] = emp.philhealthContribution;
-
-  grid[27][2] = "Pag-IBIG Contribution";
-  grid[27][7] = emp.pagibigContribution;
-
-  grid[28][2] = "Pag-IBIG Loan";
-  grid[28][7] = emp.pagibigLoan;
-
-  grid[29][2] = "Leave w/o Pay";
-  grid[29][7] = emp.leaveWithoutPay;
-
-  grid[30][2] = "Tardiness / Undertime";
-  grid[30][7] = emp.tardinessUndertime;
-
-  grid[31][2] = "Tax Deficiency / Refund";
-  grid[31][7] = emp.taxDeficiency;
-
-  grid[32][2] = "Community Tax Cert.";
-  grid[32][7] = emp.communityTax;
-
-  grid[33][2] = "PhilHealth Refund";
-  grid[33][7] = emp.philhealthRefund;
-
-  grid[34][2] = "SSS Provident Fund";
-  grid[34][7] = emp.sssProvidentFund;
-
-  grid[35][2] = "TOTAL DEDUCTIONS";
-  grid[35][7] = emp.totalDeductions;
-
-  // Row 37: NET PAY
-  grid[37][2] = "NET PAY";
-  grid[37][7] = emp.netPay;
-
-  // ═══ RIGHT SIDE: DTR DATA (starting row 3, columns I-V) ═══
-
-  for (let i = 0; i < emp.dtr.length; i++) {
-    const row = dtrDataStartRow + i;
-    if (row >= totalRows) break;
+  // ── DTR rows (right side, R4 onward) ─────────────────────────
+  for (let i = 0; i < dtrRows; i++) {
+    const r = DTR_DATA_START + i;
+    if (r >= totalRows) break;
     const d = emp.dtr[i];
-    grid[row][9] = d.date;
-    grid[row][10] = d.day;
-    grid[row][11] = d.timeIn;
-    grid[row][12] = d.timeOut;
-    grid[row][13] = d.totalHrs;
-    grid[row][14] = d.otHrs;
-    grid[row][15] = d.tardinessHr;
-    grid[row][16] = d.tardinessMin;
-    grid[row][17] = d.absences;
+    grid[r][9]  = d.date;
+    grid[r][10] = d.day;
+    grid[r][11] = d.timeIn;
+    grid[r][12] = d.timeOut;
+    grid[r][13] = d.totalHrs;
+    grid[r][14] = d.otHrs;
+    grid[r][15] = d.tardinessHr;
+    grid[r][16] = d.tardinessMin;
+    grid[r][17] = d.absences;
   }
 
-  // DTR TOTALS row
-  const totalsRow = dtrDataStartRow + emp.dtr.length;
-  if (totalsRow < totalRows) {
-    grid[totalsRow][9] = "TOTALS";
-    grid[totalsRow][13] = totalHrs;
-    grid[totalsRow][14] = totalOt;
-    grid[totalsRow][15] = totalTardHr;
-    grid[totalsRow][16] = totalTardMin;
-    grid[totalsRow][17] = totalAbsences;
-  }
+  // DTR totals row
+  grid[dtrTotalsR][9]  = "TOTALS";
+  grid[dtrTotalsR][13] = totalHrs;
+  grid[dtrTotalsR][14] = totalOt;
+  grid[dtrTotalsR][15] = totalTardHr;
+  grid[dtrTotalsR][16] = totalTardMin;
+  grid[dtrTotalsR][17] = totalAbsences;
 
-  // SIGNATORIES (below deductions or DTR totals, whichever is lower)
-  const sigRow = Math.max(39, totalsRow + 2);
-  if (sigRow < totalRows - 2) {
-    grid[sigRow][2] = "SIGNATORIES";
-    grid[sigRow + 2][2] = "Prepared by";
-    grid[sigRow + 2][4] = "Checked by";
-    grid[sigRow + 2][6] = "Approved by";
-    grid[sigRow + 2][8] = "Received by (Employee)";
-  }
+  // Signatories
+  grid[sigHeaderR][9] = "SIGNATORIES";
+  grid[sigLabelsR][9]  = "Prepared by";
+  grid[sigLabelsR][13] = "Checked by";
+  grid[sigLabelsR][17] = "Approved by";
+  grid[sigLabelsR][21] = "Received by (Employee)";
 
-  // Convert grid to worksheet
+  // ── Convert to worksheet ──────────────────────────────────────
   const ws = XLSX.utils.aoa_to_sheet(grid);
 
-  // Column widths matching the template
-  ws["!cols"] = [
-    { wch: 2 },   // A - spacer
-    { wch: 4 },   // B - spacer
-    { wch: 22 },  // C - labels
-    { wch: 4 },   // D - spacer
-    { wch: 20 },  // E - values
-    { wch: 4 },   // F - spacer
-    { wch: 16 },  // G - right labels
-    { wch: 14 },  // H - right values
-    { wch: 2 },   // I - spacer between sections
-    { wch: 10 },  // J - Date
-    { wch: 5 },   // K - Day
-    { wch: 8 },   // L - Time In
-    { wch: 8 },   // M - Time Out
-    { wch: 8 },   // N - Total Hrs
-    { wch: 9 },   // O - OT/UT Hrs
-    { wch: 9 },   // P - Tardiness Hr
-    { wch: 9 },   // Q - Tardiness Min
-    { wch: 10 },  // R - Absences
-    { wch: 8 },   // S - Reg OT
-    { wch: 10 },  // T - Sat/Sun
-    { wch: 10 },  // U - Reg Holiday
-    { wch: 8 },   // V - Night Diff
+  // ── MERGES (exact from template + body cells) ─────────────────
+  ws["!merges"] = [
+    // ── Title rows ──
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },   // A1:H1 — COMPANY NAME
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },   // A2:H2 — PAYSLIP RECORD
+    { s: { r: 0, c: 9 }, e: { r: 0, c: 24 } },  // J1:Y1 — OT title
+    { s: { r: 1, c: 9 }, e: { r: 1, c: 24 } },  // J2:Y2 — DTR label
+
+    // ── PAY PERIOD bar (R3) ──
+    { s: { r: 3, c: 1 }, e: { r: 3, c: 3 } },   // B4:D4 — "PAY PERIOD" label
+    { s: { r: 3, c: 4 }, e: { r: 3, c: 4 } },   // E4     — period value (single but styled)
+    { s: { r: 3, c: 5 }, e: { r: 3, c: 6 } },   // F4:G4 — "RANGE" label
+    { s: { r: 3, c: 7 }, e: { r: 3, c: 7 } },   // H4     — range value
+
+    // ── DTR col header merged pairs (R3) ──
+    { s: { r: 3, c: 18 }, e: { r: 3, c: 19 } }, // S4:T4 — Reg OT
+    { s: { r: 3, c: 20 }, e: { r: 3, c: 21 } }, // U4:V4 — Sat/Sun
+    { s: { r: 3, c: 22 }, e: { r: 3, c: 23 } }, // W4:X4 — Reg Holiday
+
+    // ── EMPLOYEE INFORMATION header (R6) ──
+    { s: { r: 6, c: 1 }, e: { r: 6, c: 7 } },   // B7:H7
+
+    // ── Employee rows R7–R12: label B:D, value E, right-label F:G, right-val H ──
+    ...[7, 8, 9, 10].flatMap(r => [
+      { s: { r, c: 1 }, e: { r, c: 3 } },        // B:D label
+      { s: { r, c: 5 }, e: { r, c: 6 } },        // F:G right-label
+    ]),
+    ...[11, 12].map(r => ({ s: { r, c: 1 }, e: { r, c: 3 } })), // civil status / dependents label only
+
+    // ── EARNINGS header (R14) ──
+    { s: { r: 14, c: 1 }, e: { r: 14, c: 7 } },
+
+    // ── Earnings rows R15–R21: label B:G, value H ──
+    ...[15, 16, 17, 18, 19, 20, 21].map(r => ({ s: { r, c: 1 }, e: { r, c: 6 } })),
+
+    // ── TOTAL BASIC SALARY (R22) ──
+    { s: { r: 22, c: 1 }, e: { r: 22, c: 6 } },
+
+    // ── DEDUCTIONS header (R24) ──
+    { s: { r: 24, c: 1 }, e: { r: 24, c: 7 } },
+
+    // ── Deduction rows R25–R36: label B:G, value H ──
+    ...[25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36].map(r => ({ s: { r, c: 1 }, e: { r, c: 6 } })),
+
+    // ── TOTAL DEDUCTIONS (R37) ──
+    { s: { r: 37, c: 1 }, e: { r: 37, c: 6 } },
+
+    // ── NET PAY (R39) ──
+    { s: { r: 39, c: 1 }, e: { r: 39, c: 6 } },
+
+    // ── SIGNATORIES ──
+    { s: { r: sigHeaderR, c: 9 }, e: { r: sigHeaderR, c: 24 } },  // full width header
+    { s: { r: sigLabelsR, c: 9  }, e: { r: sigLabelsR, c: 12 } }, // Prepared by
+    { s: { r: sigLabelsR, c: 13 }, e: { r: sigLabelsR, c: 16 } }, // Checked by
+    { s: { r: sigLabelsR, c: 17 }, e: { r: sigLabelsR, c: 20 } }, // Approved by
+    { s: { r: sigLabelsR, c: 21 }, e: { r: sigLabelsR, c: 24 } }, // Received by
   ];
+
+  // ── COLUMN WIDTHS ─────────────────────────────────────────────
+  ws["!cols"] = [
+    { wch: 2    }, // A  spacer
+    { wch: 20   }, // B  label (merged B:D covers label area)
+    { wch: 6    }, // C
+    { wch: 4    }, // D
+    { wch: 16   }, // E  left values
+    { wch: 16   }, // F  right labels (merged F:G)
+    { wch: 4    }, // G
+    { wch: 14   }, // H  right values
+    { wch: 4    }, // I  divider spacer
+    { wch: 11.9 }, // J  Date
+    { wch: 6    }, // K  Day
+    { wch: 8.5  }, // L  Time In
+    { wch: 8.5  }, // M  Time Out
+    { wch: 9    }, // N  Total Hrs
+    { wch: 9    }, // O  OT/UT Hrs
+    { wch: 9    }, // P  Tardiness Hr
+    { wch: 9    }, // Q  Tardiness Min
+    { wch: 11   }, // R  Absences
+    { wch: 14   }, // S  Reg OT (merged S:T)
+    { wch: 8    }, // T
+    { wch: 14   }, // U  Sat/Sun (merged U:V)
+    { wch: 6    }, // V
+    { wch: 12   }, // W  Reg Holiday (merged W:X)
+    { wch: 7.5  }, // X
+    { wch: 9    }, // Y  Night Diff
+  ];
+
+  // ── ROW HEIGHTS ───────────────────────────────────────────────
+  ws["!rows"] = Array.from({ length: totalRows }, (_, i) => {
+    if (i === 0)  return { hpt: 27.75 };
+    if (i === 1)  return { hpt: 18 };
+    if (i === 3)  return { hpt: 30 };   // PAY PERIOD / DTR col headers
+    return { hpt: 15.75 };
+  });
+
+  // ═══ STYLE CONSTANTS (exact hex from template) ════════════════
+  // All colors from openpyxl extraction — strip FF alpha prefix for xlsx-js-style
+  const TEAL     = "65B2B2";  // section headers
+  const DK_GRAY  = "333333";  // PAY PERIOD bar + DTR col headers
+  const LT_GRAY  = "F2F2F2";  // alternating row fill
+  const WARM_GRY = "E3E4E0";  // Semi-Monthly Basic Salary row bg
+  const NAVY     = "1F3864";  // DTR totals + signatories header (template: FF1F3864)
+  const WHITE    = "FFFFFF";
+  const TXT      = "595959";  // body text
+  const NEAR_WHT = "F2F2F2";  // warmGray row text (template shows FFF2F2F2 on bg E3E4E0)
+
+  const thinBorder = {
+    top:    { style: "thin", color: { rgb: "D9D9D9" } },
+    bottom: { style: "thin", color: { rgb: "D9D9D9" } },
+    left:   { style: "thin", color: { rgb: "D9D9D9" } },
+    right:  { style: "thin", color: { rgb: "D9D9D9" } },
+  };
+
+  // ── Reusable style objects ────────────────────────────────────
+
+  // R0: large teal banner — left and right
+  const tealBanner = {
+    font:      { name: "Arial", sz: 14, bold: true, color: { rgb: WHITE } },
+    fill:      { patternType: "solid", fgColor: { rgb: TEAL } },
+    alignment: { horizontal: "center", vertical: "center" },
+  };
+
+  // R1 left: italic gray, no fill (PAYSLIP RECORD)
+  const subtitleLeft = {
+    font:      { name: "Arial", sz: 10, italic: true, color: { rgb: "AAAAAA" } },
+    fill:      { patternType: "solid", fgColor: { rgb: WHITE } },
+    alignment: { horizontal: "center", vertical: "center" },
+  };
+
+  // R1 right: teal fill, white bold (DAILY TIME RECORD)
+  const subtitleRight = {
+    font:      { name: "Arial", sz: 10, bold: true, color: { rgb: WHITE } },
+    fill:      { patternType: "solid", fgColor: { rgb: TEAL } },
+    alignment: { horizontal: "center", vertical: "center" },
+    border: thinBorder,
+  };
+
+  // Dark gray header (PAY PERIOD bar + DTR col headers)
+  const dkGrayHdr = {
+    font:      { name: "Arial", sz: 9, bold: true, color: { rgb: WHITE } },
+    fill:      { patternType: "solid", fgColor: { rgb: DK_GRAY } },
+    alignment: { horizontal: "center", vertical: "center", wrapText: true },
+    border:    { top: { style: "thin", color: { rgb: WHITE } }, bottom: { style: "thin", color: { rgb: WHITE } }, left: { style: "thin", color: { rgb: WHITE } }, right: { style: "thin", color: { rgb: WHITE } } },
+  };
+
+  // Teal section header (EMPLOYEE INFO, EARNINGS, DEDUCTIONS, TOTAL rows)
+  const tealSection = {
+    font:      { name: "Arial", sz: 10, bold: true, color: { rgb: WHITE } },
+    fill:      { patternType: "solid", fgColor: { rgb: TEAL } },
+    alignment: { horizontal: "left", vertical: "center" },
+    border: thinBorder,
+  };
+
+  // Body row styles
+  const whiteRow = {
+    font:      { name: "Arial", sz: 10, color: { rgb: TXT } },
+    fill:      { patternType: "solid", fgColor: { rgb: WHITE } },
+    alignment: { vertical: "center" },
+    border: thinBorder,
+  };
+  const ltGrayRow = {
+    font:      { name: "Arial", sz: 10, color: { rgb: TXT } },
+    fill:      { patternType: "solid", fgColor: { rgb: LT_GRAY } },
+    alignment: { vertical: "center" },
+    border: thinBorder,
+  };
+  // Semi-Monthly Basic Salary row: warm gray bg, near-white text (template exact)
+  const warmGryRow = {
+    font:      { name: "Arial", sz: 10, color: { rgb: NEAR_WHT } },
+    fill:      { patternType: "solid", fgColor: { rgb: WARM_GRY } },
+    alignment: { vertical: "center" },
+    border: thinBorder,
+  };
+
+  // NET PAY: no fill (white), navy text, larger font
+  const netPayStyle = {
+    font:      { name: "Arial", sz: 12, bold: true, color: { rgb: NAVY } },
+    fill:      { patternType: "solid", fgColor: { rgb: WHITE } },
+    alignment: { vertical: "center" },
+    border: thinBorder,
+  };
+
+  // DTR data rows
+  const dtrLtGray = {
+    font:      { name: "Arial", sz: 9, color: { rgb: TXT } },
+    fill:      { patternType: "solid", fgColor: { rgb: LT_GRAY } },
+    alignment: { horizontal: "center", vertical: "center" },
+    border: thinBorder,
+  };
+  const dtrWhite = {
+    font:      { name: "Arial", sz: 9, color: { rgb: TXT } },
+    fill:      { patternType: "solid", fgColor: { rgb: WHITE } },
+    alignment: { horizontal: "center", vertical: "center" },
+    border: thinBorder,
+  };
+
+  // DTR totals + signatories header: navy
+  const navyHdr = {
+    font:      { name: "Arial", sz: 10, bold: true, color: { rgb: WHITE } },
+    fill:      { patternType: "solid", fgColor: { rgb: NAVY } },
+    alignment: { horizontal: "center", vertical: "center" },
+    border: thinBorder,
+  };
+
+  // Signatory labels
+  const sigLabel = {
+    font:      { name: "Arial", sz: 8, bold: true, color: { rgb: TXT } },
+    alignment: { horizontal: "center", vertical: "center" },
+  };
+
+  // ── Helper: apply style to rect range ────────────────────────
+  const styleRange = (r1: number, c1: number, r2: number, c2: number, s: object) => {
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        if (!ws[addr]) ws[addr] = { t: "z", v: null };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (ws[addr] as any).s = { ...(ws[addr] as any).s, ...s };
+      }
+    }
+  };
+
+  // ── Apply column-wide spacer white fills (col A and col I) ────
+  styleRange(0, 0, totalRows - 1, 0, { fill: { patternType: "solid", fgColor: { rgb: WHITE } } });
+  styleRange(0, 8, totalRows - 1, 8, { fill: { patternType: "solid", fgColor: { rgb: WHITE } } });
+
+  // ── R0: Title banners ─────────────────────────────────────────
+  styleRange(0, 0, 0, 7,  tealBanner);
+  styleRange(0, 9, 0, 24, tealBanner);
+
+  // ── R1: Subtitles ─────────────────────────────────────────────
+  styleRange(1, 0, 1, 7,  subtitleLeft);   // PAYSLIP RECORD — no fill, italic
+  styleRange(1, 9, 1, 24, subtitleRight);  // DAILY TIME RECORD — teal
+
+  // ── R3: PAY PERIOD bar (left cols) + DTR col headers (right) ─
+  styleRange(3, 1, 3, 7,  dkGrayHdr);
+  styleRange(3, 9, 3, 24, dkGrayHdr);
+
+  // ── R6: EMPLOYEE INFORMATION ──────────────────────────────────
+  styleRange(6, 1, 6, 7, tealSection);
+
+  // ── R7–R10: employee fields with right-side rate fields ───────
+  const empRowStyles = [whiteRow, ltGrayRow, whiteRow, ltGrayRow];
+  empRowStyles.forEach((s, i) => styleRange(7 + i, 1, 7 + i, 7, s));
+
+  // ── R11–R12: Civil Status / Dependents (no right-side cols) ──
+  styleRange(11, 1, 11, 4, whiteRow);
+  styleRange(12, 1, 12, 4, ltGrayRow);
+
+  // ── R14: EARNINGS header ──────────────────────────────────────
+  styleRange(14, 1, 14, 7, tealSection);
+
+  // ── R15: Semi-Monthly (warm gray bg, near-white text) ─────────
+  styleRange(15, 1, 15, 7, warmGryRow);
+
+  // ── R16–R21: Earnings line items (alternating white/ltGray) ──
+  const earnStyles = [whiteRow, ltGrayRow, whiteRow, ltGrayRow, whiteRow, ltGrayRow];
+  earnStyles.forEach((s, i) => styleRange(16 + i, 1, 16 + i, 7, s));
+
+  // ── R22: TOTAL BASIC SALARY ───────────────────────────────────
+  styleRange(22, 1, 22, 7, tealSection);
+
+  // ── R24: DEDUCTIONS header ────────────────────────────────────
+  styleRange(24, 1, 24, 7, tealSection);
+
+  // ── R25–R36: Deduction items (alternating ltGray/white per template) ──
+  const dedStyles = [ltGrayRow, whiteRow, ltGrayRow, whiteRow, ltGrayRow, whiteRow, ltGrayRow, whiteRow, ltGrayRow, whiteRow, ltGrayRow, whiteRow];
+  dedStyles.forEach((s, i) => styleRange(25 + i, 1, 25 + i, 7, s));
+
+  // ── R37: TOTAL DEDUCTIONS ─────────────────────────────────────
+  styleRange(37, 1, 37, 7, tealSection);
+
+  // ── R39: NET PAY ──────────────────────────────────────────────
+  styleRange(39, 1, 39, 7, netPayStyle);
+
+  // ── Right-align number values on left side (col H = index 7) ─
+  for (let r = 7; r <= 39; r++) {
+    const addr = XLSX.utils.encode_cell({ r, c: 7 });
+    if (ws[addr] && typeof (ws[addr] as any).v === "number") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (ws[addr] as any).s = {
+        ...(ws[addr] as any).s,
+        alignment: { horizontal: "right", vertical: "center" },
+      };
+    }
+  }
+
+  // ── DTR data rows (right side, alternating) ───────────────────
+  for (let i = 0; i < dtrRows; i++) {
+    const r = DTR_DATA_START + i;
+    if (r >= totalRows) break;
+    styleRange(r, 9, r, 24, i % 2 === 0 ? dtrLtGray : dtrWhite);
+  }
+
+  // ── DTR TOTALS row (navy) ─────────────────────────────────────
+  styleRange(dtrTotalsR, 9, dtrTotalsR, 24, navyHdr);
+
+  // ── SIGNATORIES ───────────────────────────────────────────────
+  styleRange(sigHeaderR, 9, sigHeaderR, 24, navyHdr);
+  styleRange(sigLabelsR, 9,  sigLabelsR, 12, sigLabel);
+  styleRange(sigLabelsR, 13, sigLabelsR, 16, sigLabel);
+  styleRange(sigLabelsR, 17, sigLabelsR, 20, sigLabel);
+  styleRange(sigLabelsR, 21, sigLabelsR, 24, sigLabel);
+
+  // ── Currency format for monetary cells (col H) ───────────────
+  for (let r = 0; r < totalRows; r++) {
+    const addr = XLSX.utils.encode_cell({ r, c: 7 });
+    if (ws[addr] && typeof (ws[addr] as any).v === "number") {
+      (ws[addr] as any).z = "₱#,##0.00";
+    }
+  }
+
+  // ── Freeze panes: freeze left 9 cols and top 4 rows ──────────
+  ws["!freeze"] = { xSplit: 9, ySplit: 4 };
 
   return ws;
 }
+
+
+
+
 
 // ─── PDF Generation (browser-based via print window) ──────────
 
