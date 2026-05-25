@@ -1,0 +1,22 @@
+# Render Blueprint — Infrastructure as Code
+# Deploy with: render.com → New → Blueprint → connect this repo
+
+services:
+  - type: web
+    name: nexhrms-fk-bridge
+    runtime: node
+    region: singapore
+    plan: starter  # $7/mo, always-on (use 'free' for testing)
+    rootDir: render-bridge
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: T800_BRIDGE_TARGET_URL
+        sync: false
+      - key: KIOSK_API_KEY
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
