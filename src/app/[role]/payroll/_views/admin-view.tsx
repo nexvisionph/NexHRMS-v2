@@ -53,6 +53,8 @@
     import { ThirteenthMonthModal } from "@/components/payroll/thirteenth-month-modal";
     import { ExportBackupDialog } from "@/components/export-backup-dialog";
     import { ImportDataDialog } from "@/components/import-data-dialog";
+    import { PayrollExportDialog } from "@/components/payroll-export-dialog";
+    import { lockRunDbFirst, unlockRunDbFirst, endRunDbFirst, markRunPaidDbFirst } from "@/services/payroll-actions.service";
     import PayrollPaymentWizard, { type WizardStep, usePayrollProgress } from "@/features/payroll-payment/payroll-payment-wizard";
     import Link from "next/link";
     import { useParams } from "next/navigation";
@@ -78,6 +80,7 @@
         const { getEmployeeBalances } = useLeaveStore();
         const holidays = useAttendanceStore((s) => s.holidays);
         const attendanceLogs = useAttendanceStore((s) => s.logs);
+        const overtimeRequests = useAttendanceStore((s) => s.overtimeRequests);
         const ruleSets = useTimesheetStore((s) => s.ruleSets);
         const { hasPermission } = useRolesStore();
         const { templates: deductionTemplates, computeDeductionsForEmployee } = useDeductionsStore();
@@ -114,6 +117,9 @@
         const [formIssuedAt, setFormIssuedAt] = useState(format(new Date(), "yyyy-MM-dd"));
         const [grossOverrides, setGrossOverrides] = useState<Record<string, string>>({});
         const [expandedOverrideEmpId, setExpandedOverrideEmpId] = useState<string | null>(null);
+        // ─── Two-step confirm gates (per run date) ───────────────────
+        const [endCycleConsent, setEndCycleConsent] = useState<Record<string, boolean>>({});
+        const [completeRunConsent, setCompleteRunConsent] = useState<Record<string, boolean>>({});
         const [selectedMonth, setSelectedMonth] = useState(format(new Date(), "yyyy-MM"));
         const [cutoff, setCutoff] = useState<"first" | "second">(() =>
             new Date().getDate() > paySchedule.semiMonthlyFirstCutoff ? "second" : "first"
@@ -366,7 +372,14 @@
         // ─── Issue handler ────────────────────────────────────────────
         const handleIssue = () => {
             const periodKey = `${cutoffDates.start}/${cutoffDates.end}`;
-            const cutoffLocked = isRunLocked(periodKey);
+            // Orphan-aware lock check: only block when a locked, non-completed run
+            // for this period actually has payslips. Empty locked runs are ignored.
+            const cutoffLocked = runs.some((r) =>
+                r.periodLabel === periodKey &&
+                r.locked &&
+                r.status !== "completed" &&
+                (r.payslipIds ?? []).length > 0
+            );
             if (cutoffLocked) { toast.error("This cutoff period is locked. Unlock the payroll run first to issue new payslips."); return; }
 
             // Period guard: block if another cutoff in the same month has an active (non-completed) run
@@ -456,7 +469,21 @@
                     const otHours = otHoursVal;
                     const nightDiffHours = nightDiffVal;
 
-                    // Apply deduction overrides for each government contribution (Philippine Standard)
+                    // ─── Auto-include approved OT requests ───────────────────────
+                    // Always sum approved OT for this employee in the cutoff range
+                    // and ADD it to the manual field. Previously this was gated by
+                    // if (otHours === 0), which silently ignored approved OT whenever
+                    // the admin typed any nonzero value.
+                    const approvedOtHours = overtimeRequests
+                        .filter(
+                            (r) =>
+                                r.employeeId === empId &&
+                                r.status === "approved" &&
+                                r.date >= cutoffDates.start &&
+                                r.date <= cutoffDates.end
+                        )
+                        .reduce((sum, r) => sum + (r.hoursRequested || 0), 0);
+                    const effectiveOtHours = otHours + approvedOtHours;
                     // Priority: per-employee override > global default > auto (standard PH calc)
                     const computeDeduction = (type: DeductionType, autoValue: number, basis: number = grossPay): number => {
                         const override = getDeductionOverride(empId, type);
@@ -529,7 +556,7 @@
                         .reduce((sum, item) => sum + item.amount, 0);
 
                     const hourlyRate = Math.round(dailyRate / 8);
-                    const otPay = Math.round(otHours * hourlyRate * 1.25); // PH Labor Code: OT at 125%
+                    const otPay = Math.round(effectiveOtHours * hourlyRate * 1.25); // PH Labor Code: OT at 125%
                     const nightDiffPay = Math.round(nightDiffHours * hourlyRate * 0.10); // PH: +10% for 10PM-6AM
                     const periodHolidays = holidays.filter((h) => h.date >= cutoffDates.start && h.date <= cutoffDates.end);
                     let holidayPaySupp = 0;
@@ -598,7 +625,7 @@
                         overtimePay: otPay,
                         dailyRate: libDailyRate,
                         hourlyRate: libHourlyRate,
-                        notes: formNotes || [otHours > 0 ? `OT: ${otHours}hrs (\u20B1${otPay})` : "", nightDiffHours > 0 ? `ND: ${nightDiffHours}hrs (\u20B1${nightDiffPay})` : ""].filter(Boolean).join(", ") || undefined, issuedAt: formIssuedAt,
+                        notes: formNotes || [effectiveOtHours > 0 ? `OT: ${effectiveOtHours}hrs (\u20B1${otPay})` : "", nightDiffHours > 0 ? `ND: ${nightDiffHours}hrs (\u20B1${nightDiffPay})` : ""].filter(Boolean).join(", ") || undefined, issuedAt: formIssuedAt,
                     });
 
                     const actualPayslipId = usePayrollStore.getState().payslips.filter((p) => p.employeeId === empId).sort((a, b) => b.id.localeCompare(a.id))[0]?.id ?? `PS-fallback-${Date.now()}`;
@@ -657,7 +684,13 @@
         const isCutoffPeriodLocked = useMemo(() => {
             if (!cutoffDates.start || !cutoffDates.end) return false;
             const periodKey = `${cutoffDates.start}/${cutoffDates.end}`;
-            return runs.some((r) => r.locked && r.status !== "completed" && r.periodLabel === periodKey);
+            return runs.some((r) => {
+                if (!r.locked || r.status === "completed") return false;
+                if (r.periodLabel !== periodKey) return false;
+                // Only treat as locked if the run actually has payslips.
+                // Orphaned empty locked runs do not block new runs.
+                return (r.payslipIds ?? []).length > 0;
+            });
         }, [runs, cutoffDates]);
         const viewedPayslip = viewSlip ? payslips.find((p) => p.id === viewSlip) : null;
 
@@ -874,6 +907,11 @@
                             </Button>
                             <ExportBackupDialog module="payroll" />
                             <ImportDataDialog module="payroll" onImportComplete={() => toast.success("Payroll data imported — refresh to see changes")} />
+                            <PayrollExportDialog trigger={
+                                <Button variant="outline" size="sm" className="gap-1.5">
+                                    <Download className="h-4 w-4" /> <span className="hidden sm:inline">Export Payroll</span>
+                                </Button>
+                            } />
                             <Dialog open={open} onOpenChange={(isOpen) => {
                                 if (isOpen && isCutoffPeriodLocked) {
                                     toast.error("This cutoff period is locked. Unlock the payroll run first to issue new payslips.");
@@ -977,9 +1015,10 @@
                                             </div>
                                             {/* OT & Night Diff */}
                                             <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                                                <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Overtime & Night Differential</p>
+                                                <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-1 flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Overtime & Night Differential</p>
+                                                <p className="text-[10px] text-blue-700/80 dark:text-blue-300/70 mb-2">Approved OT requests in this cutoff are added automatically per employee. Use the field below for extra unapproved hours that apply to everyone selected.</p>
                                                 <div className="grid grid-cols-2 gap-2">
-                                                    <div><label className="text-xs text-muted-foreground">OT Hours (125%)</label><Input type="number" min={0} step="0.5" value={formOTHours} onChange={(e) => setFormOTHours(e.target.value)} className="mt-1 h-8 text-xs" placeholder="0" /></div>
+                                                    <div><label className="text-xs text-muted-foreground">Extra OT Hours (125%)</label><Input type="number" min={0} step="0.5" value={formOTHours} onChange={(e) => setFormOTHours(e.target.value)} className="mt-1 h-8 text-xs" placeholder="0" /></div>
                                                     <div><label className="text-xs text-muted-foreground">Night Diff (+10%)</label><Input type="number" min={0} step="0.5" value={formNightDiffHours} onChange={(e) => setFormNightDiffHours(e.target.value)} className="mt-1 h-8 text-xs" placeholder="0" /></div>
                                                 </div>
                                             </div>
@@ -1837,10 +1876,14 @@
                                                                                                 <AlertDialogAction
                                                                                                     disabled={!checklistPassedMap[runObj?.id ?? ""]}
                                                                                                     className={!checklistPassedMap[runObj?.id ?? ""] ? "opacity-50 cursor-not-allowed" : ""}
-                                                                                                    onClick={() => {
-                                                                                                        lockRun(run.date, currentUser.id);
-                                                                                                        useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_locked", performedBy: currentUser.id });
-                                                                                                        toast.success("Payroll run locked");
+                                                                                                    onClick={async () => {
+                                                                                                        const ok = await lockRunDbFirst(run.date, currentUser.id);
+                                                                                                        if (ok) {
+                                                                                                            useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_locked", performedBy: currentUser.id });
+                                                                                                            toast.success("Payroll run locked");
+                                                                                                        } else {
+                                                                                                            toast.error("Failed to lock payroll run — check connection");
+                                                                                                        }
                                                                                                     }}
                                                                                                 >
                                                                                                     Lock
@@ -1859,7 +1902,7 @@
                                                                                             </AlertDialogHeader>
                                                                                             <AlertDialogFooter>
                                                                                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                                                <AlertDialogAction onClick={() => { unlockRun(run.date, currentUser.id); useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_locked", performedBy: currentUser.id }); toast.success("Run unlocked for corrections"); }}>Unlock</AlertDialogAction>
+                                                                                                <AlertDialogAction onClick={async () => { const ok = await unlockRunDbFirst(run.date); if (ok) { useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_locked", performedBy: currentUser.id }); toast.success("Run unlocked for corrections"); } else { toast.error("Failed to unlock run"); } }}>Unlock</AlertDialogAction>
                                                                                             </AlertDialogFooter>
                                                                                         </AlertDialogContent>
                                                                                     </AlertDialog>
@@ -1882,7 +1925,7 @@
                                                                                             ? `${signedUnpaid} signed payslip${signedUnpaid !== 1 ? "s" : ""} not yet paid`
                                                                                             : `${draftCount} unpublished payslip${draftCount !== 1 ? "s" : ""}`;
                                                                                     return (
-                                                                                        <AlertDialog>
+                                                                                        <AlertDialog onOpenChange={(open) => { if (!open) setEndCycleConsent((prev) => ({ ...prev, [run.date]: false })); }}>
                                                                                             <AlertDialogTrigger asChild>
                                                                                                 <Button variant="ghost" size="icon" className={`h-7 w-7 ${canEnd ? "text-orange-500" : "text-muted-foreground/40 cursor-not-allowed"}`} title={endTitle} disabled={!canEnd}><Flag className="h-3.5 w-3.5" /></Button>
                                                                                             </AlertDialogTrigger>
@@ -1908,12 +1951,23 @@
                                                                                                                 </p>
                                                                                                             )}
                                                                                                             <p className="text-xs text-muted-foreground">After ending, on-hold employees can still sign and be approved. The run can then be marked as complete.</p>
+                                                                                                            <label className="flex items-start gap-2 rounded-md border border-border/60 bg-muted/40 p-2 text-xs cursor-pointer mt-2">
+                                                                                                                <Checkbox
+                                                                                                                    checked={!!endCycleConsent[run.date]}
+                                                                                                                    onCheckedChange={(v) => setEndCycleConsent((prev) => ({ ...prev, [run.date]: v === true }))}
+                                                                                                                    className="mt-0.5"
+                                                                                                                />
+                                                                                                                <span>I understand this will end the cycle for <strong>{periodDisplay}</strong>{unsCount > 0 ? ` and place ${unsCount} unsigned employee${unsCount !== 1 ? "s" : ""} on hold` : ""}.</span>
+                                                                                                            </label>
                                                                                                         </div>
                                                                                                     </AlertDialogDescription>
                                                                                                 </AlertDialogHeader>
                                                                                                 <AlertDialogFooter>
                                                                                                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                                                    <AlertDialogAction onClick={() => {
+                                                                                                    <AlertDialogAction
+                                                                                                        disabled={!endCycleConsent[run.date]}
+                                                                                                        className={!endCycleConsent[run.date] ? "opacity-50 cursor-not-allowed" : ""}
+                                                                                                        onClick={() => {
                                                                                                         const onHoldPayslips = payslips
                                                                                                             .filter((p) => (runObj?.payslipIds ?? []).includes(p.id) && p.status === "published" && !p.signedAt);
                                                                                                         onHoldPayslips.forEach((p) => {
@@ -1928,10 +1982,13 @@
                                                                                                                 { suppressToast: true }
                                                                                                             );
                                                                                                         });
-                                                                                                        endRun(run.date);
-                                                                                                        useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_ended", performedBy: currentUser.id });
-                                                                                                        const employeeCount = new Set(onHoldPayslips.map((p) => p.employeeId)).size;
-                                                                                                        toast.success(`Payroll cycle ended. On-hold notifications sent to ${employeeCount} employee${employeeCount !== 1 ? "s" : ""}.`);
+                                                                                                        endRunDbFirst(run.date).then((ok) => {
+                                                                                                            if (ok) {
+                                                                                                                useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_ended", performedBy: currentUser.id });
+                                                                                                                const employeeCount = new Set(onHoldPayslips.map((p) => p.employeeId)).size;
+                                                                                                                toast.success(`Payroll cycle ended. On-hold notifications sent to ${employeeCount} employee${employeeCount !== 1 ? "s" : ""}.`);
+                                                                                                            } else { toast.error("Failed to end payroll run"); }
+                                                                                                        });
                                                                                                     }}>End Cycle</AlertDialogAction>
                                                                                                 </AlertDialogFooter>
                                                                                             </AlertDialogContent>
@@ -1940,7 +1997,7 @@
                                                                                 })()}
                                                                                 {/* Mark as Complete — final step, unlocks Run Payroll */}
                                                                                 {locked && (runStatus === "ended") && (
-                                                                                    <AlertDialog>
+                                                                                    <AlertDialog onOpenChange={(open) => { if (!open) setCompleteRunConsent((prev) => ({ ...prev, [run.date]: false })); }}>
                                                                                         <AlertDialogTrigger asChild>
                                                                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" title="Mark as Complete"><CheckCircle className="h-3.5 w-3.5" /></Button>
                                                                                         </AlertDialogTrigger>
@@ -1960,15 +2017,28 @@
                                                                                                             ) : null;
                                                                                                         })()}
                                                                                                         <p className="text-xs text-muted-foreground">After completion, the &quot;Run Payroll&quot; button will unlock for the next cutoff period.</p>
+                                                                                                        <label className="flex items-start gap-2 rounded-md border border-border/60 bg-muted/40 p-2 text-xs cursor-pointer mt-2">
+                                                                                                            <Checkbox
+                                                                                                                checked={!!completeRunConsent[run.date]}
+                                                                                                                onCheckedChange={(v) => setCompleteRunConsent((prev) => ({ ...prev, [run.date]: v === true }))}
+                                                                                                                className="mt-0.5"
+                                                                                                            />
+                                                                                                            <span>I understand this finalizes <strong>{periodDisplay}</strong> and cannot be undone.</span>
+                                                                                                        </label>
                                                                                                     </div>
                                                                                                 </AlertDialogDescription>
                                                                                             </AlertDialogHeader>
                                                                                             <AlertDialogFooter>
                                                                                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                                                <AlertDialogAction onClick={() => {
-                                                                                                    markRunPaid(run.date);
-                                                                                                    useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_completed", performedBy: currentUser.id });
-                                                                                                    toast.success("Payroll run completed — Run Payroll unlocked");
+                                                                                                <AlertDialogAction
+                                                                                                    disabled={!completeRunConsent[run.date]}
+                                                                                                    className={!completeRunConsent[run.date] ? "opacity-50 cursor-not-allowed" : ""}
+                                                                                                    onClick={async () => {
+                                                                                                    const ok = await markRunPaidDbFirst(run.date);
+                                                                                                    if (ok) {
+                                                                                                        useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_completed", performedBy: currentUser.id });
+                                                                                                        toast.success("Payroll run completed — Run Payroll unlocked");
+                                                                                                    } else { toast.error("Failed to complete run"); }
                                                                                                 }}>Complete Run</AlertDialogAction>
                                                                                             </AlertDialogFooter>
                                                                                         </AlertDialogContent>
