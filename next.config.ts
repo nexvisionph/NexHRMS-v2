@@ -28,7 +28,7 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(self)" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-          { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.sslip.io https://*.tile.openstreetmap.org https://*.openstreetmap.org https://images.unsplash.com https://i.pravatar.cc; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sslip.io wss://*.sslip.io http://*.sslip.io ws://*.sslip.io https://dashscope.aliyuncs.com https://nominatim.openstreetmap.org; frame-ancestors 'none'" },
+          { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.sslip.io https://*.nexvision.info https://*.tile.openstreetmap.org https://*.openstreetmap.org https://images.unsplash.com https://i.pravatar.cc; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sslip.io wss://*.sslip.io http://*.sslip.io ws://*.sslip.io https://*.nexvision.info wss://*.nexvision.info https://dashscope.aliyuncs.com https://nominatim.openstreetmap.org; frame-ancestors 'none'" },
         ],
       },
       {
