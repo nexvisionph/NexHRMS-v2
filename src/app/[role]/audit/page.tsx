@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAuditStore } from "@/store/audit.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useRolesStore } from "@/store/roles.store";
@@ -16,7 +16,7 @@ import {
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { FileSearch, Eye, Shield, Clock } from "lucide-react";
+import { FileSearch, Eye, Shield, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AuditLogEntry } from "@/types";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -46,6 +46,8 @@ const ACTION_COLORS: Record<string, string> = {
     payslip_sign: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
 };
 
+const PAGE_SIZES = [10, 20, 50];
+
 export default function AuditPage() {
     const { logs } = useAuditStore();
     const currentUser = useAuthStore((s) => s.currentUser);
@@ -57,14 +59,23 @@ export default function AuditPage() {
     const [entityFilter, setEntityFilter] = useState("");
     const [performerFilter, setPerformerFilter] = useState("");
     const [viewLog, setViewLog] = useState<AuditLogEntry | null>(null);
+    const [auditPage, setAuditPage] = useState(1);
+    const [auditPageSize, setAuditPageSize] = useState(10);
 
     const filtered = useMemo(() => {
         let result = logs;
         if (actionFilter !== "all") result = result.filter((l) => l.action === actionFilter);
         if (entityFilter) result = result.filter((l) => l.entityId.toLowerCase().includes(entityFilter.toLowerCase()) || l.entityType.toLowerCase().includes(entityFilter.toLowerCase()));
         if (performerFilter) result = result.filter((l) => l.performedBy.toLowerCase().includes(performerFilter.toLowerCase()));
-        return result.slice(0, 200);
+        return result;
     }, [logs, actionFilter, entityFilter, performerFilter]);
+
+    const auditTotalPages = Math.max(1, Math.ceil(filtered.length / auditPageSize));
+    const auditSafePage = Math.min(auditPage, auditTotalPages);
+    const paginatedAudit = filtered.slice((auditSafePage - 1) * auditPageSize, auditSafePage * auditPageSize);
+
+    // Reset to page 1 when filters change
+    useEffect(() => { setAuditPage(1); }, [actionFilter, entityFilter, performerFilter, auditPageSize]);
 
     const uniqueActions = useMemo(() => {
         const set = new Set(logs.map((l) => l.action).filter(Boolean));
@@ -164,7 +175,7 @@ export default function AuditPage() {
                         <TableBody>
                             {filtered.length === 0 ? (
                                 <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">No audit log entries</TableCell></TableRow>
-                            ) : filtered.map((entry) => (
+                            ) : paginatedAudit.map((entry) => (
                                 <TableRow key={entry.id}>
                                     <TableCell className="text-xs text-muted-foreground">
                                         <div className="flex items-center gap-1">
@@ -195,6 +206,31 @@ export default function AuditPage() {
                   </div>
                 </CardContent>
             </Card>
+
+            {/* Pagination */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Rows per page:</span>
+                    <Select value={String(auditPageSize)} onValueChange={(v) => { setAuditPageSize(Number(v)); setAuditPage(1); }}>
+                        <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            {PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">
+                        Page {auditSafePage} of {auditTotalPages}
+                        {filtered.length > 0 && <span className="ml-1">({filtered.length} total)</span>}
+                    </span>
+                    <Button variant="outline" size="icon" className="h-8 w-8" disabled={auditSafePage <= 1} onClick={() => setAuditPage(auditSafePage - 1)}>
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8" disabled={auditSafePage >= auditTotalPages} onClick={() => setAuditPage(auditSafePage + 1)}>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
+            </div>
 
             {/* Detail Dialog */}
             <Dialog open={!!viewLog} onOpenChange={() => setViewLog(null)}>
