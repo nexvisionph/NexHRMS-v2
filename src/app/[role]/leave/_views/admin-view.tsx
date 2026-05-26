@@ -54,6 +54,7 @@ const LEAVE_COLORS: Record<LeaveType, { icon: string; bg: string; number: string
     OTHER: { icon: "text-violet-600",   bg: "bg-violet-500/15",   number: "text-violet-600"   },
     ML:    { icon: "text-pink-600",     bg: "bg-pink-500/15",     number: "text-pink-600"     },
     PL:    { icon: "text-sky-600",      bg: "bg-sky-500/15",      number: "text-sky-600"      },
+    SPL:   { icon: "text-rose-600",     bg: "bg-rose-500/15",     number: "text-rose-600"     },
 };
 
 /**
