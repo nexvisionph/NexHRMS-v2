@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS public.notification_provider_config (
   email_provider text NOT NULL DEFAULT 'simulated'::text,
   sms_enabled boolean NOT NULL DEFAULT true,
   email_enabled boolean NOT NULL DEFAULT true,
-  default_sender_name text NOT NULL DEFAULT 'Soren Data Solutions'::text,
+  default_sender_name text NOT NULL DEFAULT 'NexHRIS'::text,
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT notification_provider_config_pkey PRIMARY KEY (id)
 );
@@ -37,7 +37,7 @@ CREATE POLICY "Admins can insert notification provider config"
 -- ─── Seed default notification rules if table is empty ─────────────────────
 -- The notification_rules table already exists; ensure it has the default rows.
 INSERT INTO public.notification_rules (id, trigger, enabled, channel, recipient_roles, timing, schedule_time, reminder_days, subject_template, body_template, sms_template) VALUES
-  ('NR-01', 'payslip_published', true, 'both', '{employee}', 'immediate', NULL, NULL, 'Payslip Ready: {period}', 'Hi {name}, your payslip for {period} is ready. Net pay: {amount}. Please sign in Soren Data Solutions.', 'Your payslip for {period} is ready. Net: {amount}.'),
+  ('NR-01', 'payslip_published', true, 'both', '{employee}', 'immediate', NULL, NULL, 'Payslip Ready: {period}', 'Hi {name}, your payslip for {period} is ready. Net pay: {amount}. Please sign in NexHRIS.', 'Your payslip for {period} is ready. Net: {amount}.'),
   ('NR-02', 'leave_submitted', true, 'email', '{admin,hr}', 'immediate', NULL, NULL, 'Leave Request: {name}', '{name} submitted a {leaveType} leave request ({dates}).', NULL),
   ('NR-03', 'leave_approved', true, 'both', '{employee}', 'immediate', NULL, NULL, 'Leave {status}: {dates}', 'Hi {name}, your {leaveType} leave ({dates}) has been {status}.', 'Your {leaveType} leave ({dates}) has been {status}.'),
   ('NR-04', 'leave_rejected', true, 'both', '{employee}', 'immediate', NULL, NULL, 'Leave Rejected: {dates}', 'Hi {name}, your {leaveType} leave ({dates}) has been rejected.', NULL),

@@ -658,6 +658,9 @@ export const useAttendanceStore = create<AttendanceState>()(
             // ─── Overtime ─────────────────────────────────────────────
             submitOvertimeRequest: (data) => {
                 const id = `OT-${nanoid(8)}`;
+                const requestedAt = new Date().toISOString();
+
+                // Optimistically add to local state so UI updates immediately
                 set((s) => ({
                     overtimeRequests: [
                         ...s.overtimeRequests,
@@ -665,10 +668,51 @@ export const useAttendanceStore = create<AttendanceState>()(
                             ...data,
                             id,
                             status: "pending" as const,
-                            requestedAt: new Date().toISOString(),
+                            requestedAt,
                         },
                     ],
                 }));
+
+                // Persist via API (admin client — bypasses RLS). The server may
+                // assign a different id when filing on behalf, so reconcile when
+                // the response returns.
+                fetch("/api/attendance/overtime", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        employeeId: data.employeeId,
+                        date: data.date,
+                        hoursRequested: data.hoursRequested,
+                        reason: data.reason,
+                        projectId: data.projectId,
+                    }),
+                })
+                    .then(async (res) => {
+                        if (!res.ok) {
+                            console.error("[OT] Submit failed, reverting");
+                            set((s) => ({
+                                overtimeRequests: s.overtimeRequests.filter((r) => r.id !== id),
+                            }));
+                            return;
+                        }
+                        const payload = await res.json().catch(() => null);
+                        const serverId = payload?.request?.id as string | undefined;
+                        if (serverId && serverId !== id) {
+                            // Replace the optimistic id with the canonical server id
+                            set((s) => ({
+                                overtimeRequests: s.overtimeRequests.map((r) =>
+                                    r.id === id ? { ...r, id: serverId } : r
+                                ),
+                            }));
+                        }
+                    })
+                    .catch(() => {
+                        // Network error — revert optimistic insert
+                        set((s) => ({
+                            overtimeRequests: s.overtimeRequests.filter((r) => r.id !== id),
+                        }));
+                    });
+
                 // Notify admin and supervisor employees
                 const employees = useEmployeesStore.getState().employees;
                 const requester = employees.find((e) => e.id === data.employeeId);
@@ -689,6 +733,9 @@ export const useAttendanceStore = create<AttendanceState>()(
             },
             approveOvertime: (requestId, approverId) => {
                 const otReq = get().overtimeRequests.find((r) => r.id === requestId);
+                if (!otReq) return;
+
+                // Optimistically update local state
                 set((s) => ({
                     overtimeRequests: s.overtimeRequests.map((r) =>
                         r.id === requestId
@@ -696,8 +743,33 @@ export const useAttendanceStore = create<AttendanceState>()(
                             : r
                     ),
                 }));
+
+                // Persist via API (admin client — bypasses RLS)
+                fetch("/api/attendance/overtime", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: requestId, action: "approve" }),
+                }).then(async (res) => {
+                    if (!res.ok) {
+                        // Revert on failure
+                        console.error("[OT] Approve failed, reverting");
+                        set((s) => ({
+                            overtimeRequests: s.overtimeRequests.map((r) =>
+                                r.id === requestId ? { ...r, status: "pending" as const, reviewedBy: undefined, reviewedAt: undefined } : r
+                            ),
+                        }));
+                    }
+                }).catch(() => {
+                    // Revert on network error
+                    set((s) => ({
+                        overtimeRequests: s.overtimeRequests.map((r) =>
+                            r.id === requestId ? { ...r, status: "pending" as const, reviewedBy: undefined, reviewedAt: undefined } : r
+                        ),
+                    }));
+                });
+
                 // Update the corresponding attendance log with approved OT hours
-                if (otReq && otReq.date) {
+                if (otReq.date) {
                     const log = get().logs.find(
                         (l) => l.employeeId === otReq.employeeId && l.date === otReq.date
                     );
@@ -712,19 +784,20 @@ export const useAttendanceStore = create<AttendanceState>()(
                     }
                 }
                 // Notify the requesting employee
-                if (otReq) {
-                    useNotificationsStore.getState().addLog({
-                        employeeId: otReq.employeeId,
-                        type: "overtime_submitted",
-                        channel: "in_app",
-                        subject: "Overtime Approved",
-                        body: `Your overtime request for ${otReq.date} (${otReq.hoursRequested}h) has been approved.`,
-                        link: "/attendance",
-                    });
-                }
+                useNotificationsStore.getState().addLog({
+                    employeeId: otReq.employeeId,
+                    type: "overtime_submitted",
+                    channel: "in_app",
+                    subject: "Overtime Approved",
+                    body: `Your overtime request for ${otReq.date} (${otReq.hoursRequested}h) has been approved.`,
+                    link: "/attendance",
+                });
             },
             rejectOvertime: (requestId, approverId, reason) => {
                 const otReq = get().overtimeRequests.find((r) => r.id === requestId);
+                if (!otReq) return;
+
+                // Optimistically update local state
                 set((s) => ({
                     overtimeRequests: s.overtimeRequests.map((r) =>
                         r.id === requestId
@@ -732,17 +805,38 @@ export const useAttendanceStore = create<AttendanceState>()(
                             : r
                     ),
                 }));
+
+                // Persist via API (admin client — bypasses RLS)
+                fetch("/api/attendance/overtime", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: requestId, action: "reject", reason }),
+                }).then(async (res) => {
+                    if (!res.ok) {
+                        // Revert on failure
+                        set((s) => ({
+                            overtimeRequests: s.overtimeRequests.map((r) =>
+                                r.id === requestId ? { ...r, status: "pending" as const, reviewedBy: undefined, reviewedAt: undefined, rejectionReason: undefined } : r
+                            ),
+                        }));
+                    }
+                }).catch(() => {
+                    set((s) => ({
+                        overtimeRequests: s.overtimeRequests.map((r) =>
+                            r.id === requestId ? { ...r, status: "pending" as const, reviewedBy: undefined, reviewedAt: undefined, rejectionReason: undefined } : r
+                        ),
+                    }));
+                });
+
                 // Notify the requesting employee
-                if (otReq) {
-                    useNotificationsStore.getState().addLog({
-                        employeeId: otReq.employeeId,
-                        type: "overtime_submitted",
-                        channel: "in_app",
-                        subject: "Overtime Rejected",
-                        body: `Your overtime request for ${otReq.date} (${otReq.hoursRequested}h) was rejected${reason ? `: ${reason}` : "."}`,
-                        link: "/attendance",
-                    });
-                }
+                useNotificationsStore.getState().addLog({
+                    employeeId: otReq.employeeId,
+                    type: "overtime_submitted",
+                    channel: "in_app",
+                    subject: "Overtime Rejected",
+                    body: `Your overtime request for ${otReq.date} (${otReq.hoursRequested}h) was rejected${reason ? `: ${reason}` : "."}`,
+                    link: "/attendance",
+                });
             },
 
             // ─── Shifts ───────────────────────────────────────────────

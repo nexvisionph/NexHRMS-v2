@@ -341,6 +341,161 @@ function convertPBRawToPayrollRows(
   return employees;
 }
 
+// ─── NexHRIS Export Format Converter ──────────────────────────────────────────
+
+/**
+ * Detects whether an uploaded file is in the new NexHRIS dynamic export format.
+ * Checks for "NexHRIS" company name and "ALLOWANCES"/"DEDUCTIONS" section headers.
+ */
+function isNexHRISFormat(rawRows: Record<string, unknown>[]): boolean {
+  if (rawRows.length < 10) return false;
+  // Check if cell A1 or B1 contains "NexHRIS"
+  const firstRowValues = Object.values(rawRows[0] || {}).map(v => String(v || "").trim());
+  const hasNexHRIS = firstRowValues.some(v => v === "NexHRIS");
+  if (!hasNexHRIS) return false;
+  // Check for ALLOWANCES or DEDUCTIONS section header in column B
+  const hasSectionHeaders = rawRows.some(row => {
+    const vals = Object.values(row).map(v => String(v || "").trim());
+    return vals.includes("ALLOWANCES") || vals.includes("DEDUCTIONS");
+  });
+  return hasSectionHeaders;
+}
+
+/**
+ * Converts NexHRIS format sheets (one per employee) into PayrollRows.
+ * Reads dynamic ALLOWANCES and DEDUCTIONS sections.
+ */
+function convertNexHRISToPayrollRows(
+  allSheets: Array<Record<string, unknown>[]>
+): PayrollRow[] {
+  const employees: PayrollRow[] = [];
+
+  for (const sheetRows of allSheets) {
+    if (sheetRows.length < 10) continue;
+
+    const raw = sheetRows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v])));
+
+    // Helper to get cell value by column index
+    const getCell = (rowIdx: number, colIdx: number): string => {
+      const row = raw[rowIdx];
+      if (!row) return "";
+      const v = row[colIdx] ?? row[String(colIdx)];
+      return v === undefined || v === null ? "" : String(v).trim();
+    };
+    const numVal = (rowIdx: number, colIdx: number): number => {
+      const s = getCell(rowIdx, colIdx).replace(/[₱,\s]/g, "");
+      const f = parseFloat(s);
+      return isNaN(f) ? 0 : f;
+    };
+
+    // Find employee name (R8, col 4 = E column)
+    const name = getCell(8, 4) || getCell(7, 4);
+    if (!name) continue;
+
+    // Period (R3, col 4) — format: "MMM dd, yyyy – MMM dd, yyyy"
+    const periodStr = getCell(3, 4);
+    let periodStart = "";
+    let periodEnd = "";
+    if (periodStr.includes("–")) {
+      const [from, to] = periodStr.split("–").map(s => s.trim());
+      // Try to parse dates — they may be in various formats
+      try {
+        const fromDate = new Date(from);
+        const toDate = new Date(to);
+        if (!isNaN(fromDate.getTime())) periodStart = fromDate.toISOString().split("T")[0];
+        if (!isNaN(toDate.getTime())) periodEnd = toDate.toISOString().split("T")[0];
+      } catch { /* use raw strings */ }
+    }
+
+    // Monthly salary, daily rate from R7-R10
+    const monthlySalary = numVal(7, 7);
+    const position = getCell(9, 4);
+    const department = getCell(10, 4);
+
+    // Find ALLOWANCES and DEDUCTIONS sections
+    let allowancesHeaderRow = -1;
+    let deductionsHeaderRow = -1;
+    let totalAllowancesRow = -1;
+    let totalDeductionsRow = -1;
+    let netPayRow = -1;
+
+    for (let i = 0; i < raw.length; i++) {
+      const cellB = getCell(i, 1);
+      if (cellB === "ALLOWANCES") allowancesHeaderRow = i;
+      else if (cellB === "TOTAL ALLOWANCES") totalAllowancesRow = i;
+      else if (cellB === "DEDUCTIONS") deductionsHeaderRow = i;
+      else if (cellB === "TOTAL DEDUCTIONS") totalDeductionsRow = i;
+      else if (cellB === "NET PAY") netPayRow = i;
+    }
+
+    // Parse allowance rows
+    let totalAllowances = 0;
+    const allowanceNotes: string[] = [];
+    if (allowancesHeaderRow >= 0 && totalAllowancesRow > allowancesHeaderRow) {
+      for (let i = allowancesHeaderRow + 1; i < totalAllowancesRow; i++) {
+        const label = getCell(i, 1);
+        const amount = numVal(i, 7);
+        if (label && amount > 0) {
+          totalAllowances += amount;
+          allowanceNotes.push(`${label}: ${amount.toFixed(2)}`);
+        }
+      }
+    }
+
+    // Parse deduction rows
+    let sss = 0, philhealth = 0, pagibig = 0, tax = 0, loanDeduction = 0, customDeductions = 0;
+    if (deductionsHeaderRow >= 0 && totalDeductionsRow > deductionsHeaderRow) {
+      for (let i = deductionsHeaderRow + 1; i < totalDeductionsRow; i++) {
+        const label = getCell(i, 1).toLowerCase();
+        const amount = numVal(i, 7);
+        if (!label || amount === 0) continue;
+
+        if (label.includes("sss") && label.includes("loan")) loanDeduction += amount;
+        else if (label.includes("sss")) sss += amount;
+        else if (label.includes("philhealth")) philhealth += amount;
+        else if (label.includes("pag-ibig") || label.includes("pagibig") || label.includes("hdmf")) {
+          if (label.includes("loan")) loanDeduction += amount;
+          else pagibig += amount;
+        }
+        else if (label.includes("withholding") || label.includes("tax") || label.includes("bir")) tax += amount;
+        else customDeductions += amount;
+      }
+    }
+
+    const totalDeductions = numVal(totalDeductionsRow, 7) || (sss + philhealth + pagibig + tax + loanDeduction + customDeductions);
+    const netPay = numVal(netPayRow, 7);
+    const grossPay = monthlySalary > 0 ? monthlySalary / 2 : (netPay + totalDeductions - totalAllowances);
+
+    if (netPay === 0 && grossPay === 0) continue;
+
+    employees.push({
+      "Employee Name": name,
+      Email: "",
+      Department: department,
+      "Job Title": position,
+      "Period Start": periodStart,
+      "Period End": periodEnd,
+      "Pay Frequency": "Semi-monthly",
+      "Gross Pay": grossPay.toFixed(2),
+      Allowances: totalAllowances.toFixed(2),
+      "Holiday Pay": "0.00",
+      SSS: sss.toFixed(2),
+      PhilHealth: philhealth.toFixed(2),
+      "Pag-IBIG": pagibig.toFixed(2),
+      Tax: tax.toFixed(2),
+      "Loan Deduction": loanDeduction.toFixed(2),
+      "Custom Deductions": customDeductions.toFixed(2),
+      "Other Deductions": "0.00",
+      "Net Pay": netPay.toFixed(2),
+      "Payment Method": "",
+      "Bank Reference": "",
+      Notes: allowanceNotes.length > 0 ? `Allowances: ${allowanceNotes.join(", ")}` : "",
+    });
+  }
+
+  return employees;
+}
+
 // ─── Field layout helpers (matching the interfaces-field pattern) ─────────────
 
 function SectionLegend({ children }: { children: React.ReactNode }) {
@@ -1413,7 +1568,7 @@ export function ImportDataDialog({
 
         const fileHeaders = Object.keys(rows[0]);
 
-        // ── PB format detection (payroll module only) ───────────────────────
+        // ── PB / NexHRIS format detection (payroll module only) ───────────────
         if (isPayroll && isPBFormat(fileHeaders)) {
           // Re-read with header:1 to get array-of-arrays keyed by col index
           // Process ALL sheets — each sheet typically contains one employee
@@ -1436,6 +1591,33 @@ export function ImportDataDialog({
             if (indexedRows.length > 5) allSheets.push(indexedRows);
           }
 
+          // ── Try NexHRIS format FIRST (check for "NexHRIS" + section headers) ──
+          if (allSheets.length > 0 && isNexHRISFormat(allSheets[0])) {
+            const converted = convertNexHRISToPayrollRows(allSheets);
+            if (converted.length > 0) {
+              const allEmployees = useEmployeesStore.getState().employees;
+              let matchedCount = 0;
+              const enriched = converted.map((row) => {
+                const name = (row["Employee Name"] || "").trim();
+                const normName = normaliseForMatch(name);
+                const emp = allEmployees.find((e) => normaliseForMatch(e.name) === normName);
+                if (emp) {
+                  matchedCount++;
+                  return { ...row, Email: row["Email"] || emp.email || "", Department: row["Department"] || emp.department || "", "Job Title": row["Job Title"] || emp.jobTitle || "" };
+                }
+                return row;
+              });
+
+              toast.info(`NexHRIS format detected — ${enriched.length} record(s) converted, ${matchedCount} matched. Review before importing.`);
+              setPbRows(enriched);
+              setPbFileName(f.name);
+              setLoading(false);
+              setPbPreviewOpen(true);
+              return;
+            }
+          }
+
+          // ── Fall back to PB format converter ──
           const converted = convertPBRawToPayrollRows(
             allSheets[0] ?? [],
             allSheets

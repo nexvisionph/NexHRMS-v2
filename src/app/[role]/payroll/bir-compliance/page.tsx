@@ -83,7 +83,7 @@ import type {
 const ALLOWED_ROLES = ["admin", "finance", "payroll_admin"];
 
 const EMPLOYER_DEFAULT = {
-    name: "Soren Data Solutions Inc.",
+    name: "NexHRIS",
     tin: "000-000-000-000",
     address: "Manila, Philippines",
 };

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -22,7 +22,7 @@ import {
 /**
  * Kiosk Landing Page — Black & Neon Green SaaS Theme
  * 
- * Modern, responsive kiosk interface with Soren Data Solutions branding.
+ * Modern, responsive kiosk interface with NexHRIS branding.
  * PIN-protected admin access with method selection for employee check-in.
  */
 
@@ -302,7 +302,7 @@ export default function KioskLandingPage() {
                             </Button>
 
                             <p className="text-center text-[10px] sm:text-[11px] text-white/30">
-                                Change PIN in Admin Settings → Kiosk
+                                Change PIN in Admin Settings ? Kiosk
                             </p>
 
                             {(settings.enableFace || settings.enableQr) && (
@@ -413,7 +413,7 @@ export default function KioskLandingPage() {
                             onClick={() => { setPageState("pin_entry"); setPin(""); }}
                             className="mt-5 sm:mt-6 mx-auto block text-xs sm:text-sm text-white/40 hover:text-white/60 transition-colors"
                         >
-                            ← Back to PIN
+                            ? Back to PIN
                         </button>
                     </div>
                 )}
@@ -428,7 +428,7 @@ export default function KioskLandingPage() {
                                 className="h-1.5 w-1.5 rounded-full animate-pulse"
                                 style={{ backgroundColor: NEON_GREEN }}
                             />
-                            <span>{companyName || "Soren Data Solutions Inc."} Attendance Kiosk</span>
+                            <span>{companyName || "NexHRIS"} Attendance Kiosk</span>
                         </>
                     )}
                 </div>

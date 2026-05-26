@@ -209,7 +209,7 @@ export const usePayrollStore = create<PayrollState>()(
                         issuedAt: data.issuedAt ?? new Date().toISOString().split("T")[0],
                         payrollBatchId: runId,
                     };
-                    // Auto-create or append to draft run for this cutoff period
+                    // Auto-create or append to a run for this cutoff period
                     const existingRun = s.runs.find((r) => r.periodLabel === periodKey);
                     let updatedRuns = s.runs;
                     if (!existingRun) {
@@ -230,8 +230,29 @@ export const usePayrollStore = create<PayrollState>()(
                                 ? { ...r, payslipIds: [...(r.payslipIds || []), newId] }
                                 : r
                         );
+                    } else if (existingRun.status === "completed" || existingRun.status === "ended") {
+                        // Reactivate: a completed run is being reused for new payslips.
+                        // This can happen when the user issues new payslips for a period
+                        // whose previous run was completed but data was reset.
+                        updatedRuns = s.runs.map((r) =>
+                            r.id === existingRun.id
+                                ? {
+                                    ...r,
+                                    status: "draft" as const,
+                                    locked: false,
+                                    lockedAt: undefined,
+                                    paidAt: undefined,
+                                    completedAt: undefined,
+                                    publishedAt: undefined,
+                                    policySnapshot: undefined,
+                                    payslipIds: [...(r.payslipIds || []), newId],
+                                }
+                                : r
+                        );
+                    } else if (existingRun.status === "locked") {
+                        // Locked run — payslip is created but NOT added to the run
+                        // The user must unlock first to add new payslips
                     }
-                    // If run is locked, payslip is created but NOT added to the run
                     return { payslips: [...s.payslips, newPayslip], runs: updatedRuns };
                 }),
 

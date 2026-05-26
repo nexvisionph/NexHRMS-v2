@@ -23,7 +23,7 @@ interface PrintablePayslipProps {
 }
 
 export function PrintablePayslip({
-    payslip, employeeName, department, companyName = "Soren Data Solutions Inc.", logoUrl, jobTitle, employeeId, authorizedSignature, open, onClose,
+    payslip, employeeName, department, companyName = "NexHRIS", logoUrl, jobTitle, employeeId, authorizedSignature, open, onClose,
 }: PrintablePayslipProps) {
     const printRef = useRef<HTMLDivElement>(null);
 
@@ -166,10 +166,20 @@ export function PrintablePayslip({
                                 <td style={{ padding: "6px 8px" }}>Basic Pay (Gross)</td>
                                 <td style={{ padding: "6px 8px", textAlign: "right" }}>{formatCurrency(payslip.grossPay)}</td>
                             </tr>
-                            <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
-                                <td style={{ padding: "6px 8px" }}>Allowances</td>
-                                <td style={{ padding: "6px 8px", textAlign: "right" }}>{formatCurrency(payslip.allowances)}</td>
-                            </tr>
+                            {/* Dynamic allowance line items from templates */}
+                            {(payslip.lineItemsJson || []).filter(li => li.type === "earning").map((li) => (
+                                <tr key={li.id} style={{ borderBottom: "1px solid #e5e5e5" }}>
+                                    <td style={{ padding: "6px 8px" }}>{li.label}</td>
+                                    <td style={{ padding: "6px 8px", textAlign: "right" }}>{formatCurrency(li.amount)}</td>
+                                </tr>
+                            ))}
+                            {/* Show lump-sum allowances only if no line items exist (backward compat) */}
+                            {(!(payslip.lineItemsJson || []).some(li => li.type === "earning") && (payslip.allowances || 0) > 0) && (
+                                <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
+                                    <td style={{ padding: "6px 8px" }}>Allowances</td>
+                                    <td style={{ padding: "6px 8px", textAlign: "right" }}>{formatCurrency(payslip.allowances)}</td>
+                                </tr>
+                            )}
                             {(payslip.holidayPay ?? 0) !== 0 && (
                                 <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
                                     <td style={{ padding: "6px 8px" }}>Holiday Pay (DOLE)</td>
@@ -220,7 +230,15 @@ export function PrintablePayslip({
                                     <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.loanDeduction)}</td>
                                 </tr>
                             )}
-                            {(payslip.customDeductions || 0) > 0 && (
+                            {/* Dynamic custom deduction line items from templates */}
+                            {(payslip.lineItemsJson || []).filter(li => li.type === "deduction").map((li) => (
+                                <tr key={li.id} style={{ borderBottom: "1px solid #e5e5e5" }}>
+                                    <td style={{ padding: "6px 8px" }}>{li.label}</td>
+                                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(li.amount)}</td>
+                                </tr>
+                            ))}
+                            {/* Show lump-sum custom deductions only if no line items exist (backward compat) */}
+                            {(!(payslip.lineItemsJson || []).some(li => li.type === "deduction") && (payslip.customDeductions || 0) > 0) && (
                                 <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
                                     <td style={{ padding: "6px 8px" }}>Custom Deductions</td>
                                     <td style={{ padding: "6px 8px", textAlign: "right", color: "#dc2626" }}>{formatCurrency(payslip.customDeductions ?? 0)}</td>

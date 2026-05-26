@@ -32,7 +32,7 @@ const DEFAULT_CONFIG: MessagingConfig = {
     defaultChannel: "email",
     whatsappEnabled: true,
     smsEnabled: false,
-    emailFromName: "Soren Data Solutions",
+    emailFromName: "NexHRIS",
     emailFromAddress: "noreply@sdsi.com",
 };
 

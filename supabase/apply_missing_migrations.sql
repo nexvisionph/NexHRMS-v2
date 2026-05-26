@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS public.notification_provider_config (
   email_provider text NOT NULL DEFAULT 'simulated'::text,
   sms_enabled boolean NOT NULL DEFAULT true,
   email_enabled boolean NOT NULL DEFAULT true,
-  default_sender_name text NOT NULL DEFAULT 'Soren Data Solutions'::text,
+  default_sender_name text NOT NULL DEFAULT 'NexHRIS'::text,
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT notification_provider_config_pkey PRIMARY KEY (id)
 );
