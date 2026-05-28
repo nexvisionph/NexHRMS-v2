@@ -29,16 +29,18 @@ import { getInitials, formatCurrency, formatDate, validatePhone } from "@/lib/fo
 import { SYSTEM_ROLES, LOCATIONS } from "@/lib/constants";
 import { useDepartmentsStore } from "@/store/departments.store";
 import { useJobTitlesStore } from "@/store/job-titles.store";
-import { Mail, MapPin, Phone, Briefcase, Calendar, DollarSign, FileText, Pencil, Banknote, UserMinus, X, FolderArchive, Gavel, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Mail, MapPin, Phone, Briefcase, Calendar, DollarSign, FileText, Pencil, Banknote, UserMinus, X, FolderArchive, Gavel, ShieldCheck, AlertTriangle, Fingerprint, Heart, Home } from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 import type { WorkType, PayFrequency } from "@/types";
 
+
+
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
     return (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between py-2 border-b last:border-0">
             <span className="flex items-center gap-2 text-sm text-muted-foreground">{icon}{label}</span>
-            <span className="text-sm font-medium">{value}</span>
+            <span className="text-sm font-medium text-right max-w-[60%] break-words">{value}</span>
         </div>
     );
 }
@@ -269,6 +271,8 @@ export default function AdminProfileView() {
                                 <InfoRow icon={<MapPin className="h-4 w-4" />} label="Address" value={employee.address || "—"} />
                                 <InfoRow icon={<Calendar className="h-4 w-4" />} label="Birthday" value={employee.birthday ? formatDate(employee.birthday) : "—"} />
                                 <InfoRow icon={<Phone className="h-4 w-4" />} label="Phone" value={employee.phone || "—"} />
+                                <InfoRow icon={<Heart className="h-4 w-4" />} label="Emergency Contact" value={employee.emergencyContact || "—"} />
+                                <InfoRow icon={<Fingerprint className="h-4 w-4" />} label="Biometric ID" value={employee.biometricId || "—"} />
                             </CardContent>
                         </Card>
                         <Card className="border border-border/50">
@@ -297,6 +301,15 @@ export default function AdminProfileView() {
                             <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Work Type" value={employee.workType} />
                             <InfoRow icon={<Calendar className="h-4 w-4" />} label="Joined" value={formatDate(employee.joinDate)} />
                             <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Team Leader" value={employee.teamLeader ? employees.find((e) => e.id === employee.teamLeader)?.name || "—" : "—"} />
+                             <InfoRow icon={<DollarSign className="h-4 w-4" />} label="Monthly Salary" value={`${formatCurrency(employee.salary ?? 0)}/mo`} />
+                            <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Shift" value={(() => {
+                                const shiftId = employee.shiftId;
+                                const { shiftTemplates } = useAttendanceStore.getState();
+                                return shiftId ? shiftTemplates.find((s) => s.id === shiftId)?.name || "—" : "Default";
+                            })()} />
+                            {employee.workDays && (
+                                <InfoRow icon={<Calendar className="h-4 w-4" />} label="Work Days" value={employee.workDays.join(", ")} />
+                            )}
                         </CardContent>
                     </Card>
                 </TabsContent>
