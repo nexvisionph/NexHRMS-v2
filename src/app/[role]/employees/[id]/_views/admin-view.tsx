@@ -633,8 +633,8 @@ export default function AdminProfileView() {
                     <DialogHeader><DialogTitle>Edit Profile — {employee.name}</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
                         <div className="grid grid-cols-2 gap-3">
-                            <div><label className="text-sm font-medium">Name *</label><Input value={editName} onChange={(e) => setEditName(e.target.value)} className="mt-1" /></div>
-                            <div><label className="text-sm font-medium">Email *</label><Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-sm font-medium">Name <span className="text-destructive">*</span></label><Input value={editName} onChange={(e) => setEditName(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-sm font-medium">Email <span className="text-destructive">*</span></label><Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="mt-1" /></div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div><label className="text-sm font-medium">Role</label>
@@ -661,7 +661,7 @@ export default function AdminProfileView() {
                         <div className="grid grid-cols-2 gap-3">
                             <div><label className="text-sm font-medium">Pay Frequency</label>
                                 <Select value={editPayFreq} onValueChange={setEditPayFreq}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>
-                                    <SelectItem value="company">Company Default ({(paySchedule?.defaultFrequency ?? "semi_monthly").replace("_", "-")})</SelectItem>
+                                    <SelectItem value="company">Default ({(paySchedule?.defaultFrequency ?? "semi_monthly").replace("_", "-")})</SelectItem>
                                     <SelectItem value="monthly">Monthly</SelectItem><SelectItem value="semi_monthly">Semi-Monthly</SelectItem><SelectItem value="bi_weekly">Bi-Weekly</SelectItem><SelectItem value="weekly">Weekly</SelectItem>
                                 </SelectContent></Select>
                             </div>

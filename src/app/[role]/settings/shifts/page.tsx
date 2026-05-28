@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAttendanceStore } from "@/store/attendance.store";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
@@ -19,7 +19,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Clock3, Users, UserCog, Pencil, Trash2 } from "lucide-react";
+import { Plus, Clock3, Users, UserCog, Pencil, Trash2, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { toast } from "sonner";
 import { ShiftTemplate } from "@/types";
 import {
@@ -28,6 +28,20 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const DAY_LABELS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+const PAGE_SIZES = [10, 20, 50];
+
+/** Maps shift name keywords → badge colour classes (icon-bg + text, light & dark) */
+function getShiftColor(name: string | undefined): string {
+    if (!name) return "bg-slate-500/15 text-slate-600 dark:text-slate-300";
+    const n = name.toLowerCase();
+    if (n.includes("night")) return "bg-blue-500/15 text-blue-700 dark:text-blue-400";
+    if (n.includes("mid"))   return "bg-orange-500/15 text-orange-700 dark:text-orange-400";
+    if (n.includes("day") || n.includes("morning") || n.includes("am"))
+                             return "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400";
+    // Default for any other named shift — reuse purple as before
+    return "bg-purple-500/15 text-purple-700 dark:text-purple-400";
+}
 
 export default function ShiftsPage() {
     const { shiftTemplates, employeeShifts, createShift, assignShift, unassignShift, updateShift, deleteShift } = useAttendanceStore();
@@ -60,8 +74,17 @@ export default function ShiftsPage() {
 
     // Assign Shift dialog
     const [assignOpen, setAssignOpen] = useState(false);
-    const [assignEmpId, setAssignEmpId] = useState("");
+    const [assignEmpIds, setAssignEmpIds] = useState<string[]>([]);
     const [assignShiftId, setAssignShiftId] = useState("");
+    const [assignEmpSearch, setAssignEmpSearch] = useState("");
+    const [assignEmpFocused, setAssignEmpFocused] = useState(false);
+
+    // Employee Assignments tab — search, filter, pagination
+    const [assignSearch, setAssignSearch] = useState("");
+    const [assignDeptFilter, setAssignDeptFilter] = useState("all");
+    const [assignShiftFilter, setAssignShiftFilter] = useState("all");
+    const [assignPage, setAssignPage] = useState(1);
+    const [assignPageSize, setAssignPageSize] = useState(10);
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
     const getShiftName = (id: string) => shiftTemplates.find((s) => s.id === id)?.name || id;
@@ -113,14 +136,24 @@ export default function ShiftsPage() {
     };
 
     const handleAssign = () => {
-        if (!assignEmpId || !assignShiftId) {
-            toast.error("Please select an employee and a shift");
+        if (assignEmpIds.length === 0 || !assignShiftId) {
+            toast.error("Please select at least one employee and a shift");
             return;
         }
-        assignShift(assignEmpId, assignShiftId);
-        updateEmployee(assignEmpId, { shiftId: assignShiftId });
-        toast.success(`Shift assigned to ${getEmpName(assignEmpId)}`);
-        setAssignOpen(false); setAssignEmpId(""); setAssignShiftId("");
+        assignEmpIds.forEach((empId) => {
+            assignShift(empId, assignShiftId);
+            updateEmployee(empId, { shiftId: assignShiftId });
+        });
+        const shiftLabel = getShiftName(assignShiftId);
+        toast.success(
+            assignEmpIds.length === 1
+                ? `Shift assigned to ${getEmpName(assignEmpIds[0])}`
+                : `Shift "${shiftLabel}" assigned to ${assignEmpIds.length} employees`
+        );
+        setAssignOpen(false);
+        setAssignEmpIds([]);
+        setAssignShiftId("");
+        setAssignEmpSearch("");
     };
 
     const handleQuickAssign = (empId: string, shiftId: string | null) => {
@@ -142,6 +175,42 @@ export default function ShiftsPage() {
     const unassignedEmployees = useMemo(() => {
         return employees.filter((e) => !employeeShifts[e.id] && e.status === "active");
     }, [employees, employeeShifts]);
+
+    // Unique departments for filter
+    const uniqueDepartments = useMemo(() => {
+        const set = new Set(employees.filter((e) => e.status === "active" && e.department).map((e) => e.department));
+        return Array.from(set).sort();
+    }, [employees]);
+
+    // Filtered + paginated active employees for Assignments tab
+    const filteredAssignments = useMemo(() => {
+        return employees.filter((e) => {
+            if (e.status !== "active") return false;
+            if (assignSearch && !e.name.toLowerCase().includes(assignSearch.toLowerCase())) return false;
+            if (assignDeptFilter !== "all" && e.department !== assignDeptFilter) return false;
+            if (assignShiftFilter !== "all") {
+                const sid = employeeShifts[e.id];
+                if (assignShiftFilter === "unassigned" && sid) return false;
+                if (assignShiftFilter !== "unassigned" && sid !== assignShiftFilter) return false;
+            }
+            return true;
+        });
+    }, [employees, employeeShifts, assignSearch, assignDeptFilter, assignShiftFilter]);
+
+    const assignTotalPages = Math.max(1, Math.ceil(filteredAssignments.length / assignPageSize));
+    const assignSafePage = Math.min(assignPage, assignTotalPages);
+    const paginatedAssignments = filteredAssignments.slice(
+        (assignSafePage - 1) * assignPageSize,
+        assignSafePage * assignPageSize,
+    );
+
+    useEffect(() => { setAssignPage(1); }, [assignSearch, assignDeptFilter, assignShiftFilter, assignPageSize]);
+
+    // Filtered employees inside the Assign Shift modal
+    const filteredModalEmployees = useMemo(() => {
+        if (!assignEmpSearch) return employees.filter((e) => e.status === "active" && e.id);
+        return employees.filter((e) => e.status === "active" && e.id && e.name.toLowerCase().includes(assignEmpSearch.toLowerCase()));
+    }, [employees, assignEmpSearch]);
 
     if (!canManage) {
         return (
@@ -267,54 +336,100 @@ export default function ShiftsPage() {
                 </TabsContent>
 
                 {/* Employee Assignments */}
-                <TabsContent value="assignments" className="mt-4">
+                <TabsContent value="assignments" className="mt-4 space-y-4">
+                    {/* Search + Filter Bar */}
+                    <Card className="border border-border/50">
+                        <CardContent className="p-4">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <div className="relative flex-1 min-w-[180px]">
+                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                                    <Input
+                                        placeholder="Search employee..."
+                                        value={assignSearch}
+                                        onChange={(e) => setAssignSearch(e.target.value)}
+                                        className="pl-8 h-9 text-sm"
+                                    />
+                                </div>
+                                <Select value={assignDeptFilter} onValueChange={setAssignDeptFilter}>
+                                    <SelectTrigger className="w-full sm:w-[160px] h-9 text-sm">
+                                        <SelectValue placeholder="Department" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Departments</SelectItem>
+                                        {uniqueDepartments.map((d) => (
+                                            <SelectItem key={d} value={d}>{d}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Select value={assignShiftFilter} onValueChange={setAssignShiftFilter}>
+                                    <SelectTrigger className="w-full sm:w-[160px] h-9 text-sm">
+                                        <SelectValue placeholder="Shift" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Shifts</SelectItem>
+                                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                                        {shiftTemplates.filter((s) => s.id).map((s) => (
+                                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </CardContent>
+                    </Card>
+
                     <Card className="border border-border/50">
                         <CardContent className="p-0">
                           <div className="overflow-x-auto">
-                            <Table>
+                            <Table className="table-fixed w-full">
+                                <colgroup>
+                                    <col className="w-[28%]" />
+                                    <col className="w-[22%]" />
+                                    <col className="w-[30%]" />
+                                    <col className="w-[20%]" />
+                                </colgroup>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="text-xs">Employee</TableHead>
-                                        <TableHead className="text-xs">Department</TableHead>
-                                        <TableHead className="text-xs">Assigned Shift</TableHead>
-                                        <TableHead className="text-xs">Hours</TableHead>
+                                        <TableHead className="text-sm font-semibold">Employee</TableHead>
+                                        <TableHead className="text-sm font-semibold">Department</TableHead>
+                                        <TableHead className="text-sm font-semibold">Assigned Shift</TableHead>
+                                        <TableHead className="text-sm font-semibold">Hours</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {employees.filter((e) => e.status === "active").length === 0 ? (
-                                        <TableRow><TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-8">No active employees</TableCell></TableRow>
-                                    ) : employees.filter((e) => e.status === "active").map((emp) => {
+                                    {filteredAssignments.length === 0 ? (
+                                        <TableRow><TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-8">No employees match your filters</TableCell></TableRow>
+                                    ) : paginatedAssignments.map((emp) => {
                                         const shiftId = employeeShifts[emp.id];
                                         const shift = shiftTemplates.find((s) => s.id === shiftId);
                                         return (
                                             <TableRow key={emp.id}>
-                                                <TableCell className="text-sm font-medium">{emp.name}</TableCell>
-                                                <TableCell className="text-xs text-muted-foreground">{emp.department}</TableCell>
+                                                <TableCell className="text-sm font-medium truncate">{emp.name}</TableCell>
+                                                <TableCell className="text-sm text-muted-foreground truncate">{emp.department}</TableCell>
                                                 <TableCell>
                                                     <Select
                                                         value={shiftId || "unassigned"}
                                                         onValueChange={(val) => handleQuickAssign(emp.id, val === "unassigned" ? null : val)}
                                                     >
-                                                        <SelectTrigger className="h-7 w-full sm:w-[180px] text-xs">
+                                                        <SelectTrigger className="h-8 w-[160px] max-w-full text-sm">
                                                             <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent>
                                                             <SelectItem value="unassigned">
-                                                                <span className="text-muted-foreground italic">Unassigned</span>
+                                                                <Badge variant="secondary" className="text-[10px] bg-slate-500/15 text-slate-600 dark:text-slate-300 border-0">
+                                                                    Unassigned
+                                                                </Badge>
                                                             </SelectItem>
                                                             {shiftTemplates.filter((s) => s.id).map((s) => (
                                                                 <SelectItem key={s.id} value={s.id}>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <Badge variant="secondary" className="text-[9px] bg-purple-500/15 text-purple-700 dark:text-purple-400">
-                                                                            {s.name}
-                                                                        </Badge>
-                                                                    </div>
+                                                                    <Badge variant="secondary" className={`text-[10px] border-0 ${getShiftColor(s.name)}`}>
+                                                                        {s.name}
+                                                                    </Badge>
                                                                 </SelectItem>
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
                                                 </TableCell>
-                                                <TableCell className="text-xs text-muted-foreground">
+                                                <TableCell className="text-sm text-muted-foreground">
                                                     {shift ? `${shift.startTime} – ${shift.endTime}` : "—"}
                                                 </TableCell>
                                             </TableRow>
@@ -325,6 +440,31 @@ export default function ShiftsPage() {
                           </div>
                         </CardContent>
                     </Card>
+
+                    {/* Pagination */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select value={String(assignPageSize)} onValueChange={(v) => { setAssignPageSize(Number(v)); setAssignPage(1); }}>
+                                <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    {PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">
+                                Page {assignSafePage} of {assignTotalPages}
+                                {filteredAssignments.length > 0 && <span className="ml-1">({filteredAssignments.length} total)</span>}
+                            </span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={assignSafePage <= 1} onClick={() => setAssignPage(assignSafePage - 1)}>
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={assignSafePage >= assignTotalPages} onClick={() => setAssignPage(assignSafePage + 1)}>
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
                 </TabsContent>
             </Tabs>
 
@@ -407,9 +547,21 @@ export default function ShiftsPage() {
                 <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle className="flex items-center gap-2"><Plus className="h-4 w-4" /> Create Shift Template</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
-                        <div>
+                        <div className="grid gap-1.5">
                             <label className="text-sm font-medium">Shift Name</label>
-                            <Input value={shiftName} onChange={(e) => setShiftName(e.target.value)} placeholder="e.g. Morning Shift" className="mt-1" />
+                            <Input
+                                value={shiftName}
+                                onChange={(e) => {
+                                    if (e.target.value.length <= 50) {
+                                        setShiftName(e.target.value);
+                                    }
+                                }}
+                                placeholder="e.g. Morning Shift"
+                                maxLength={50}
+                            />
+                            <p className={`text-xs ${(50 - shiftName.length) <= 0 ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                                {50 - shiftName.length} characters remaining
+                            </p>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div>
@@ -455,27 +607,104 @@ export default function ShiftsPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Assign Shift Dialog */}
-            <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+            <Dialog open={assignOpen} onOpenChange={(o) => { setAssignOpen(o); if (!o) { setAssignEmpSearch(""); setAssignEmpIds([]); setAssignShiftId(""); setAssignEmpFocused(false); } }}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader><DialogTitle className="flex items-center gap-2"><UserCog className="h-4 w-4" /> Assign Shift</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
+
+                        {/* Employee multi-select */}
                         <div>
-                            <label className="text-sm font-medium">Employee</label>
-                            <Select value={assignEmpId} onValueChange={setAssignEmpId}>
-                                <SelectTrigger className="mt-1"><SelectValue placeholder="Select employee" /></SelectTrigger>
-                                <SelectContent>
-                                    {employees.filter((e) => e.status === "active" && e.id).map((e) => (
-                                        <SelectItem key={e.id} value={e.id}>
-                                            {e.name}
-                                            {employeeShifts[e.id] && (
-                                                <span className="text-muted-foreground text-xs ml-1">({getShiftName(employeeShifts[e.id])})</span>
-                                            )}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <div className="flex items-center justify-between mb-1.5">
+                                <label className="text-sm font-medium">Employees</label>
+                                {assignEmpIds.length > 0 && (
+                                    <span className="text-xs text-muted-foreground">{assignEmpIds.length} selected</span>
+                                )}
+                            </div>
+
+                            {/* Focus trap sentinel — Radix Dialog focuses the first focusable element;
+                                this invisible button absorbs that initial focus so the Input stays idle */}
+                            <button type="button" className="sr-only" aria-hidden="true" tabIndex={0} />
+
+                            {/* Search input */}
+                            <div className="relative">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                                <Input
+                                    placeholder="Search and select employees..."
+                                    value={assignEmpSearch}
+                                    onChange={(e) => setAssignEmpSearch(e.target.value)}
+                                    onFocus={() => setAssignEmpFocused(true)}
+                                    onBlur={() => setTimeout(() => setAssignEmpFocused(false), 150)}
+                                    className="pl-8 h-9 text-sm"
+                                    autoComplete="off"
+                                    tabIndex={-1}
+                                />
+                            </div>
+
+                            {/* Dropdown — only while focused */}
+                            {assignEmpFocused && (
+                                <div className="mt-1 border border-border rounded-md max-h-44 overflow-y-auto divide-y divide-border/50 bg-popover shadow-md">
+                                    {filteredModalEmployees.length === 0 ? (
+                                        <p className="text-xs text-muted-foreground text-center py-4">No employees found</p>
+                                    ) : filteredModalEmployees.map((e) => {
+                                        const isSelected = assignEmpIds.includes(e.id);
+                                        return (
+                                            <button
+                                                key={e.id}
+                                                type="button"
+                                                onMouseDown={(ev) => ev.preventDefault()}
+                                                onClick={() => {
+                                                    setAssignEmpIds((prev) =>
+                                                        isSelected ? prev.filter((x) => x !== e.id) : [...prev, e.id]
+                                                    );
+                                                    setAssignEmpSearch("");
+                                                }}
+                                                className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-muted flex items-center justify-between gap-2 ${isSelected ? "bg-primary/10" : ""}`}
+                                            >
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <span className={`h-4 w-4 shrink-0 rounded border flex items-center justify-center text-[10px] font-bold transition-colors ${isSelected ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
+                                                        {isSelected ? "✓" : ""}
+                                                    </span>
+                                                    <span className="truncate">{e.name}</span>
+                                                </div>
+                                                {employeeShifts[e.id] && (
+                                                    <Badge variant="secondary" className={`text-[9px] border-0 shrink-0 ${getShiftColor(getShiftName(employeeShifts[e.id]))}`}>
+                                                        {getShiftName(employeeShifts[e.id])}
+                                                    </Badge>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* Selected employee tags — shown below the search/dropdown */}
+                            {assignEmpIds.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mt-2 p-2 rounded-md border border-border bg-muted/30">
+                                    {assignEmpIds.map((id) => {
+                                        const emp = employees.find((e) => e.id === id);
+                                        return emp ? (
+                                            <span
+                                                key={id}
+                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20"
+                                            >
+                                                {emp.name}
+                                                <button
+                                                    type="button"
+                                                    onMouseDown={(ev) => ev.preventDefault()}
+                                                    onClick={() => setAssignEmpIds((prev) => prev.filter((x) => x !== id))}
+                                                    className="ml-0.5 hover:text-red-500 transition-colors leading-none"
+                                                    aria-label={`Remove ${emp.name}`}
+                                                >
+                                                    ×
+                                                </button>
+                                            </span>
+                                        ) : null;
+                                    })}
+                                </div>
+                            )}
                         </div>
+
+                        {/* Shift selector */}
                         <div>
                             <label className="text-sm font-medium">Shift</label>
                             <Select value={assignShiftId} onValueChange={setAssignShiftId}>
@@ -489,7 +718,10 @@ export default function ShiftsPage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <Button onClick={handleAssign} className="w-full">Assign Shift</Button>
+
+                        <Button onClick={handleAssign} className="w-full" disabled={assignEmpIds.length === 0 || !assignShiftId}>
+                            Assign Shift{assignEmpIds.length > 1 ? ` to ${assignEmpIds.length} Employees` : ""}
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>
