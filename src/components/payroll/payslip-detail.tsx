@@ -103,16 +103,29 @@ export function PayslipDetail({ payslip, employeeName, department, jobTitle, onS
                     {/* Breakdown */}
                     <div className="space-y-2 text-sm">
                         <Row label="Basic Pay" value={formatCurrency(payslip.grossPay)} />
-                        <Row label="Allowances / OT / Benefits" value={formatCurrency(payslip.allowances)} />
+                        {/* Dynamic allowance line items */}
+                        {(payslip.lineItemsJson || []).filter(li => li.type === "earning").map((li) => (
+                            <Row key={li.id} label={li.label} value={`+${formatCurrency(li.amount)}`} />
+                        ))}
+                        {/* Fallback: show lump sum if no line items */}
+                        {(!(payslip.lineItemsJson || []).some(li => li.type === "earning") && (payslip.allowances || 0) > 0) && (
+                            <Row label="Allowances / OT / Benefits" value={`+${formatCurrency(payslip.allowances)}`} />
+                        )}
+                        {payslip.overtimePay ? <Row label="Overtime Pay" value={`+${formatCurrency(payslip.overtimePay)}`} /> : null}
                         {payslip.holidayPay ? <Row label="Holiday Pay" value={formatCurrency(payslip.holidayPay)} /> : null}
                         <Separator />
                         <Row label="SSS" value={`-${formatCurrency(payslip.sssDeduction)}`} negative />
                         <Row label="PhilHealth" value={`-${formatCurrency(payslip.philhealthDeduction)}`} negative />
                         <Row label="Pag-IBIG" value={`-${formatCurrency(payslip.pagibigDeduction)}`} negative />
                         <Row label="Tax (BIR)" value={`-${formatCurrency(payslip.taxDeduction)}`} negative />
+                        {/* Dynamic deduction line items */}
+                        {(payslip.lineItemsJson || []).filter(li => li.type === "deduction").map((li) => (
+                            <Row key={li.id} label={li.label} value={`-${formatCurrency(li.amount)}`} negative />
+                        ))}
+                        {/* Fallback: show lump sum if no line items */}
+                        {(!(payslip.lineItemsJson || []).some(li => li.type === "deduction") && !!(payslip.customDeductions)) && <Row label="Custom Deductions" value={`-${formatCurrency(payslip.customDeductions)}`} negative />}
                         {!!(payslip.loanDeduction) && <Row label="Loan Deduction" value={`-${formatCurrency(payslip.loanDeduction)}`} negative />}
                         {!!(payslip.otherDeductions) && <Row label="Other Deductions" value={`-${formatCurrency(payslip.otherDeductions)}`} negative />}
-                        {!!(payslip.customDeductions) && <Row label="Custom Deductions" value={`-${formatCurrency(payslip.customDeductions)}`} negative />}
                         {!!(payslip.lateDeduction) && <Row label="Late Penalty" value={`-${formatCurrency(payslip.lateDeduction)}`} negative />}
                         {!!(payslip.absentDeduction) && <Row label="Absent Deduction" value={`-${formatCurrency(payslip.absentDeduction)}`} negative />}
                         {!!(payslip.undertimeDeduction) && <Row label="Undertime Deduction" value={`-${formatCurrency(payslip.undertimeDeduction)}`} negative />}

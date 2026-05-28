@@ -19,7 +19,7 @@ import { canUseCamera, cameraHttpsHint } from "@/lib/camera-context";
 const NEON_GREEN = "#39FF14";
 const NEON_GREEN_DIM = "rgba(57, 255, 20, 0.6)";
 
-/** Isolated clock component — re-renders every second without triggering parent re-render */
+/** Isolated clock component â€” re-renders every second without triggering parent re-render */
 const KioskClock = memo(function KioskClock({ clockFormat, showClock, showDate }: {
     clockFormat: string; showClock: boolean; showDate: boolean;
 }) {
@@ -85,7 +85,7 @@ export default function QRKioskPage() {
         return id;
     });
 
-    // Daily activity log — persisted in sessionStorage, clears at midnight
+    // Daily activity log â€” persisted in sessionStorage, clears at midnight
     const [kioskLog, setKioskLog] = useState<Array<{ name: string; type: "in" | "out"; time: string }>>([]);
 
     // QR scanner state
@@ -140,7 +140,7 @@ export default function QRKioskPage() {
         return storeEntries;
     }, [attendanceLogs, employees, kioskLog]);
 
-    // Verify PIN access — redirect if not verified; guard browser back
+    // Verify PIN access â€” redirect if not verified; guard browser back
     useEffect(() => {
         const verified = sessionStorage.getItem("kiosk-pin-verified");
         const verifiedTime = sessionStorage.getItem("kiosk-pin-verified-time");
@@ -265,7 +265,7 @@ export default function QRKioskPage() {
     }, [checkWorkDay, addToKioskLog, triggerFeedback, storeCheckIn, storeCheckOut]);
 
     // Use a ref for processQrPayload so the scanning interval always calls
-    // the latest version — avoids stale closure issues when deps change.
+    // the latest version â€” avoids stale closure issues when deps change.
     const processQrPayloadRef = useRef<(payload: string) => Promise<void>>(async () => {});
 
     const processQrPayload = useCallback(async (payload: string) => {
@@ -297,7 +297,7 @@ export default function QRKioskPage() {
 
             // Project QR codes must be scanned with the employee's phone, not the kiosk
             if (result.qrType === "project") {
-                setErrorMessage("Project QR — please scan this code with your phone");
+                setErrorMessage("Project QR â€” please scan this code with your phone");
                 triggerFeedback("error");
                 return;
             }
@@ -325,7 +325,7 @@ export default function QRKioskPage() {
             setErrorMessage("Failed to process QR code");
             triggerFeedback("error");
         }
-        // NOTE: processingLockRef is cleared by triggerFeedback timeout —
+        // NOTE: processingLockRef is cleared by triggerFeedback timeout â€”
         // do NOT clear it here or a second scan could fire before the
         // feedback overlay dismisses.
     }, [employees, deviceId, stopQrScanner, clockEmployee, triggerFeedback]);
@@ -436,7 +436,7 @@ export default function QRKioskPage() {
     startQrScannerRef.current = startQrScanner;
 
     // Auto-start scanner once on initial page load (after PIN verification).
-    // Scanner stays always-on — no manual start/stop.
+    // Scanner stays always-on â€” no manual start/stop.
     const hasAutoStartedRef = useRef(false);
     useEffect(() => {
         if (hasAutoStartedRef.current) return;
@@ -616,7 +616,7 @@ export default function QRKioskPage() {
                 </div>
             )}
 
-            {/* Main content — two-column on desktop */}
+            {/* Main content â€” two-column on desktop */}
             <main 
                 className="relative z-10 flex flex-col lg:flex-row items-start justify-center flex-1 w-full mx-auto"
                 style={{ 
@@ -677,7 +677,7 @@ export default function QRKioskPage() {
                         )}
                     </div>
 
-                    {/* QR Scanner Panel — Always On */}
+                    {/* QR Scanner Panel â€” Always On */}
                     <div 
                         className="rounded-3xl backdrop-blur-xl flex flex-col items-center shadow-2xl w-full"
                         style={{
@@ -913,7 +913,7 @@ export default function QRKioskPage() {
                         className="h-1.5 w-1.5 rounded-full animate-pulse"
                         style={{ backgroundColor: NEON_GREEN }}
                     />
-                    <span>{companyName || "Soren Data Solutions Inc."} • QR Code Kiosk</span>
+                    <span>{companyName || "NexHRIS"} â€¢ QR Code Kiosk</span>
                 </div>
             </footer>
         </div>

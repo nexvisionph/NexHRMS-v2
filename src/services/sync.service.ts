@@ -271,9 +271,9 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
     useAttendanceStore.setState({
       logs: attendanceLogs,
       events: attendanceEvents,
+      overtimeRequests,
       ...(holidays.length > 0 ? { holidays } : {}),
       ...(shifts.length > 0 ? { shiftTemplates: shifts } : {}),
-      ...(overtimeRequests.length > 0 ? { overtimeRequests } : {}),
       ...(attendanceEvidence.length > 0 ? { evidence: attendanceEvidence } : {}),
       ...(attendanceExceptions.length > 0 ? { exceptions: attendanceExceptions } : {}),
       ...(penalties.length > 0 ? { penalties } : {}),

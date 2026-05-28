@@ -190,7 +190,14 @@ export const useDeductionsStore = create<DeductionsState>()(
                             createdAt: a.created_at ?? a.createdAt,
                             template: a.template as DeductionTemplate | undefined,
                         }));
-                        set({ assignments, isLoading: false });
+                        // Deduplicate by id to prevent stale duplicates
+                        const seen = new Set<string>();
+                        const deduped = assignments.filter((a) => {
+                            if (seen.has(a.id)) return false;
+                            seen.add(a.id);
+                            return true;
+                        });
+                        set({ assignments: deduped, isLoading: false });
                     } else {
                         set({ error: json.message || "Failed to fetch assignments", isLoading: false });
                     }
@@ -222,7 +229,13 @@ export const useDeductionsStore = create<DeductionsState>()(
                             createdAt: a.created_at,
                             template: a.template,
                         };
-                        set((s) => ({ assignments: [assignment, ...s.assignments], isLoading: false }));
+                        set((s) => {
+                            // Deduplicate: remove any existing assignment for same employee+template
+                            const filtered = s.assignments.filter(
+                                (existing) => !(existing.employeeId === assignment.employeeId && existing.templateId === assignment.templateId)
+                            );
+                            return { assignments: [assignment, ...filtered], isLoading: false };
+                        });
                     } else {
                         set({ error: json.message || "Failed to assign template", isLoading: false });
                     }
@@ -232,7 +245,7 @@ export const useDeductionsStore = create<DeductionsState>()(
             },
 
             unassignFromEmployee: async (assignmentId) => {
-                set({ isLoading: true, error: null });
+                // Don't set global isLoading — allows parallel operations
                 try {
                     const res = await fetch("/api/payroll/templates/assignments", {
                         method: "DELETE",
@@ -243,13 +256,12 @@ export const useDeductionsStore = create<DeductionsState>()(
                     if (json.ok) {
                         set((s) => ({
                             assignments: s.assignments.filter((a) => a.id !== assignmentId),
-                            isLoading: false,
                         }));
                     } else {
-                        set({ error: json.message || "Failed to remove assignment", isLoading: false });
+                        set({ error: json.message || "Failed to remove assignment" });
                     }
                 } catch {
-                    set({ error: "Failed to remove assignment", isLoading: false });
+                    set({ error: "Failed to remove assignment" });
                 }
             },
 

@@ -5,6 +5,7 @@ import { useEmployeesStore } from "@/store/employees.store";
 import { useDepartmentsStore } from "@/store/departments.store";
 import { usePayrollStore } from "@/store/payroll.store";
 import { useAttendanceStore } from "@/store/attendance.store";
+import { useDeductionsStore } from "@/store/deductions.store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -59,13 +60,11 @@ interface EmployeePayrollData {
   range: string;
   // Earnings
   overtimePay: number;
-  mealAllowance: number;
-  projectAllowance: number;
-  taxiFare: number;
-  cola: number;
-  othersAdjustment: number;
   totalBasicSalary: number;
-  // Deductions
+  // Dynamic line items
+  allowanceItems: { label: string; amount: number }[];
+  deductionItems: { label: string; amount: number }[];
+  // Government deductions
   withholdingTax: number;
   sssContribution: number;
   sssSalaryLoan: number;
@@ -74,10 +73,6 @@ interface EmployeePayrollData {
   pagibigLoan: number;
   leaveWithoutPay: number;
   tardinessUndertime: number;
-  taxDeficiency: number;
-  communityTax: number;
-  philhealthRefund: number;
-  sssProvidentFund: number;
   totalDeductions: number;
   netPay: number;
   // DTR
@@ -99,91 +94,73 @@ interface EmployeePayrollData {
 // Uses the exact structure from the Payroll-Export-Template.xlsx
 
 function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
-  // ── Row index constants (0-based, matching template exactly) ──
-  // Template observed layout (openpyxl row numbers, subtract 1 for 0-idx):
-  //  R0  = title banner (COMPANY NAME / OT title)
-  //  R1  = subtitle (PAYSLIP RECORD / DTR label)
-  //  R2  = spacer / DTR data rows begin
-  //  R3  = PAY PERIOD header / DTR col headers
-  //  R4  = Pay period values / DTR data row 1
-  //  R5  = spacer
-  //  R6  = EMPLOYEE INFORMATION header
-  //  R7  = Employee No. / Monthly Salary       (white)
-  //  R8  = Full Name / Daily Rate              (ltGray)
-  //  R9  = Position / Hourly Rate              (white)
-  //  R10 = Project / Semi-Monthly Pay          (ltGray)
-  //  R11 = Civil Status                        (white)
-  //  R12 = No. of Dependents                   (ltGray)
-  //  R13 = spacer
-  //  R14 = EARNINGS header
-  //  R15 = Semi-Monthly Basic Salary           (warmGray — text near-white)
-  //  R16 = Overtime Pay                        (white)
-  //  R17 = Meal Allowance                      (ltGray)
-  //  R18 = Project Allowance                   (white)  [template: Taxi Fare row]
-  //  R19 = Taxi Fare / COLA / Others alternating
-  //  R20 = COLA
-  //  R21 = Others / Adjustment
-  //  R22 = TOTAL BASIC SALARY header
-  //  R23 = spacer
-  //  R24 = DEDUCTIONS header
-  //  R25 = Withholding Tax                     (ltGray)
-  //  R26 = SSS Contribution                    (white)
-  //  R27 = SSS Salary Loan                     (ltGray)
-  //  R28 = PhilHealth Contribution             (white)
-  //  R29 = Pag-IBIG Contribution               (ltGray)
-  //  R30 = Pag-IBIG Loan                       (white)
-  //  R31 = Leave w/o Pay                       (ltGray)
-  //  R32 = Tardiness / Undertime               (white)
-  //  R33 = Tax Deficiency / Refund             (ltGray)
-  //  R34 = Community Tax Cert.                 (white)
-  //  R35 = PhilHealth Refund                   (ltGray)
-  //  R36 = SSS Provident Fund                  (white)
-  //  R37 = TOTAL DEDUCTIONS header
-  //  R38 = spacer
-  //  R39 = NET PAY  (no fill, navy text)
+  // ── Dynamic row computation ──
+  // The sheet has: title (R0-R1), spacer (R2), PAY PERIOD (R3), DTR start (R4+)
+  // Then: EMPLOYEE INFO header (R6), emp rows (R7-R10), civil status (R11-R12), spacer (R13)
+  // Then: ALLOWANCES header, dynamic allowance rows, TOTAL, spacer
+  // Then: DEDUCTIONS header, gov deductions + dynamic custom deductions, TOTAL, spacer
+  // Then: NET PAY
 
-  // DTR data on right side begins at R4 (same row as pay period values)
-  const DTR_DATA_START = 4;   // row index where DTR rows begin (matches template R5 = row 5)
+  const allowanceRows = emp.allowanceItems;
+  const deductionRows = [
+    { label: "Withholding Tax", amount: emp.withholdingTax },
+    { label: "SSS Contribution", amount: emp.sssContribution },
+    { label: "PhilHealth Contribution", amount: emp.philhealthContribution },
+    { label: "Pag-IBIG Contribution", amount: emp.pagibigContribution },
+    ...emp.deductionItems,
+    ...(emp.sssSalaryLoan > 0 ? [{ label: "SSS Salary Loan", amount: emp.sssSalaryLoan }] : []),
+    ...(emp.pagibigLoan > 0 ? [{ label: "Pag-IBIG Loan", amount: emp.pagibigLoan }] : []),
+    ...(emp.leaveWithoutPay > 0 ? [{ label: "Leave w/o Pay", amount: emp.leaveWithoutPay }] : []),
+   ...(emp.tardinessUndertime > 0 ? [{ label: "Absent / Late / Undertime", amount: emp.tardinessUndertime }] : []),
+  ];
+
+  // Fixed layout rows
+  const EMP_INFO_START = 6;
+  const EMP_INFO_END = 12;
+  const ALLOWANCES_HEADER = 14;
+  const ALLOWANCES_START = ALLOWANCES_HEADER + 1;
+  const ALLOWANCES_END = ALLOWANCES_START + allowanceRows.length; // overtime row
+  const TOTAL_ALLOWANCES_ROW = ALLOWANCES_END + 1;
+  const DEDUCTIONS_HEADER = TOTAL_ALLOWANCES_ROW + 2;
+  const DEDUCTIONS_START = DEDUCTIONS_HEADER + 1;
+  const DEDUCTIONS_END = DEDUCTIONS_START + deductionRows.length - 1;
+  const TOTAL_DEDUCTIONS_ROW = DEDUCTIONS_END + 1;
+  const NET_PAY_ROW = TOTAL_DEDUCTIONS_ROW + 2;
+
+  const DTR_DATA_START = 4;
   const dtrRows = emp.dtr.length;
-
-  // Total rows: left side ends at R40, right side needs DTR + totals + sig
-  // DTR totals row = DTR_DATA_START + dtrRows
-  // Sig header    = totals + 1
-  // Sig labels    = totals + 3
   const dtrTotalsR = DTR_DATA_START + dtrRows;
   const sigHeaderR = dtrTotalsR + 1;
   const sigLabelsR = dtrTotalsR + 3;
-  const totalRows  = Math.max(42, sigLabelsR + 2);
+  const totalRows = Math.max(NET_PAY_ROW + 3, sigLabelsR + 2);
 
   // Pre-calculate DTR totals
-  const totalHrs      = emp.dtr.reduce((s, d) => s + d.totalHrs,     0);
-  const totalOt       = emp.dtr.reduce((s, d) => s + d.otHrs,        0);
-  const totalTardHr   = emp.dtr.reduce((s, d) => s + d.tardinessHr,  0);
-  const totalTardMin  = emp.dtr.reduce((s, d) => s + d.tardinessMin, 0);
-  const totalAbsences = emp.dtr.reduce((s, d) => s + d.absences,     0);
+  const totalHrs = emp.dtr.reduce((s, d) => s + d.totalHrs, 0);
+  const totalOt = emp.dtr.reduce((s, d) => s + d.otHrs, 0);
+  const totalTardHr = emp.dtr.reduce((s, d) => s + d.tardinessHr, 0);
+  const totalTardMin = emp.dtr.reduce((s, d) => s + d.tardinessMin, 0);
+  const totalAbsences = emp.dtr.reduce((s, d) => s + d.absences, 0);
 
-  // ── Build grid (0-indexed rows, 0-indexed cols A=0 … Y=24) ───
-  // Cols: A=0 B=1 C=2 D=3 E=4 F=5 G=6 H=7 I=8 J=9 K=10 … Y=24
+  // ── Build grid ──
   const grid: (string | number | null)[][] = Array.from(
     { length: totalRows }, () => Array(25).fill(null)
   );
 
   // R0: title banners
-  grid[0][0] = "COMPANY NAME";                                           // A1 merged A1:H1
-  grid[0][9] = "COMPUTATION OF INDIVIDUAL OVERTIME PAY & ALLOWANCES";   // J1 merged J1:Y1
+  grid[0][0] = "NexHRIS";
+  grid[0][9] = "COMPUTATION OF INDIVIDUAL OVERTIME PAY & ALLOWANCES";
 
   // R1: subtitles
-  grid[1][0] = "PAYSLIP RECORD";           // A2 merged A2:H2 — no fill, italic gray
-  grid[1][9] = "DAILY TIME RECORD (DTR)";  // J2 merged J2:Y2 — teal fill, white bold
+  grid[1][0] = "PAYSLIP RECORD";
+  grid[1][9] = "DAILY TIME RECORD (DTR)";
 
-  // R3: PAY PERIOD bar (left) + DTR column headers (right)
-  grid[3][1] = "PAY PERIOD";                          // B4 — dark gray, merged B4:E4
-  grid[3][5] = "RANGE";                               // F4 — dark gray, merged F4:H4
-  grid[3][4] = emp.periodFrom + " – " + emp.periodTo; // E4 value (in merged range)
-  grid[3][7] = emp.range;                              // H4 value
+  // R3: PAY PERIOD bar + DTR column headers
+  grid[3][1] = "PAY PERIOD";
+  grid[3][4] = emp.periodFrom + " – " + emp.periodTo;
+  grid[3][5] = "RANGE";
+  grid[3][7] = emp.range;
 
-  // DTR column headers at R3
-  grid[3][9]  = "Date";
+  grid[3][9] = "Date";
   grid[3][10] = "Day";
   grid[3][11] = "Time In";
   grid[3][12] = "Time Out";
@@ -192,71 +169,66 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   grid[3][15] = "Tardiness Hr";
   grid[3][16] = "Tardiness Min";
   grid[3][17] = "Absences (Days)";
-  grid[3][18] = "Reg. OT\n(up to 8hrs / excess)";            // S4 merged S4:T4
-  grid[3][20] = "Sat/Sun & Spl. Holiday\n(up to 8hrs / excess)"; // U4 merged U4:V4
-  grid[3][22] = "Reg. Holiday\n(up to 8hrs / excess)";        // W4 merged W4:X4
-  grid[3][24] = "Night Diff";                                  // Y4
+  grid[3][18] = "Reg. OT\n(up to 8hrs / excess)";
+  grid[3][20] = "Sat/Sun & Spl. Holiday\n(up to 8hrs / excess)";
+  grid[3][22] = "Reg. Holiday\n(up to 8hrs / excess)";
+  grid[3][24] = "Night Diff";
 
   // R6: EMPLOYEE INFORMATION header
-  grid[6][1] = "EMPLOYEE INFORMATION";  // B7 merged B7:H7
+  grid[EMP_INFO_START][1] = "EMPLOYEE INFORMATION";
 
-  // R7–R12: Employee fields
-  //         Label in B (merged B:D), Value in E (merged E:E), right-label in F (merged F:G), right-val in H
-  grid[7][1]  = "Employee No.";    grid[7][4]  = emp.id;
-  grid[7][5]  = "Monthly Salary";  grid[7][7]  = emp.monthlySalary;
-  grid[8][1]  = "Full Name";       grid[8][4]  = emp.name;
-  grid[8][5]  = "Daily Rate";      grid[8][7]  = emp.dailyRate;
-  grid[9][1]  = "Position";        grid[9][4]  = emp.position;
-  grid[9][5]  = "Hourly Rate";     grid[9][7]  = emp.hourlyRate;
-  grid[10][1] = "Project";         grid[10][4] = emp.project;
+  // R7-R10: Employee fields
+  grid[7][1] = "Employee No."; grid[7][4] = emp.id;
+  grid[7][5] = "Monthly Salary"; grid[7][7] = emp.monthlySalary;
+  grid[8][1] = "Full Name"; grid[8][4] = emp.name;
+  grid[8][5] = "Daily Rate"; grid[8][7] = emp.dailyRate;
+  grid[9][1] = "Position"; grid[9][4] = emp.position;
+  grid[9][5] = "Hourly Rate"; grid[9][7] = emp.hourlyRate;
+  grid[10][1] = "Project"; grid[10][4] = emp.project;
   grid[10][5] = "Semi-Monthly Pay"; grid[10][7] = emp.semiMonthlySalary;
-  grid[11][1] = "Civil Status";    grid[11][4] = "";
+  grid[11][1] = "Civil Status"; grid[11][4] = "";
   grid[12][1] = "No. of Dependents"; grid[12][4] = "";
 
-  // R14: EARNINGS header
-  grid[14][1] = "EARNINGS";  // B15 merged B15:H15
+  // ALLOWANCES header
+  grid[ALLOWANCES_HEADER][1] = "ALLOWANCES";
 
-  // R15–R21: Earnings line items (label in B merged B:G, value in H)
-  grid[15][1] = "Semi-Monthly Basic Salary"; grid[15][7] = emp.semiMonthlySalary;
-  grid[16][1] = "Overtime Pay";              grid[16][7] = emp.overtimePay;
-  grid[17][1] = "Meal Allowance";            grid[17][7] = emp.mealAllowance;
-  grid[18][1] = "Project Allowance";         grid[18][7] = emp.projectAllowance;
-  grid[19][1] = "Taxi Fare";                 grid[19][7] = emp.taxiFare;
-  grid[20][1] = "COLA";                      grid[20][7] = emp.cola;
-  grid[21][1] = "Others / Adjustment";       grid[21][7] = emp.othersAdjustment;
+  // Dynamic allowance rows
+  for (let i = 0; i < allowanceRows.length; i++) {
+    grid[ALLOWANCES_START + i][1] = allowanceRows[i].label;
+    grid[ALLOWANCES_START + i][7] = allowanceRows[i].amount;
+  }
+  // Overtime row
+  grid[ALLOWANCES_END][1] = "Overtime Pay";
+  grid[ALLOWANCES_END][7] = emp.overtimePay;
 
-  // R22: TOTAL BASIC SALARY header
-  grid[22][1] = "TOTAL BASIC SALARY";  grid[22][7] = emp.totalBasicSalary;
+  // TOTAL ALLOWANCES
+  const totalAllowances = allowanceRows.reduce((s, a) => s + a.amount, 0) + emp.overtimePay;
+  grid[TOTAL_ALLOWANCES_ROW][1] = "TOTAL ALLOWANCES";
+  grid[TOTAL_ALLOWANCES_ROW][7] = totalAllowances;
 
-  // R24: DEDUCTIONS header
-  grid[24][1] = "DEDUCTIONS";  // B25 merged B25:H25
+  // DEDUCTIONS header
+  grid[DEDUCTIONS_HEADER][1] = "DEDUCTIONS";
 
-  // R25–R36: Deduction line items
-  grid[25][1] = "Withholding Tax";          grid[25][7] = emp.withholdingTax;
-  grid[26][1] = "SSS Contribution";         grid[26][7] = emp.sssContribution;
-  grid[27][1] = "SSS Salary Loan";          grid[27][7] = emp.sssSalaryLoan;
-  grid[28][1] = "PhilHealth Contribution";  grid[28][7] = emp.philhealthContribution;
-  grid[29][1] = "Pag-IBIG Contribution";    grid[29][7] = emp.pagibigContribution;
-  grid[30][1] = "Pag-IBIG Loan";            grid[30][7] = emp.pagibigLoan;
-  grid[31][1] = "Leave w/o Pay";            grid[31][7] = emp.leaveWithoutPay;
-  grid[32][1] = "Tardiness / Undertime";    grid[32][7] = emp.tardinessUndertime;
-  grid[33][1] = "Tax Deficiency / Refund";  grid[33][7] = emp.taxDeficiency;
-  grid[34][1] = "Community Tax Cert.";      grid[34][7] = emp.communityTax;
-  grid[35][1] = "PhilHealth Refund";        grid[35][7] = emp.philhealthRefund;
-  grid[36][1] = "SSS Provident Fund";       grid[36][7] = emp.sssProvidentFund;
+  // Dynamic deduction rows (gov + custom)
+  for (let i = 0; i < deductionRows.length; i++) {
+    grid[DEDUCTIONS_START + i][1] = deductionRows[i].label;
+    grid[DEDUCTIONS_START + i][7] = deductionRows[i].amount;
+  }
 
-  // R37: TOTAL DEDUCTIONS header
-  grid[37][1] = "TOTAL DEDUCTIONS";  grid[37][7] = emp.totalDeductions;
+  // TOTAL DEDUCTIONS
+  grid[TOTAL_DEDUCTIONS_ROW][1] = "TOTAL DEDUCTIONS";
+  grid[TOTAL_DEDUCTIONS_ROW][7] = emp.totalDeductions;
 
-  // R39: NET PAY (no fill, navy text)
-  grid[39][1] = "NET PAY";  grid[39][7] = emp.netPay;
+  // NET PAY
+  grid[NET_PAY_ROW][1] = "NET PAY";
+  grid[NET_PAY_ROW][7] = emp.netPay;
 
-  // ── DTR rows (right side, R4 onward) ─────────────────────────
+  // ── DTR rows (right side) ──
   for (let i = 0; i < dtrRows; i++) {
     const r = DTR_DATA_START + i;
     if (r >= totalRows) break;
     const d = emp.dtr[i];
-    grid[r][9]  = d.date;
+    grid[r][9] = d.date;
     grid[r][10] = d.day;
     grid[r][11] = d.timeIn;
     grid[r][12] = d.timeOut;
@@ -268,7 +240,7 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   }
 
   // DTR totals row
-  grid[dtrTotalsR][9]  = "TOTALS";
+  grid[dtrTotalsR][9] = "TOTALS";
   grid[dtrTotalsR][13] = totalHrs;
   grid[dtrTotalsR][14] = totalOt;
   grid[dtrTotalsR][15] = totalTardHr;
@@ -277,319 +249,154 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
 
   // Signatories
   grid[sigHeaderR][9] = "SIGNATORIES";
-  grid[sigLabelsR][9]  = "Prepared by";
+  grid[sigLabelsR][9] = "Prepared by";
   grid[sigLabelsR][13] = "Checked by";
   grid[sigLabelsR][17] = "Approved by";
   grid[sigLabelsR][21] = "Received by (Employee)";
 
-  // ── Convert to worksheet ──────────────────────────────────────
+  // ── Convert to worksheet ──
   const ws = XLSX.utils.aoa_to_sheet(grid);
 
-  // ── MERGES (exact from template + body cells) ─────────────────
+  // ── MERGES ──
   ws["!merges"] = [
-    // ── Title rows ──
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },   // A1:H1 — COMPANY NAME
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },   // A2:H2 — PAYSLIP RECORD
-    { s: { r: 0, c: 9 }, e: { r: 0, c: 24 } },  // J1:Y1 — OT title
-    { s: { r: 1, c: 9 }, e: { r: 1, c: 24 } },  // J2:Y2 — DTR label
-
-    // ── PAY PERIOD bar (R3) ──
-    { s: { r: 3, c: 1 }, e: { r: 3, c: 3 } },   // B4:D4 — "PAY PERIOD" label
-    { s: { r: 3, c: 4 }, e: { r: 3, c: 4 } },   // E4     — period value (single but styled)
-    { s: { r: 3, c: 5 }, e: { r: 3, c: 6 } },   // F4:G4 — "RANGE" label
-    { s: { r: 3, c: 7 }, e: { r: 3, c: 7 } },   // H4     — range value
-
-    // ── DTR col header merged pairs (R3) ──
-    { s: { r: 3, c: 18 }, e: { r: 3, c: 19 } }, // S4:T4 — Reg OT
-    { s: { r: 3, c: 20 }, e: { r: 3, c: 21 } }, // U4:V4 — Sat/Sun
-    { s: { r: 3, c: 22 }, e: { r: 3, c: 23 } }, // W4:X4 — Reg Holiday
-
-    // ── EMPLOYEE INFORMATION header (R6) ──
-    { s: { r: 6, c: 1 }, e: { r: 6, c: 7 } },   // B7:H7
-
-    // ── Employee rows R7–R12: label B:D, value E, right-label F:G, right-val H ──
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
+    { s: { r: 0, c: 9 }, e: { r: 0, c: 24 } },
+    { s: { r: 1, c: 9 }, e: { r: 1, c: 24 } },
+    { s: { r: 3, c: 1 }, e: { r: 3, c: 3 } },
+    { s: { r: 3, c: 4 }, e: { r: 3, c: 4 } },
+    { s: { r: 3, c: 5 }, e: { r: 3, c: 6 } },
+    { s: { r: 3, c: 7 }, e: { r: 3, c: 7 } },
+    { s: { r: 3, c: 18 }, e: { r: 3, c: 19 } },
+    { s: { r: 3, c: 20 }, e: { r: 3, c: 21 } },
+    { s: { r: 3, c: 22 }, e: { r: 3, c: 23 } },
+    { s: { r: EMP_INFO_START, c: 1 }, e: { r: EMP_INFO_START, c: 7 } },
     ...[7, 8, 9, 10].flatMap(r => [
-      { s: { r, c: 1 }, e: { r, c: 3 } },        // B:D label
-      { s: { r, c: 5 }, e: { r, c: 6 } },        // F:G right-label
+      { s: { r, c: 1 }, e: { r, c: 3 } },
+      { s: { r, c: 5 }, e: { r, c: 6 } },
     ]),
-    ...[11, 12].map(r => ({ s: { r, c: 1 }, e: { r, c: 3 } })), // civil status / dependents label only
-
-    // ── EARNINGS header (R14) ──
-    { s: { r: 14, c: 1 }, e: { r: 14, c: 7 } },
-
-    // ── Earnings rows R15–R21: label B:G, value H ──
-    ...[15, 16, 17, 18, 19, 20, 21].map(r => ({ s: { r, c: 1 }, e: { r, c: 6 } })),
-
-    // ── TOTAL BASIC SALARY (R22) ──
-    { s: { r: 22, c: 1 }, e: { r: 22, c: 6 } },
-
-    // ── DEDUCTIONS header (R24) ──
-    { s: { r: 24, c: 1 }, e: { r: 24, c: 7 } },
-
-    // ── Deduction rows R25–R36: label B:G, value H ──
-    ...[25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36].map(r => ({ s: { r, c: 1 }, e: { r, c: 6 } })),
-
-    // ── TOTAL DEDUCTIONS (R37) ──
-    { s: { r: 37, c: 1 }, e: { r: 37, c: 6 } },
-
-    // ── NET PAY (R39) ──
-    { s: { r: 39, c: 1 }, e: { r: 39, c: 6 } },
-
-    // ── SIGNATORIES ──
-    { s: { r: sigHeaderR, c: 9 }, e: { r: sigHeaderR, c: 24 } },  // full width header
-    { s: { r: sigLabelsR, c: 9  }, e: { r: sigLabelsR, c: 12 } }, // Prepared by
-    { s: { r: sigLabelsR, c: 13 }, e: { r: sigLabelsR, c: 16 } }, // Checked by
-    { s: { r: sigLabelsR, c: 17 }, e: { r: sigLabelsR, c: 20 } }, // Approved by
-    { s: { r: sigLabelsR, c: 21 }, e: { r: sigLabelsR, c: 24 } }, // Received by
+    ...[11, 12].map(r => ({ s: { r, c: 1 }, e: { r, c: 3 } })),
+    { s: { r: ALLOWANCES_HEADER, c: 1 }, e: { r: ALLOWANCES_HEADER, c: 7 } },
+    ...Array.from({ length: allowanceRows.length + 1 }, (_, i) => ({ s: { r: ALLOWANCES_START + i, c: 1 }, e: { r: ALLOWANCES_START + i, c: 6 } })),
+    { s: { r: TOTAL_ALLOWANCES_ROW, c: 1 }, e: { r: TOTAL_ALLOWANCES_ROW, c: 6 } },
+    { s: { r: DEDUCTIONS_HEADER, c: 1 }, e: { r: DEDUCTIONS_HEADER, c: 7 } },
+    ...Array.from({ length: deductionRows.length }, (_, i) => ({ s: { r: DEDUCTIONS_START + i, c: 1 }, e: { r: DEDUCTIONS_START + i, c: 6 } })),
+    { s: { r: TOTAL_DEDUCTIONS_ROW, c: 1 }, e: { r: TOTAL_DEDUCTIONS_ROW, c: 6 } },
+    { s: { r: NET_PAY_ROW, c: 1 }, e: { r: NET_PAY_ROW, c: 6 } },
+    { s: { r: sigHeaderR, c: 9 }, e: { r: sigHeaderR, c: 24 } },
+    { s: { r: sigLabelsR, c: 9 }, e: { r: sigLabelsR, c: 12 } },
+    { s: { r: sigLabelsR, c: 13 }, e: { r: sigLabelsR, c: 16 } },
+    { s: { r: sigLabelsR, c: 17 }, e: { r: sigLabelsR, c: 20 } },
+    { s: { r: sigLabelsR, c: 21 }, e: { r: sigLabelsR, c: 24 } },
   ];
 
-  // ── COLUMN WIDTHS ─────────────────────────────────────────────
+  // ── COLUMN WIDTHS ──
   ws["!cols"] = [
-    { wch: 2    }, // A  spacer
-    { wch: 20   }, // B  label (merged B:D covers label area)
-    { wch: 6    }, // C
-    { wch: 4    }, // D
-    { wch: 16   }, // E  left values
-    { wch: 16   }, // F  right labels (merged F:G)
-    { wch: 4    }, // G
-    { wch: 14   }, // H  right values
-    { wch: 4    }, // I  divider spacer
-    { wch: 11.9 }, // J  Date
-    { wch: 6    }, // K  Day
-    { wch: 8.5  }, // L  Time In
-    { wch: 8.5  }, // M  Time Out
-    { wch: 9    }, // N  Total Hrs
-    { wch: 9    }, // O  OT/UT Hrs
-    { wch: 9    }, // P  Tardiness Hr
-    { wch: 9    }, // Q  Tardiness Min
-    { wch: 11   }, // R  Absences
-    { wch: 14   }, // S  Reg OT (merged S:T)
-    { wch: 8    }, // T
-    { wch: 14   }, // U  Sat/Sun (merged U:V)
-    { wch: 6    }, // V
-    { wch: 12   }, // W  Reg Holiday (merged W:X)
-    { wch: 7.5  }, // X
-    { wch: 9    }, // Y  Night Diff
+    { wch: 2 }, { wch: 20 }, { wch: 6 }, { wch: 4 }, { wch: 16 }, { wch: 16 }, { wch: 4 }, { wch: 14 }, { wch: 4 },
+    { wch: 11.9 }, { wch: 6 }, { wch: 8.5 }, { wch: 8.5 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 11 },
+    { wch: 14 }, { wch: 8 }, { wch: 14 }, { wch: 6 }, { wch: 12 }, { wch: 7.5 }, { wch: 9 },
   ];
 
-  // ── ROW HEIGHTS ───────────────────────────────────────────────
+  // ── ROW HEIGHTS ──
   ws["!rows"] = Array.from({ length: totalRows }, (_, i) => {
-    if (i === 0)  return { hpt: 27.75 };
-    if (i === 1)  return { hpt: 18 };
-    if (i === 3)  return { hpt: 30 };   // PAY PERIOD / DTR col headers
+    if (i === 0) return { hpt: 27.75 };
+    if (i === 1) return { hpt: 18 };
+    if (i === 3) return { hpt: 30 };
     return { hpt: 15.75 };
   });
 
-  // ═══ STYLE CONSTANTS (exact hex from template) ════════════════
-  // All colors from openpyxl extraction — strip FF alpha prefix for xlsx-js-style
-  const TEAL     = "65B2B2";  // section headers
-  const DK_GRAY  = "333333";  // PAY PERIOD bar + DTR col headers
-  const LT_GRAY  = "F2F2F2";  // alternating row fill
-  const WARM_GRY = "E3E4E0";  // Semi-Monthly Basic Salary row bg
-  const NAVY     = "1F3864";  // DTR totals + signatories header (template: FF1F3864)
-  const WHITE    = "FFFFFF";
-  const TXT      = "595959";  // body text
-  const NEAR_WHT = "F2F2F2";  // warmGray row text (template shows FFF2F2F2 on bg E3E4E0)
+  // ═══ STYLES ════════════════
+  const TEAL = "65B2B2";
+  const DK_GRAY = "333333";
+  const LT_GRAY = "F2F2F2";
+  const NAVY = "1F3864";
+  const WHITE = "FFFFFF";
+  const TXT = "595959";
 
   const thinBorder = {
-    top:    { style: "thin", color: { rgb: "D9D9D9" } },
+    top: { style: "thin", color: { rgb: "D9D9D9" } },
     bottom: { style: "thin", color: { rgb: "D9D9D9" } },
-    left:   { style: "thin", color: { rgb: "D9D9D9" } },
-    right:  { style: "thin", color: { rgb: "D9D9D9" } },
+    left: { style: "thin", color: { rgb: "D9D9D9" } },
+    right: { style: "thin", color: { rgb: "D9D9D9" } },
   };
 
-  // ── Reusable style objects ────────────────────────────────────
+  const tealBanner = { font: { name: "Arial", sz: 14, bold: true, color: { rgb: WHITE } }, fill: { patternType: "solid", fgColor: { rgb: TEAL } }, alignment: { horizontal: "center", vertical: "center" } };
+  const subtitleLeft = { font: { name: "Arial", sz: 10, italic: true, color: { rgb: "AAAAAA" } }, fill: { patternType: "solid", fgColor: { rgb: WHITE } }, alignment: { horizontal: "center", vertical: "center" } };
+  const subtitleRight = { font: { name: "Arial", sz: 10, bold: true, color: { rgb: WHITE } }, fill: { patternType: "solid", fgColor: { rgb: TEAL } }, alignment: { horizontal: "center", vertical: "center" }, border: thinBorder };
+  const dkGrayHdr = { font: { name: "Arial", sz: 9, bold: true, color: { rgb: WHITE } }, fill: { patternType: "solid", fgColor: { rgb: DK_GRAY } }, alignment: { horizontal: "center", vertical: "center", wrapText: true }, border: { top: { style: "thin", color: { rgb: WHITE } }, bottom: { style: "thin", color: { rgb: WHITE } }, left: { style: "thin", color: { rgb: WHITE } }, right: { style: "thin", color: { rgb: WHITE } } } };
+  const tealSection = { font: { name: "Arial", sz: 10, bold: true, color: { rgb: WHITE } }, fill: { patternType: "solid", fgColor: { rgb: TEAL } }, alignment: { horizontal: "left", vertical: "center" }, border: thinBorder };
+  const whiteRow = { font: { name: "Arial", sz: 10, color: { rgb: TXT } }, fill: { patternType: "solid", fgColor: { rgb: WHITE } }, alignment: { vertical: "center" }, border: thinBorder };
+  const ltGrayRow = { font: { name: "Arial", sz: 10, color: { rgb: TXT } }, fill: { patternType: "solid", fgColor: { rgb: LT_GRAY } }, alignment: { vertical: "center" }, border: thinBorder };
+  const netPayStyle = { font: { name: "Arial", sz: 12, bold: true, color: { rgb: NAVY } }, fill: { patternType: "solid", fgColor: { rgb: WHITE } }, alignment: { vertical: "center" }, border: thinBorder };
+  const dtrLtGray = { font: { name: "Arial", sz: 9, color: { rgb: TXT } }, fill: { patternType: "solid", fgColor: { rgb: LT_GRAY } }, alignment: { horizontal: "center", vertical: "center" }, border: thinBorder };
+  const dtrWhite = { font: { name: "Arial", sz: 9, color: { rgb: TXT } }, fill: { patternType: "solid", fgColor: { rgb: WHITE } }, alignment: { horizontal: "center", vertical: "center" }, border: thinBorder };
+  const navyHdr = { font: { name: "Arial", sz: 10, bold: true, color: { rgb: WHITE } }, fill: { patternType: "solid", fgColor: { rgb: NAVY } }, alignment: { horizontal: "center", vertical: "center" }, border: thinBorder };
+  const sigLabel = { font: { name: "Arial", sz: 8, bold: true, color: { rgb: TXT } }, alignment: { horizontal: "center", vertical: "center" } };
 
-  // R0: large teal banner — left and right
-  const tealBanner = {
-    font:      { name: "Arial", sz: 14, bold: true, color: { rgb: WHITE } },
-    fill:      { patternType: "solid", fgColor: { rgb: TEAL } },
-    alignment: { horizontal: "center", vertical: "center" },
-  };
-
-  // R1 left: italic gray, no fill (PAYSLIP RECORD)
-  const subtitleLeft = {
-    font:      { name: "Arial", sz: 10, italic: true, color: { rgb: "AAAAAA" } },
-    fill:      { patternType: "solid", fgColor: { rgb: WHITE } },
-    alignment: { horizontal: "center", vertical: "center" },
-  };
-
-  // R1 right: teal fill, white bold (DAILY TIME RECORD)
-  const subtitleRight = {
-    font:      { name: "Arial", sz: 10, bold: true, color: { rgb: WHITE } },
-    fill:      { patternType: "solid", fgColor: { rgb: TEAL } },
-    alignment: { horizontal: "center", vertical: "center" },
-    border: thinBorder,
-  };
-
-  // Dark gray header (PAY PERIOD bar + DTR col headers)
-  const dkGrayHdr = {
-    font:      { name: "Arial", sz: 9, bold: true, color: { rgb: WHITE } },
-    fill:      { patternType: "solid", fgColor: { rgb: DK_GRAY } },
-    alignment: { horizontal: "center", vertical: "center", wrapText: true },
-    border:    { top: { style: "thin", color: { rgb: WHITE } }, bottom: { style: "thin", color: { rgb: WHITE } }, left: { style: "thin", color: { rgb: WHITE } }, right: { style: "thin", color: { rgb: WHITE } } },
-  };
-
-  // Teal section header (EMPLOYEE INFO, EARNINGS, DEDUCTIONS, TOTAL rows)
-  const tealSection = {
-    font:      { name: "Arial", sz: 10, bold: true, color: { rgb: WHITE } },
-    fill:      { patternType: "solid", fgColor: { rgb: TEAL } },
-    alignment: { horizontal: "left", vertical: "center" },
-    border: thinBorder,
-  };
-
-  // Body row styles
-  const whiteRow = {
-    font:      { name: "Arial", sz: 10, color: { rgb: TXT } },
-    fill:      { patternType: "solid", fgColor: { rgb: WHITE } },
-    alignment: { vertical: "center" },
-    border: thinBorder,
-  };
-  const ltGrayRow = {
-    font:      { name: "Arial", sz: 10, color: { rgb: TXT } },
-    fill:      { patternType: "solid", fgColor: { rgb: LT_GRAY } },
-    alignment: { vertical: "center" },
-    border: thinBorder,
-  };
-  // Semi-Monthly Basic Salary row: warm gray bg, near-white text (template exact)
-  const warmGryRow = {
-    font:      { name: "Arial", sz: 10, color: { rgb: NEAR_WHT } },
-    fill:      { patternType: "solid", fgColor: { rgb: WARM_GRY } },
-    alignment: { vertical: "center" },
-    border: thinBorder,
-  };
-
-  // NET PAY: no fill (white), navy text, larger font
-  const netPayStyle = {
-    font:      { name: "Arial", sz: 12, bold: true, color: { rgb: NAVY } },
-    fill:      { patternType: "solid", fgColor: { rgb: WHITE } },
-    alignment: { vertical: "center" },
-    border: thinBorder,
-  };
-
-  // DTR data rows
-  const dtrLtGray = {
-    font:      { name: "Arial", sz: 9, color: { rgb: TXT } },
-    fill:      { patternType: "solid", fgColor: { rgb: LT_GRAY } },
-    alignment: { horizontal: "center", vertical: "center" },
-    border: thinBorder,
-  };
-  const dtrWhite = {
-    font:      { name: "Arial", sz: 9, color: { rgb: TXT } },
-    fill:      { patternType: "solid", fgColor: { rgb: WHITE } },
-    alignment: { horizontal: "center", vertical: "center" },
-    border: thinBorder,
-  };
-
-  // DTR totals + signatories header: navy
-  const navyHdr = {
-    font:      { name: "Arial", sz: 10, bold: true, color: { rgb: WHITE } },
-    fill:      { patternType: "solid", fgColor: { rgb: NAVY } },
-    alignment: { horizontal: "center", vertical: "center" },
-    border: thinBorder,
-  };
-
-  // Signatory labels
-  const sigLabel = {
-    font:      { name: "Arial", sz: 8, bold: true, color: { rgb: TXT } },
-    alignment: { horizontal: "center", vertical: "center" },
-  };
-
-  // ── Helper: apply style to rect range ────────────────────────
-  const styleRange = (r1: number, c1: number, r2: number, c2: number, s: object) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const styleRange = (r1: number, c1: number, r2: number, c2: number, s: any) => {
     for (let r = r1; r <= r2; r++) {
       for (let c = c1; c <= c2; c++) {
         const addr = XLSX.utils.encode_cell({ r, c });
         if (!ws[addr]) ws[addr] = { t: "z", v: null };
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (ws[addr] as any).s = { ...(ws[addr] as any).s, ...s };
       }
     }
   };
 
-  // ── Apply column-wide spacer white fills (col A and col I) ────
+  // Apply styles
   styleRange(0, 0, totalRows - 1, 0, { fill: { patternType: "solid", fgColor: { rgb: WHITE } } });
   styleRange(0, 8, totalRows - 1, 8, { fill: { patternType: "solid", fgColor: { rgb: WHITE } } });
-
-  // ── R0: Title banners ─────────────────────────────────────────
-  styleRange(0, 0, 0, 7,  tealBanner);
+  styleRange(0, 0, 0, 7, tealBanner);
   styleRange(0, 9, 0, 24, tealBanner);
-
-  // ── R1: Subtitles ─────────────────────────────────────────────
-  styleRange(1, 0, 1, 7,  subtitleLeft);   // PAYSLIP RECORD — no fill, italic
-  styleRange(1, 9, 1, 24, subtitleRight);  // DAILY TIME RECORD — teal
-
-  // ── R3: PAY PERIOD bar (left cols) + DTR col headers (right) ─
-  styleRange(3, 1, 3, 7,  dkGrayHdr);
+  styleRange(1, 0, 1, 7, subtitleLeft);
+  styleRange(1, 9, 1, 24, subtitleRight);
+  styleRange(3, 1, 3, 7, dkGrayHdr);
   styleRange(3, 9, 3, 24, dkGrayHdr);
+  styleRange(EMP_INFO_START, 1, EMP_INFO_START, 7, tealSection);
 
-  // ── R6: EMPLOYEE INFORMATION ──────────────────────────────────
-  styleRange(6, 1, 6, 7, tealSection);
-
-  // ── R7–R10: employee fields with right-side rate fields ───────
   const empRowStyles = [whiteRow, ltGrayRow, whiteRow, ltGrayRow];
   empRowStyles.forEach((s, i) => styleRange(7 + i, 1, 7 + i, 7, s));
-
-  // ── R11–R12: Civil Status / Dependents (no right-side cols) ──
   styleRange(11, 1, 11, 4, whiteRow);
   styleRange(12, 1, 12, 4, ltGrayRow);
 
-  // ── R14: EARNINGS header ──────────────────────────────────────
-  styleRange(14, 1, 14, 7, tealSection);
+  // Allowances section styles
+  styleRange(ALLOWANCES_HEADER, 1, ALLOWANCES_HEADER, 7, tealSection);
+  for (let i = 0; i <= allowanceRows.length; i++) {
+    styleRange(ALLOWANCES_START + i, 1, ALLOWANCES_START + i, 7, i % 2 === 0 ? whiteRow : ltGrayRow);
+  }
+  styleRange(TOTAL_ALLOWANCES_ROW, 1, TOTAL_ALLOWANCES_ROW, 7, tealSection);
 
-  // ── R15: Semi-Monthly (warm gray bg, near-white text) ─────────
-  styleRange(15, 1, 15, 7, warmGryRow);
+  // Deductions section styles
+  styleRange(DEDUCTIONS_HEADER, 1, DEDUCTIONS_HEADER, 7, tealSection);
+  for (let i = 0; i < deductionRows.length; i++) {
+    styleRange(DEDUCTIONS_START + i, 1, DEDUCTIONS_START + i, 7, i % 2 === 0 ? ltGrayRow : whiteRow);
+  }
+  styleRange(TOTAL_DEDUCTIONS_ROW, 1, TOTAL_DEDUCTIONS_ROW, 7, tealSection);
+  styleRange(NET_PAY_ROW, 1, NET_PAY_ROW, 7, netPayStyle);
 
-  // ── R16–R21: Earnings line items (alternating white/ltGray) ──
-  const earnStyles = [whiteRow, ltGrayRow, whiteRow, ltGrayRow, whiteRow, ltGrayRow];
-  earnStyles.forEach((s, i) => styleRange(16 + i, 1, 16 + i, 7, s));
-
-  // ── R22: TOTAL BASIC SALARY ───────────────────────────────────
-  styleRange(22, 1, 22, 7, tealSection);
-
-  // ── R24: DEDUCTIONS header ────────────────────────────────────
-  styleRange(24, 1, 24, 7, tealSection);
-
-  // ── R25–R36: Deduction items (alternating ltGray/white per template) ──
-  const dedStyles = [ltGrayRow, whiteRow, ltGrayRow, whiteRow, ltGrayRow, whiteRow, ltGrayRow, whiteRow, ltGrayRow, whiteRow, ltGrayRow, whiteRow];
-  dedStyles.forEach((s, i) => styleRange(25 + i, 1, 25 + i, 7, s));
-
-  // ── R37: TOTAL DEDUCTIONS ─────────────────────────────────────
-  styleRange(37, 1, 37, 7, tealSection);
-
-  // ── R39: NET PAY ──────────────────────────────────────────────
-  styleRange(39, 1, 39, 7, netPayStyle);
-
-  // ── Right-align number values on left side (col H = index 7) ─
-  for (let r = 7; r <= 39; r++) {
+  // Right-align monetary values in col H
+  for (let r = 7; r <= NET_PAY_ROW; r++) {
     const addr = XLSX.utils.encode_cell({ r, c: 7 });
     if (ws[addr] && typeof (ws[addr] as any).v === "number") {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (ws[addr] as any).s = {
-        ...(ws[addr] as any).s,
-        alignment: { horizontal: "right", vertical: "center" },
-      };
+      (ws[addr] as any).s = { ...(ws[addr] as any).s, alignment: { horizontal: "right", vertical: "center" } };
     }
   }
 
-  // ── DTR data rows (right side, alternating) ───────────────────
+  // DTR data rows
   for (let i = 0; i < dtrRows; i++) {
     const r = DTR_DATA_START + i;
     if (r >= totalRows) break;
     styleRange(r, 9, r, 24, i % 2 === 0 ? dtrLtGray : dtrWhite);
   }
-
-  // ── DTR TOTALS row (navy) ─────────────────────────────────────
   styleRange(dtrTotalsR, 9, dtrTotalsR, 24, navyHdr);
-
-  // ── SIGNATORIES ───────────────────────────────────────────────
   styleRange(sigHeaderR, 9, sigHeaderR, 24, navyHdr);
-  styleRange(sigLabelsR, 9,  sigLabelsR, 12, sigLabel);
+  styleRange(sigLabelsR, 9, sigLabelsR, 12, sigLabel);
   styleRange(sigLabelsR, 13, sigLabelsR, 16, sigLabel);
   styleRange(sigLabelsR, 17, sigLabelsR, 20, sigLabel);
   styleRange(sigLabelsR, 21, sigLabelsR, 24, sigLabel);
 
-  // ── Currency format for monetary cells (col H) ───────────────
+  // Currency format
   for (let r = 0; r < totalRows; r++) {
     const addr = XLSX.utils.encode_cell({ r, c: 7 });
     if (ws[addr] && typeof (ws[addr] as any).v === "number") {
@@ -597,9 +404,7 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
     }
   }
 
-  // ── Freeze panes: freeze left 9 cols and top 4 rows ──────────
   ws["!freeze"] = { xSplit: 9, ySplit: 4 };
-
   return ws;
 }
 
@@ -643,7 +448,7 @@ function generatePayrollPDF(employees: EmployeePayrollData[], filename: string) 
       <div class="page">
         <div class="header">
           <h2>PAYROLL SLIP</h2>
-          <p class="company">[COMPANY NAME]</p>
+          <p class="company">NexHRIS</p>
         </div>
 
         <div class="two-col">
@@ -658,32 +463,23 @@ function generatePayrollPDF(employees: EmployeePayrollData[], filename: string) 
               <tr><td class="label">Project</td><td>${emp.project}</td><td class="label">Semi-Monthly Pay</td><td class="num">${fmt(emp.semiMonthlySalary)}</td></tr>
             </table>
 
-            <div class="section-title">EARNINGS</div>
+            <div class="section-title">ALLOWANCES</div>
             <table class="detail-table">
-              <tr><td>Semi-Monthly Basic Salary</td><td class="num">${fmt(emp.semiMonthlySalary)}</td></tr>
+              ${emp.allowanceItems.map(a => `<tr><td>${a.label}</td><td class="num">${fmt(a.amount)}</td></tr>`).join("")}
               <tr><td>Overtime Pay</td><td class="num">${fmt(emp.overtimePay)}</td></tr>
-              <tr><td>Meal Allowance</td><td class="num">${fmt(emp.mealAllowance)}</td></tr>
-              <tr><td>Project Allowance</td><td class="num">${fmt(emp.projectAllowance)}</td></tr>
-              <tr><td>Taxi Fare</td><td class="num">${fmt(emp.taxiFare)}</td></tr>
-              <tr><td>COLA</td><td class="num">${fmt(emp.cola)}</td></tr>
-              <tr><td>Others / Adjustment</td><td class="num">${fmt(emp.othersAdjustment)}</td></tr>
-              <tr class="total-row"><td><strong>TOTAL BASIC SALARY</strong></td><td class="num"><strong>${fmt(emp.totalBasicSalary)}</strong></td></tr>
+              <tr class="total-row"><td><strong>TOTAL ALLOWANCES</strong></td><td class="num"><strong>${fmt(emp.allowanceItems.reduce((s, a) => s + a.amount, 0) + emp.overtimePay)}</strong></td></tr>
             </table>
 
             <div class="section-title">DEDUCTIONS</div>
             <table class="detail-table">
               <tr><td>Withholding Tax</td><td class="num">${fmt(emp.withholdingTax)}</td></tr>
               <tr><td>SSS Contribution</td><td class="num">${fmt(emp.sssContribution)}</td></tr>
-              <tr><td>SSS Salary Loan</td><td class="num">${fmt(emp.sssSalaryLoan)}</td></tr>
               <tr><td>PhilHealth Contribution</td><td class="num">${fmt(emp.philhealthContribution)}</td></tr>
               <tr><td>Pag-IBIG Contribution</td><td class="num">${fmt(emp.pagibigContribution)}</td></tr>
-              <tr><td>Pag-IBIG Loan</td><td class="num">${fmt(emp.pagibigLoan)}</td></tr>
-              <tr><td>Leave w/o Pay</td><td class="num">${fmt(emp.leaveWithoutPay)}</td></tr>
-              <tr><td>Tardiness / Undertime</td><td class="num">${fmt(emp.tardinessUndertime)}</td></tr>
-              <tr><td>Tax Deficiency / Refund</td><td class="num">${fmt(emp.taxDeficiency)}</td></tr>
-              <tr><td>Community Tax Cert.</td><td class="num">${fmt(emp.communityTax)}</td></tr>
-              <tr><td>PhilHealth Refund</td><td class="num">${fmt(emp.philhealthRefund)}</td></tr>
-              <tr><td>SSS Provident Fund</td><td class="num">${fmt(emp.sssProvidentFund)}</td></tr>
+              ${emp.deductionItems.map(d => `<tr><td>${d.label}</td><td class="num">${fmt(d.amount)}</td></tr>`).join("")}
+              ${emp.sssSalaryLoan > 0 ? `<tr><td>SSS Salary Loan</td><td class="num">${fmt(emp.sssSalaryLoan)}</td></tr>` : ""}
+              ${emp.pagibigLoan > 0 ? `<tr><td>Pag-IBIG Loan</td><td class="num">${fmt(emp.pagibigLoan)}</td></tr>` : ""}
+              ${emp.tardinessUndertime > 0 ? `<tr><td>Tardiness / Undertime</td><td class="num">${fmt(emp.tardinessUndertime)}</td></tr>` : ""}
               <tr class="total-row"><td><strong>TOTAL DEDUCTIONS</strong></td><td class="num"><strong>${fmt(emp.totalDeductions)}</strong></td></tr>
             </table>
 
@@ -801,7 +597,8 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
   const departments = useMemo(() => allDepartments.filter((d) => d.isActive), [allDepartments]);
   const employees = useEmployeesStore((s) => s.employees);
   const { payslips } = usePayrollStore();
-  const { logs: attendanceLogs } = useAttendanceStore();
+  const { logs: attendanceLogs, overtimeRequests } = useAttendanceStore();
+const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTemplates, fetchAssignments } = useDeductionsStore();
 
   const yearOptions = useMemo(() => {
     const curr = new Date().getFullYear();
@@ -837,6 +634,14 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
       setExportType(null);
     }
   }, [open]);
+  
+  
+  useEffect(() => {
+  if (open) {
+    fetchTemplates();
+    fetchAssignments();
+  }
+}, [open, fetchTemplates, fetchAssignments]);
 
   const validate = useCallback(() => {
     const errs: Record<string, string> = {};
@@ -914,22 +719,32 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
           timeIn: log.checkIn ? (log.checkIn.includes("T") ? log.checkIn.split("T")[1]?.split(".")[0]?.slice(0, 5) || "" : log.checkIn.slice(0, 5)) : "",
           timeOut: log.checkOut ? (log.checkOut.includes("T") ? log.checkOut.split("T")[1]?.split(".")[0]?.slice(0, 5) || "" : log.checkOut.slice(0, 5)) : "",
           totalHrs: log.hours ?? 0,
-          otHrs: log.approvedOTHours ?? 0,
+
+
+          otHrs: overtimeRequests
+        .filter(r => r.employeeId === employeeId && r.date === dateStr && r.status === "approved")
+        .reduce((sum, r) => sum + (r.hoursRequested || 0), 0),
+
+
+
           tardinessHr: Math.floor(lateMin / 60),
           tardinessMin: lateMin % 60,
           absences: log.status === "absent" ? 1 : 0,
         });
       } else {
-        dtrEntries.push({
-          date: format(d, "MMM dd"),
-          day: dayName,
-          timeIn: "",
-          timeOut: "",
-          totalHrs: 0,
-          otHrs: 0,
-          tardinessHr: 0,
-          tardinessMin: 0,
-          absences: d.getDay() !== 0 && d.getDay() !== 6 ? 1 : 0,
+                const absentOtHrs = overtimeRequests
+            .filter(r => r.employeeId === employeeId && r.date === dateStr && r.status === "approved")
+            .reduce((sum, r) => sum + (r.hoursRequested || 0), 0);
+            dtrEntries.push({
+            date: format(d, "MMM dd"),
+            day: dayName,
+            timeIn: "",
+            timeOut: "",
+            totalHrs: 0,
+            otHrs: absentOtHrs,
+            tardinessHr: 0,
+            tardinessMin: 0,
+            absences: d.getDay() !== 0 && d.getDay() !== 6 ? 1 : 0,
         });
       }
     }
@@ -952,6 +767,62 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
       const semiMonthlySalary = Math.round((monthlySalary / 2) * 100) / 100;
       const dtr = getDTRForEmployee(emp.id, periodFrom, periodTo);
 
+      // ── Dynamic line items from payslip ──────────────────────────────────
+      // lineItemsJson holds custom deduction-template items (allowances + deductions).
+      // If the payslip was issued before lineItemsJson was saved (older payslips),
+      // fall back to computing them live from the deductions store.
+      const lineItems = payslip?.lineItemsJson;
+      let customAllowanceItems: { label: string; amount: number }[];
+      let customDeductionItems: { label: string; amount: number }[];
+
+      if (lineItems && lineItems.length > 0) {
+        // Payslip has stored line items — use them directly
+        customAllowanceItems = lineItems
+          .filter((li) => li.type === "earning")
+          .map((li) => ({ label: li.label, amount: li.amount }));
+        customDeductionItems = lineItems
+          .filter((li) => li.type === "deduction")
+          .map((li) => ({ label: li.label, amount: li.amount }));
+      } else {
+        // Fallback: compute live from the deductions store (covers older payslips)
+        const workDays = emp.workDays?.length
+          ? Math.round(emp.workDays.length * (22 / 5))
+          : 22;
+        const liveItems = emp.deductionExempt
+          ? []
+          : computeDeductionsForEmployee(emp.id, emp.salary ?? 0, workDays);
+        customAllowanceItems = liveItems
+          .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "allowance")
+          .map((item) => ({ label: item.label, amount: item.amount }));
+        customDeductionItems = liveItems
+          .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "deduction")
+          .map((item) => ({ label: item.label, amount: item.amount }));
+      }
+
+      // Build allowanceItems — custom allowances only (no base salary row per the template)
+      const allowanceItems = [...customAllowanceItems];
+
+      // ── Approved OT for this period ───────────────────────────────────────
+      // If the payslip has an overtimePay snapshot, use it.
+      // Otherwise sum approved OT requests for the period as a fallback.
+      let overtimePay = payslip ? Number(payslip.overtimePay ?? 0) : 0;
+      if (overtimePay === 0) {
+        const approvedOT = overtimeRequests.filter(
+          (r) =>
+            r.employeeId === emp.id &&
+            r.status === "approved" &&
+            r.date >= periodFrom &&
+            r.date <= periodTo
+        );
+        const approvedOTHours = approvedOT.reduce((sum, r) => sum + (r.hoursRequested || 0), 0);
+        if (approvedOTHours > 0) {
+          const hrRate = Math.round(dailyRate / 8);
+          overtimePay = Math.round(approvedOTHours * hrRate * 1.25);
+        }
+      }
+
+      const deductionItems = customDeductionItems;
+
       return {
         id: emp.id,
         name: emp.name,
@@ -965,13 +836,10 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
         periodFrom: format(new Date(periodFrom), "MMM dd, yyyy"),
         periodTo: format(new Date(periodTo), "MMM dd, yyyy"),
         range: rangeLabel,
-        overtimePay: payslip ? Number(payslip.overtimePay ?? 0) : 0,
-        mealAllowance: 0,
-        projectAllowance: 0,
-        taxiFare: 0,
-        cola: 0,
-        othersAdjustment: payslip ? Number(payslip.allowances ?? 0) : 0,
-        totalBasicSalary: payslip ? Number(payslip.grossPay ?? 0) : semiMonthlySalary,
+        overtimePay,
+        totalBasicSalary: payslip ? Number(payslip.grossPay ?? semiMonthlySalary) : semiMonthlySalary,
+        allowanceItems,
+        deductionItems,
         withholdingTax: payslip ? Number(payslip.taxDeduction ?? 0) : 0,
         sssContribution: payslip ? Number(payslip.sssDeduction ?? 0) : 0,
         sssSalaryLoan: payslip ? Number(payslip.loanDeduction ?? 0) : 0,
@@ -979,22 +847,19 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
         pagibigContribution: payslip ? Number(payslip.pagibigDeduction ?? 0) : 0,
         pagibigLoan: 0,
         leaveWithoutPay: 0,
-        tardinessUndertime: payslip ? Number(payslip.lateDeduction ?? 0) : 0,
-        taxDeficiency: 0,
-        communityTax: 0,
-        philhealthRefund: 0,
-        sssProvidentFund: 0,
+       tardinessUndertime: payslip ? Number(payslip.lateDeduction ?? 0) + Number(payslip.undertimeDeduction ?? 0) + Number(payslip.absentDeduction ?? 0) : 0,
         totalDeductions: payslip
-          ? Number(payslip.sssDeduction ?? 0) + Number(payslip.philhealthDeduction ?? 0) +
-            Number(payslip.pagibigDeduction ?? 0) + Number(payslip.taxDeduction ?? 0) +
-            Number(payslip.loanDeduction ?? 0) + Number(payslip.otherDeductions ?? 0) +
-            Number(payslip.customDeductions ?? 0)
-          : 0,
+        ? Number(payslip.sssDeduction ?? 0) + Number(payslip.philhealthDeduction ?? 0) +
+          Number(payslip.pagibigDeduction ?? 0) + Number(payslip.taxDeduction ?? 0) +
+          Number(payslip.loanDeduction ?? 0) + Number(payslip.otherDeductions ?? 0) +
+          Number(payslip.customDeductions ?? 0) + Number(payslip.absentDeduction ?? 0) +
+          Number(payslip.lateDeduction ?? 0) + Number(payslip.undertimeDeduction ?? 0)
+        : 0,
         netPay: payslip ? Number(payslip.netPay ?? 0) : semiMonthlySalary,
         dtr,
       };
     });
-  }, [getTargetEmployees, getPeriodDates, range, payslips, getDTRForEmployee]);
+  }, [getTargetEmployees, getPeriodDates, range, payslips, getDTRForEmployee, overtimeRequests, computeDeductionsForEmployee, deductionTemplates]);
 
   const handleExport = useCallback(async (type: "xlsx" | "pdf") => {
     if (!validate()) return;
