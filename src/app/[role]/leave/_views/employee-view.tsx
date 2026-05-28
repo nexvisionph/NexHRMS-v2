@@ -39,6 +39,16 @@ const LEAVE_ICONS: Record<LeaveType, React.ReactNode> = {
     SPL: <Users className="h-4 w-4" />,
 };
 
+const LEAVE_COLORS: Record<LeaveType, { icon: string; bg: string; number: string }> = {
+    VL:    { icon: "text-emerald-600",  bg: "bg-emerald-500/15",  number: "text-emerald-600"  },
+    SL:    { icon: "text-blue-600",     bg: "bg-blue-500/15",     number: "text-blue-600"     },
+    EL:    { icon: "text-amber-600",    bg: "bg-amber-500/15",    number: "text-amber-600"    },
+    OTHER: { icon: "text-violet-600",   bg: "bg-violet-500/15",   number: "text-violet-600"   },
+    ML:    { icon: "text-pink-600",     bg: "bg-pink-500/15",     number: "text-pink-600"     },
+    PL:    { icon: "text-sky-600",      bg: "bg-sky-500/15",      number: "text-sky-600"      },
+    SPL:   { icon: "text-rose-600",     bg: "bg-rose-500/15",     number: "text-rose-600"     },
+};
+
 const DURATION_LABELS: Record<LeaveDuration, string> = {
     full_day: "Full Day",
     half_day_am: "Half Day (Morning)",
@@ -166,9 +176,15 @@ export default function EmployeeLeaveView() {
                                     <p className="text-xs text-muted-foreground mt-1">Half-day available for single-day leave</p>
                                 )}
                             </div>
-                            <div>
+                            <div className="grid gap-2">
                                 <label className="text-sm font-medium">Reason</label>
-                                <Textarea placeholder="Describe your reason..." value={formReason} onChange={(e) => setFormReason(e.target.value)} className="mt-1" rows={3} />
+                                <Textarea
+                                    placeholder="Describe the reason for your leave request..."
+                                    value={formReason}
+                                    onChange={(e) => setFormReason(e.target.value)}
+                                    rows={6}
+                                    className="resize-none max-h-[9rem] overflow-y-auto"
+                                />
                             </div>
                             <Button onClick={handleSubmit} className="w-full">Submit Request</Button>
                         </div>
@@ -185,12 +201,12 @@ export default function EmployeeLeaveView() {
                         <Card key={type} className="border border-border/50">
                             <CardContent className="p-4">
                                 <div className="flex items-center gap-2 mb-2">
-                                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${LEAVE_COLORS[type].bg} ${LEAVE_COLORS[type].icon}`}>
                                         {LEAVE_ICONS[type]}
                                     </div>
                                     <div>
-                                        <p className="text-xs text-muted-foreground">{LEAVE_LABELS[type]}</p>
-                                        <p className="text-lg font-bold">{b.remaining}</p>
+                                        <p className="text-xs font-medium text-black dark:text-white">{LEAVE_LABELS[type]}</p>
+                                        <p className={`text-lg font-bold ${LEAVE_COLORS[type].number}`}>{b.remaining}</p>
                                     </div>
                                 </div>
                                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">

@@ -389,15 +389,10 @@ export default function BIRCompliancePage() {
     const warnCount = alphalistIssues.filter((i) => i.severity === "warning").length;
 
     return (
-        <div className="container mx-auto py-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <Link href={`/${params?.role ?? role}/payroll`}>
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
-                    <div>
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
                         <h1 className="text-2xl font-bold">BIR Compliance</h1>
                         <p className="text-sm text-muted-foreground">
                             Tax profiles, annual summaries, Form 2316, and Alphalist export.
@@ -420,7 +415,6 @@ export default function BIRCompliancePage() {
                         Refresh
                     </Button>
                 </div>
-            </div>
 
             {/* KPI cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
