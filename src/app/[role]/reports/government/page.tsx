@@ -53,6 +53,7 @@ export default function GovernmentReportsPage() {
             // Employer share = 9.5/4.5 × employee share (same MSC basis)
             const erShare = Math.round(empShare * (9.5 / 4.5));
             return {
+                payslipId: p.id,
                 employeeId: p.employeeId,
                 name: getEmpName(p.employeeId),
                 grossPay: p.grossPay || 0,
@@ -68,6 +69,7 @@ export default function GovernmentReportsPage() {
         return monthPayslips.map((p) => {
             const empShare = p.philhealthDeduction || 0;
             return {
+                payslipId: p.id,
                 employeeId: p.employeeId,
                 name: getEmpName(p.employeeId),
                 grossPay: p.grossPay || 0,
@@ -83,6 +85,7 @@ export default function GovernmentReportsPage() {
         return monthPayslips.map((p) => {
             const empShare = p.pagibigDeduction || 0;
             return {
+                payslipId: p.id,
                 employeeId: p.employeeId,
                 name: getEmpName(p.employeeId),
                 grossPay: p.grossPay || 0,
@@ -96,6 +99,7 @@ export default function GovernmentReportsPage() {
     // BIR/Tax Report
     const taxReport = useMemo(() => {
         return monthPayslips.map((p) => ({
+            payslipId: p.id,
             employeeId: p.employeeId,
             name: getEmpName(p.employeeId),
             grossIncome: p.grossPay || 0,
@@ -221,7 +225,7 @@ export default function GovernmentReportsPage() {
                                     </TableHeader>
                                     <TableBody>
                                         {sssReport.map((r) => (
-                                            <TableRow key={r.employeeId}>
+                                            <TableRow key={r.payslipId}>
                                                 <TableCell className="text-sm font-medium">{r.name}</TableCell>
                                                 <TableCell className="text-sm">₱{r.grossPay.toLocaleString()}</TableCell>
                                                 <TableCell className="text-sm">₱{r.empShare.toLocaleString()}</TableCell>
@@ -269,7 +273,7 @@ export default function GovernmentReportsPage() {
                                     </TableHeader>
                                     <TableBody>
                                         {philhealthReport.map((r) => (
-                                            <TableRow key={r.employeeId}>
+                                            <TableRow key={r.payslipId}>
                                                 <TableCell className="text-sm font-medium">{r.name}</TableCell>
                                                 <TableCell className="text-sm">₱{r.grossPay.toLocaleString()}</TableCell>
                                                 <TableCell className="text-sm">₱{r.empShare.toLocaleString()}</TableCell>
@@ -317,7 +321,7 @@ export default function GovernmentReportsPage() {
                                     </TableHeader>
                                     <TableBody>
                                         {pagibigReport.map((r) => (
-                                            <TableRow key={r.employeeId}>
+                                            <TableRow key={r.payslipId}>
                                                 <TableCell className="text-sm font-medium">{r.name}</TableCell>
                                                 <TableCell className="text-sm">₱{r.grossPay.toLocaleString()}</TableCell>
                                                 <TableCell className="text-sm">₱{r.empShare.toLocaleString()}</TableCell>
@@ -364,7 +368,7 @@ export default function GovernmentReportsPage() {
                                     </TableHeader>
                                     <TableBody>
                                         {taxReport.map((r) => (
-                                            <TableRow key={r.employeeId}>
+                                            <TableRow key={r.payslipId}>
                                                 <TableCell className="text-sm font-medium">{r.name}</TableCell>
                                                 <TableCell className="text-sm">₱{r.grossIncome.toLocaleString()}</TableCell>
                                                 <TableCell className="text-sm font-semibold text-red-600 dark:text-red-400">₱{r.withholdingTax.toLocaleString()}</TableCell>
