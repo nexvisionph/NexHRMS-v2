@@ -388,23 +388,29 @@ function convertNexHRISToPayrollRows(
       return isNaN(f) ? 0 : f;
     };
 
-    // Find employee name (R8, col 4 = E column)
-    const name = getCell(8, 4) || getCell(7, 4);
+    // Find employee name — R8 col 4 in the NexHRIS sheet layout
+    // (grid[8][4] = emp.name, grid[7][4] = emp.id)
+    const name = getCell(8, 4);
     if (!name) continue;
 
-    // Period (R3, col 4) — format: "MMM dd, yyyy – MMM dd, yyyy"
+    // Employee ID — R7 col 4
+    const empId = getCell(7, 4);
+
+    // Period (R3, col 4) — format: "MMM dd, yyyy – MMM dd, yyyy" (em dash)
     const periodStr = getCell(3, 4);
     let periodStart = "";
     let periodEnd = "";
-    if (periodStr.includes("–")) {
-      const [from, to] = periodStr.split("–").map(s => s.trim());
-      // Try to parse dates — they may be in various formats
-      try {
-        const fromDate = new Date(from);
-        const toDate = new Date(to);
-        if (!isNaN(fromDate.getTime())) periodStart = fromDate.toISOString().split("T")[0];
-        if (!isNaN(toDate.getTime())) periodEnd = toDate.toISOString().split("T")[0];
-      } catch { /* use raw strings */ }
+    if (periodStr) {
+      // Split on em dash (–) or regular dash surrounded by spaces
+      const parts = periodStr.split(/\s*[–\-]\s*/);
+      if (parts.length >= 2) {
+        try {
+          const fromDate = new Date(parts[0].trim());
+          const toDate = new Date(parts[parts.length - 1].trim());
+          if (!isNaN(fromDate.getTime())) periodStart = fromDate.toISOString().split("T")[0];
+          if (!isNaN(toDate.getTime())) periodEnd = toDate.toISOString().split("T")[0];
+        } catch { /* use raw strings */ }
+      }
     }
 
     // Monthly salary, daily rate from R7-R10
@@ -468,6 +474,12 @@ function convertNexHRISToPayrollRows(
 
     if (netPay === 0 && grossPay === 0) continue;
 
+    // Embed the employee ID (from R7 col 4) in Notes for reliable re-import matching
+    const noteStr = [
+      empId ? `ID:${empId}` : "",
+      allowanceNotes.length > 0 ? `Allowances: ${allowanceNotes.join(", ")}` : "",
+    ].filter(Boolean).join(" | ");
+
     employees.push({
       "Employee Name": name,
       Email: "",
@@ -489,7 +501,7 @@ function convertNexHRISToPayrollRows(
       "Net Pay": netPay.toFixed(2),
       "Payment Method": "",
       "Bank Reference": "",
-      Notes: allowanceNotes.length > 0 ? `Allowances: ${allowanceNotes.join(", ")}` : "",
+      Notes: noteStr,
     });
   }
 
@@ -1600,7 +1612,10 @@ export function ImportDataDialog({
               const enriched = converted.map((row) => {
                 const name = (row["Employee Name"] || "").trim();
                 const normName = normaliseForMatch(name);
-                const emp = allEmployees.find((e) => normaliseForMatch(e.name) === normName);
+                // Try matching by employee ID first (most reliable), then by name
+                const empId = (row["Notes"] || "").match(/ID:(EMP-\w+)/)?.[1] || "";
+                const emp = (empId ? allEmployees.find((e) => e.id === empId) : null)
+                  || allEmployees.find((e) => normaliseForMatch(e.name) === normName);
                 if (emp) {
                   matchedCount++;
                   return { ...row, Email: row["Email"] || emp.email || "", Department: row["Department"] || emp.department || "", "Job Title": row["Job Title"] || emp.jobTitle || "" };

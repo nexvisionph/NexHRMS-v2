@@ -83,7 +83,7 @@
         const overtimeRequests = useAttendanceStore((s) => s.overtimeRequests);
         const ruleSets = useTimesheetStore((s) => s.ruleSets);
         const { hasPermission } = useRolesStore();
-        const { templates: deductionTemplates, computeDeductionsForEmployee } = useDeductionsStore();
+        const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTemplates, fetchAssignments } = useDeductionsStore();
 
         const canIssue = hasPermission(currentUser.role, "payroll:generate");
         const canLock = hasPermission(currentUser.role, "payroll:lock");
@@ -291,6 +291,12 @@
             setPublishPage(1);
             setSignPage(1);
         }, [activeRun?.id]);
+
+        useEffect(() => {
+        fetchTemplates();
+        fetchAssignments();
+        }, [fetchTemplates, fetchAssignments]);
+
 
 
         // ─── Filtered & paginated payslips ───────────────────────────
@@ -555,6 +561,20 @@
                         .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "allowance")
                         .reduce((sum, item) => sum + item.amount, 0);
 
+                    // Build line items for payslip storage — these are what the export reads
+                    const lineItemsJson = customItems.map((item) => {
+                        const template = deductionTemplates.find((t) => t.id === item.templateId);
+                        return {
+                            id: `LI-${item.templateId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                            payslipId: "", // filled after creation
+                            label: item.label,
+                            type: (template?.type === "allowance" ? "earning" : "deduction") as "earning" | "deduction" | "government" | "loan",
+                            amount: item.amount,
+                            templateId: item.templateId,
+                            calculationDetail: template ? `${template.calculationMode}: ${template.value}` : undefined,
+                        };
+                    });
+
                     const hourlyRate = Math.round(dailyRate / 8);
                     const otPay = Math.round(effectiveOtHours * hourlyRate * 1.25); // PH Labor Code: OT at 125%
                     const nightDiffPay = Math.round(nightDiffHours * hourlyRate * 0.10); // PH: +10% for 10PM-6AM
@@ -576,7 +596,22 @@
                         (l) => l.employeeId === empId && l.date >= cutoffDates.start && l.date <= cutoffDates.end
                     );
                     const lateMinutesAgg = periodLogs.reduce((sum, l) => sum + (l.lateMinutes || 0), 0);
-                    const absentDaysAgg = periodLogs.filter((l) => l.status === "absent").length;
+
+
+
+                   let absentDaysAgg = 0;
+                    for (let d = new Date(parseISO(cutoffDates.start)); d <= parseISO(cutoffDates.end); d.setDate(d.getDate() + 1)) {
+                        const dayOfWeek = d.getDay();
+                        if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+                        const dateStr = format(d, "yyyy-MM-dd");
+                        const log = periodLogs.find((l) => l.date === dateStr);
+                        if (!log || log.status === "absent") absentDaysAgg++;
+                    }
+
+
+
+
+
                     const activeRuleSet = ruleSets[0]; // RS-DEFAULT
                     const stdHours = activeRuleSet?.standardHoursPerDay ?? 8;
                     const presentLogs = periodLogs.filter((l) => l.status === "present");
@@ -625,6 +660,8 @@
                         overtimePay: otPay,
                         dailyRate: libDailyRate,
                         hourlyRate: libHourlyRate,
+                        // Custom template line items — read by export, payslip detail, and printable payslip
+                        lineItemsJson: lineItemsJson.length > 0 ? lineItemsJson : undefined,
                         notes: formNotes || [effectiveOtHours > 0 ? `OT: ${effectiveOtHours}hrs (\u20B1${otPay})` : "", nightDiffHours > 0 ? `ND: ${nightDiffHours}hrs (\u20B1${nightDiffPay})` : ""].filter(Boolean).join(", ") || undefined, issuedAt: formIssuedAt,
                     });
 
@@ -842,18 +879,46 @@
                         .reduce((sum, item) => sum + item.amount, 0);
                     const oldCustomDed = ps.customDeductions ?? 0;
 
-                    // netPay diff: old total deductions - new total deductions + new allowances - old allowances
-                    const netPayDiff = (oldGovDed - totalGovDed) + (oldCustomDed - newCustomDed) + newCustomAllowance;
-                    const newNetPay = Math.max(0, ps.netPay + netPayDiff);
+                    // Rebuild lineItemsJson so export/detail views reflect updated templates
+                    const newLineItemsJson = customItems.map((item) => {
+                        const template = deductionTemplates.find((t) => t.id === item.templateId);
+                        return {
+                            id: `LI-${item.templateId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                            payslipId: ps.id,
+                            label: item.label,
+                            type: (template?.type === "allowance" ? "earning" : "deduction") as "earning" | "deduction" | "government" | "loan",
+                            amount: item.amount,
+                            templateId: item.templateId,
+                            calculationDetail: template ? `${template.calculationMode}: ${template.value}` : undefined,
+                        };
+                    });
 
-                    updatePayslipFromServer({
+                    
+                    const empSemiMonthly = Math.round(emp.salary / 2);
+                    const newNetPay = Math.max(0,
+                        empSemiMonthly
+                        + (ps.overtimePay ?? 0)
+                        + (ps.holidayPay ?? 0)
+                        + newCustomAllowance
+                        - totalGovDed
+                        - (ps.otherDeductions ?? 0)
+                        - (ps.loanDeduction ?? 0)
+                        - newCustomDed
+                        - (ps.lateDeduction ?? 0)
+                        - (ps.absentDeduction ?? 0)
+                        - (ps.undertimeDeduction ?? 0)
+                    );
+                        updatePayslipFromServer({
                         id: ps.id,
+                        grossPay: empSemiMonthly,        
                         sssDeduction: sss,
                         philhealthDeduction: ph,
                         pagibigDeduction: pi,
                         taxDeduction: tax,
                         customDeductions: newCustomDed,
+                        allowances: (ps.overtimePay ?? 0) + newCustomAllowance,
                         netPay: newNetPay,
+                        lineItemsJson: newLineItemsJson.length > 0 ? newLineItemsJson : undefined,
                     });
                     updated++;
                 });

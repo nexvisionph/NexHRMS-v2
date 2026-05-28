@@ -27,13 +27,23 @@ export function PrintablePayslip({
 }: PrintablePayslipProps) {
     const printRef = useRef<HTMLDivElement>(null);
 
-    const totalDeductions = (payslip.sssDeduction || 0) + (payslip.philhealthDeduction || 0) +
-        (payslip.pagibigDeduction || 0) + (payslip.taxDeduction || 0) +
-        (payslip.otherDeductions || 0) + (payslip.loanDeduction || 0) +
-        (payslip.customDeductions || 0) +
-        (payslip.lateDeduction || 0) + (payslip.absentDeduction || 0) + (payslip.undertimeDeduction || 0);
+    const hasLineItemEarnings = (payslip.lineItemsJson || []).some(li => li.type === "earning");
+        const lineItemEarningsTotal = (payslip.lineItemsJson || [])
+            .filter(li => li.type === "earning")
+            .reduce((sum, li) => sum + li.amount, 0);
+        const totalEarnings = (payslip.grossPay || 0)
+            + (hasLineItemEarnings ? lineItemEarningsTotal + (payslip.overtimePay ?? 0) : (payslip.allowances || 0))
+            + (payslip.holidayPay || 0);
 
-    const totalEarnings = (payslip.grossPay || 0) + (payslip.allowances || 0) + (payslip.holidayPay || 0);
+        const hasLineItemDeductions = (payslip.lineItemsJson || []).some(li => li.type === "deduction");
+        const lineItemDeductionsTotal = (payslip.lineItemsJson || [])   
+            .filter(li => li.type === "deduction")
+            .reduce((sum, li) => sum + li.amount, 0);
+        const totalDeductions = (payslip.sssDeduction || 0) + (payslip.philhealthDeduction || 0) +
+            (payslip.pagibigDeduction || 0) + (payslip.taxDeduction || 0) +
+            (payslip.otherDeductions || 0) + (payslip.loanDeduction || 0) +
+            (hasLineItemDeductions ? lineItemDeductionsTotal : (payslip.customDeductions || 0)) +
+            (payslip.lateDeduction || 0) + (payslip.absentDeduction || 0) + (payslip.undertimeDeduction || 0);
 
     const handlePrint = () => {
         if (!printRef.current) return;
@@ -178,6 +188,13 @@ export function PrintablePayslip({
                                 <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
                                     <td style={{ padding: "6px 8px" }}>Allowances</td>
                                     <td style={{ padding: "6px 8px", textAlign: "right" }}>{formatCurrency(payslip.allowances)}</td>
+                                </tr>
+                            )}
+
+                            {(payslip.overtimePay ?? 0) > 0 && (
+                                <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
+                                    <td style={{ padding: "6px 8px" }}>Overtime Pay</td>
+                                    <td style={{ padding: "6px 8px", textAlign: "right" }}>{formatCurrency(payslip.overtimePay ?? 0)}</td>
                                 </tr>
                             )}
                             {(payslip.holidayPay ?? 0) !== 0 && (

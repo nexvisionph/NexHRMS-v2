@@ -5,6 +5,7 @@ import { useEmployeesStore } from "@/store/employees.store";
 import { useDepartmentsStore } from "@/store/departments.store";
 import { usePayrollStore } from "@/store/payroll.store";
 import { useAttendanceStore } from "@/store/attendance.store";
+import { useDeductionsStore } from "@/store/deductions.store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -110,7 +111,7 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
     ...(emp.sssSalaryLoan > 0 ? [{ label: "SSS Salary Loan", amount: emp.sssSalaryLoan }] : []),
     ...(emp.pagibigLoan > 0 ? [{ label: "Pag-IBIG Loan", amount: emp.pagibigLoan }] : []),
     ...(emp.leaveWithoutPay > 0 ? [{ label: "Leave w/o Pay", amount: emp.leaveWithoutPay }] : []),
-    ...(emp.tardinessUndertime > 0 ? [{ label: "Tardiness / Undertime", amount: emp.tardinessUndertime }] : []),
+   ...(emp.tardinessUndertime > 0 ? [{ label: "Absent / Late / Undertime", amount: emp.tardinessUndertime }] : []),
   ];
 
   // Fixed layout rows
@@ -596,7 +597,8 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
   const departments = useMemo(() => allDepartments.filter((d) => d.isActive), [allDepartments]);
   const employees = useEmployeesStore((s) => s.employees);
   const { payslips } = usePayrollStore();
-  const { logs: attendanceLogs } = useAttendanceStore();
+  const { logs: attendanceLogs, overtimeRequests } = useAttendanceStore();
+const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTemplates, fetchAssignments } = useDeductionsStore();
 
   const yearOptions = useMemo(() => {
     const curr = new Date().getFullYear();
@@ -632,6 +634,14 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
       setExportType(null);
     }
   }, [open]);
+  
+  
+  useEffect(() => {
+  if (open) {
+    fetchTemplates();
+    fetchAssignments();
+  }
+}, [open, fetchTemplates, fetchAssignments]);
 
   const validate = useCallback(() => {
     const errs: Record<string, string> = {};
@@ -709,22 +719,32 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
           timeIn: log.checkIn ? (log.checkIn.includes("T") ? log.checkIn.split("T")[1]?.split(".")[0]?.slice(0, 5) || "" : log.checkIn.slice(0, 5)) : "",
           timeOut: log.checkOut ? (log.checkOut.includes("T") ? log.checkOut.split("T")[1]?.split(".")[0]?.slice(0, 5) || "" : log.checkOut.slice(0, 5)) : "",
           totalHrs: log.hours ?? 0,
-          otHrs: log.approvedOTHours ?? 0,
+
+
+          otHrs: overtimeRequests
+        .filter(r => r.employeeId === employeeId && r.date === dateStr && r.status === "approved")
+        .reduce((sum, r) => sum + (r.hoursRequested || 0), 0),
+
+
+
           tardinessHr: Math.floor(lateMin / 60),
           tardinessMin: lateMin % 60,
           absences: log.status === "absent" ? 1 : 0,
         });
       } else {
-        dtrEntries.push({
-          date: format(d, "MMM dd"),
-          day: dayName,
-          timeIn: "",
-          timeOut: "",
-          totalHrs: 0,
-          otHrs: 0,
-          tardinessHr: 0,
-          tardinessMin: 0,
-          absences: d.getDay() !== 0 && d.getDay() !== 6 ? 1 : 0,
+                const absentOtHrs = overtimeRequests
+            .filter(r => r.employeeId === employeeId && r.date === dateStr && r.status === "approved")
+            .reduce((sum, r) => sum + (r.hoursRequested || 0), 0);
+            dtrEntries.push({
+            date: format(d, "MMM dd"),
+            day: dayName,
+            timeIn: "",
+            timeOut: "",
+            totalHrs: 0,
+            otHrs: absentOtHrs,
+            tardinessHr: 0,
+            tardinessMin: 0,
+            absences: d.getDay() !== 0 && d.getDay() !== 6 ? 1 : 0,
         });
       }
     }
@@ -747,14 +767,61 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
       const semiMonthlySalary = Math.round((monthlySalary / 2) * 100) / 100;
       const dtr = getDTRForEmployee(emp.id, periodFrom, periodTo);
 
-      // Build dynamic line items from payslip (if available)
-      const lineItems = payslip?.lineItemsJson || [];
-      const allowanceItems = lineItems
-        .filter((li) => li.type === "earning")
-        .map((li) => ({ label: li.label, amount: li.amount }));
-      const deductionItems = lineItems
-        .filter((li) => li.type === "deduction")
-        .map((li) => ({ label: li.label, amount: li.amount }));
+      // ── Dynamic line items from payslip ──────────────────────────────────
+      // lineItemsJson holds custom deduction-template items (allowances + deductions).
+      // If the payslip was issued before lineItemsJson was saved (older payslips),
+      // fall back to computing them live from the deductions store.
+      const lineItems = payslip?.lineItemsJson;
+      let customAllowanceItems: { label: string; amount: number }[];
+      let customDeductionItems: { label: string; amount: number }[];
+
+      if (lineItems && lineItems.length > 0) {
+        // Payslip has stored line items — use them directly
+        customAllowanceItems = lineItems
+          .filter((li) => li.type === "earning")
+          .map((li) => ({ label: li.label, amount: li.amount }));
+        customDeductionItems = lineItems
+          .filter((li) => li.type === "deduction")
+          .map((li) => ({ label: li.label, amount: li.amount }));
+      } else {
+        // Fallback: compute live from the deductions store (covers older payslips)
+        const workDays = emp.workDays?.length
+          ? Math.round(emp.workDays.length * (22 / 5))
+          : 22;
+        const liveItems = emp.deductionExempt
+          ? []
+          : computeDeductionsForEmployee(emp.id, emp.salary ?? 0, workDays);
+        customAllowanceItems = liveItems
+          .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "allowance")
+          .map((item) => ({ label: item.label, amount: item.amount }));
+        customDeductionItems = liveItems
+          .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "deduction")
+          .map((item) => ({ label: item.label, amount: item.amount }));
+      }
+
+      // Build allowanceItems — custom allowances only (no base salary row per the template)
+      const allowanceItems = [...customAllowanceItems];
+
+      // ── Approved OT for this period ───────────────────────────────────────
+      // If the payslip has an overtimePay snapshot, use it.
+      // Otherwise sum approved OT requests for the period as a fallback.
+      let overtimePay = payslip ? Number(payslip.overtimePay ?? 0) : 0;
+      if (overtimePay === 0) {
+        const approvedOT = overtimeRequests.filter(
+          (r) =>
+            r.employeeId === emp.id &&
+            r.status === "approved" &&
+            r.date >= periodFrom &&
+            r.date <= periodTo
+        );
+        const approvedOTHours = approvedOT.reduce((sum, r) => sum + (r.hoursRequested || 0), 0);
+        if (approvedOTHours > 0) {
+          const hrRate = Math.round(dailyRate / 8);
+          overtimePay = Math.round(approvedOTHours * hrRate * 1.25);
+        }
+      }
+
+      const deductionItems = customDeductionItems;
 
       return {
         id: emp.id,
@@ -769,8 +836,8 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
         periodFrom: format(new Date(periodFrom), "MMM dd, yyyy"),
         periodTo: format(new Date(periodTo), "MMM dd, yyyy"),
         range: rangeLabel,
-        overtimePay: payslip ? Number(payslip.overtimePay ?? 0) : 0,
-        totalBasicSalary: payslip ? Number(payslip.grossPay ?? 0) : semiMonthlySalary,
+        overtimePay,
+        totalBasicSalary: payslip ? Number(payslip.grossPay ?? semiMonthlySalary) : semiMonthlySalary,
         allowanceItems,
         deductionItems,
         withholdingTax: payslip ? Number(payslip.taxDeduction ?? 0) : 0,
@@ -780,18 +847,19 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
         pagibigContribution: payslip ? Number(payslip.pagibigDeduction ?? 0) : 0,
         pagibigLoan: 0,
         leaveWithoutPay: 0,
-        tardinessUndertime: payslip ? Number(payslip.lateDeduction ?? 0) + Number(payslip.undertimeDeduction ?? 0) : 0,
+       tardinessUndertime: payslip ? Number(payslip.lateDeduction ?? 0) + Number(payslip.undertimeDeduction ?? 0) + Number(payslip.absentDeduction ?? 0) : 0,
         totalDeductions: payslip
-          ? Number(payslip.sssDeduction ?? 0) + Number(payslip.philhealthDeduction ?? 0) +
-            Number(payslip.pagibigDeduction ?? 0) + Number(payslip.taxDeduction ?? 0) +
-            Number(payslip.loanDeduction ?? 0) + Number(payslip.otherDeductions ?? 0) +
-            Number(payslip.customDeductions ?? 0)
-          : 0,
+        ? Number(payslip.sssDeduction ?? 0) + Number(payslip.philhealthDeduction ?? 0) +
+          Number(payslip.pagibigDeduction ?? 0) + Number(payslip.taxDeduction ?? 0) +
+          Number(payslip.loanDeduction ?? 0) + Number(payslip.otherDeductions ?? 0) +
+          Number(payslip.customDeductions ?? 0) + Number(payslip.absentDeduction ?? 0) +
+          Number(payslip.lateDeduction ?? 0) + Number(payslip.undertimeDeduction ?? 0)
+        : 0,
         netPay: payslip ? Number(payslip.netPay ?? 0) : semiMonthlySalary,
         dtr,
       };
     });
-  }, [getTargetEmployees, getPeriodDates, range, payslips, getDTRForEmployee]);
+  }, [getTargetEmployees, getPeriodDates, range, payslips, getDTRForEmployee, overtimeRequests, computeDeductionsForEmployee, deductionTemplates]);
 
   const handleExport = useCallback(async (type: "xlsx" | "pdf") => {
     if (!validate()) return;
