@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { usePayrollStore } from "@/store/payroll.store";
+import { getRunPayslips, runHasPayslips } from "@/lib/payroll-run-membership";
 import { Badge } from "@/components/ui/badge";
 import {
     CheckCircle, Lock, Send, PenTool, CreditCard, FileText
@@ -34,12 +35,15 @@ export function usePayrollProgress() {
 
     return useMemo(() => {
         const activeRun = runs
-            .filter((r) => r.status !== "completed")
+            .filter((r) =>
+                r.status !== "completed" &&
+                runHasPayslips(r, payslips)   // skip phantom empty draft runs
+            )
             .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 
         if (!activeRun) return "issue" as WizardStep;
 
-        const runPs = payslips.filter((p) => activeRun.payslipIds?.includes(p.id));
+        const runPs = getRunPayslips(activeRun, payslips);
         if (runPs.length === 0) return "issue" as WizardStep;
 
         if (!activeRun.locked && activeRun.status === "draft") return "lock" as WizardStep;
@@ -60,12 +64,15 @@ export function useActiveRunSummary() {
 
     return useMemo(() => {
         const activeRun = runs
-            .filter((r) => r.status !== "completed")
+            .filter((r) =>
+                r.status !== "completed" &&
+                runHasPayslips(r, payslips)   // skip phantom empty draft runs
+            )
             .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 
         if (!activeRun) return null;
 
-        const runPs = payslips.filter((p) => activeRun.payslipIds?.includes(p.id));
+        const runPs = getRunPayslips(activeRun, payslips);
         return {
             run: activeRun,
             total: runPs.length,

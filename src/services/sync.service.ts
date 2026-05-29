@@ -1466,11 +1466,14 @@ export function startRealtime(): void {
       safe(({ new: row }: { new: Record<string, unknown> }) => {
         const run = keysToCamel(row) as Record<string, unknown>;
         usePayrollStore.setState((s) => ({
-          runs: s.runs.map((r) =>
-            r.id === run.id
-              ? (JSON.stringify(r) !== JSON.stringify(run) ? { ...r, ...run } as typeof r : r)
-              : r
-          ),
+          runs: s.runs.map((r) => {
+            if (r.id !== run.id) return r;
+            // Union payslipIds so a stale/empty DB echo can't drop known links.
+            const incoming = (run.payslipIds as string[] | undefined) ?? [];
+            const merged = Array.from(new Set([...(r.payslipIds ?? []), ...incoming]));
+            const next = { ...r, ...run, payslipIds: merged } as typeof r;
+            return JSON.stringify(r) !== JSON.stringify(next) ? next : r;
+          }),
         }));
       })
     )

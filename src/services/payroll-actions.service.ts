@@ -10,6 +10,7 @@
 
 import { payrollDb } from "./db.service";
 import { usePayrollStore } from "@/store/payroll.store";
+import { reconcileRunPayslipIds } from "@/lib/payroll-run-membership";
 import type { Payslip } from "@/types";
 
 /**
@@ -216,6 +217,8 @@ export async function holdPayment(id: string, note?: string): Promise<boolean> {
 
 /**
  * Delete a draft payslip — DB-first.
+ * Also removes any orphaned draft run that becomes empty as a result,
+ * so phantom empty runs cannot reappear on refresh.
  */
 export async function deletePayslip(id: string): Promise<boolean> {
     const store = usePayrollStore.getState();
@@ -225,14 +228,32 @@ export async function deletePayslip(id: string): Promise<boolean> {
     const ok = await payrollDb.deletePayslipsByIds([id]);
     if (!ok) return false;
 
-    usePayrollStore.setState((s) => ({
-        payslips: s.payslips.filter((p) => p.id !== id),
-        runs: s.runs.map((r) =>
+    // Determine which draft runs become empty after stripping this payslip
+    const orphanRunIds = store.runs
+        .filter((r) =>
+            r.status === "draft" &&
+            r.payslipIds?.includes(id) &&
+            (r.payslipIds ?? []).filter((pid) => pid !== id).length === 0
+        )
+        .map((r) => r.id);
+
+    if (orphanRunIds.length > 0) {
+        await payrollDb.deleteRunsByIds(orphanRunIds);
+    }
+
+    usePayrollStore.setState((s) => {
+        const strippedRuns = s.runs.map((r) =>
             r.payslipIds?.includes(id)
                 ? { ...r, payslipIds: r.payslipIds.filter((pid) => pid !== id) }
                 : r
-        ),
-    }));
+        );
+        return {
+            payslips: s.payslips.filter((p) => p.id !== id),
+            runs: strippedRuns.filter((r) =>
+                r.status !== "draft" || (r.payslipIds ?? []).length > 0
+            ),
+        };
+    });
     return true;
 }
 
@@ -248,6 +269,10 @@ export async function lockRunDbFirst(periodLabel: string, lockedBy = "system"): 
     const run = store.runs.find((r) => r.periodLabel === periodLabel);
     if (!run || run.status !== "draft") return false;
 
+    // Reconcile payslipIds from payrollBatchId before persisting so locking can
+    // never wipe the junction table with a stale/empty array.
+    const reconciled = reconcileRunPayslipIds(run, store.payslips);
+
     const snapshot = {
         taxTableVersion: POLICY_VERSIONS.taxTable,
         sssVersion: POLICY_VERSIONS.sss,
@@ -260,7 +285,7 @@ export async function lockRunDbFirst(periodLabel: string, lockedBy = "system"): 
     };
 
     const updatedRun: PayrollRun = {
-        ...run,
+        ...reconciled,
         locked: true,
         status: "locked",
         lockedAt: new Date().toISOString(),
@@ -284,8 +309,10 @@ export async function unlockRunDbFirst(periodLabel: string): Promise<boolean> {
     const run = store.runs.find((r) => r.periodLabel === periodLabel);
     if (!run || run.status !== "locked") return false;
 
+    const reconciled = reconcileRunPayslipIds(run, store.payslips);
+
     const updatedRun: PayrollRun = {
-        ...run,
+        ...reconciled,
         locked: false,
         status: "draft",
         lockedAt: undefined,
@@ -309,8 +336,10 @@ export async function endRunDbFirst(periodLabel: string): Promise<boolean> {
     const run = store.runs.find((r) => r.periodLabel === periodLabel);
     if (!run || run.status !== "locked") return false;
 
+    const reconciled = reconcileRunPayslipIds(run, store.payslips);
+
     const updatedRun: PayrollRun = {
-        ...run,
+        ...reconciled,
         status: "ended",
     };
 
@@ -331,8 +360,10 @@ export async function markRunPaidDbFirst(periodLabel: string): Promise<boolean> 
     const run = store.runs.find((r) => r.periodLabel === periodLabel);
     if (!run) return false;
 
+    const reconciled = reconcileRunPayslipIds(run, store.payslips);
+
     const updatedRun: PayrollRun = {
-        ...run,
+        ...reconciled,
         status: "completed",
         paidAt: new Date().toISOString(),
     };

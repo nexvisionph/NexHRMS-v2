@@ -11,6 +11,7 @@
     import { useDeductionsStore } from "@/store/deductions.store";
     import { useTimesheetStore } from "@/store/timesheet.store";
     import { buildPayslipDeductions, computeDailyRate, computeHourlyRate } from "@/lib/payroll-deductions";
+    import { getRunPayslips, runHasPayslips, reconcileRunPayslipIds } from "@/lib/payroll-run-membership";
     import { PH_HOLIDAY_MULTIPLIERS } from "@/lib/constants";
     import { Card, CardContent } from "@/components/ui/card";
     import { Button } from "@/components/ui/button";
@@ -272,14 +273,19 @@
             return activeEmployees.filter((e) => e.name.toLowerCase().includes(q) || e.department.toLowerCase().includes(q) || e.role.toLowerCase().includes(q));
         }, [activeEmployees, empSearchTerm]);
 
+        // Active run: most recent non-completed run that actually has payslips.
+        // Membership is derived from payslip.payrollBatchId (source of truth) and
+        // unioned with the cached run.payslipIds, so a stale/empty array can't hide it.
         const activeRun = useMemo(() => runs
-            .filter((r) => r.status !== "completed")
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0], [runs]);
+            .filter((r) =>
+                r.status !== "completed" &&
+                runHasPayslips(r, payslips)
+            )
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0], [runs, payslips]);
         const hasActiveRun = Boolean(activeRun);
-        const activeRunPayslipIds = useMemo(() => new Set(activeRun?.payslipIds ?? []), [activeRun]);
         const activeRunPayslips = useMemo(
-            () => activeRun ? payslips.filter((p) => activeRunPayslipIds.has(p.id)) : [],
-            [payslips, activeRunPayslipIds, activeRun]
+            () => activeRun ? getRunPayslips(activeRun, payslips) : [],
+            [payslips, activeRun]
         );
         const activeRunHoldPayslips = useMemo(
             () => activeRunPayslips.filter((p) => p.status === "payment_hold"),
@@ -296,6 +302,40 @@
         fetchTemplates();
         fetchAssignments();
         }, [fetchTemplates, fetchAssignments]);
+
+        // ─── Self-heal run↔payslip links + cleanup genuinely-empty drafts ───
+        // 1. Reconcile each run's cached payslipIds from payslip.payrollBatchId so
+        //    a stale/empty array (realtime echo, write-through race) repairs itself.
+        // 2. Only delete draft runs that NO payslip references at all (true phantoms).
+        useEffect(() => {
+            const { runs: curRuns, payslips: curPayslips } = usePayrollStore.getState();
+
+            // Heal cached payslipIds (add-only, never drops real links)
+            let changed = false;
+            const healed = curRuns.map((r) => {
+                const next = reconcileRunPayslipIds(r, curPayslips);
+                if (next !== r) changed = true;
+                return next;
+            });
+
+            // Identify genuine phantoms: draft runs with no payslips by EITHER linkage
+            const phantoms = healed.filter((r) =>
+                r.status === "draft" && !runHasPayslips(r, curPayslips)
+            );
+            const phantomIds = new Set(phantoms.map((r) => r.id));
+
+            if (changed || phantomIds.size > 0) {
+                usePayrollStore.setState({
+                    runs: healed.filter((r) => !phantomIds.has(r.id)),
+                });
+            }
+
+            // Persist healed arrays + remove DB phantoms (fire-and-forget)
+            if (phantomIds.size > 0) {
+                payrollDb.deleteRunsByIds([...phantomIds]).catch(() => { /* non-blocking */ });
+            }
+            payrollDb.cleanupEmptyDraftRuns().catch(() => { /* non-blocking */ });
+        }, []);
 
 
 
@@ -384,7 +424,7 @@
                 r.periodLabel === periodKey &&
                 r.locked &&
                 r.status !== "completed" &&
-                (r.payslipIds ?? []).length > 0
+                runHasPayslips(r, payslips)
             );
             if (cutoffLocked) { toast.error("This cutoff period is locked. Unlock the payroll run first to issue new payslips."); return; }
 
@@ -395,7 +435,10 @@
                     const runMonth = r.periodLabel.substring(0, 7);
                     return runMonth === selectedMonth;
                 });
-                const conflictingRun = sameMonthRuns.find((r) => r.periodLabel !== periodKey);
+                const conflictingRun = sameMonthRuns.find((r) =>
+                    r.periodLabel !== periodKey &&
+                    runHasPayslips(r, payslips)   // ignore phantom empty runs
+                );
                 if (conflictingRun) {
                     toast.error(`Cannot issue for ${cutoff === "first" ? "1st" : "2nd"} cutoff — the other cutoff run (${conflictingRun.periodLabel}) is still active. Complete it first.`);
                     return;
@@ -692,8 +735,13 @@
         }, [generate13thMonth]);
 
         const payrollRuns = useMemo(() => {
-            return runs.map((r) => {
-                const runPayslips = payslips.filter((p) => (r.payslipIds || []).includes(p.id));
+            return runs
+                .filter((r) =>
+                    r.status !== "draft" ||          // keep all non-draft runs
+                    runHasPayslips(r, payslips)       // only keep drafts that have payslips
+                )
+                .map((r) => {
+                const runPayslips = getRunPayslips(r, payslips);
                 return {
                     date: r.periodLabel,
                     runId: r.id,
@@ -726,9 +774,9 @@
                 if (r.periodLabel !== periodKey) return false;
                 // Only treat as locked if the run actually has payslips.
                 // Orphaned empty locked runs do not block new runs.
-                return (r.payslipIds ?? []).length > 0;
+                return runHasPayslips(r, payslips);
             });
-        }, [runs, cutoffDates]);
+        }, [runs, payslips, cutoffDates]);
         const viewedPayslip = viewSlip ? payslips.find((p) => p.id === viewSlip) : null;
 
         const viewTitle = mode === "admin" ? "Payroll Management" : mode === "finance" ? "Payroll & Finance" : "Payroll Administration";
@@ -1892,6 +1940,11 @@
                                                             const locked = isRunLocked(run.date);
                                                             const runObj = runs.find((r) => r.periodLabel === run.date);
                                                             const runStatus = runObj?.status ?? "draft";
+                                                            // Derive membership from payrollBatchId (source of truth) unioned with
+                                                            // the cached payslipIds, so a stale/empty array can't break the checklist.
+                                                            const runObjPayslipIds = runObj
+                                                                ? getRunPayslips(runObj, payslips).map((p) => p.id)
+                                                                : [];
                                                             // Format period label for display: "2026-05-01/2026-05-15" → "May 01 – May 15"
                                                             const [pStart, pEnd] = run.date.split("/");
                                                             const periodDisplay = pStart && pEnd
@@ -1932,7 +1985,7 @@
                                                                                                 <PayrollReadinessChecklist
                                                                                                     runId={runObj.id}
                                                                                                     periodLabel={runObj.periodLabel}
-                                                                                                    payslipIds={runObj.payslipIds ?? []}
+                                                                                                    payslipIds={runObjPayslipIds}
                                                                                                     onAllChecksPassed={(passed) => setChecklistPassedMap((prev) => ({ ...prev, [runObj.id]: passed }))}
                                                                                                 />
                                                                                             )}
@@ -1975,7 +2028,7 @@
                                                                                 {locked && <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="Policy snapshot" onClick={() => setSnapshotRunDate(run.date)}><Shield className="h-3.5 w-3.5" /></Button>}
                                                                                 {/* End Cycle — auto-hold unsigned, enters evaluation phase */}
                                                                                 {locked && (runStatus === "locked" || runStatus === "published") && (() => {
-                                                                                    const rPs = payslips.filter((p) => (runObj?.payslipIds ?? []).includes(p.id));
+                                                                                    const rPs = payslips.filter((p) => runObjPayslipIds.includes(p.id));
                                                                                     const signedUnpaid = rPs.filter((p) => p.status === "signed").length;
                                                                                     const draftCount = rPs.filter((p) => p.status === "draft").length;
                                                                                     const zeroDeductionCount = rPs.filter((p) =>
@@ -2034,7 +2087,7 @@
                                                                                                         className={!endCycleConsent[run.date] ? "opacity-50 cursor-not-allowed" : ""}
                                                                                                         onClick={() => {
                                                                                                         const onHoldPayslips = payslips
-                                                                                                            .filter((p) => (runObj?.payslipIds ?? []).includes(p.id) && p.status === "published" && !p.signedAt);
+                                                                                                            .filter((p) => runObjPayslipIds.includes(p.id) && p.status === "published" && !p.signedAt);
                                                                                                         onHoldPayslips.forEach((p) => {
                                                                                                             holdPayment(p.id);
                                                                                                             dispatchNotification(
@@ -2073,7 +2126,7 @@
                                                                                                     <div className="space-y-2 text-sm">
                                                                                                         <p>This will finalize <strong>{periodDisplay}</strong> and mark it as complete.</p>
                                                                                                         {(() => {
-                                                                                                            const rPs = payslips.filter((p) => (runObj?.payslipIds ?? []).includes(p.id));
+                                                                                                            const rPs = payslips.filter((p) => runObjPayslipIds.includes(p.id));
                                                                                                             const holdCount = rPs.filter((p) => p.status === "payment_hold").length;
                                                                                                             return holdCount > 0 ? (
                                                                                                                 <p className="text-amber-600 dark:text-amber-400">

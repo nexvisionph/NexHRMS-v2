@@ -447,13 +447,20 @@ export const usePayrollStore = create<PayrollState>()(
                 set((s) => {
                     const ps = s.payslips.find((p) => p.id === id);
                     if (!ps || ps.status !== "draft") return {};
+                    // Strip the payslip from any run that references it
+                    const strippedRuns = s.runs.map((r) =>
+                        r.payslipIds?.includes(id)
+                            ? { ...r, payslipIds: r.payslipIds.filter((pid) => pid !== id) }
+                            : r
+                    );
+                    // Remove orphaned draft runs that no longer have any payslips.
+                    // This prevents phantom empty runs from becoming the active run.
+                    const cleanedRuns = strippedRuns.filter((r) =>
+                        r.status !== "draft" || (r.payslipIds ?? []).length > 0
+                    );
                     return {
                         payslips: s.payslips.filter((p) => p.id !== id),
-                        runs: s.runs.map((r) =>
-                            r.payslipIds?.includes(id)
-                                ? { ...r, payslipIds: r.payslipIds.filter((pid) => pid !== id) }
-                                : r
-                        ),
+                        runs: cleanedRuns,
                     };
                 }),
 
@@ -464,6 +471,12 @@ export const usePayrollStore = create<PayrollState>()(
             // ─── Payroll runs — draft → locked → completed ───────────
             createDraftRun: (runDate, payslipIds, runType = "regular", periodStart, periodEnd) =>
                 set((s) => {
+                    // Validation: never create a run with zero payslips — empty draft
+                    // runs become phantom "active" runs that break the workflow.
+                    if (!payslipIds || payslipIds.length === 0) {
+                        console.warn("[payroll] createDraftRun called with empty payslip list — ignored");
+                        return {};
+                    }
                     const existing = s.runs.find((r) => r.periodLabel === runDate);
                     if (existing) return {}; // already exists
                     const runId = `RUN-${runDate}`;
@@ -777,8 +790,11 @@ export const usePayrollStore = create<PayrollState>()(
             exportBankFile: (runDate, employees) => {
                 const state = get();
                 const run = state.runs.find((r) => r.periodLabel === runDate);
-                const runPayslipIds = run?.payslipIds ?? [];
-                const runPayslips = state.payslips.filter((p) => runPayslipIds.includes(p.id));
+                if (!run) return;
+                // Derive membership from payrollBatchId (source of truth) unioned with
+                // the cached payslipIds, so a stale array can't yield an empty export.
+                const explicit = new Set(run.payslipIds ?? []);
+                const runPayslips = state.payslips.filter((p) => p.payrollBatchId === run.id || explicit.has(p.id));
                 if (runPayslips.length === 0) return;
                 const header = "Account Number,Employee Name,Net Pay,Payment Date,Reference ID";
                 const rows = runPayslips.map((ps) => {

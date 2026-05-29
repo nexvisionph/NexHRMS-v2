@@ -637,6 +637,55 @@ export const payrollDb = {
     return !error;
   },
 
+  /**
+   * One-time cleanup: remove stale empty DRAFT runs already persisted in Supabase.
+   *
+   * Phantom empty draft runs can be left behind when the last draft payslip of a
+   * run is deleted. They have a "draft" status but zero payslips, and they hijack
+   * the `activeRun` selector — hiding completed payslips and blocking new cutoffs.
+   *
+   * A run counts as empty only when BOTH the legacy `payslip_ids` array column is
+   * empty AND it has no rows in the `payroll_run_payslips` junction table.
+   * Returns the number of runs deleted.
+   */
+  async cleanupEmptyDraftRuns(): Promise<number> {
+    // 1. Pull all draft runs (with legacy array column).
+    const { data: draftRows, error: draftErr } = await supabase()
+      .from("payroll_runs")
+      .select("id, payslip_ids")
+      .eq("status", "draft");
+    if (draftErr) {
+      if (!draftErr.message?.includes("schema cache")) {
+        console.error("[db] cleanupEmptyDraftRuns select:", draftErr.message);
+      }
+      return 0;
+    }
+    const drafts = (draftRows ?? []) as { id: string; payslip_ids: string[] | null }[];
+    if (drafts.length === 0) return 0;
+
+    // 2. Candidates: legacy array column is empty/null.
+    const legacyEmpty = drafts.filter((r) => (r.payslip_ids ?? []).length === 0);
+    if (legacyEmpty.length === 0) return 0;
+
+    // 3. Confirm against the junction table — keep any run that still has links.
+    const candidateIds = legacyEmpty.map((r) => r.id);
+    const { data: linkRows, error: linkErr } = await supabase()
+      .from("payroll_run_payslips")
+      .select("run_id")
+      .in("run_id", candidateIds);
+    if (linkErr && !linkErr.message?.includes("schema cache")) {
+      console.error("[db] cleanupEmptyDraftRuns junction:", linkErr.message);
+      return 0;
+    }
+    const linkedRunIds = new Set((linkRows ?? []).map((r: { run_id: string }) => r.run_id));
+    const emptyRunIds = candidateIds.filter((id) => !linkedRunIds.has(id));
+    if (emptyRunIds.length === 0) return 0;
+
+    const ok = await this.deleteRunsByIds(emptyRunIds);
+    if (ok) console.info(`[db] cleanupEmptyDraftRuns: removed ${emptyRunIds.length} empty draft run(s)`);
+    return ok ? emptyRunIds.length : 0;
+  },
+
   /** Delete payroll adjustments by IDs. */
   async deleteAdjustmentsByIds(ids: string[]): Promise<boolean> {
     if (ids.length === 0) return true;
