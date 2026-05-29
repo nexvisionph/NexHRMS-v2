@@ -56,10 +56,13 @@ import {
     ArrowLeft,
     AlertCircle,
     CheckCircle2,
+    ChevronLeft,
+    ChevronRight,
     Download,
     FileText,
     RefreshCw,
     Save,
+    Search,
     ShieldAlert,
     UserCog,
 } from "lucide-react";
@@ -81,6 +84,7 @@ import type {
 } from "@/types";
 
 const ALLOWED_ROLES = ["admin", "finance", "payroll_admin"];
+const PAGE_SIZES = [10, 20, 50];
 
 const EMPLOYER_DEFAULT = {
     name: "NexHRIS",
@@ -125,6 +129,18 @@ export default function BIRCompliancePage() {
         employee: Employee;
         profile: EmployeeTaxProfile;
     } | null>(null);
+
+    // ── Profiles tab — search / filter / pagination ───────────
+    const [profilesSearch, setProfilesSearch] = useState("");
+    const [profilesDept, setProfilesDept] = useState("all");
+    const [profilesPage, setProfilesPage] = useState(1);
+    const [profilesPageSize, setProfilesPageSize] = useState(10);
+
+    // ── Summaries tab — search / filter / pagination ──────────
+    const [summariesSearch, setSummariesSearch] = useState("");
+    const [summariesDept, setSummariesDept] = useState("all");
+    const [summariesPage, setSummariesPage] = useState(1);
+    const [summariesPageSize, setSummariesPageSize] = useState(10);
 
     // ── Role gate ────────────────────────────────────────────
     useEffect(() => {
@@ -178,6 +194,52 @@ export default function BIRCompliancePage() {
         const withTin = employees.filter((e) => profileByEmp.get(e.id)?.tin).length;
         return { total, withTin, pct: total ? Math.round((withTin / total) * 100) : 0 };
     }, [employees, profileByEmp]);
+
+    // ── Unique departments derived from employees ─────────────
+    const uniqueDepartments = useMemo(
+        () => [...new Set(employees.map((e) => e.department).filter(Boolean))].sort() as string[],
+        [employees],
+    );
+
+    // ── Profiles tab — filtered + paginated ──────────────────
+    const filteredProfileEmployees = useMemo(
+        () =>
+            employees.filter((emp) => {
+                const matchSearch =
+                    !profilesSearch ||
+                    emp.name.toLowerCase().includes(profilesSearch.toLowerCase());
+                const matchDept = profilesDept === "all" || emp.department === profilesDept;
+                return matchSearch && matchDept;
+            }),
+        [employees, profilesSearch, profilesDept],
+    );
+    const profilesTotalPages = Math.max(1, Math.ceil(filteredProfileEmployees.length / profilesPageSize));
+    const profilesSafePage = Math.min(profilesPage, profilesTotalPages);
+    const paginatedProfileEmployees = filteredProfileEmployees.slice(
+        (profilesSafePage - 1) * profilesPageSize,
+        profilesSafePage * profilesPageSize,
+    );
+    useEffect(() => { setProfilesPage(1); }, [profilesSearch, profilesDept, profilesPageSize]);
+
+    // ── Summaries tab — filtered + paginated ─────────────────
+    const filteredSummaryEmployees = useMemo(
+        () =>
+            employees.filter((emp) => {
+                const matchSearch =
+                    !summariesSearch ||
+                    emp.name.toLowerCase().includes(summariesSearch.toLowerCase());
+                const matchDept = summariesDept === "all" || emp.department === summariesDept;
+                return matchSearch && matchDept;
+            }),
+        [employees, summariesSearch, summariesDept],
+    );
+    const summariesTotalPages = Math.max(1, Math.ceil(filteredSummaryEmployees.length / summariesPageSize));
+    const summariesSafePage = Math.min(summariesPage, summariesTotalPages);
+    const paginatedSummaryEmployees = filteredSummaryEmployees.slice(
+        (summariesSafePage - 1) * summariesPageSize,
+        summariesSafePage * summariesPageSize,
+    );
+    useEffect(() => { setSummariesPage(1); }, [summariesSearch, summariesDept, summariesPageSize]);
 
     // ── Profile editor ───────────────────────────────────────
     const openProfileEditor = (emp: Employee) => {
@@ -327,15 +389,10 @@ export default function BIRCompliancePage() {
     const warnCount = alphalistIssues.filter((i) => i.severity === "warning").length;
 
     return (
-        <div className="container mx-auto py-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <Link href={`/${params?.role ?? role}/payroll`}>
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
-                    <div>
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
                         <h1 className="text-2xl font-bold">BIR Compliance</h1>
                         <p className="text-sm text-muted-foreground">
                             Tax profiles, annual summaries, Form 2316, and Alphalist export.
@@ -358,42 +415,41 @@ export default function BIRCompliancePage() {
                         Refresh
                     </Button>
                 </div>
-            </div>
 
             {/* KPI cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-xs text-muted-foreground">TIN coverage</div>
-                        <div className="text-2xl font-bold">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card className="border border-blue-500/20 bg-blue-500/5">
+                    <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground font-medium">TIN Coverage</p>
+                        <p className="text-xl font-bold mt-1">
                             {tinCoverage.withTin} / {tinCoverage.total}
-                        </div>
-                        <Badge variant={tinCoverage.pct === 100 ? "default" : "secondary"}>
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
                             {tinCoverage.pct}% complete
-                        </Badge>
+                        </p>
                     </CardContent>
                 </Card>
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-xs text-muted-foreground">Annual summaries</div>
-                        <div className="text-2xl font-bold">{annualSummaries.length}</div>
-                        <span className="text-xs text-muted-foreground">
-                            for FY {year}
-                        </span>
+                <Card className="border border-emerald-500/20 bg-emerald-500/5">
+                    <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground font-medium">Annual Summaries</p>
+                        <p className="text-xl font-bold mt-1">{annualSummaries.length}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">for FY {year}</p>
                     </CardContent>
                 </Card>
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-xs text-muted-foreground">Finalized</div>
-                        <div className="text-2xl font-bold">
+                <Card className="border border-amber-500/20 bg-amber-500/5">
+                    <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground font-medium">Finalized</p>
+                        <p className="text-xl font-bold mt-1">
                             {annualSummaries.filter((s) => s.status === "finalized" || s.status === "exported").length}
-                        </div>
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">of {annualSummaries.length} summaries</p>
                     </CardContent>
                 </Card>
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-xs text-muted-foreground">Form 2316 issued</div>
-                        <div className="text-2xl font-bold">{form2316Records.length}</div>
+                <Card className="border border-red-500/20 bg-red-500/5">
+                    <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground font-medium">Form 2316 Issued</p>
+                        <p className="text-xl font-bold mt-1">{form2316Records.length}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">for FY {year}</p>
                     </CardContent>
                 </Card>
             </div>
@@ -411,7 +467,30 @@ export default function BIRCompliancePage() {
                         <CardHeader>
                             <CardTitle>Employee Tax Profiles</CardTitle>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="space-y-4">
+                            {/* Search + Department filter */}
+                            <div className="flex flex-wrap items-center gap-3">
+                                <div className="relative flex-1 min-w-[200px]">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Search employees..."
+                                        className="pl-9"
+                                        value={profilesSearch}
+                                        onChange={(e) => setProfilesSearch(e.target.value)}
+                                    />
+                                </div>
+                                <Select value={profilesDept} onValueChange={setProfilesDept}>
+                                    <SelectTrigger className="w-full sm:w-[180px]">
+                                        <SelectValue placeholder="Department" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Departments</SelectItem>
+                                        {uniqueDepartments.map((d) => (
+                                            <SelectItem key={d} value={d}>{d}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             <Table>
                                 <TableHeader>
                                     <TableRow>
@@ -425,7 +504,7 @@ export default function BIRCompliancePage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {employees.map((emp) => {
+                                    {paginatedProfileEmployees.map((emp) => {
                                         const p = profileByEmp.get(emp.id);
                                         return (
                                             <TableRow key={emp.id}>
@@ -467,6 +546,27 @@ export default function BIRCompliancePage() {
                                     })}
                                 </TableBody>
                             </Table>
+                            {/* Pagination */}
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-muted-foreground">Rows per page:</span>
+                                    <Select value={String(profilesPageSize)} onValueChange={(v) => setProfilesPageSize(Number(v))}>
+                                        <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                        <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-muted-foreground">
+                                        Page {profilesSafePage} of {profilesTotalPages} · {filteredProfileEmployees.length} employee{filteredProfileEmployees.length !== 1 ? "s" : ""}
+                                    </span>
+                                    <Button variant="outline" size="icon" className="h-8 w-8" disabled={profilesSafePage <= 1} onClick={() => setProfilesPage(profilesSafePage - 1)}>
+                                        <ChevronLeft className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="outline" size="icon" className="h-8 w-8" disabled={profilesSafePage >= profilesTotalPages} onClick={() => setProfilesPage(profilesSafePage + 1)}>
+                                        <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -477,7 +577,30 @@ export default function BIRCompliancePage() {
                         <CardHeader>
                             <CardTitle>Annual Tax Summaries — FY {year}</CardTitle>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="space-y-4">
+                            {/* Search + Department filter */}
+                            <div className="flex flex-wrap items-center gap-3">
+                                <div className="relative flex-1 min-w-[200px]">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Search employees..."
+                                        className="pl-9"
+                                        value={summariesSearch}
+                                        onChange={(e) => setSummariesSearch(e.target.value)}
+                                    />
+                                </div>
+                                <Select value={summariesDept} onValueChange={setSummariesDept}>
+                                    <SelectTrigger className="w-full sm:w-[180px]">
+                                        <SelectValue placeholder="Department" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Departments</SelectItem>
+                                        {uniqueDepartments.map((d) => (
+                                            <SelectItem key={d} value={d}>{d}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             <Table>
                                 <TableHeader>
                                     <TableRow>
@@ -491,12 +614,13 @@ export default function BIRCompliancePage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {employees.map((emp) => {
+                                    {paginatedSummaryEmployees.map((emp) => {
                                         const s = summaryByEmp.get(emp.id);
                                         return (
                                             <TableRow key={emp.id}>
                                                 <TableCell>
                                                     <div className="font-medium">{emp.name}</div>
+                                                    <div className="text-xs text-muted-foreground">{emp.department}</div>
                                                 </TableCell>
                                                 <TableCell className="text-right font-mono">
                                                     {s ? s.totalTaxableComp.toFixed(2) : "—"}
@@ -579,6 +703,27 @@ export default function BIRCompliancePage() {
                                     })}
                                 </TableBody>
                             </Table>
+                            {/* Pagination */}
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-muted-foreground">Rows per page:</span>
+                                    <Select value={String(summariesPageSize)} onValueChange={(v) => setSummariesPageSize(Number(v))}>
+                                        <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                        <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-muted-foreground">
+                                        Page {summariesSafePage} of {summariesTotalPages} · {filteredSummaryEmployees.length} employee{filteredSummaryEmployees.length !== 1 ? "s" : ""}
+                                    </span>
+                                    <Button variant="outline" size="icon" className="h-8 w-8" disabled={summariesSafePage <= 1} onClick={() => setSummariesPage(summariesSafePage - 1)}>
+                                        <ChevronLeft className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="outline" size="icon" className="h-8 w-8" disabled={summariesSafePage >= summariesTotalPages} onClick={() => setSummariesPage(summariesSafePage + 1)}>
+                                        <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
                         </CardContent>
                     </Card>
                 </TabsContent>
