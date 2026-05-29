@@ -256,7 +256,7 @@ export default function AdminSettingsView() {
 
     /* ── 1. GENERAL ───────────────────────────────── */
     const GeneralTab = () => (
-        <div className="space-y-6">
+        <div className="space-y-6 ">
             {/* Appearance — Theme Toggle */}
             <Card>
                 <CardHeader className="pb-3">
@@ -796,10 +796,10 @@ export default function AdminSettingsView() {
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>Edit Timesheet Rule Set — {editingRule?.id}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
-                    <div><label className="text-sm font-medium">Rule Set Name *</label><Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="e.g., Standard PH Rule Set" className="mt-1" /></div>
+                    <div><label className="text-sm font-medium">Rule Set Name <span className="text-destructive">*</span></label><Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="e.g., Standard PH Rule Set" className="mt-1" /></div>
                     <div className="grid grid-cols-2 gap-3">
-                        <div><label className="text-sm font-medium">Work Hours Per Day *</label><Input type="number" min="1" max="24" step="0.5" value={editStandardHours} onChange={(e) => setEditStandardHours(e.target.value)} className="mt-1" /></div>
-                        <div><label className="text-sm font-medium">Late Grace Period (min) *</label><Input type="number" min="0" max="60" value={editGraceMinutes} onChange={(e) => setEditGraceMinutes(e.target.value)} className="mt-1" /></div>
+                        <div><label className="text-sm font-medium">Work Hours Per Day <span className="text-destructive">*</span></label><Input type="number" min="1" max="24" step="0.5" value={editStandardHours} onChange={(e) => setEditStandardHours(e.target.value)} className="mt-1" /></div>
+                        <div><label className="text-sm font-medium">Late Grace Period (min) <span className="text-destructive">*</span></label><Input type="number" min="0" max="60" value={editGraceMinutes} onChange={(e) => setEditGraceMinutes(e.target.value)} className="mt-1" /></div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div><label className="text-sm font-medium">Time Rounding</label><Select value={editRoundingPolicy} onValueChange={(v) => setEditRoundingPolicy(v as "none" | "nearest_15" | "nearest_30")}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Exact minutes (no rounding)</SelectItem><SelectItem value="nearest_15">Nearest 15 minutes</SelectItem><SelectItem value="nearest_30">Nearest 30 minutes</SelectItem></SelectContent></Select></div>
@@ -836,10 +836,10 @@ export default function AdminSettingsView() {
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>Create New Timesheet Rule Set</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
-                    <div><label className="text-sm font-medium">Rule Set Name *</label><Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g., Night Shift Rule Set" className="mt-1" /><p className="text-xs text-muted-foreground mt-1">Give it a descriptive name for the shift type</p></div>
+                    <div><label className="text-sm font-medium">Rule Set Name <span className="text-destructive">*</span></label><Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g., Night Shift Rule Set" className="mt-1" /><p className="text-xs text-muted-foreground mt-1">Give it a descriptive name for the shift type</p></div>
                     <div className="grid grid-cols-2 gap-3">
-                        <div><label className="text-sm font-medium">Work Hours Per Day *</label><Input type="number" min="1" max="24" step="0.5" value={newStandardHours} onChange={(e) => setNewStandardHours(e.target.value)} className="mt-1" /></div>
-                        <div><label className="text-sm font-medium">Late Grace Period (min) *</label><Input type="number" min="0" max="60" value={newGraceMinutes} onChange={(e) => setNewGraceMinutes(e.target.value)} className="mt-1" /></div>
+                        <div><label className="text-sm font-medium">Work Hours Per Day <span className="text-destructive">*</span></label><Input type="number" min="1" max="24" step="0.5" value={newStandardHours} onChange={(e) => setNewStandardHours(e.target.value)} className="mt-1" /></div>
+                        <div><label className="text-sm font-medium">Late Grace Period (min) <span className="text-destructive">*</span></label><Input type="number" min="0" max="60" value={newGraceMinutes} onChange={(e) => setNewGraceMinutes(e.target.value)} className="mt-1" /></div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div><label className="text-sm font-medium">Time Rounding</label><Select value={newRoundingPolicy} onValueChange={(v) => setNewRoundingPolicy(v as "none" | "nearest_15" | "nearest_30")}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Exact minutes (no rounding)</SelectItem><SelectItem value="nearest_15">Nearest 15 minutes</SelectItem><SelectItem value="nearest_30">Nearest 30 minutes</SelectItem></SelectContent></Select></div>

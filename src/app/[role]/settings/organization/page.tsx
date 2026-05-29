@@ -284,12 +284,17 @@ export default function OrganizationPage() {
                     <DialogHeader><DialogTitle>{editDept ? "Edit Department" : "Add Department"}</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
                         <div>
-                            <label className="text-sm font-medium">Department Name *</label>
+                            <label className="text-sm font-medium">Department Name <span className="text-destructive">*</span></label>
                             <Input value={deptName} onChange={(e) => setDeptName(e.target.value)} placeholder="e.g. Engineering" className="mt-1" />
                         </div>
-                        <div>
+
+                        <div className="grid gap-2">
                             <label className="text-sm font-medium">Description</label>
-                            <Textarea value={deptDesc} onChange={(e) => setDeptDesc(e.target.value)} placeholder="What does this department do?" className="mt-1" rows={2} />
+                            <Textarea value={deptDesc} 
+                            onChange={(e) => setDeptDesc(e.target.value)} 
+                            placeholder="What does this department do?"
+                            rows={3}
+                            className= "resize-none max-h-[9rem] overflow-y-auto" />
                         </div>
                         <div>
                             <label className="text-sm font-medium">Color</label>
@@ -309,11 +314,11 @@ export default function OrganizationPage() {
                     <DialogHeader><DialogTitle>{editPos ? "Edit Position" : "Add Position"}</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
                         <div>
-                            <label className="text-sm font-medium">Title *</label>
+                            <label className="text-sm font-medium">Title <span className="text-destructive">*</span></label>
                             <Input value={posTitle} onChange={(e) => setPosTitle(e.target.value)} placeholder="e.g. Software Engineer" className="mt-1" />
                         </div>
                         <div>
-                            <label className="text-sm font-medium">Department *</label>
+                            <label className="text-sm font-medium">Department <span className="text-destructive">*</span></label>
                             <Select value={posDept} onValueChange={setPosDept}>
                                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select department" /></SelectTrigger>
                                 <SelectContent>

@@ -1478,23 +1478,6 @@ const filteredAccounts = useMemo(() => {
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                {(searchQuery || statusFilter !== "all" || workTypeFilter !== "all" || departmentFilter !== "all") && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => {
-                                            setSearchQuery("");
-                                            setStatusFilter("all");
-                                            setWorkTypeFilter("all");
-                                            setRoleFilter("all");
-                                            setDepartmentFilter("all");
-                                            setPage(1);
-                                        }}
-                                        className="h-9 text-xs gap-1"
-                                    >
-                                        <XCircle className="h-3 w-3" /> Clear
-                                    </Button>
-                                )}
                                 <Sheet>
                                     <SheetTrigger asChild>
                                         <Button variant="outline" size="sm" className="gap-1.5 relative">
@@ -1547,15 +1530,6 @@ const filteredAccounts = useMemo(() => {
                                             <div>
                                                 <div className="flex items-center justify-between mb-3">
                                                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Monthly Salary</p>
-                                                    {(salaryRange[0] > 0 || salaryRange[1] < 200000) && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setSalaryRange([0, 200000])}
-                                                            className="text-[10px] text-primary hover:underline"
-                                                        >
-                                                            Clear
-                                                        </button>
-                                                    )}
                                                 </div>
                                                 <Slider
                                                     min={0} max={200000} step={5000}
@@ -1928,16 +1902,6 @@ const filteredAccounts = useMemo(() => {
                                     <SelectItem value="inactive">Inactive</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                {(acctSearch || acctRoleFilter !== "all" || acctStatusFilter !== "all") && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => { setAcctSearch(""); setAcctRoleFilter("all"); setAcctStatusFilter("all"); setAcctPage(1); }}
-                                        className="h-9 text-xs gap-1"
-                                    >
-                                        <XCircle className="h-3 w-3" /> Clear
-                                    </Button>
-                                )}
                                 {!USE_DEMO_MODE && (
                                     <Button variant="outline" size="sm" className="gap-1.5 group" onClick={refreshAccounts} disabled={accountsLoading}>
                                         <RefreshCw className={`h-3.5 w-3.5 transition-transform duration-500 ${accountsLoading ? "animate-spin" : "group-hover:rotate-180"}`} /> Refresh
@@ -2190,16 +2154,6 @@ const filteredAccounts = useMemo(() => {
                                     <SelectItem value="individual">Individual</SelectItem>
                                 </SelectContent>
                             </Select>
-                               {(jtSearch || jtDeptFilter !== "all" || jtStatusFilter !== "all" || jtTypeFilter !== "all") && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => { setJtSearch(""); setJtDeptFilter("all"); setJtStatusFilter("all"); setJtTypeFilter("all"); }}
-                                        className="h-9 text-xs gap-1"
-                                    >
-                                        <XCircle className="h-3 w-3" /> Clear
-                                    </Button>
-                                )}
                             </div>
                         </CardContent>
                     </Card>
