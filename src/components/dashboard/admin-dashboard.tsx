@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -28,6 +28,23 @@ import {
     Tooltip as RechartsTooltip, PieChart, Pie, Cell, AreaChart, Area,
 } from "recharts";
 import { isToday, parseISO, isAfter, startOfDay, format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval } from "date-fns";
+
+/* ─── Theme hook ─────────────────────────────────────────────── */
+
+function useIsDarkMode() {
+    const [isDark, setIsDark] = useState(() =>
+        typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+    );
+    useEffect(() => {
+        const el = document.documentElement;
+        const observer = new MutationObserver(() => {
+            setIsDark(el.classList.contains("dark"));
+        });
+        observer.observe(el, { attributes: true, attributeFilter: ["class"] });
+        return () => observer.disconnect();
+    }, []);
+    return isDark;
+}
 
 /* ─── Main Component ─────────────────────────────────────────── */
 
@@ -392,6 +409,7 @@ const DEPT_COLORS = [
 function DepartmentDistributionChart() {
     const employees = useEmployeesStore((s) => s.employees);
     const rh = useRoleHref();
+    const isDark = useIsDarkMode();
 
     const data = useMemo(() => {
         const active = employees.filter(
@@ -505,16 +523,12 @@ function DepartmentDistributionChart() {
                                     return (
                                         <div
                                             style={{
-                                                backgroundColor:
-                                                    "#171717",
-                                                border:
-                                                    "1px solid rgba(255,255,255,.08)",
-                                                borderRadius:
-                                                    "12px",
-                                                padding:
-                                                    "8px 12px",
-                                                fontSize:
-                                                    "12px",
+                                                backgroundColor: isDark ? "#171717" : "#ffffff",
+                                                border: isDark ? "1px solid rgba(255,255,255,.08)" : "1px solid rgba(0,0,0,.08)",
+                                                borderRadius: "12px",
+                                                padding: "8px 12px",
+                                                fontSize: "12px",
+                                                boxShadow: isDark ? "none" : "0 4px 12px rgba(0,0,0,.08)",
                                             }}
                                         >
                                             <div
@@ -529,8 +543,7 @@ function DepartmentDistributionChart() {
 
                                             <div
                                                 style={{
-                                                    color:
-                                                        "#fff",
+                                                    color: isDark ? "#fff" : "#0a0a0a",
                                                 }}
                                             >
                                                 {
