@@ -697,6 +697,8 @@
                 return {
                     date: r.periodLabel,
                     runId: r.id,
+                    source: r.source ?? "system",
+                    importedFileName: r.importedFileName ?? null,
                     count: runPayslips.length,
                     totalNet: runPayslips.reduce((sum, p) => sum + p.netPay, 0),
                     totalGross: runPayslips.reduce((sum, p) => sum + (p.grossPay || 0), 0),
@@ -1897,9 +1899,20 @@
                                                             const periodDisplay = pStart && pEnd
                                                                 ? `${pStart} – ${pEnd}`
                                                                 : run.date;
+                                                            const isImportedRun = run.source === "imported";
                                                             return (
-                                                                <TableRow key={run.date}>
-                                                                    <TableCell className="text-sm">{periodDisplay}</TableCell>
+                                                                <TableRow key={run.runId || run.date}>
+                                                                    <TableCell className="text-sm">
+                                                                        <div className="flex flex-col gap-0.5">
+                                                                            <span>{periodDisplay}</span>
+                                                                            {isImportedRun && (
+                                                                                <span className="inline-flex items-center gap-1 w-fit rounded px-1.5 py-0.5 text-[9px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/20" title={run.importedFileName ?? undefined}>
+                                                                                    <Upload className="h-2.5 w-2.5" />
+                                                                                    Imported{run.importedFileName ? ` — ${run.importedFileName}` : ""}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </TableCell>
                                                                     <TableCell className="text-sm">
                                                                         {run.count}
                                                                         {run.draftCount > 0 && <span className="text-amber-500 text-[10px] ml-1">({run.draftCount} draft)</span>}
