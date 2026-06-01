@@ -19,6 +19,7 @@ import { Download, FileSpreadsheet, FileText, Loader2, X, Users, Building2, Aler
 import { toast } from "sonner";
 import { format, getDaysInMonth } from "date-fns";
 import * as XLSX from "xlsx-js-style";
+import type { Payslip } from "@/types";
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -87,6 +88,10 @@ interface EmployeePayrollData {
     tardinessMin: number;
     absences: number;
   }>;
+  // ─── Imported payroll support (migration 063) ──
+  imported?: boolean;            // true when payslip.source === "imported"
+  importedFileName?: string;     // shown on the amber banner
+  dtrFromImport?: boolean;       // true when DTR was sourced from the payslip, not attendance_logs
 }
 
 // ─── Build PB-template-matching XLSX sheet ────────────────────
@@ -405,7 +410,74 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   }
 
   ws["!freeze"] = { xSplit: 9, ySplit: 4 };
+
+  // Imported payroll → prepend an amber "Imported Payroll" banner row.
+  // Done as a post-process shift so the normal (non-imported) layout is byte-for-byte unchanged.
+  if (emp.imported) {
+    prependImportedBanner(ws, emp.importedFileName);
+  }
+
   return ws;
+}
+
+/**
+ * Shifts an existing worksheet down by one row and inserts a full-width amber
+ * "Imported Payroll" banner at the top. Only used for imported payslips.
+ */
+function prependImportedBanner(ws: XLSX.WorkSheet, fileName?: string) {
+  const AMBER = "F59E0B";
+  const WHITE = "FFFFFF";
+  const MAX_COL = 24;
+
+  const ref = ws["!ref"];
+  if (!ref) return;
+  const range = XLSX.utils.decode_range(ref);
+
+  // 1. Move every cell down one row (iterate from the bottom up to avoid clobber)
+  for (let r = range.e.r; r >= range.s.r; r--) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const from = XLSX.utils.encode_cell({ r, c });
+      const to = XLSX.utils.encode_cell({ r: r + 1, c });
+      if (ws[from]) {
+        ws[to] = ws[from];
+        delete ws[from];
+      } else {
+        delete ws[to];
+      }
+    }
+  }
+
+  // 2. Banner cell at row 0
+  const bannerText = `Imported Payroll${fileName ? ` — ${fileName}` : ""}`;
+  ws["A1"] = {
+    t: "s",
+    v: bannerText,
+    s: {
+      font: { name: "Arial", sz: 12, bold: true, color: { rgb: WHITE } },
+      fill: { patternType: "solid", fgColor: { rgb: AMBER } },
+      alignment: { horizontal: "center", vertical: "center" },
+    },
+  };
+
+  // 3. Shift existing merges down + add the banner merge
+  const merges = (ws["!merges"] as XLSX.Range[] | undefined) ?? [];
+  const shifted = merges.map((m) => ({
+    s: { r: m.s.r + 1, c: m.s.c },
+    e: { r: m.e.r + 1, c: m.e.c },
+  }));
+  shifted.unshift({ s: { r: 0, c: 0 }, e: { r: 0, c: MAX_COL } });
+  ws["!merges"] = shifted;
+
+  // 4. Shift row heights down + add banner row height
+  const rows = (ws["!rows"] as XLSX.RowInfo[] | undefined) ?? [];
+  ws["!rows"] = [{ hpt: 22 }, ...rows];
+
+  // 5. Expand the ref + nudge the freeze down one row
+  range.e.r += 1;
+  ws["!ref"] = XLSX.utils.encode_range(range);
+  if (ws["!freeze"]) {
+    (ws["!freeze"] as { xSplit: number; ySplit: number }).ySplit += 1;
+  }
 }
 
 
@@ -446,6 +518,7 @@ function generatePayrollPDF(employees: EmployeePayrollData[], filename: string) 
 
     return `
       <div class="page">
+        ${emp.imported ? `<div class="imported-banner">Imported Payroll${emp.importedFileName ? ` — ${emp.importedFileName}` : ""}</div>` : ""}
         <div class="header">
           <h2>PAYROLL SLIP</h2>
           <p class="company">NexHRIS</p>
@@ -512,6 +585,7 @@ function generatePayrollPDF(employees: EmployeePayrollData[], filename: string) 
                 </tr>
               </tfoot>
             </table>
+            ${emp.dtrFromImport ? `<p class="dtr-note">Attendance data sourced from imported file — not recorded in system</p>` : ""}
           </div>
         </div>
 
@@ -534,6 +608,8 @@ function generatePayrollPDF(employees: EmployeePayrollData[], filename: string) 
     body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 9px; color: #222; }
     .page { page-break-after: always; padding: 12mm 10mm; }
     .page:last-child { page-break-after: auto; }
+    .imported-banner { background: #f59e0b; color: #fff; font-weight: 700; font-size: 11px; text-align: center; padding: 6px 8px; margin-bottom: 8px; border-radius: 3px; letter-spacing: 0.03em; }
+    .dtr-note { font-size: 7px; color: #b45309; font-style: italic; margin-top: 4px; }
     .header { text-align: center; margin-bottom: 8px; }
     .header h2 { font-size: 14px; font-weight: 700; }
     .header .company { font-size: 11px; color: #555; }
@@ -576,6 +652,70 @@ function generatePayrollPDF(employees: EmployeePayrollData[], filename: string) 
 </body>
 </html>`);
   printWindow.document.close();
+}
+
+// ─── DTR from imported payslip (Part 3) ───────────────────────
+// For imported payslips, DTR is sourced from the payslip record (receipt only),
+// never from attendance_logs. Uses per-day rows if the file provided them,
+// otherwise renders blank per-day rows and relies on the TOTALS row built from
+// the imported summary fields.
+function buildDtrFromPayslip(
+  payslip: Payslip,
+  periodFrom: string,
+  periodTo: string
+): EmployeePayrollData["dtr"] {
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const perDay = payslip.dtrPerDayJson;
+
+  // Case 1 — file provided per-day rows
+  if (Array.isArray(perDay) && perDay.length > 0) {
+    return perDay.map((r) => {
+      let dayLabel = r.day || "";
+      let dateLabel = r.date || "";
+      const parsed = r.date ? new Date(r.date) : null;
+      if (parsed && !isNaN(parsed.getTime())) {
+        dayLabel = dayLabel || dayNames[parsed.getDay()];
+        dateLabel = format(parsed, "MMM dd");
+      }
+      return {
+        date: dateLabel,
+        day: dayLabel,
+        timeIn: r.timeIn || "",
+        timeOut: r.timeOut || "",
+        totalHrs: r.totalHrs ?? 0,
+        otHrs: r.otHrs ?? 0,
+        tardinessHr: r.tardinessHr ?? 0,
+        tardinessMin: r.tardinessMin ?? 0,
+        absences: r.absences ?? 0,
+      };
+    });
+  }
+
+  // Case 2 — only summary totals. Render one blank row per calendar day so the
+  // grid keeps its shape; the TOTALS row downstream sums these (all zero), so we
+  // fold the imported summary into a single synthetic "summary" row instead.
+  const present = payslip.dtrDaysPresent ?? 0;
+  const absent = payslip.dtrDaysAbsent ?? 0;
+  const lateMin = payslip.dtrLateMinutes ?? 0;
+  const otHrs = payslip.dtrOtHours ?? 0;
+  const tardHrs = payslip.dtrTardHours ?? 0;
+  const hasSummary = present || absent || lateMin || otHrs || tardHrs;
+  if (!hasSummary) return [];
+
+  // Single summary row carrying the imported totals.
+  return [
+    {
+      date: `${periodFrom} – ${periodTo}`,
+      day: "Summary",
+      timeIn: "",
+      timeOut: "",
+      totalHrs: 0,
+      otHrs,
+      tardinessHr: Math.floor(tardHrs),
+      tardinessMin: lateMin,
+      absences: absent,
+    },
+  ];
 }
 
 // ─── Component ────────────────────────────────────────────────
@@ -765,7 +905,14 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
       const dailyRate = Math.round((monthlySalary / 22) * 100) / 100;
       const hourlyRate = Math.round((dailyRate / 8) * 100) / 100;
       const semiMonthlySalary = Math.round((monthlySalary / 2) * 100) / 100;
-      const dtr = getDTRForEmployee(emp.id, periodFrom, periodTo);
+
+      // ── Imported payroll branch (Part 3) ─────────────────────────────────
+      // For imported payslips, DTR comes from the payslip record (receipt only),
+      // NOT from attendance_logs. Normal payslips are unchanged.
+      const isImported = payslip?.source === "imported" || payslip?.computedExternally === true;
+      const dtr = isImported
+        ? buildDtrFromPayslip(payslip!, periodFrom, periodTo)
+        : getDTRForEmployee(emp.id, periodFrom, periodTo);
 
       // ── Dynamic line items from payslip ──────────────────────────────────
       // lineItemsJson holds custom deduction-template items (allowances + deductions).
@@ -857,6 +1004,9 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
         : 0,
         netPay: payslip ? Number(payslip.netPay ?? 0) : semiMonthlySalary,
         dtr,
+        imported: isImported,
+        importedFileName: payslip?.importedFileName ?? undefined,
+        dtrFromImport: isImported,
       };
     });
   }, [getTargetEmployees, getPeriodDates, range, payslips, getDTRForEmployee, overtimeRequests, computeDeductionsForEmployee, deductionTemplates]);

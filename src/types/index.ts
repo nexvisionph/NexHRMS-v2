@@ -711,6 +711,31 @@ export interface Payslip {
   taxCategories?: TaxCategoryBreakdown;          // BIR earnings categorization
   taxableCompensation?: number;                  // taxable total this period
   nonTaxableCompensation?: number;               // non-taxable total this period
+  // ─── Imported payroll support (migration 063) ──
+  source?: "system" | "imported";   // 'imported' = figures came from an uploaded file (final, not recomputed)
+  computedExternally?: boolean;      // when true, payroll engine must NOT recompute from attendance
+  importedFileName?: string | null;  // original filename for the receipt banner
+  importedAt?: string | null;        // when the import happened
+  // DTR snapshot from import — RECEIPT ONLY, never written to attendance_logs
+  dtrDaysPresent?: number | null;
+  dtrDaysAbsent?: number | null;
+  dtrLateMinutes?: number | null;
+  dtrOtHours?: number | null;
+  dtrTardHours?: number | null;
+  dtrPerDayJson?: PayslipDtrDay[] | null;  // per-day rows if available from the import file
+}
+
+// Per-day DTR row carried on imported payslips (receipt rendering only)
+export interface PayslipDtrDay {
+  date: string;        // ISO date or display date as supplied by the file
+  day?: string;        // weekday label (Mon/Tue/...)
+  timeIn?: string;
+  timeOut?: string;
+  totalHrs?: number;
+  otHrs?: number;
+  tardinessHr?: number;
+  tardinessMin?: number;
+  absences?: number;
 }
 
 export interface PolicySnapshot {
@@ -740,6 +765,9 @@ export interface PayrollRun {
   // ─── Customizable cut-off period (migration 055) ──
   periodStart?: string;          // ISO date, e.g. "2026-04-16"
   periodEnd?: string;            // ISO date, e.g. "2026-04-30"
+  // ─── Imported payroll support (migration 063) ──
+  source?: "system" | "imported";    // 'imported' = run created from an uploaded payroll file
+  importedFileName?: string | null;  // original filename of the imported payroll file
 }
 
 // ─── Payroll Adjustments (§5) ────────────────────────────────

@@ -378,10 +378,22 @@ export async function bulkUpsertLogs(
 
     let failed = 0;
     const successLogs: AttendanceLog[] = [];
-    for (const log of builtLogs) {
-        const ok = await attendanceDb.upsertLog(log);
-        if (ok) successLogs.push(log);
-        else failed++;
+
+    // Single batched DB write (chunked internally) instead of N sequential awaits.
+    // The old per-row loop dropped earlier rows when the Supabase auth token
+    // refreshed mid-batch, so older months vanished on refresh while later
+    // months survived.
+    const ok = await attendanceDb.batchUpsertLogs(builtLogs);
+    if (ok) {
+        successLogs.push(...builtLogs);
+    } else {
+        // Fallback: the batch failed as a whole — retry row-by-row so partial
+        // success is still possible and we can report an accurate failed count.
+        for (const log of builtLogs) {
+            const rowOk = await attendanceDb.upsertLog(log);
+            if (rowOk) successLogs.push(log);
+            else failed++;
+        }
     }
 
     if (successLogs.length > 0) {

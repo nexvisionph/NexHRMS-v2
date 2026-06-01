@@ -125,7 +125,14 @@ async function batchUpsertRows(table: string, rows: Record<string, unknown>[], o
   let allOk = true;
   for (let i = 0; i < dbRows.length; i += CHUNK_SIZE) {
     const chunk = dbRows.slice(i, i + CHUNK_SIZE);
-    const { error } = await supabase().from(table).upsert(chunk, { onConflict });
+    let { error } = await supabase().from(table).upsert(chunk, { onConflict });
+    // Transient Web Locks abort during an auth-token refresh — retry once after a
+    // short delay so the chunk isn't silently dropped (this is what made earlier
+    // months disappear on large imports).
+    if (error && (error.message?.includes("Lock broken") || error.message?.includes("AbortError"))) {
+      await new Promise((r) => setTimeout(r, 250));
+      ({ error } = await supabase().from(table).upsert(chunk, { onConflict }));
+    }
     if (error) {
       if (isNetworkError(error) && isDemoMode) { allOk = false; continue; }
       if (error.code === "42501" && isDemoMode) { allOk = false; continue; }
@@ -324,7 +331,7 @@ export const attendanceDb = {
   fetchLogs: async () => {
     if (typeof window !== "undefined" && !isDemoMode) {
       try {
-        const res = await fetch("/api/attendance/logs", {
+        const res = await fetch("/api/attendance/logs?from=2026-01-01", {
           credentials: "same-origin",
           cache: "no-store",
         });
@@ -364,6 +371,25 @@ export const attendanceDb = {
     delete row.locationSnapshot;
     // attendance_logs has a unique constraint on (employee_id, date) in addition to PK
     return upsertRow("attendance_logs", row, "employee_id,date");
+  },
+
+  /**
+   * Batch upsert daily logs in a single DB round-trip per chunk (conflict key:
+   * employee_id,date). Used by CSV / biometric imports — sending one statement
+   * instead of N sequential awaits avoids the mid-batch auth-token-refresh race
+   * that silently dropped earlier rows (older months vanished on refresh).
+   */
+  async batchUpsertLogs(logs: AttendanceLog[]): Promise<boolean> {
+    const rows = logs.map((log) => {
+      const row: Record<string, unknown> = { ...(log as unknown as Record<string, unknown>) };
+      if (log.locationSnapshot) {
+        row.locationLat = log.locationSnapshot.lat;
+        row.locationLng = log.locationSnapshot.lng;
+      }
+      delete row.locationSnapshot;
+      return row;
+    });
+    return batchUpsertRows("attendance_logs", rows, "employee_id,date");
   },
 
   async insertEvent(event: AttendanceEvent): Promise<boolean> {

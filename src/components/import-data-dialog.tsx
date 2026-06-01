@@ -160,6 +160,92 @@ const PAYROLL_TEMPLATE_COLS = [
 
 type PayrollRow = Record<(typeof PAYROLL_TEMPLATE_COLS)[number] | string, string>;
 
+// ─── Imported-payroll auto-field detection ────────────────────────────────────
+// Reserved row keys (prefixed "__") carry imported-only metadata through the
+// dialog as plain strings so the Record<string,string> contract is preserved.
+// The /api/import/payroll route reads these keys to persist DTR + custom items.
+
+const KNOWN_PAYROLL_HEADERS = new Set(
+  [
+    ...PAYROLL_TEMPLATE_COLS,
+    "Employee No", "Employee ID", "Full Name", "Position",
+    "Pay Period From", "Pay Period To", "Frequency", "Gross", "Monthly Salary",
+    "Basic Pay", "SSS Contribution", "PhilHealth Contribution", "Pag-IBIG Contribution",
+    "HDMF", "Withholding Tax", "BIR", "OT", "Overtime Pay", "Loan",
+  ].map((h) => h.toLowerCase())
+);
+
+// Maps a DTR-style header (case-insensitive) to its reserved key. Receipt-only.
+function dtrKeyForHeader(header: string): string | null {
+  const h = header.trim().toLowerCase();
+  if (h === "days present") return "__dtrDaysPresent";
+  if (h === "days absent" || h === "absences") return "__dtrDaysAbsent";
+  if (h === "late (min)" || h === "tardiness min" || h === "late min") return "__dtrLateMinutes";
+  if (h === "ot hours") return "__dtrOtHours";
+  if (h === "tard hr" || h === "tardiness hr") return "__dtrTardHours";
+  return null;
+}
+
+const DTR_FIELD_LABELS: Record<string, string> = {
+  __dtrDaysPresent: "Days Present",
+  __dtrDaysAbsent: "Days Absent",
+  __dtrLateMinutes: "Late (min)",
+  __dtrOtHours: "OT Hours",
+  __dtrTardHours: "Tard Hr",
+};
+const DTR_FIELD_KEYS = Object.keys(DTR_FIELD_LABELS);
+
+/**
+ * Scans every column of a raw parsed row. Known template/system columns are left
+ * on the row as-is; DTR columns become __dtr* reserved keys; any remaining column
+ * with a value becomes a custom field key "__custom__<Label>".
+ * Returns a new row object (does not mutate input).
+ */
+function detectImportedFields(row: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = { ...row };
+  for (const [header, value] of Object.entries(row)) {
+    if (header.startsWith("__")) continue;
+    const v = (value ?? "").toString().trim();
+    if (!v) continue;
+
+    const dtrKey = dtrKeyForHeader(header);
+    if (dtrKey) {
+      out[dtrKey] = v;
+      continue;
+    }
+    // Known system/template column → leave on the row untouched
+    if (KNOWN_PAYROLL_HEADERS.has(header.trim().toLowerCase())) continue;
+    // Unknown column with a value → custom field (default: deduction)
+    out[`__custom__${header}`] = v;
+  }
+  return out;
+}
+
+/**
+ * Builds the reserved "__"-prefixed payload the API route expects, from an
+ * (already edited) payroll row. Tags it as an imported payslip.
+ */
+function buildImportedRowPayload(
+  row: Record<string, string>,
+  fileName: string
+): Record<string, string> {
+  const payload: Record<string, string> = { ...row, __source: "imported", __importedFileName: fileName };
+
+  // Custom columns → line items (type stored under __customType__<Label>, default deduction)
+  const lineItems: Array<{ label: string; type: string; amount: number }> = [];
+  for (const [key, value] of Object.entries(row)) {
+    if (!key.startsWith("__custom__")) continue;
+    const label = key.slice("__custom__".length);
+    const amount = Number(String(value).replace(/[₱,\s]/g, ""));
+    if (!label || isNaN(amount) || amount === 0) continue;
+    const type = row[`__customType__${label}`] === "earning" ? "earning" : "deduction";
+    lineItems.push({ label, type, amount });
+  }
+  if (lineItems.length > 0) payload.__lineItemsJson = JSON.stringify(lineItems);
+
+  return payload;
+}
+
 // ─── PB File Converter ────────────────────────────────────────────────────────
 
 /**
@@ -510,6 +596,114 @@ function convertNexHRISToPayrollRows(
 
 // ─── Field layout helpers (matching the interfaces-field pattern) ─────────────
 
+/**
+ * Renders the imported-only field groups for one row:
+ *  - Custom fields (unknown columns) — editable label/type/amount, type defaults to deduction
+ *  - Attendance (DTR) — read-only-style numeric inputs, receipt only
+ * Only renders when the row actually has such fields.
+ */
+function ImportedExtrasFields({
+  row,
+  rowIdx,
+  updateCell,
+}: {
+  row: Record<string, string>;
+  rowIdx: number;
+  updateCell: (rowIdx: number, col: string, value: string) => void;
+}) {
+  const customKeys = Object.keys(row).filter((k) => k.startsWith("__custom__"));
+  const hasDtr = DTR_FIELD_KEYS.some((k) => row[k]?.toString().trim());
+
+  if (customKeys.length === 0 && !hasDtr) return null;
+
+  return (
+    <>
+      {customKeys.length > 0 && (
+        <div>
+          <Separator className="mb-4" />
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">
+            Custom Fields <span className="text-muted-foreground/60 normal-case">(detected from file)</span>
+          </p>
+          <div className="space-y-2.5">
+            {customKeys.map((key) => {
+              const label = key.slice("__custom__".length);
+              const typeKey = `__customType__${label}`;
+              const type = row[typeKey] === "earning" ? "earning" : "deduction";
+              return (
+                <div key={key} className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-medium text-muted-foreground leading-none">Label</label>
+                    <Input
+                      value={label}
+                      onChange={(e) => {
+                        const newLabel = e.target.value;
+                        // Re-key the custom column when the label changes
+                        updateCell(rowIdx, `__custom__${newLabel}`, row[key] ?? "");
+                        updateCell(rowIdx, `__customType__${newLabel}`, type);
+                        updateCell(rowIdx, key, ""); // clear old key (empty = dropped)
+                        if (typeKey !== `__customType__${newLabel}`) updateCell(rowIdx, typeKey, "");
+                      }}
+                      className="h-7 text-xs px-2 border-border/50"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-medium text-muted-foreground leading-none">Section</label>
+                    <Select value={type} onValueChange={(v) => updateCell(rowIdx, typeKey, v)}>
+                      <SelectTrigger className="!h-7 min-h-0 w-full px-2 text-xs border-border/50">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="deduction">Deduction</SelectItem>
+                        <SelectItem value="earning">Earning</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-medium text-muted-foreground leading-none">Amount</label>
+                    <Input
+                      value={row[key] ?? ""}
+                      onChange={(e) => updateCell(rowIdx, key, e.target.value)}
+                      className="h-7 text-xs px-2 border-border/50"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {hasDtr && (
+        <div>
+          <Separator className="mb-4" />
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+            Attendance (DTR)
+          </p>
+          <p className="text-[9px] text-muted-foreground mb-2.5">
+            Attendance data — will appear on receipt only, not saved to attendance_logs
+          </p>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 sm:grid-cols-3 lg:grid-cols-5">
+            {DTR_FIELD_KEYS.map((key) => (
+              <div key={key} className="flex flex-col gap-1">
+                <label className="text-[10px] font-medium text-muted-foreground leading-none">
+                  {DTR_FIELD_LABELS[key]}
+                </label>
+                <Input
+                  type="number"
+                  value={row[key] ?? ""}
+                  placeholder="—"
+                  onChange={(e) => updateCell(rowIdx, key, e.target.value)}
+                  className="h-7 text-xs px-2 border-border/50"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function SectionLegend({ children }: { children: React.ReactNode }) {
   return (
     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
@@ -642,6 +836,32 @@ function PBPreviewDialog({
         if (status !== "unmatched") status = "warning";
         hints.push("Net pay is zero — verify before importing");
       }
+      // Net-pay reconciliation: computed (gross + allowances + custom earnings
+      // − deductions) vs the imported net. Imported figure always wins.
+      const grossVal = parseFloat(row["Gross Pay"] || "0") || 0;
+      const allowVal = parseFloat(row["Allowances"] || "0") || 0;
+      const dedVal =
+        (parseFloat(row["SSS"] || "0") || 0) +
+        (parseFloat(row["PhilHealth"] || "0") || 0) +
+        (parseFloat(row["Pag-IBIG"] || "0") || 0) +
+        (parseFloat(row["Tax"] || "0") || 0) +
+        (parseFloat(row["Loan Deduction"] || "0") || 0) +
+        (parseFloat(row["Custom Deductions"] || "0") || 0) +
+        (parseFloat(row["Other Deductions"] || "0") || 0);
+      let customEarn = 0;
+      let customDed = 0;
+      for (const [k, v] of Object.entries(row)) {
+        if (!k.startsWith("__custom__")) continue;
+        const label = k.slice("__custom__".length);
+        const amt = parseFloat(String(v).replace(/[₱,\s]/g, "")) || 0;
+        if (row[`__customType__${label}`] === "earning") customEarn += amt;
+        else customDed += amt;
+      }
+      const computedNet = grossVal + allowVal + customEarn - dedVal - customDed;
+      if (!isNaN(netPay) && netPay !== 0 && Math.abs(computedNet - netPay) > 0.01) {
+        if (status === "matched") status = "warning";
+        hints.push("Imported net pay differs from computed. Imported figure will be used.");
+      }
 
       return { status, hints, matchedEmployee };
     });
@@ -704,7 +924,12 @@ function PBPreviewDialog({
     },
   ];
 
-  const requiredFields = new Set(["Employee Name", "Email"]);
+  const requiredFields = new Set(["Employee Name", "Email", "Period Start", "Period End", "Gross Pay"]);
+
+  // Count rows still missing any required field (used to gate the confirm button)
+  const missingRequiredCount = rows.filter((r) =>
+    ["Employee Name", "Period Start", "Period End", "Gross Pay"].some((c) => !r[c]?.toString().trim())
+  ).length;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -924,6 +1149,7 @@ function PBPreviewDialog({
                       {sIdx < sections.length - 1 && <Separator className="mt-4" />}
                     </div>
                   ))}
+                  <ImportedExtrasFields row={row} rowIdx={rowIdx} updateCell={updateCell} />
                 </div>
               </div>
             );
@@ -958,7 +1184,7 @@ function PBPreviewDialog({
               Back
             </Button>
             <Button size="sm" className="gap-1.5 text-xs h-8" onClick={onConfirm}
-              disabled={rows.length === 0 || confirming || missingEmailCount > 0}>
+              disabled={rows.length === 0 || confirming || missingEmailCount > 0 || missingRequiredCount > 0}>
               {confirming
                 ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Importing…</>
                 : <><Upload className="h-3.5 w-3.5" />Confirm Import<ArrowRight className="h-3.5 w-3.5" /></>
@@ -1056,7 +1282,14 @@ function TemplatePreviewDialog({
   }, [isPayroll, isAttendance]);
 
   const requiredFields = useMemo(() => {
-    return new Set(REQUIRED_COLS[module]);
+    const base = new Set(REQUIRED_COLS[module]);
+    // Payroll imports also require period + gross pay before confirm (Part 1, Step 4)
+    if (module === "payroll") {
+      base.add("Period Start");
+      base.add("Period End");
+      base.add("Gross Pay");
+    }
+    return base;
   }, [module]);
 
   // ── Row status — reuse same logic as PBPreviewDialog for payroll; generic for others ──
@@ -1152,7 +1385,7 @@ function TemplatePreviewDialog({
   }, [rowStatuses]);
 
   const missingRequiredCount = rows.filter((r) =>
-    REQUIRED_COLS[module].some((c) => !r[c]?.trim())
+    Array.from(requiredFields).some((c) => !r[c]?.trim())
   ).length;
 
   const isReady = rows.length > 0 && missingRequiredCount === 0;
@@ -1387,6 +1620,9 @@ function TemplatePreviewDialog({
                       </div>
                     );
                   })}
+                  {isPayroll && (
+                    <ImportedExtrasFields row={row} rowIdx={rowIdx} updateCell={updateCell} />
+                  )}
                 </div>
               </div>
             );
@@ -1701,11 +1937,13 @@ export function ImportDataDialog({
           return;
         }
 
-        const stringRows = rows.map((r) =>
-          Object.fromEntries(
+        const stringRows = rows.map((r) => {
+          const base = Object.fromEntries(
             Object.entries(r).map(([k, v]) => [k, String(v ?? "")])
-          )
-        );
+          ) as Record<string, string>;
+          // Auto-detect DTR + custom columns for payroll imports only
+          return isPayroll ? detectImportedFields(base) : base;
+        });
 
         // Open the template preview dialog (mirrors PB flow)
         setTemplatePreviewRows(stringRows);
@@ -1774,11 +2012,13 @@ export function ImportDataDialog({
     if (pbRows.length === 0) return;
     setPbImporting(true);
     try {
-      const stringRows = pbRows.map((r) =>
-        Object.fromEntries(
+      const stringRows = pbRows.map((r) => {
+        const base = Object.fromEntries(
           Object.entries(r).map(([k, v]) => [k, String(v ?? "")])
-        )
-      );
+        ) as Record<string, string>;
+        // Tag as imported + surface DTR/custom columns for the API route
+        return buildImportedRowPayload(detectImportedFields(base), pbFileName);
+      });
       const res = await fetch(`/api/import/${module}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1810,7 +2050,7 @@ export function ImportDataDialog({
     } finally {
       setPbImporting(false);
     }
-  }, [pbRows, module, onImportComplete, reset]);
+  }, [pbRows, module, onImportComplete, reset, pbFileName]);
 
   // ── Template preview confirm import ─────────────────────────────────────────
 
@@ -1823,10 +2063,18 @@ export function ImportDataDialog({
     setTemplateImporting(true);
     setResult(null);
     try {
+      // For payroll imports, tag rows as imported and surface DTR/custom columns
+      // so the API route creates a locked run + persists receipt-only DTR data.
+      const outRows =
+        module === "payroll"
+          ? templatePreviewRows.map((r) =>
+              buildImportedRowPayload(detectImportedFields(r), templatePreviewFileName)
+            )
+          : templatePreviewRows;
       const res = await fetch(`/api/import/${module}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: templatePreviewRows, dryRun: false }),
+        body: JSON.stringify({ rows: outRows, dryRun: false }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Import failed" }));
@@ -1854,7 +2102,7 @@ export function ImportDataDialog({
     } finally {
       setTemplateImporting(false);
     }
-  }, [templatePreviewRows, module, onImportComplete, reset, validation]);
+  }, [templatePreviewRows, module, onImportComplete, reset, validation, templatePreviewFileName]);
 
   // ── Derived ─────────────────────────────────────────────────────────────────
 
