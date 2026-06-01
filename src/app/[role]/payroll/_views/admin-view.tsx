@@ -1901,7 +1901,7 @@
                                                                 : run.date;
                                                             const isImportedRun = run.source === "imported";
                                                             return (
-                                                                <TableRow key={run.date}>
+                                                                <TableRow key={run.runId || run.date}>
                                                                     <TableCell className="text-sm">
                                                                         <div className="flex flex-col gap-0.5">
                                                                             <span>{periodDisplay}</span>

@@ -234,6 +234,14 @@ export async function POST(req: Request) {
       issued_at: new Date().toISOString(),
     };
 
+    // Add rate/OT fields if provided by the PB converter
+    const importedOT = num(row["__overtimePay"]);
+    const importedDailyRate = num(row["__dailyRate"]);
+    const importedHourlyRate = num(row["__hourlyRate"]);
+    if (importedOT && importedOT > 0) record.overtime_pay = importedOT;
+    if (importedDailyRate && importedDailyRate > 0) record.daily_rate = importedDailyRate;
+    if (importedHourlyRate && importedHourlyRate > 0) record.hourly_rate = importedHourlyRate;
+
     // Imported-only fields live in a separate object. They depend on migration 063
     // columns; if those columns aren't present yet we retry the insert without them
     // so the import never hard-fails on an un-migrated database.

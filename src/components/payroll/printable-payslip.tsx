@@ -163,6 +163,38 @@ export function PrintablePayslip({
                         </div>
                     </div>
 
+                    {/* Rate Info — shown when daily/hourly rate is available (imported payslips) */}
+                    {((payslip.dailyRate ?? 0) > 0 || (payslip.hourlyRate ?? 0) > 0) && (() => {
+                        // Parse monthly salary from notes if available
+                        let monthly = (payslip.dailyRate ?? 0) * 22;
+                        if (payslip.notes) {
+                            const m = payslip.notes.match(/Monthly:\s*([\d,]+(?:\.\d+)?)/);
+                            if (m) monthly = Number(m[1].replace(/,/g, "")) || monthly;
+                        }
+                        return (
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "8px", marginBottom: "16px", padding: "8px 10px", background: "#f8f9fa", borderRadius: "4px", border: "1px solid #e5e5e5" }}>
+                            <div>
+                                <p style={{ fontSize: "9px", color: "#666", textTransform: "uppercase" }}>Monthly Salary</p>
+                                <p style={{ fontSize: "11px", fontWeight: 600 }}>{formatCurrency(monthly)}</p>
+                            </div>
+                            <div>
+                                <p style={{ fontSize: "9px", color: "#666", textTransform: "uppercase" }}>Daily Rate</p>
+                                <p style={{ fontSize: "11px", fontWeight: 600 }}>{formatCurrency(payslip.dailyRate ?? 0)}</p>
+                            </div>
+                            {(payslip.hourlyRate ?? 0) > 0 && (
+                                <div>
+                                    <p style={{ fontSize: "9px", color: "#666", textTransform: "uppercase" }}>Hourly Rate</p>
+                                    <p style={{ fontSize: "11px", fontWeight: 600 }}>{formatCurrency(payslip.hourlyRate ?? 0)}</p>
+                                </div>
+                            )}
+                            <div>
+                                <p style={{ fontSize: "9px", color: "#666", textTransform: "uppercase" }}>Semi-Monthly Pay</p>
+                                <p style={{ fontSize: "11px", fontWeight: 600 }}>{formatCurrency(monthly / 2)}</p>
+                            </div>
+                        </div>
+                        );
+                    })()}
+
                     {/* Earnings Table */}
                     <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "12px" }}>
                         <thead>
@@ -192,11 +224,11 @@ export function PrintablePayslip({
                             )}
 
                             {(payslip.overtimePay ?? 0) > 0 && (
-                                <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
-                                    <td style={{ padding: "6px 8px" }}>Overtime Pay</td>
-                                    <td style={{ padding: "6px 8px", textAlign: "right" }}>{formatCurrency(payslip.overtimePay ?? 0)}</td>
-                                </tr>
-                            )}
+                            <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
+                                <td style={{ padding: "6px 8px" }}>Overtime Pay</td>
+                                <td style={{ padding: "6px 8px", textAlign: "right" }}>{formatCurrency(payslip.overtimePay ?? 0)}</td>
+                            </tr>
+                        )}
                             {(payslip.holidayPay ?? 0) !== 0 && (
                                 <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
                                     <td style={{ padding: "6px 8px" }}>Holiday Pay (DOLE)</td>

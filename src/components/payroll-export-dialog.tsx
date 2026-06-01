@@ -853,20 +853,40 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
 
       if (log) {
         const lateMin = log.lateMinutes ?? 0;
+        const rawHrs = log.hours ?? 0;
+        const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+
+        // PB-style calculation:
+        // Weekdays: count from 8:00 AM (ignore early clock-in) to OUT, minus 1hr lunch
+        // Weekends/holidays: count from actual IN to OUT, minus 1hr lunch if > 5hrs
+        let totalHrs: number;
+        if (!isWeekend && log.checkIn && log.checkOut) {
+          // Parse check-out time to compute hours from 8:00
+          const outParts = (log.checkOut.includes("T") ? log.checkOut.split("T")[1]?.split(".")[0] || "" : log.checkOut).split(":");
+          const outDecimal = Number(outParts[0] || 0) + Number(outParts[1] || 0) / 60;
+          const scheduledStart = 8.0; // 8:00 AM
+          const hrsFromSchedule = outDecimal - scheduledStart;
+          // Deduct 1hr lunch
+          totalHrs = Math.round((hrsFromSchedule - 1) * 100) / 100;
+          if (totalHrs < 0) totalHrs = 0;
+        } else {
+          // Weekends: use raw hours minus 1hr lunch if worked > 5hrs
+          const lunchDeduction = rawHrs > 5 ? 1 : 0;
+          totalHrs = Math.round((rawHrs - lunchDeduction) * 100) / 100;
+        }
+
+        // OT: first check approved OT requests, then compute as hours > 8
+        const approvedOT = overtimeRequests
+          .filter(r => r.employeeId === employeeId && r.date === dateStr && r.status === "approved")
+          .reduce((sum, r) => sum + (r.hoursRequested || 0), 0);
+        const computedOT = totalHrs > 8 ? Math.round((totalHrs - 8) * 100) / 100 : 0;
         dtrEntries.push({
           date: format(d, "MMM dd"),
           day: dayName,
           timeIn: log.checkIn ? (log.checkIn.includes("T") ? log.checkIn.split("T")[1]?.split(".")[0]?.slice(0, 5) || "" : log.checkIn.slice(0, 5)) : "",
           timeOut: log.checkOut ? (log.checkOut.includes("T") ? log.checkOut.split("T")[1]?.split(".")[0]?.slice(0, 5) || "" : log.checkOut.slice(0, 5)) : "",
-          totalHrs: log.hours ?? 0,
-
-
-          otHrs: overtimeRequests
-        .filter(r => r.employeeId === employeeId && r.date === dateStr && r.status === "approved")
-        .reduce((sum, r) => sum + (r.hoursRequested || 0), 0),
-
-
-
+          totalHrs,
+          otHrs: approvedOT > 0 ? approvedOT : computedOT,
           tardinessHr: Math.floor(lateMin / 60),
           tardinessMin: lateMin % 60,
           absences: log.status === "absent" ? 1 : 0,
@@ -901,23 +921,46 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
       const payslip = payslips.find((p) =>
         p.employeeId === emp.id && p.periodStart <= periodTo && p.periodEnd >= periodFrom
       );
-      const monthlySalary = emp.salary ?? 0;
-      const dailyRate = Math.round((monthlySalary / 22) * 100) / 100;
-      const hourlyRate = Math.round((dailyRate / 8) * 100) / 100;
-      const semiMonthlySalary = Math.round((monthlySalary / 2) * 100) / 100;
 
       // ── Imported payroll branch (Part 3) ─────────────────────────────────
       // For imported payslips, DTR comes from the payslip record (receipt only),
       // NOT from attendance_logs. Normal payslips are unchanged.
-      const isImported = payslip?.source === "imported" || payslip?.computedExternally === true;
+      const isImported = payslip?.source === "imported" || payslip?.computedExternally === true || (payslip != null && (payslip.dailyRate ?? 0) > 0 && (payslip.overtimePay ?? 0) >= 0);
+
+      // For imported payslips, use rates from the payslip record (from the original file).
+      // For normal payslips, derive from the employee's current salary.
+      const baseSalary = emp.salary ?? 0;
+
+      // Try to get monthly salary from notes (imported payslips store "Monthly: X" in notes)
+      let importedMonthlySalary = 0;
+      if (payslip?.notes) {
+        const monthlyMatch = payslip.notes.match(/Monthly:\s*([\d,]+(?:\.\d+)?)/);
+        if (monthlyMatch) {
+          importedMonthlySalary = Number(monthlyMatch[1].replace(/,/g, "")) || 0;
+        }
+      }
+
+      const monthlySalary = (payslip?.dailyRate && payslip.dailyRate > 0)
+        ? (importedMonthlySalary > 0 ? importedMonthlySalary : Math.round(payslip.dailyRate * 22 * 100) / 100)
+        : baseSalary;
+      const dailyRate = (payslip?.dailyRate && payslip.dailyRate > 0)
+        ? payslip.dailyRate
+        : Math.round((baseSalary / 22) * 100) / 100;
+      const hourlyRate = (payslip?.hourlyRate && payslip.hourlyRate > 0)
+        ? payslip.hourlyRate
+        : Math.round((dailyRate / 8) * 100) / 100;
+      const semiMonthlySalary = Math.round((monthlySalary / 2) * 100) / 100;
+
       const dtr = isImported
-        ? buildDtrFromPayslip(payslip!, periodFrom, periodTo)
+        ? buildDtrFromPayslip(payslip!, isImported && payslip?.periodStart ? payslip.periodStart : periodFrom, isImported && payslip?.periodEnd ? payslip.periodEnd : periodTo)
         : getDTRForEmployee(emp.id, periodFrom, periodTo);
 
       // ── Dynamic line items from payslip ──────────────────────────────────
       // lineItemsJson holds custom deduction-template items (allowances + deductions).
       // If the payslip was issued before lineItemsJson was saved (older payslips),
       // fall back to computing them live from the deductions store.
+      // For imported payslips: ONLY use what's on the payslip record — never compute
+      // from the deduction templates, since the imported file is the source of truth.
       const lineItems = payslip?.lineItemsJson;
       let customAllowanceItems: { label: string; amount: number }[];
       let customDeductionItems: { label: string; amount: number }[];
@@ -930,6 +973,11 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
         customDeductionItems = lineItems
           .filter((li) => li.type === "deduction")
           .map((li) => ({ label: li.label, amount: li.amount }));
+      } else if (isImported) {
+        // Imported payslip without line items — don't compute from templates.
+        // The imported file's figures are final; system deductions don't apply.
+        customAllowanceItems = [];
+        customDeductionItems = [];
       } else {
         // Fallback: compute live from the deductions store (covers older payslips)
         const workDays = emp.workDays?.length
@@ -980,9 +1028,15 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
         dailyRate,
         hourlyRate,
         semiMonthlySalary,
-        periodFrom: format(new Date(periodFrom), "MMM dd, yyyy"),
-        periodTo: format(new Date(periodTo), "MMM dd, yyyy"),
-        range: rangeLabel,
+        periodFrom: isImported && payslip?.periodStart
+          ? format(new Date(payslip.periodStart), "MMM dd, yyyy")
+          : format(new Date(periodFrom), "MMM dd, yyyy"),
+        periodTo: isImported && payslip?.periodEnd
+          ? format(new Date(payslip.periodEnd), "MMM dd, yyyy")
+          : format(new Date(periodTo), "MMM dd, yyyy"),
+        range: isImported && payslip?.periodStart
+          ? `Imported (${payslip.periodStart} to ${payslip.periodEnd})`
+          : rangeLabel,
         overtimePay,
         totalBasicSalary: payslip ? Number(payslip.grossPay ?? semiMonthlySalary) : semiMonthlySalary,
         allowanceItems,

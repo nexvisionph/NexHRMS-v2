@@ -359,13 +359,29 @@ function convertPBRawToPayrollRows(
       const position = strCell(raw, 5, blk.nameCol);
       const project = strCell(raw, 6, blk.nameCol);
 
+      // ── Header fields (Monthly Salary, Rate/day) ──
+      const monthlySalary = numCell(raw, 7, blk.valCol);
+      const dailyRate = numCell(raw, 8, blk.valCol);
+      // Hourly rate is at row 0 col 21 (right-side header) or derive from daily/8
+      const hourlyRate = dailyRate > 0 ? Math.round((dailyRate / 8) * 100) / 100 : 0;
+
+      // ── BASIC SALARY section ──
+      const semiMonthly = numCell(raw, 11, blk.valCol);
+      // Row 12: can be "Overtime Pay" or "Adjustment" depending on the employee
+      const basicOTOrAdj = numCell(raw, 12, blk.valCol);
+      const lwop = numCell(raw, 13, blk.valCol);
+      const tardiness = numCell(raw, 14, blk.valCol);
       const totalBasic = numCell(raw, 15, blk.valCol);
-      const overtimePay = numCell(raw, 17, blk.valCol);
+
+      // ── OVERTIME & OTHER ALLOWANCES section ──
+      const otAllowances = numCell(raw, 17, blk.valCol);
       const mealAllowance = numCell(raw, 18, blk.valCol);
       const projectAllow = numCell(raw, 19, blk.valCol);
       const taxiFare = numCell(raw, 20, blk.valCol);
       const othersAllow = numCell(raw, 21, blk.valCol);
       const totalAllowances = numCell(raw, 22, blk.valCol);
+
+      // ── DEDUCTIONS section ──
       const withholdingTax = numCell(raw, 24, blk.valCol);
       const sss = numCell(raw, 25, blk.valCol);
       const sssLoan = numCell(raw, 26, blk.valCol);
@@ -376,29 +392,39 @@ function convertPBRawToPayrollRows(
       const healthcard = numCell(raw, 31, blk.valCol);
       const netPay = numCell(raw, 33, blk.valCol);
 
-      const grossPay = totalBasic + totalAllowances;
+      // Determine if row 12 is OT or adjustment:
+      // If totalBasic = semiMonthly + row12 - lwop - tardiness, then row12 is OT added to basic
+      // If row12 is positive and contributes to totalBasic, it's OT in the basic salary section
+      const basicOvertimePay = basicOTOrAdj > 0 ? basicOTOrAdj : 0;
+      const adjustment = basicOTOrAdj < 0 ? basicOTOrAdj : 0;
+
+      // Total overtime = OT in basic salary section + OT in allowances section
+      const totalOvertimePay = basicOvertimePay + otAllowances;
+
+      // Gross Pay = Total Basic Salary (which already includes semi-monthly + OT - deductions)
+      const grossPay = totalBasic;
       const loanDeduction = sssLoan + pagibigLoan;
       const customDeductions = taxDef + healthcard;
-      const lwop = numCell(raw, 13, blk.valCol);
-      const tardiness = numCell(raw, 14, blk.valCol);
-      const adj = numCell(raw, 12, blk.valCol);
-      // "Other deductions" = only explicit deduction-type items.
-      // Row 12 (Adjustment/OT) is already factored into totalBasic (row 15),
-      // so only include it if negative (meaning it was a deduction).
-      const otherDeductions = lwop + tardiness + (adj < 0 ? Math.abs(adj) : 0);
+      const otherDeductions = lwop + tardiness + (adjustment < 0 ? Math.abs(adjustment) : 0);
 
       // Skip blocks where everything is zero (empty / no real data)
       if (totalBasic === 0 && netPay === 0 && grossPay === 0) continue;
 
+      // Build custom line items for allowances that have values
+      const lineItems: Array<{ label: string; type: string; amount: number }> = [];
+      if (mealAllowance > 0) lineItems.push({ label: "Meal Allowance", type: "earning", amount: mealAllowance });
+      if (projectAllow > 0) lineItems.push({ label: "Project Allowance", type: "earning", amount: projectAllow });
+      if (taxiFare > 0) lineItems.push({ label: "Taxi Fare", type: "earning", amount: taxiFare });
+      if (othersAllow > 0) lineItems.push({ label: "Others", type: "earning", amount: othersAllow });
+      // Individual deductions as line items
+      if (healthcard > 0) lineItems.push({ label: "Healthcard", type: "deduction", amount: healthcard });
+      if (taxDef > 0) lineItems.push({ label: "Tax Refund/Deficit", type: "deduction", amount: taxDef });
+
       const noteParts: string[] = [];
       if (project) noteParts.push(`Project: ${project}`);
-      if (overtimePay > 0) noteParts.push(`OT: ${overtimePay.toFixed(2)}`);
-      if (mealAllowance > 0) noteParts.push(`Meal: ${mealAllowance.toFixed(2)}`);
-      if (taxiFare > 0) noteParts.push(`Taxi: ${taxiFare.toFixed(2)}`);
-      if (projectAllow > 0) noteParts.push(`Proj allowance: ${projectAllow.toFixed(2)}`);
-      if (othersAllow > 0) noteParts.push(`Others: ${othersAllow.toFixed(2)}`);
+      if (monthlySalary > 0) noteParts.push(`Monthly: ${monthlySalary.toLocaleString()}`);
 
-      employees.push({
+      const row: PayrollRow = {
         "Employee Name": name,
         Email: "",
         Department: project || "",
@@ -414,13 +440,95 @@ function convertPBRawToPayrollRows(
         "Pag-IBIG": pagibig.toFixed(2),
         Tax: withholdingTax.toFixed(2),
         "Loan Deduction": loanDeduction.toFixed(2),
-        "Custom Deductions": customDeductions.toFixed(2),
+        "Custom Deductions": "0.00",
         "Other Deductions": otherDeductions.toFixed(2),
         "Net Pay": netPay.toFixed(2),
         "Payment Method": "",
         "Bank Reference": "",
         Notes: noteParts.join(" | "),
-      });
+      };
+
+      // Pass through imported metadata via reserved keys
+      row["__source"] = "imported";
+      row["__monthlySalary"] = monthlySalary.toFixed(2);
+      row["__dailyRate"] = dailyRate.toFixed(2);
+      row["__hourlyRate"] = hourlyRate.toFixed(2);
+      row["__semiMonthly"] = semiMonthly.toFixed(2);
+      if (totalOvertimePay > 0) row["__overtimePay"] = totalOvertimePay.toFixed(2);
+      if (lwop > 0) row["__leaveWithoutPay"] = lwop.toFixed(2);
+      if (tardiness > 0) row["__tardiness"] = tardiness.toFixed(2);
+      if (lineItems.length > 0) row["__lineItemsJson"] = JSON.stringify(lineItems);
+
+      // ── Extract per-day DTR from the right-side grid ──
+      // Actual column layout (from XLSX parse, 0-indexed):
+      //   17: Day label (SAT/SUN/HOL/DEC HD) — only for special days
+      //   18: Date number (26, 27, etc.)
+      //   19: IN hour
+      //   20: IN minute
+      //   21: Scheduled hours (8.00) — skip
+      //   22: OUT hour (single digit, unreliable)
+      //   23: OUT minute
+      //   24: OUT time as decimal from midnight (e.g., 16.87 = 4:52 PM)
+      //   25: Working hours (total hours worked, lunch already deducted by PB)
+      //   26: OT/UT decimal (positive = OT, negative = undertime)
+      const dtrPerDay: Array<{ date: string; day?: string; timeIn?: string; timeOut?: string; totalHrs?: number; otHrs?: number }> = [];
+      const dtrStartRow = 15;
+      const maxDtrRows = 20;
+
+      for (let ri = dtrStartRow; ri < dtrStartRow + maxDtrRows && ri < raw.length; ri++) {
+        const col17 = strCell(raw, ri, 17);
+        const col18 = numCell(raw, ri, 18);
+        const col19 = numCell(raw, ri, 19);
+        const col20 = numCell(raw, ri, 20);
+        const col24 = numCell(raw, ri, 24); // OUT as decimal from midnight
+        const col25 = numCell(raw, ri, 25); // Working hours
+        const col26 = numCell(raw, ri, 26); // OT/UT
+
+        // Date number is always at col 18
+        const dayNum = (col18 > 0 && col18 <= 31) ? Math.round(col18) : 0;
+        if (dayNum === 0) continue;
+
+        // Day label from col 17
+        let dayLabel = "";
+        if (col17 && /^(SAT|SUN|HOL|DEC|WFH|wfh)/i.test(col17)) {
+          dayLabel = col17.trim();
+        }
+
+        // IN time from col 19 (hour) and col 20 (minute)
+        let timeIn = "";
+        const inH = Math.floor(col19);
+        const inM = Math.round(col20);
+        if (inH > 0 || inM > 0) {
+          timeIn = `${String(inH).padStart(2, "0")}:${String(inM).padStart(2, "0")}`;
+        }
+
+        // OUT time from col 24 (decimal hours from midnight, e.g., 16.87 = 16:52)
+        let timeOut = "";
+        if (col24 > 0) {
+          const outH = Math.floor(col24);
+          const outM = Math.round((col24 - outH) * 60);
+          timeOut = `${String(outH).padStart(2, "0")}:${String(outM).padStart(2, "0")}`;
+        }
+
+        // Working hours (col 25) and OT (col 26)
+        const workingHrs = col25;
+        const otUt = col26;
+
+        dtrPerDay.push({
+          date: String(dayNum),
+          day: dayLabel || undefined,
+          timeIn: timeIn || undefined,
+          timeOut: timeOut || undefined,
+          totalHrs: workingHrs > 0 ? Math.round(workingHrs * 100) / 100 : undefined,
+          otHrs: otUt !== 0 ? Math.round(otUt * 100) / 100 : undefined,
+        });
+      }
+
+      if (dtrPerDay.length > 0) {
+        row["__dtrPerDayJson"] = JSON.stringify(dtrPerDay);
+      }
+
+      employees.push(row);
     }
   }
 
