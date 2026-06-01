@@ -235,11 +235,11 @@ export default function AdminSettingsView() {
     /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
        Quick-link card helper
        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-    const QuickLink = ({ href, icon: Icon, title, desc }: { href: string; icon: React.ComponentType<{ className?: string }>; title: string; desc: string }) => (
+    const QuickLink = ({ href, icon: Icon, title, desc, iconBg, iconColor }: { href: string; icon: React.ComponentType<{ className?: string }>; title: string; desc: string; iconBg?: string; iconColor?: string }) => (
         <Link href={rh(href)}>
             <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:bg-accent/50 hover:border-primary/20 transition-all group cursor-pointer">
-                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <Icon className="h-4 w-4 text-primary" />
+                <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${iconBg ?? "bg-primary/10"}`}>
+                    <Icon className={`h-4 w-4 ${iconColor ?? "text-primary"}`} />
                 </div>
                 <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium group-hover:text-primary transition-colors">{title}</p>
@@ -289,14 +289,14 @@ export default function AdminSettingsView() {
             <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Configure Modules</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <QuickLink href="/settings/organization" icon={Building2} title="Org Structure" desc="Departments & positions" />
-                    <QuickLink href="/settings/shifts" icon={Clock3} title="Shifts & Time" desc="Shift templates & assignments" />
-                    <QuickLink href="/settings/roles" icon={Shield} title="Roles & Permissions" desc="Manage who can access what" />
-                    <QuickLink href="/settings/appearance" icon={Palette} title="Theme & Layout" desc="Colors, fonts & sidebar style" />
-                    <QuickLink href="/settings/navigation" icon={ClipboardList} title="Sidebar Navigation" desc="Reorder & customize menu items" />
-                    <QuickLink href="/settings/kiosk" icon={Tablet} title="Kiosk Settings" desc="Check-in terminal configuration" />
-                    <QuickLink href="/settings/location" icon={MapPin} title="Location & GPS" desc="Geofencing, selfie & break rules" />
-                    <QuickLink href="/settings/notifications" icon={Bell} title="Notification Rules" desc="Alert channels & templates" />
+                    <QuickLink href="/settings/organization" icon={Building2} title="Org Structure" desc="Departments & positions" iconBg="bg-blue-500/15" iconColor="text-blue-600 dark:text-blue-400" />
+                    <QuickLink href="/settings/shifts" icon={Clock3} title="Shifts & Time" desc="Shift templates & assignments" iconBg="bg-amber-500/15" iconColor="text-amber-600 dark:text-amber-400" />
+                    <QuickLink href="/settings/roles" icon={Shield} title="Roles & Permissions" desc="Manage who can access what" iconBg="bg-emerald-500/15" iconColor="text-emerald-600 dark:text-emerald-400" />
+                    <QuickLink href="/settings/appearance" icon={Palette} title="Theme & Layout" desc="Colors, fonts & sidebar style" iconBg="bg-violet-500/15" iconColor="text-violet-600 dark:text-violet-400" />
+                    <QuickLink href="/settings/navigation" icon={ClipboardList} title="Sidebar Navigation" desc="Reorder & customize menu items" iconBg="bg-cyan-500/15" iconColor="text-cyan-600 dark:text-cyan-400" />
+                    <QuickLink href="/settings/kiosk" icon={Tablet} title="Kiosk Settings" desc="Check-in terminal configuration" iconBg="bg-orange-500/15" iconColor="text-orange-600 dark:text-orange-400" />
+                    <QuickLink href="/settings/location" icon={MapPin} title="Location & GPS" desc="Geofencing, selfie & break rules" iconBg="bg-rose-500/15" iconColor="text-rose-600 dark:text-rose-400" />
+                    <QuickLink href="/settings/notifications" icon={Bell} title="Notification Rules" desc="Alert channels & templates" iconBg="bg-indigo-500/15" iconColor="text-indigo-600 dark:text-indigo-400" />
                 </div>
             </div>
         </div>
@@ -476,9 +476,9 @@ export default function AdminSettingsView() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-3 gap-3 text-center">
-                        <div className="p-3 rounded-lg bg-muted/50 border border-border/50"><p className="text-xl font-bold">{taskGroups.length}</p><p className="text-xs text-muted-foreground">Groups</p></div>
-                        <div className="p-3 rounded-lg bg-muted/50 border border-border/50"><p className="text-xl font-bold">{allTasksArr.length}</p><p className="text-xs text-muted-foreground">Total Tasks</p></div>
-                        <div className="p-3 rounded-lg bg-muted/50 border border-border/50"><p className="text-xl font-bold">{allTasksArr.filter((t) => t.status === "open" || t.status === "in_progress").length}</p><p className="text-xs text-muted-foreground">Active</p></div>
+                        <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20"><p className="text-xl font-bold text-blue-700 dark:text-blue-400">{taskGroups.length}</p><p className="text-xs text-muted-foreground">Groups</p></div>
+                        <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/20"><p className="text-xl font-bold text-violet-700 dark:text-violet-400">{allTasksArr.length}</p><p className="text-xs text-muted-foreground">Total Tasks</p></div>
+                        <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20"><p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{allTasksArr.filter((t) => t.status === "open" || t.status === "in_progress").length}</p><p className="text-xs text-muted-foreground">Active</p></div>
                     </div>
                     <p className="text-sm text-muted-foreground mt-3">Manage task details from the <Link href={rh("/tasks")} className="text-primary underline-offset-4 hover:underline font-medium">Tasks page</Link>.</p>
                 </CardContent>
@@ -590,7 +590,7 @@ export default function AdminSettingsView() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {([
                             { role: "Admin", desc: "Full system access — can manage everything", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
                             { role: "HR", desc: "Employee management, attendance & leave", color: "bg-blue-500/15 text-blue-700 dark:text-blue-400" },
@@ -645,7 +645,8 @@ export default function AdminSettingsView() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="grid gap-3 max-w-sm">
+                    <div className="grid gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1.5">
                             <label className="text-sm font-medium">Current Password</label>
                             <div className="relative">
@@ -655,7 +656,8 @@ export default function AdminSettingsView() {
                         </div>
                         <div className="space-y-1.5"><label className="text-sm font-medium">New Password</label><Input type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value.replace(/\s/g, ""))} placeholder="Minimum 6 characters" /></div>
                         <div className="space-y-1.5"><label className="text-sm font-medium">Confirm Password</label><Input type="password" value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value.replace(/\s/g, ""))} placeholder="Type it again to confirm" /></div>
-                        <Button className="w-full" onClick={handleChangePassword} disabled={!pwOld || !pwNew || !pwConfirm}><KeyRound className="w-4 h-4 mr-1.5" /> Update Password</Button>
+                        </div>
+                        <Button className="w-full sm:w-auto" onClick={handleChangePassword} disabled={!pwOld || !pwNew || !pwConfirm}><KeyRound className="w-4 h-4 mr-1.5" /> Update Password</Button>
                     </div>
                 </CardContent>
             </Card>
@@ -780,7 +782,7 @@ export default function AdminSettingsView() {
                 </nav>
 
                 {/* Tab Content */}
-                <div className="flex-1 min-w-0 max-w-3xl">
+                <div className="flex-1 min-w-0">
                     {activeTab === "general" && <GeneralTab />}
                     {activeTab === "payroll" && <PayrollTab />}
                     {activeTab === "communication" && <CommunicationTab />}
