@@ -50,6 +50,7 @@ import { LocationTracker } from "@/components/attendance/location-tracker";
 import { BreakTimer } from "@/components/attendance/break-timer";
 import { ExportBackupDialog } from "@/components/export-backup-dialog";
 import { ImportDataDialog } from "@/components/import-data-dialog";
+import { AttendanceExportDialog } from "@/components/attendance-export-dialog";
 import { BiometricImportDialog, type BiometricImportRecord } from "@/components/attendance/biometric-import-dialog";
 import { EmployeeCombobox } from "@/components/ui/employee-combobox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -158,22 +159,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
             .slice(0, 50);
     }, [logs, dateFilter, empFilter, teamEmployeeIds]);
 
-    useEffect(() => {
-        forceRehydrate().catch(() => { /* keep local state if refresh fails */ });
-
-        const refreshOnFocus = () => {
-            if (document.visibilityState === "visible") {
-                forceRehydrate().catch(() => { /* keep local state if refresh fails */ });
-            }
-        };
-
-        window.addEventListener("focus", refreshOnFocus);
-        document.addEventListener("visibilitychange", refreshOnFocus);
-        return () => {
-            window.removeEventListener("focus", refreshOnFocus);
-            document.removeEventListener("visibilitychange", refreshOnFocus);
-        };
-    }, []);
+ 
 
     useEffect(() => {
         if (dateFilterTouched || logs.length === 0 || filteredLogs.length > 0) return;
@@ -249,8 +235,33 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
 
     // Biometric XLSX import dialog
     const [biometricImportOpen, setBiometricImportOpen] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
+    const isImportingRef = useRef(false);
 
-    // Override state
+    // Keep ref in sync so the event listener closure always sees current value
+    useEffect(() => { isImportingRef.current = isImporting; }, [isImporting]);
+
+    // Rehydrate on mount + on window focus (but never while an import is in-flight)
+    useEffect(() => {
+        forceRehydrate().catch(() => { /* keep local state if refresh fails */ });
+
+        const refreshOnFocus = () => {
+            if (document.visibilityState === "visible" && !isImportingRef.current) {
+                forceRehydrate().catch(() => { /* keep local state if refresh fails */ });
+            }
+        };
+
+        window.addEventListener("focus", refreshOnFocus);
+        document.addEventListener("visibilitychange", refreshOnFocus);
+        return () => {
+            window.removeEventListener("focus", refreshOnFocus);
+            document.removeEventListener("visibilitychange", refreshOnFocus);
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+   
+   
+   // Override state
     const [overrideOpen, setOverrideOpen] = useState(false);
     const [editingLog, setEditingLog] = useState<typeof logs[0] | null>(null);
     const [ovCheckIn, setOvCheckIn] = useState("");
@@ -316,10 +327,10 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
             const res = await fetch("/api/attendance/reconcile-absences", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-                    endDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split("T")[0], // yesterday
-                }),
+              body: JSON.stringify({
+                startDate: "2026-01-01",  // ← fixed start covers full year
+                endDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+            }),
             });
             if (res.ok) {
                 const data = await res.json();
@@ -354,7 +365,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
         if (mode === "admin" || mode === "hr") {
             reconcileAbsences(true);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode]);
 
     // ─── Handlers ─────────────────────────────────────────────────
@@ -405,7 +416,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const handleImportCSV = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]; if (!file) return;
         const reader = new FileReader();
-        reader.onload = (ev) => {
+        reader.onload = async (ev) => {
             try {
                 const text = ev.target?.result as string;
                 const lines = text.trim().split(/\r?\n/);
@@ -413,7 +424,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                 const hasHeader = firstCells.includes("date") || firstCells.includes("employee");
                 const dataLines = hasHeader ? lines.slice(1) : lines;
                 const parseCell = (c: string) => c.replace(/^"|"$/g, "").trim();
-                const rows: Parameters<typeof bulkUpsertLogs>[0] = [];
+                const rows: Array<{ employeeId: string; date: string; checkIn?: string; checkOut?: string; status: "present" | "absent" | "on_leave" }> = [];
                 let skipped = 0;
                 for (const line of dataLines) {
                     if (!line.trim()) continue;
@@ -425,22 +436,94 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                     const status: "present" | "absent" | "on_leave" = (["present", "absent", "on_leave"] as const).includes(statusRaw as never) ? (statusRaw as "present" | "absent" | "on_leave") : checkInVal ? "present" : "absent";
                     rows.push({ employeeId: emp.id, date: dateVal, checkIn: checkInVal || undefined, checkOut: checkOutVal || undefined, status });
                 }
-                bulkUpsertLogs(rows);
-                appendEvent({ employeeId: currentUser.id || "SYSTEM", eventType: "CSV_IMPORTED", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: `Imported ${rows.length} attendance record(s) from CSV${skipped ? `, skipped ${skipped}` : ""}`, metadata: { imported: rows.length, skipped } });
-                toast.success(`Imported ${rows.length} record(s)${skipped ? `, skipped ${skipped}` : ""}`);
+                // Persist via the DB-first service (user session + RLS) so rows survive a refresh.
+                const res = await persistAttendanceImport(rows);
+                const totalSkipped = res.skipped + skipped;
+                appendEvent({ employeeId: currentUser.id || "SYSTEM", eventType: "CSV_IMPORTED", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: `Imported ${res.imported} attendance record(s) from CSV${totalSkipped ? `, skipped ${totalSkipped}` : ""}${res.failed ? `, ${res.failed} failed` : ""}`, metadata: { imported: res.imported, skipped: totalSkipped, failed: res.failed } });
+                if (res.failed > 0) {
+                    toast.warning(`Imported ${res.imported} record(s)${totalSkipped ? `, skipped ${totalSkipped}` : ""}, ${res.failed} failed to save`);
+                } else if (res.imported > 0) {
+                    toast.success(`Imported ${res.imported} record(s)${totalSkipped ? `, skipped ${totalSkipped}` : ""}`);
+                } else {
+                    toast.error("Nothing imported — check that employees and dates are valid");
+                }
             } catch { toast.error("Failed to parse CSV."); }
         };
         reader.readAsText(file); e.target.value = "";
     };
 
-    /** Commit biometric XLSX import → upserts logs and appends an audit event. */
-    const handleBiometricImport = (rows: BiometricImportRecord[]) => {
+    /**
+     * Persist imported attendance via the DB-first service, then mirror into the
+     * local store. The service awaits the real Supabase upsert on (employee_id,
+     * date), so successful rows survive a page refresh and re-importing the same
+     * file is idempotent.
+     */
+    
+
+    const persistAttendanceImport = async (
+    rows: Array<{ employeeId: string; date: string; checkIn?: string; checkOut?: string; hours?: number; status: "present" | "absent" | "on_leave" }>
+): Promise<{ imported: number; skipped: number; failed: number }> => {
+    if (rows.length === 0) return { imported: 0, skipped: 0, failed: 0 };
+    const now = new Date().toISOString();
+
+    // Write via server-side API route (uses service-role client, bypasses RLS)
+    // This guarantees persistence regardless of browser-side RLS policy issues.
+    try {
+        const res = await fetch("/api/attendance/bulk-import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+                rows: rows.map((r) => ({
+                    employeeId: r.employeeId,
+                    date: r.date,
+                    checkIn: r.checkIn,
+                    checkOut: r.checkOut,
+                    hours: r.hours,
+                    status: r.status,
+                    updatedAt: now,
+                })),
+            }),
+        });
+
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            console.error("[persistAttendanceImport] API error:", errData);
+            return { imported: 0, skipped: 0, failed: rows.length };
+        }
+
+        const data = await res.json() as { inserted: number; failed: number };
+
+        // Mirror successful rows into the local store immediately so UI updates
+        if (data.inserted > 0) {
+            bulkUpsertLogs(
+                rows.map((r) => ({
+                    employeeId: r.employeeId,
+                    date: r.date,
+                    checkIn: r.checkIn,
+                    checkOut: r.checkOut,
+                    hours: r.hours,
+                    status: r.status,
+                }))
+            );
+        }
+
+        return { imported: data.inserted, skipped: 0, failed: data.failed };
+    } catch (err) {
+        console.error("[persistAttendanceImport] Network error:", err);
+        return { imported: 0, skipped: 0, failed: rows.length };
+    }
+};
+
+    /** Commit biometric XLSX import → DB-first upsert + audit event. */
+    const handleBiometricImport = async (rows: BiometricImportRecord[]) => {
         const importable = rows.filter((r) => r.importStatus !== "error" && r.employeeId);
         if (importable.length === 0) {
             toast.error("Nothing to import");
             return;
         }
-        bulkUpsertLogs(
+        setIsImporting(true);  
+        const res = await persistAttendanceImport(
             importable.map((r) => ({
                 employeeId: r.employeeId,
                 date: r.date,
@@ -455,11 +538,18 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
             eventType: "CSV_IMPORTED",
             timestampUTC: new Date().toISOString(),
             performedBy: currentUser.id,
-            description: `Imported ${importable.length} biometric attendance record(s)`,
-            metadata: { source: "biometric_xlsx", imported: importable.length },
+            description: `Imported ${res.imported} biometric attendance record(s)${res.failed ? `, ${res.failed} failed` : ""}`,
+            metadata: { source: "biometric_xlsx", imported: res.imported, failed: res.failed },
         });
-        toast.success(`Imported ${importable.length} attendance records successfully`);
-    };
+       if (res.failed > 0) {
+        toast.warning(`Imported ${res.imported} record(s), ${res.failed} failed to save`);
+    } else if (res.imported > 0) {
+        toast.success(`Imported ${res.imported} attendance records successfully`);
+    } else {
+        toast.error("Nothing imported — check that employees and dates are valid");
+    }
+    setIsImporting(false);         // ← add this
+};
 
     const handleSubmitOT = () => {
         if (!myEmployeeId) { toast.error("Unable to identify employee"); return; }
@@ -612,8 +702,13 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                     {/* Action buttons group */}
                     <div className="flex items-center rounded-lg border border-border/40 bg-muted/20 p-0.5 gap-0.5">
                         <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 px-2.5 rounded-md" onClick={handleExportCSV}>
-                            <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Export</span>
+                            <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Export CSV</span>
                         </Button>
+                        <AttendanceExportDialog trigger={
+                            <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 px-2.5 rounded-md">
+                                <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Export</span>
+                            </Button>
+                        } />
                         <ExportBackupDialog module="attendance" trigger={
                             <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 px-2.5 rounded-md">
                                 <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Backup</span>

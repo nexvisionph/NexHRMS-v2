@@ -47,6 +47,16 @@ const LEAVE_ICONS: Record<LeaveType, React.ReactNode> = {
     SPL: <Users className="h-4 w-4" />,
 };
 
+const LEAVE_COLORS: Record<LeaveType, { icon: string; bg: string; number: string }> = {
+    VL:    { icon: "text-emerald-600",  bg: "bg-emerald-500/15",  number: "text-emerald-600"  },
+    SL:    { icon: "text-blue-600",     bg: "bg-blue-500/15",     number: "text-blue-600"     },
+    EL:    { icon: "text-amber-600",    bg: "bg-amber-500/15",    number: "text-amber-600"    },
+    OTHER: { icon: "text-violet-600",   bg: "bg-violet-500/15",   number: "text-violet-600"   },
+    ML:    { icon: "text-pink-600",     bg: "bg-pink-500/15",     number: "text-pink-600"     },
+    PL:    { icon: "text-sky-600",      bg: "bg-sky-500/15",      number: "text-sky-600"      },
+    SPL:   { icon: "text-rose-600",     bg: "bg-rose-500/15",     number: "text-rose-600"     },
+};
+
 /**
  * Calculate leave days accounting for duration type (full_day, half_day, hourly).
  * Falls back to simple date range calculation for full-day requests.
@@ -232,9 +242,15 @@ export default function AdminLeaveView() {
                                     <Input type="date" value={formEnd} onChange={(e) => setFormEnd(e.target.value)} className="mt-1" />
                                 </div>
                             </div>
-                            <div>
+                            <div className="grid gap-2">
                                 <label className="text-sm font-medium">Reason</label>
-                                <Textarea placeholder="Describe your reason..." value={formReason} onChange={(e) => setFormReason(e.target.value)} className="mt-1" rows={3} />
+                                <Textarea
+                                    placeholder="Describe the reason for this leave request..."
+                                    value={formReason}
+                                    onChange={(e) => setFormReason(e.target.value)}
+                                    rows={6}
+                                    className="resize-none max-h-[9rem] overflow-y-auto"
+                                />
                             </div>
                             <Button onClick={handleSubmit} className="w-full">Submit Request</Button>
                         </div>
@@ -251,12 +267,12 @@ export default function AdminLeaveView() {
                         <Card key={type} className="border border-border/50">
                             <CardContent className="p-4">
                                 <div className="flex items-center gap-2 mb-2">
-                                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${LEAVE_COLORS[type].bg} ${LEAVE_COLORS[type].icon}`}>
                                         {LEAVE_ICONS[type]}
                                     </div>
                                     <div>
-                                        <p className="text-xs text-muted-foreground">{LEAVE_LABELS[type]}</p>
-                                        <p className="text-lg font-bold">{b.used}</p>
+                                        <p className="text-xs font-medium text-black dark:text-white">{LEAVE_LABELS[type]}</p>
+                                        <p className={`text-lg font-bold ${LEAVE_COLORS[type].number}`}>{b.used}</p>
                                     </div>
                                 </div>
                                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
@@ -305,7 +321,7 @@ export default function AdminLeaveView() {
                                             <TableHead className="text-xs">Days</TableHead>
                                             <TableHead className="text-xs">Reason</TableHead>
                                             <TableHead className="text-xs">Status</TableHead>
-                                            <TableHead className="text-xs w-24">Actions</TableHead>
+                                            <TableHead className="text-xs w-24 text-center">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -347,65 +363,86 @@ export default function AdminLeaveView() {
 
                 <TabsContent value="policies" className="mt-4 space-y-4">
                     <p className="text-sm text-muted-foreground">PH-compliant leave policies with accrual, carry-forward, and balance management.</p>
-                    <div className="grid gap-4">
-                        {policies.map((policy) => (
-                            <Card key={policy.id} className="border border-border/50">
-                                <CardContent className="p-4">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <div className="flex items-center gap-2">
-                                            {LEAVE_ICONS[policy.leaveType as LeaveType] || <FileQuestion className="h-4 w-4" />}
-                                            <div>
-                                                <p className="font-medium text-sm">{policy.name}</p>
-                                                <p className="text-xs text-muted-foreground">{policy.leaveType}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {policies.map((policy) => {
+                            const colors = LEAVE_COLORS[policy.leaveType as LeaveType] ?? LEAVE_COLORS["OTHER"];
+                            const borderColor: Record<string, string> = {
+                                "text-emerald-600": "border-l-emerald-500",
+                                "text-blue-600":    "border-l-blue-500",
+                                "text-amber-600":   "border-l-amber-500",
+                                "text-violet-600":  "border-l-violet-500",
+                                "text-pink-600":    "border-l-pink-500",
+                                "text-sky-600":     "border-l-sky-500",
+                                "text-rose-600":    "border-l-rose-500",
+                            };
+                            const bl = borderColor[colors.icon] ?? "border-l-border";
+                            return (
+                                <Card key={policy.id} className={`border border-border/50 border-l-4 ${bl}`}>
+                                    <CardContent className="p-4">
+                                        {/* Header row: icon + name/type left, badge + actions right */}
+                                        <div className="flex items-start justify-between mb-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${colors.bg} ${colors.icon}`}>
+                                                    {LEAVE_ICONS[policy.leaveType as LeaveType] || <FileQuestion className="h-4 w-4" />}
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-sm leading-tight">{policy.name}</p>
+                                                    <p className="text-xs text-muted-foreground">{policy.leaveType}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                                <Badge variant="secondary" className="text-[10px] h-5">{policy.accrualFrequency}</Badge>
+                                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditPolicy(policy)} title="Edit policy">
+                                                    <Pencil className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => setPolDeleteId(policy.id)} title="Delete policy">
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <Badge variant="secondary" className="text-[10px]">{policy.accrualFrequency}</Badge>
-                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditPolicy(policy)} title="Edit policy">
-                                                <Pencil className="h-3.5 w-3.5" />
-                                            </Button>
-                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => setPolDeleteId(policy.id)} title="Delete policy">
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                            </Button>
+
+                                        {/* Divider */}
+                                        <div className="border-t border-border/40 mb-3" />
+
+                                        {/* Metrics row */}
+                                        <div className="grid grid-cols-5 gap-2 text-xs">
+                                            <div>
+                                                <p className="text-muted-foreground mb-1">Days/Year</p>
+                                                <p className="font-semibold">{policy.annualEntitlement}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-muted-foreground mb-1">Max Balance</p>
+                                                <p className="font-semibold">{policy.maxBalance}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-muted-foreground mb-1">Expiry</p>
+                                                <p className="font-semibold">{policy.expiryMonths > 0 ? `${policy.expiryMonths} months` : "—"}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-muted-foreground mb-1">Carry Forward</p>
+                                                <Badge variant="outline" className={`text-[10px] px-1.5 ${policy.carryForwardAllowed ? "bg-emerald-500/10 text-emerald-700 border-emerald-200" : "bg-red-500/10 text-red-700 border-red-200"}`}>
+                                                    {policy.carryForwardAllowed ? "Yes" : "No"}
+                                                </Badge>
+                                            </div>
+                                            <div>
+                                                <p className="text-muted-foreground mb-1">Negative Leave</p>
+                                                <Badge variant="outline" className={`text-[10px] px-1.5 ${policy.negativeLeaveAllowed ? "bg-amber-500/10 text-amber-700 border-amber-200" : "bg-slate-500/10 text-slate-600 border-slate-200"}`}>
+                                                    {policy.negativeLeaveAllowed ? "Allowed" : "No"}
+                                                </Badge>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                                        <div>
-                                            <p className="text-muted-foreground">Days/Year</p>
-                                            <p className="font-medium">{policy.annualEntitlement}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-muted-foreground">Max Balance</p>
-                                            <p className="font-medium">{policy.maxBalance}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-muted-foreground">Carry Forward</p>
-                                            <Badge variant="outline" className={`text-[10px] ${policy.carryForwardAllowed ? "bg-emerald-500/10 text-emerald-700" : "bg-red-500/10 text-red-700"}`}>
-                                                {policy.carryForwardAllowed ? "Yes" : "No"}
-                                            </Badge>
-                                        </div>
-                                        <div>
-                                            <p className="text-muted-foreground">Negative Leave</p>
-                                            <Badge variant="outline" className={`text-[10px] ${policy.negativeLeaveAllowed ? "bg-amber-500/10 text-amber-700" : "bg-slate-500/10 text-slate-700"}`}>
-                                                {policy.negativeLeaveAllowed ? "Allowed" : "No"}
-                                            </Badge>
-                                        </div>
+
+                                        {/* Optional tags row */}
                                         {policy.attachmentRequired && (
-                                            <div>
-                                                <p className="text-muted-foreground">Attachment</p>
-                                                <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700">Required</Badge>
+                                            <div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-border/30">
+                                                <span className="text-[10px] text-muted-foreground">Attachment</span>
+                                                <Badge variant="outline" className="text-[10px] px-1.5 bg-blue-500/10 text-blue-700 border-blue-200">Required</Badge>
                                             </div>
                                         )}
-                                        {policy.expiryMonths > 0 && (
-                                            <div>
-                                                <p className="text-muted-foreground">Expiry</p>
-                                                <p className="font-medium">{policy.expiryMonths} months</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
+                                    </CardContent>
+                                </Card>
+                            );
+                        })}
                     </div>
                 </TabsContent>
             </Tabs>

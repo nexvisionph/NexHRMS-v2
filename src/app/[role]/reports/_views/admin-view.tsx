@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Shield, Download } from "lucide-react";
+import { Shield, Download, Search, ChevronLeft, ChevronRight, XCircle, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { format, subMonths } from "date-fns";
 
@@ -47,6 +47,34 @@ export default function AdminReportsView() {
     }, [logs, getEmpName]);
 
     const [tab, setTab] = useState("payroll_register");
+
+    const PAGE_SIZES = [10, 20, 50];
+
+    // ─── Payroll Register: search + pagination ─────────────────
+    const [prSearch, setPrSearch] = useState("");
+    const [prPage, setPrPage] = useState(1);
+    const [prPageSize, setPrPageSize] = useState(10);
+
+    // ─── Absence: search + severity filter + pagination ────────
+    const [absSearch, setAbsSearch] = useState("");
+    const [absSeverity, setAbsSeverity] = useState("all");
+    const [absPage, setAbsPage] = useState(1);
+    const [absPageSize, setAbsPageSize] = useState(10);
+
+    // ─── Late: search + pagination ────────────────────────────
+    const [lateSearch, setLateSearch] = useState("");
+    const [latePage, setLatePage] = useState(1);
+    const [latePageSize, setLatePageSize] = useState(10);
+
+    // ─── 13th Month: search + pagination ─────────────────────
+    const [thSearch, setThSearch] = useState("");
+    const [thPage, setThPage] = useState(1);
+    const [thPageSize, setThPageSize] = useState(10);
+
+    // ─── Project Manpower: search + pagination ────────────────
+    const [manpowerSearch, setManpowerSearch] = useState("");
+    const [manpowerPage, setManpowerPage] = useState(1);
+    const [manpowerPageSize, setManpowerPageSize] = useState(10);
 
     // ─── Loan Balances Report ──────────────────────────────────
     const loanBalances = useMemo(() => {
@@ -90,14 +118,74 @@ export default function AdminReportsView() {
         });
     }, [projects, logs, manpowerDate]);
 
+    // ─── Filtered/paginated payroll register ──────────────────
+    const filteredPayrollRegister = useMemo(() => {
+        if (!prSearch.trim()) return payrollRegister;
+        const q = prSearch.toLowerCase();
+        return payrollRegister.filter((ps) => getEmpName(ps.employeeId).toLowerCase().includes(q));
+    }, [payrollRegister, prSearch, getEmpName]);
+
+    // ─── Filtered absence report ───────────────────────────────
+    const filteredAbsenceReport = useMemo(() => {
+        return absenceReport.filter((row) => {
+            const matchSearch = !absSearch || row.name.toLowerCase().includes(absSearch.toLowerCase());
+            const severity = row.count >= 5 ? "high" : row.count >= 3 ? "moderate" : "low";
+            const matchSeverity = absSeverity === "all" || severity === absSeverity;
+            return matchSearch && matchSeverity;
+        });
+    }, [absenceReport, absSearch, absSeverity]);
+
+    // ─── Filtered late report ─────────────────────────────────
+    const filteredLateReport = useMemo(() => {
+        if (!lateSearch.trim()) return lateReport;
+        const q = lateSearch.toLowerCase();
+        return lateReport.filter((row) => row.name.toLowerCase().includes(q));
+    }, [lateReport, lateSearch]);
+
+    // ─── Filtered 13th month data ─────────────────────────────
+    const filteredThirteenthMonthData = useMemo(() => {
+        if (!thSearch.trim()) return thirteenthMonthData;
+        const q = thSearch.toLowerCase();
+        return thirteenthMonthData.filter((r) => r.name.toLowerCase().includes(q) || (r.department || "").toLowerCase().includes(q));
+    }, [thirteenthMonthData, thSearch]);
+    const filteredTotalAccrued13th = useMemo(() => filteredThirteenthMonthData.reduce((s, r) => s + r.accrued, 0), [filteredThirteenthMonthData]);
+
+    // ─── Filtered manpower report ─────────────────────────────
+    const filteredManpowerReport = useMemo(() => {
+        if (!manpowerSearch.trim()) return manpowerReport;
+        const q = manpowerSearch.toLowerCase();
+        return manpowerReport.filter((p) => p.name.toLowerCase().includes(q));
+    }, [manpowerReport, manpowerSearch]);
+
+    // ─── Pagination derived values ────────────────────────────
+    const prTotalPages = Math.max(1, Math.ceil(filteredPayrollRegister.length / prPageSize));
+    const prSafePage = Math.min(prPage, prTotalPages);
+    const paginatedPayrollRegister = filteredPayrollRegister.slice((prSafePage - 1) * prPageSize, prSafePage * prPageSize);
+
+    const absTotalPages = Math.max(1, Math.ceil(filteredAbsenceReport.length / absPageSize));
+    const absSafePage = Math.min(absPage, absTotalPages);
+    const paginatedAbsenceReport = filteredAbsenceReport.slice((absSafePage - 1) * absPageSize, absSafePage * absPageSize);
+
+    const lateTotalPages = Math.max(1, Math.ceil(filteredLateReport.length / latePageSize));
+    const lateSafePage = Math.min(latePage, lateTotalPages);
+    const paginatedLateReport = filteredLateReport.slice((lateSafePage - 1) * latePageSize, lateSafePage * latePageSize);
+
+    const thTotalPages = Math.max(1, Math.ceil(filteredThirteenthMonthData.length / thPageSize));
+    const thSafePage = Math.min(thPage, thTotalPages);
+    const paginatedThirteenthMonthData = filteredThirteenthMonthData.slice((thSafePage - 1) * thPageSize, thSafePage * thPageSize);
+
+    const manpowerTotalPages = Math.max(1, Math.ceil(filteredManpowerReport.length / manpowerPageSize));
+    const manpowerSafePage = Math.min(manpowerPage, manpowerTotalPages);
+    const paginatedManpowerReport = filteredManpowerReport.slice((manpowerSafePage - 1) * manpowerPageSize, manpowerSafePage * manpowerPageSize);
+
     const last6Months = useMemo(() => Array.from({ length: 6 }, (_, i) => { const d = subMonths(new Date(), i); return format(d, "yyyy-MM"); }), []);
     const [selectedMonth, setSelectedMonth] = useState(format(new Date(), "yyyy-MM"));
     const monthPayslips = useMemo(() => payslips.filter((p) => p.issuedAt.startsWith(selectedMonth)), [payslips, selectedMonth]);
 
-    const sssReport = useMemo(() => monthPayslips.map((p) => { const empShare = p.sssDeduction || 0; const erShare = Math.round(empShare * (9.5 / 4.5)); return { employeeId: p.employeeId, name: getEmpName(p.employeeId), grossPay: p.grossPay || 0, empShare, erShare, total: empShare + erShare }; }), [monthPayslips, getEmpName]);
-    const philhealthReport = useMemo(() => monthPayslips.map((p) => { const empShare = p.philhealthDeduction || 0; return { employeeId: p.employeeId, name: getEmpName(p.employeeId), grossPay: p.grossPay || 0, empShare, erShare: empShare, total: empShare * 2 }; }), [monthPayslips, getEmpName]);
-    const pagibigReport = useMemo(() => monthPayslips.map((p) => { const empShare = p.pagibigDeduction || 0; return { employeeId: p.employeeId, name: getEmpName(p.employeeId), grossPay: p.grossPay || 0, empShare, erShare: empShare, total: empShare * 2 }; }), [monthPayslips, getEmpName]);
-    const taxReport = useMemo(() => monthPayslips.map((p) => ({ employeeId: p.employeeId, name: getEmpName(p.employeeId), grossIncome: p.grossPay || 0, withholdingTax: p.taxDeduction || 0 })), [monthPayslips, getEmpName]);
+    const sssReport = useMemo(() => monthPayslips.map((p) => { const empShare = p.sssDeduction || 0; const erShare = Math.round(empShare * (9.5 / 4.5)); return { payslipId: p.id, employeeId: p.employeeId, name: getEmpName(p.employeeId), grossPay: p.grossPay || 0, empShare, erShare, total: empShare + erShare }; }), [monthPayslips, getEmpName]);
+    const philhealthReport = useMemo(() => monthPayslips.map((p) => { const empShare = p.philhealthDeduction || 0; return { payslipId: p.id, employeeId: p.employeeId, name: getEmpName(p.employeeId), grossPay: p.grossPay || 0, empShare, erShare: empShare, total: empShare * 2 }; }), [monthPayslips, getEmpName]);
+    const pagibigReport = useMemo(() => monthPayslips.map((p) => { const empShare = p.pagibigDeduction || 0; return { payslipId: p.id, employeeId: p.employeeId, name: getEmpName(p.employeeId), grossPay: p.grossPay || 0, empShare, erShare: empShare, total: empShare * 2 }; }), [monthPayslips, getEmpName]);
+    const taxReport = useMemo(() => monthPayslips.map((p) => ({ payslipId: p.id, employeeId: p.employeeId, name: getEmpName(p.employeeId), grossIncome: p.grossPay || 0, withholdingTax: p.taxDeduction || 0 })), [monthPayslips, getEmpName]);
 
     const govTotals = useMemo(() => ({ sss: sssReport.reduce((s, r) => s + r.total, 0), philhealth: philhealthReport.reduce((s, r) => s + r.total, 0), pagibig: pagibigReport.reduce((s, r) => s + r.total, 0), tax: taxReport.reduce((s, r) => s + r.withholdingTax, 0) }), [sssReport, philhealthReport, pagibigReport, taxReport]);
 
@@ -131,14 +219,37 @@ export default function AdminReportsView() {
                     <TabsTrigger value="manpower" className="text-xs">Manpower</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="payroll_register" className="mt-4">
+                <TabsContent value="payroll_register" className="mt-4 space-y-3">
+                    {/* Search + Page size controls */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="relative flex-1 min-w-[200px]">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input placeholder="Search employee..." className="pl-9" value={prSearch} onChange={(e) => { setPrSearch(e.target.value); setPrPage(1); }} />
+                        </div>
+
+                    </div>
                     <Card className="border border-border/50"><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow>
                         <TableHead className="text-xs">Employee</TableHead><TableHead className="text-xs">Period</TableHead><TableHead className="text-xs">Gross</TableHead><TableHead className="text-xs">SSS</TableHead><TableHead className="text-xs">PH</TableHead><TableHead className="text-xs">PI</TableHead><TableHead className="text-xs">Tax</TableHead><TableHead className="text-xs">Net</TableHead>
                     </TableRow></TableHeader><TableBody>
-                        {payrollRegister.length === 0 ? <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">No payroll data</TableCell></TableRow> : payrollRegister.map((ps) => (
+                        {paginatedPayrollRegister.length === 0 ? <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">{prSearch ? "No matching payroll records" : "No payroll data"}</TableCell></TableRow> : paginatedPayrollRegister.map((ps) => (
                             <TableRow key={ps.id}><TableCell className="text-sm">{getEmpName(ps.employeeId)}</TableCell><TableCell className="text-xs text-muted-foreground">{ps.periodStart} – {ps.periodEnd}</TableCell><TableCell className="text-xs">₱{(ps.grossPay || 0).toLocaleString()}</TableCell><TableCell className="text-xs text-red-500">₱{(ps.sssDeduction || 0).toLocaleString()}</TableCell><TableCell className="text-xs text-red-500">₱{(ps.philhealthDeduction || 0).toLocaleString()}</TableCell><TableCell className="text-xs text-red-500">₱{(ps.pagibigDeduction || 0).toLocaleString()}</TableCell><TableCell className="text-xs text-red-500">₱{(ps.taxDeduction || 0).toLocaleString()}</TableCell><TableCell className="text-sm font-medium">₱{ps.netPay.toLocaleString()}</TableCell></TableRow>
                         ))}
                     </TableBody></Table></div></CardContent></Card>
+                    {/* Pagination */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select value={String(prPageSize)} onValueChange={(v) => { setPrPageSize(Number(v)); setPrPage(1); }}>
+                                <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Page {prSafePage} of {prTotalPages}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={prSafePage <= 1} onClick={() => setPrPage(prSafePage - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={prSafePage >= prTotalPages} onClick={() => setPrPage(prSafePage + 1)}><ChevronRight className="h-4 w-4" /></Button>
+                        </div>
+                    </div>
                 </TabsContent>
 
                 <TabsContent value="govt" className="mt-4">
@@ -151,22 +262,73 @@ export default function AdminReportsView() {
                     <Card className="border border-border/50 mt-4"><CardContent className="p-4 text-center"><p className="text-xs text-muted-foreground">Grand Total Deductions</p><p className="text-3xl font-bold text-red-500 mt-1">₱{(govtSummary.sss + govtSummary.philhealth + govtSummary.pagibig + govtSummary.tax).toLocaleString()}</p></CardContent></Card>
                 </TabsContent>
 
-                <TabsContent value="absence" className="mt-4">
+                <TabsContent value="absence" className="mt-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="relative flex-1 min-w-[200px]">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input placeholder="Search employee..." className="pl-9" value={absSearch} onChange={(e) => { setAbsSearch(e.target.value); setAbsPage(1); }} />
+                        </div>
+                        <Select value={absSeverity} onValueChange={(v) => { setAbsSeverity(v); setAbsPage(1); }}>
+                            <SelectTrigger className="w-full sm:w-[150px]"><SelectValue placeholder="All Severity" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Severity</SelectItem>
+                                <SelectItem value="high">High (5+)</SelectItem>
+                                <SelectItem value="moderate">Moderate (3–4)</SelectItem>
+                                <SelectItem value="low">Low (1–2)</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <Card className="border border-border/50"><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead className="text-xs">#</TableHead><TableHead className="text-xs">Employee</TableHead><TableHead className="text-xs">Absent Days</TableHead><TableHead className="text-xs">Severity</TableHead></TableRow></TableHeader><TableBody>
-                        {absenceReport.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-8">No absence data</TableCell></TableRow> : absenceReport.map((row, i) => (
-                            <TableRow key={row.empId}><TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell><TableCell className="text-sm font-medium">{row.name}</TableCell><TableCell className="text-sm">{row.count}</TableCell>
+                        {paginatedAbsenceReport.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-8">{absSearch || absSeverity !== "all" ? "No matching records" : "No absence data"}</TableCell></TableRow> : paginatedAbsenceReport.map((row, i) => (
+                            <TableRow key={row.empId}><TableCell className="text-xs text-muted-foreground">{(absSafePage - 1) * absPageSize + i + 1}</TableCell><TableCell className="text-sm font-medium">{row.name}</TableCell><TableCell className="text-sm">{row.count}</TableCell>
                                 <TableCell><Badge variant="secondary" className={`text-[10px] ${row.count >= 5 ? "bg-red-500/15 text-red-700 dark:text-red-400" : row.count >= 3 ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"}`}>{row.count >= 5 ? "High" : row.count >= 3 ? "Moderate" : "Low"}</Badge></TableCell>
                             </TableRow>
                         ))}
                     </TableBody></Table></div></CardContent></Card>
+                    {/* Pagination */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select value={String(absPageSize)} onValueChange={(v) => { setAbsPageSize(Number(v)); setAbsPage(1); }}>
+                                <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Page {absSafePage} of {absTotalPages}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={absSafePage <= 1} onClick={() => setAbsPage(absSafePage - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={absSafePage >= absTotalPages} onClick={() => setAbsPage(absSafePage + 1)}><ChevronRight className="h-4 w-4" /></Button>
+                        </div>
+                    </div>
                 </TabsContent>
 
-                <TabsContent value="late" className="mt-4">
+                <TabsContent value="late" className="mt-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="relative flex-1 min-w-[200px]">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input placeholder="Search employee..." className="pl-9" value={lateSearch} onChange={(e) => { setLateSearch(e.target.value); setLatePage(1); }} />
+                        </div>
+                    </div>
                     <Card className="border border-border/50"><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead className="text-xs">#</TableHead><TableHead className="text-xs">Employee</TableHead><TableHead className="text-xs">Late Count</TableHead><TableHead className="text-xs">Total Late (min)</TableHead></TableRow></TableHeader><TableBody>
-                        {lateReport.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-8">No late data recorded</TableCell></TableRow> : lateReport.map((row, i) => (
-                            <TableRow key={row.empId}><TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell><TableCell className="text-sm font-medium">{row.name}</TableCell><TableCell className="text-sm">{row.count}</TableCell><TableCell className="text-sm font-medium">{row.totalMinutes} min</TableCell></TableRow>
+                        {paginatedLateReport.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-8">{lateSearch ? "No matching records" : "No late data recorded"}</TableCell></TableRow> : paginatedLateReport.map((row, i) => (
+                            <TableRow key={row.empId}><TableCell className="text-xs text-muted-foreground">{(lateSafePage - 1) * latePageSize + i + 1}</TableCell><TableCell className="text-sm font-medium">{row.name}</TableCell><TableCell className="text-sm">{row.count}</TableCell><TableCell className="text-sm font-medium">{row.totalMinutes} min</TableCell></TableRow>
                         ))}
                     </TableBody></Table></div></CardContent></Card>
+                    {/* Pagination */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select value={String(latePageSize)} onValueChange={(v) => { setLatePageSize(Number(v)); setLatePage(1); }}>
+                                <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Page {lateSafePage} of {lateTotalPages}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={lateSafePage <= 1} onClick={() => setLatePage(lateSafePage - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={lateSafePage >= lateTotalPages} onClick={() => setLatePage(lateSafePage + 1)}><ChevronRight className="h-4 w-4" /></Button>
+                        </div>
+                    </div>
                 </TabsContent>
 
                 <TabsContent value="gov_compliance" className="mt-4">
@@ -190,28 +352,28 @@ export default function AdminReportsView() {
 
                             <TabsContent value="sss" className="mt-3">
                                 <Card className="border border-border/50"><div className="flex items-center justify-between px-4 pt-3 pb-2"><p className="text-sm font-semibold">SSS Contributions · {sssReport.length} employees</p><Button size="sm" variant="outline" className="gap-1.5 h-7" onClick={() => handleExport("SSS")}><Download className="h-3 w-3" /> CSV</Button></div><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead className="text-xs">Employee</TableHead><TableHead className="text-xs">Gross Pay</TableHead><TableHead className="text-xs">Emp. Share</TableHead><TableHead className="text-xs">Er. Share</TableHead><TableHead className="text-xs font-semibold">Total</TableHead></TableRow></TableHeader><TableBody>
-                                    {sssReport.map((r) => <TableRow key={r.employeeId}><TableCell className="text-sm font-medium">{r.name}</TableCell><TableCell className="text-sm">₱{r.grossPay.toLocaleString()}</TableCell><TableCell className="text-sm">₱{r.empShare.toLocaleString()}</TableCell><TableCell className="text-sm">₱{r.erShare.toLocaleString()}</TableCell><TableCell className="text-sm font-semibold">₱{r.total.toLocaleString()}</TableCell></TableRow>)}
+                                    {sssReport.map((r) => <TableRow key={r.payslipId}><TableCell className="text-sm font-medium">{r.name}</TableCell><TableCell className="text-sm">₱{r.grossPay.toLocaleString()}</TableCell><TableCell className="text-sm">₱{r.empShare.toLocaleString()}</TableCell><TableCell className="text-sm">₱{r.erShare.toLocaleString()}</TableCell><TableCell className="text-sm font-semibold">₱{r.total.toLocaleString()}</TableCell></TableRow>)}
                                     <TableRow className="bg-muted/30 font-semibold"><TableCell>TOTAL</TableCell><TableCell>₱{sssReport.reduce((s,r)=>s+r.grossPay,0).toLocaleString()}</TableCell><TableCell>₱{sssReport.reduce((s,r)=>s+r.empShare,0).toLocaleString()}</TableCell><TableCell>₱{sssReport.reduce((s,r)=>s+r.erShare,0).toLocaleString()}</TableCell><TableCell className="text-blue-600 dark:text-blue-400">₱{govTotals.sss.toLocaleString()}</TableCell></TableRow>
                                 </TableBody></Table></div></CardContent></Card>
                             </TabsContent>
 
                             <TabsContent value="philhealth" className="mt-3">
                                 <Card className="border border-border/50"><div className="flex items-center justify-between px-4 pt-3 pb-2"><p className="text-sm font-semibold">PhilHealth Contributions · {philhealthReport.length} employees</p><Button size="sm" variant="outline" className="gap-1.5 h-7" onClick={() => handleExport("PhilHealth")}><Download className="h-3 w-3" /> CSV</Button></div><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead className="text-xs">Employee</TableHead><TableHead className="text-xs">Gross Pay</TableHead><TableHead className="text-xs">Emp. Share</TableHead><TableHead className="text-xs">Er. Share</TableHead><TableHead className="text-xs font-semibold">Total</TableHead></TableRow></TableHeader><TableBody>
-                                    {philhealthReport.map((r) => <TableRow key={r.employeeId}><TableCell className="text-sm font-medium">{r.name}</TableCell><TableCell className="text-sm">₱{r.grossPay.toLocaleString()}</TableCell><TableCell className="text-sm">₱{r.empShare.toLocaleString()}</TableCell><TableCell className="text-sm">₱{r.erShare.toLocaleString()}</TableCell><TableCell className="text-sm font-semibold">₱{r.total.toLocaleString()}</TableCell></TableRow>)}
+                                    {philhealthReport.map((r) => <TableRow key={r.payslipId}><TableCell className="text-sm font-medium">{r.name}</TableCell><TableCell className="text-sm">₱{r.grossPay.toLocaleString()}</TableCell><TableCell className="text-sm">₱{r.empShare.toLocaleString()}</TableCell><TableCell className="text-sm">₱{r.erShare.toLocaleString()}</TableCell><TableCell className="text-sm font-semibold">₱{r.total.toLocaleString()}</TableCell></TableRow>)}
                                     <TableRow className="bg-muted/30 font-semibold"><TableCell>TOTAL</TableCell><TableCell>₱{philhealthReport.reduce((s,r)=>s+r.grossPay,0).toLocaleString()}</TableCell><TableCell>₱{philhealthReport.reduce((s,r)=>s+r.empShare,0).toLocaleString()}</TableCell><TableCell>₱{philhealthReport.reduce((s,r)=>s+r.erShare,0).toLocaleString()}</TableCell><TableCell className="text-emerald-600 dark:text-emerald-400">₱{govTotals.philhealth.toLocaleString()}</TableCell></TableRow>
                                 </TableBody></Table></div></CardContent></Card>
                             </TabsContent>
 
                             <TabsContent value="pagibig" className="mt-3">
                                 <Card className="border border-border/50"><div className="flex items-center justify-between px-4 pt-3 pb-2"><p className="text-sm font-semibold">Pag-IBIG Contributions · {pagibigReport.length} employees</p><Button size="sm" variant="outline" className="gap-1.5 h-7" onClick={() => handleExport("Pag-IBIG")}><Download className="h-3 w-3" /> CSV</Button></div><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead className="text-xs">Employee</TableHead><TableHead className="text-xs">Gross Pay</TableHead><TableHead className="text-xs">Emp. Share</TableHead><TableHead className="text-xs">Er. Share</TableHead><TableHead className="text-xs font-semibold">Total</TableHead></TableRow></TableHeader><TableBody>
-                                    {pagibigReport.map((r) => <TableRow key={r.employeeId}><TableCell className="text-sm font-medium">{r.name}</TableCell><TableCell className="text-sm">₱{r.grossPay.toLocaleString()}</TableCell><TableCell className="text-sm">₱{r.empShare.toLocaleString()}</TableCell><TableCell className="text-sm">₱{r.erShare.toLocaleString()}</TableCell><TableCell className="text-sm font-semibold">₱{r.total.toLocaleString()}</TableCell></TableRow>)}
+                                    {pagibigReport.map((r) => <TableRow key={r.payslipId}><TableCell className="text-sm font-medium">{r.name}</TableCell><TableCell className="text-sm">₱{r.grossPay.toLocaleString()}</TableCell><TableCell className="text-sm">₱{r.empShare.toLocaleString()}</TableCell><TableCell className="text-sm">₱{r.erShare.toLocaleString()}</TableCell><TableCell className="text-sm font-semibold">₱{r.total.toLocaleString()}</TableCell></TableRow>)}
                                     <TableRow className="bg-muted/30 font-semibold"><TableCell>TOTAL</TableCell><TableCell>₱{pagibigReport.reduce((s,r)=>s+r.grossPay,0).toLocaleString()}</TableCell><TableCell>₱{pagibigReport.reduce((s,r)=>s+r.empShare,0).toLocaleString()}</TableCell><TableCell>₱{pagibigReport.reduce((s,r)=>s+r.erShare,0).toLocaleString()}</TableCell><TableCell className="text-amber-600 dark:text-amber-400">₱{govTotals.pagibig.toLocaleString()}</TableCell></TableRow>
                                 </TableBody></Table></div></CardContent></Card>
                             </TabsContent>
 
                             <TabsContent value="tax" className="mt-3">
                                 <Card className="border border-border/50"><div className="flex items-center justify-between px-4 pt-3 pb-2"><p className="text-sm font-semibold">BIR Withholding Tax · {taxReport.length} employees</p><Button size="sm" variant="outline" className="gap-1.5 h-7" onClick={() => handleExport("BIR Tax")}><Download className="h-3 w-3" /> CSV</Button></div><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead className="text-xs">Employee</TableHead><TableHead className="text-xs">Gross Income</TableHead><TableHead className="text-xs font-semibold">Withholding Tax</TableHead><TableHead className="text-xs">Rate</TableHead></TableRow></TableHeader><TableBody>
-                                    {taxReport.map((r) => <TableRow key={r.employeeId}><TableCell className="text-sm font-medium">{r.name}</TableCell><TableCell className="text-sm">₱{r.grossIncome.toLocaleString()}</TableCell><TableCell className="text-sm font-semibold text-red-600 dark:text-red-400">₱{r.withholdingTax.toLocaleString()}</TableCell><TableCell>{r.grossIncome > 0 ? <Badge variant="secondary" className="text-[10px]">{((r.withholdingTax/r.grossIncome)*100).toFixed(1)}%</Badge> : "—"}</TableCell></TableRow>)}
+                                    {taxReport.map((r) => <TableRow key={r.payslipId}><TableCell className="text-sm font-medium">{r.name}</TableCell><TableCell className="text-sm">₱{r.grossIncome.toLocaleString()}</TableCell><TableCell className="text-sm font-semibold text-red-600 dark:text-red-400">₱{r.withholdingTax.toLocaleString()}</TableCell><TableCell>{r.grossIncome > 0 ? <Badge variant="secondary" className="text-[10px]">{((r.withholdingTax/r.grossIncome)*100).toFixed(1)}%</Badge> : "—"}</TableCell></TableRow>)}
                                     <TableRow className="bg-muted/30 font-semibold"><TableCell>TOTAL</TableCell><TableCell>₱{taxReport.reduce((s,r)=>s+r.grossIncome,0).toLocaleString()}</TableCell><TableCell className="text-red-600 dark:text-red-400">₱{govTotals.tax.toLocaleString()}</TableCell><TableCell></TableCell></TableRow>
                                 </TableBody></Table></div></CardContent></Card>
                             </TabsContent>
@@ -252,17 +414,39 @@ export default function AdminReportsView() {
                 </TabsContent>
 
                 {/* 13th Month Accrual Tab */}
-                <TabsContent value="thirteenth_month" className="mt-4">
-                    <div className="flex items-center justify-between mb-4">
+                <TabsContent value="thirteenth_month" className="mt-4 space-y-4">
+                    {/* KPI Card — Total Accrued */}
+                    <Card className="border border-emerald-500/30 bg-emerald-500/5">
+                        <CardContent className="p-4 flex items-center gap-4">
+                            <div className="rounded-full bg-emerald-500/15 p-3 shrink-0">
+                                <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs text-black-600 dark:text-black-400 font-medium">Total Accrued 13th Month Pay</p>
+                                <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                    ₱{(thSearch ? filteredTotalAccrued13th : totalAccrued13th).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground mt-0.5">{filteredThirteenthMonthData.length} active employee{filteredThirteenthMonthData.length !== 1 ? "s" : ""} · Current year accrual (RA 6686)</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div><p className="text-sm font-semibold">13th Month Pay Accrual</p><p className="text-xs text-muted-foreground">Based on current year months worked (RA 6686)</p></div>
-                        <Button size="sm" variant="outline" className="gap-1.5 h-7" onClick={() => { exportCSV([["Employee", "Department", "Monthly Basic", "Months Worked", "Accrued 13th Month"], ...thirteenthMonthData.map((r) => [r.name, r.department, r.monthlyBasic, r.monthsWorked, r.accrued.toFixed(2)].map(String)), ["TOTAL", "", "", "", totalAccrued13th.toFixed(2)]], "thirteenth-month.csv"); toast.success("13th Month report downloaded"); }}><Download className="h-3 w-3" /> CSV</Button>
+                        <div className="flex items-center gap-2">
+                            <div className="relative w-[200px]">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <Input placeholder="Search employee..." className="pl-9" value={thSearch} onChange={(e) => { setThSearch(e.target.value); setThPage(1); }} />
+                            </div>
+                            <Button size="sm" variant="outline" className="gap-1.5 h-7 shrink-0" onClick={() => { exportCSV([["Employee", "Department", "Monthly Basic", "Months Worked", "Accrued 13th Month"], ...thirteenthMonthData.map((r) => [r.name, r.department, r.monthlyBasic, r.monthsWorked, r.accrued.toFixed(2)].map(String)), ["TOTAL", "", "", "", totalAccrued13th.toFixed(2)]], "thirteenth-month.csv"); toast.success("13th Month report downloaded"); }}><Download className="h-3 w-3" /> CSV</Button>
+                        </div>
                     </div>
                     <Card className="border border-border/50"><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow>
                         <TableHead className="text-xs">Employee</TableHead><TableHead className="text-xs">Department</TableHead><TableHead className="text-xs">Monthly Basic</TableHead><TableHead className="text-xs">Months Worked</TableHead><TableHead className="text-xs font-semibold">Accrued 13th Month</TableHead>
                     </TableRow></TableHeader><TableBody>
-                        {thirteenthMonthData.length === 0 ? (
-                            <TableRow><TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">No active employees</TableCell></TableRow>
-                        ) : thirteenthMonthData.map((r) => (
+                        {paginatedThirteenthMonthData.length === 0 ? (
+                            <TableRow><TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">{thSearch ? "No matching employees" : "No active employees"}</TableCell></TableRow>
+                        ) : paginatedThirteenthMonthData.map((r) => (
                             <TableRow key={r.id}>
                                 <TableCell className="text-sm font-medium">{r.name}</TableCell>
                                 <TableCell className="text-xs text-muted-foreground">{r.department}</TableCell>
@@ -271,20 +455,33 @@ export default function AdminReportsView() {
                                 <TableCell className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">₱{r.accrued.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
                             </TableRow>
                         ))}
-                        {thirteenthMonthData.length > 0 && (
-                            <TableRow className="bg-muted/30 font-semibold">
-                                <TableCell colSpan={4}>TOTAL ACCRUED</TableCell>
-                                <TableCell className="text-emerald-600 dark:text-emerald-400">₱{totalAccrued13th.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
-                            </TableRow>
-                        )}
                     </TableBody></Table></div></CardContent></Card>
+                    {/* Pagination */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select value={String(thPageSize)} onValueChange={(v) => { setThPageSize(Number(v)); setThPage(1); }}>
+                                <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Page {thSafePage} of {thTotalPages}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={thSafePage <= 1} onClick={() => setThPage(thSafePage - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={thSafePage >= thTotalPages} onClick={() => setThPage(thSafePage + 1)}><ChevronRight className="h-4 w-4" /></Button>
+                        </div>
+                    </div>
                 </TabsContent>
 
                 {/* Manpower Tab */}
-                <TabsContent value="manpower" className="mt-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <TabsContent value="manpower" className="mt-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div><p className="text-sm font-semibold">Project Manpower</p><p className="text-xs text-muted-foreground">Attendance per project for selected date</p></div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="relative min-w-[180px]">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <Input placeholder="Search project..." className="pl-9" value={manpowerSearch} onChange={(e) => { setManpowerSearch(e.target.value); setManpowerPage(1); }} />
+                            </div>
                             <Input type="date" value={manpowerDate} onChange={(e) => setManpowerDate(e.target.value)} className="w-[180px]" />
                             {manpowerReport.length > 0 && <Button size="sm" variant="outline" className="gap-1.5 h-7" onClick={() => { exportCSV([["Project", "Assigned", "Present", "On Leave", "Absent", "Coverage %"], ...manpowerReport.map((p) => [p.name, p.assigned, p.present, p.onLeave, p.absent, p.assigned > 0 ? Math.round((p.present / p.assigned) * 100) : 0].map(String))], `manpower-${manpowerDate}.csv`); toast.success("Manpower report downloaded"); }}><Download className="h-3 w-3" /> CSV</Button>}
                         </div>
@@ -292,9 +489,9 @@ export default function AdminReportsView() {
                     <Card className="border border-border/50"><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow>
                         <TableHead className="text-xs">Project</TableHead><TableHead className="text-xs">Assigned</TableHead><TableHead className="text-xs">Present</TableHead><TableHead className="text-xs">On Leave</TableHead><TableHead className="text-xs">Absent</TableHead><TableHead className="text-xs">Coverage</TableHead>
                     </TableRow></TableHeader><TableBody>
-                        {manpowerReport.length === 0 ? (
-                            <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">No projects found</TableCell></TableRow>
-                        ) : manpowerReport.map((p) => (
+                        {paginatedManpowerReport.length === 0 ? (
+                            <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">{manpowerSearch ? "No matching projects" : "No projects found"}</TableCell></TableRow>
+                        ) : paginatedManpowerReport.map((p) => (
                             <TableRow key={p.id}>
                                 <TableCell className="text-sm font-medium">{p.name}</TableCell>
                                 <TableCell className="text-sm">{p.assigned}</TableCell>
@@ -305,6 +502,21 @@ export default function AdminReportsView() {
                             </TableRow>
                         ))}
                     </TableBody></Table></div></CardContent></Card>
+                    {/* Pagination */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select value={String(manpowerPageSize)} onValueChange={(v) => { setManpowerPageSize(Number(v)); setManpowerPage(1); }}>
+                                <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Page {manpowerSafePage} of {manpowerTotalPages}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={manpowerSafePage <= 1} onClick={() => setManpowerPage(manpowerSafePage - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={manpowerSafePage >= manpowerTotalPages} onClick={() => setManpowerPage(manpowerSafePage + 1)}><ChevronRight className="h-4 w-4" /></Button>
+                        </div>
+                    </div>
                 </TabsContent>
             </Tabs>
         </div>

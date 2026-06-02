@@ -184,6 +184,8 @@ export default function AdminEmployeesView() {
     const [jtAddOpen, setJtAddOpen] = useState(false);
     const [jtEditOpen, setJtEditOpen] = useState(false);
     const [editingJt, setEditingJt] = useState<JobTitle | null>(null);
+    const [jtPage, setJtPage] = useState(1);
+    const [jtPageSize, setJtPageSize] = useState(10);
     // Add form
     const [jtNewName, setJtNewName] = useState("");
     const [jtNewDesc, setJtNewDesc] = useState("");
@@ -206,6 +208,11 @@ export default function AdminEmployeesView() {
         return matchSearch && matchDept && matchStatus && matchType;
     });
 }, [jobTitles, jtSearch, jtDeptFilter, jtStatusFilter, jtTypeFilter]);
+
+    const jtTotalPages = Math.max(1, Math.ceil(filteredJobTitles.length / jtPageSize));
+    const jtSafePage = Math.min(jtPage, jtTotalPages);
+    const paginatedJobTitles = filteredJobTitles.slice((jtSafePage - 1) * jtPageSize, jtSafePage * jtPageSize);
+    useEffect(() => { setJtPage(1); }, [jtSearch, jtDeptFilter, jtStatusFilter, jtTypeFilter, jtPageSize]);
 
     const handleAddJobTitle = () => {
         if (!jtNewName.trim()) { toast.error("Job title name is required."); return; }
@@ -275,6 +282,8 @@ export default function AdminEmployeesView() {
     const [deptAddOpen, setDeptAddOpen] = useState(false);
     const [deptEditOpen, setDeptEditOpen] = useState(false);
     const [editingDept, setEditingDept] = useState<Department | null>(null);
+    const [deptPage, setDeptPage] = useState(1);
+    const [deptPageSize, setDeptPageSize] = useState(10);
     // Add form
     const [deptNewName, setDeptNewName] = useState("");
     const [deptNewDesc, setDeptNewDesc] = useState("");
@@ -293,6 +302,11 @@ export default function AdminEmployeesView() {
             return matchSearch && matchStatus;
         });
     }, [departments, deptSearch, deptStatusFilter]);
+
+    const deptTotalPages = Math.max(1, Math.ceil(filteredDepartments.length / deptPageSize));
+    const deptSafePage = Math.min(deptPage, deptTotalPages);
+    const paginatedDepartments = filteredDepartments.slice((deptSafePage - 1) * deptPageSize, deptSafePage * deptPageSize);
+    useEffect(() => { setDeptPage(1); }, [deptSearch, deptStatusFilter, deptPageSize]);
 
     const handleAddDepartment = () => {
         if (!deptNewName.trim()) { toast.error("Department name is required."); return; }
@@ -1464,23 +1478,6 @@ const filteredAccounts = useMemo(() => {
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                {(searchQuery || statusFilter !== "all" || workTypeFilter !== "all" || departmentFilter !== "all") && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => {
-                                            setSearchQuery("");
-                                            setStatusFilter("all");
-                                            setWorkTypeFilter("all");
-                                            setRoleFilter("all");
-                                            setDepartmentFilter("all");
-                                            setPage(1);
-                                        }}
-                                        className="h-9 text-xs gap-1"
-                                    >
-                                        <XCircle className="h-3 w-3" /> Clear
-                                    </Button>
-                                )}
                                 <Sheet>
                                     <SheetTrigger asChild>
                                         <Button variant="outline" size="sm" className="gap-1.5 relative">
@@ -1533,15 +1530,6 @@ const filteredAccounts = useMemo(() => {
                                             <div>
                                                 <div className="flex items-center justify-between mb-3">
                                                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Monthly Salary</p>
-                                                    {(salaryRange[0] > 0 || salaryRange[1] < 200000) && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setSalaryRange([0, 200000])}
-                                                            className="text-[10px] text-primary hover:underline"
-                                                        >
-                                                            Clear
-                                                        </button>
-                                                    )}
                                                 </div>
                                                 <Slider
                                                     min={0} max={200000} step={5000}
@@ -1706,7 +1694,7 @@ const filteredAccounts = useMemo(() => {
                                                     {visibleCols.workType && <TableCell><Badge variant="outline" className="text-[10px]">{emp.workType}</Badge></TableCell>}
                                                     {visibleCols.status && <TableCell><Badge variant="secondary" className={emp.status === "active" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : emp.status === "resigned" ? "bg-orange-500/15 text-orange-700 dark:text-orange-400" : "bg-red-500/15 text-red-700 dark:text-red-400"}>{emp.status}</Badge></TableCell>}
                                                     <TableCell>
-                                                         <div className="flex items-center justify-end gap-1">
+                                                         <div className="flex items-center justify-center gap-1">
                                                              <Link href={rh(`/employees/${emp.id}`)}><Button variant="ghost" size="icon" className="h-7 w-7"><Eye className="h-3.5 w-3.5" /></Button></Link>
                                                             <Button variant="ghost" size="icon" className="h-7 w-7" disabled={!canManage} onClick={() => handleOpenEdit(emp)} title="Edit"><Pencil className="h-3.5 w-3.5" /></Button>
                                                             {canManage && emp.profileId && (
@@ -1914,16 +1902,6 @@ const filteredAccounts = useMemo(() => {
                                     <SelectItem value="inactive">Inactive</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                {(acctSearch || acctRoleFilter !== "all" || acctStatusFilter !== "all") && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => { setAcctSearch(""); setAcctRoleFilter("all"); setAcctStatusFilter("all"); setAcctPage(1); }}
-                                        className="h-9 text-xs gap-1"
-                                    >
-                                        <XCircle className="h-3 w-3" /> Clear
-                                    </Button>
-                                )}
                                 {!USE_DEMO_MODE && (
                                     <Button variant="outline" size="sm" className="gap-1.5 group" onClick={refreshAccounts} disabled={accountsLoading}>
                                         <RefreshCw className={`h-3.5 w-3.5 transition-transform duration-500 ${accountsLoading ? "animate-spin" : "group-hover:rotate-180"}`} /> Refresh
@@ -2176,16 +2154,6 @@ const filteredAccounts = useMemo(() => {
                                     <SelectItem value="individual">Individual</SelectItem>
                                 </SelectContent>
                             </Select>
-                               {(jtSearch || jtDeptFilter !== "all" || jtStatusFilter !== "all" || jtTypeFilter !== "all") && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => { setJtSearch(""); setJtDeptFilter("all"); setJtStatusFilter("all"); setJtTypeFilter("all"); }}
-                                        className="h-9 text-xs gap-1"
-                                    >
-                                        <XCircle className="h-3 w-3" /> Clear
-                                    </Button>
-                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -2209,11 +2177,11 @@ const filteredAccounts = useMemo(() => {
                                                 <TableHead className="text-xs">Department</TableHead>
                                                 <TableHead className="text-xs">Type</TableHead>
                                                 <TableHead className="text-xs">Status</TableHead>
-                                                <TableHead className="text-xs w-32 text-right">Actions</TableHead>
+                                                <TableHead className="text-xs w-32 text-center">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {filteredJobTitles.map((jt) => (
+                                            {paginatedJobTitles.map((jt) => (
                                                 <TableRow key={jt.id} className="group">
                                                     <TableCell>
                                                         <div className="w-4 h-4 rounded" style={{ backgroundColor: jt.color }} />
@@ -2245,7 +2213,7 @@ const filteredAccounts = useMemo(() => {
                                                         </Badge>
                                                     </TableCell>
                                                     <TableCell>
-                                                        <div className="flex items-center justify-end gap-1">
+                                                        <div className="flex items-center justify-center gap-1">
                                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Edit" onClick={() => openEditJt(jt)}>
                                                                 <Pencil className="h-3.5 w-3.5" />
                                                             </Button>
@@ -2284,6 +2252,26 @@ const filteredAccounts = useMemo(() => {
                             )}
                         </CardContent>
                     </Card>
+
+                    {/* Pagination */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select value={String(jtPageSize)} onValueChange={(v) => { setJtPageSize(Number(v)); setJtPage(1); }}>
+                                <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Page {jtSafePage} of {jtTotalPages}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={jtSafePage <= 1} onClick={() => setJtPage(jtSafePage - 1)}>
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={jtSafePage >= jtTotalPages} onClick={() => setJtPage(jtSafePage + 1)}>
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
 
                     {/* Info Card */}
                     <Card className="border border-violet-500/20 bg-violet-500/5">
@@ -2381,11 +2369,11 @@ const filteredAccounts = useMemo(() => {
                                                 <TableHead className="text-xs">Head</TableHead>
                                                 <TableHead className="text-xs">Employees</TableHead>
                                                 <TableHead className="text-xs">Status</TableHead>
-                                                <TableHead className="text-xs w-32 text-right">Actions</TableHead>
+                                                <TableHead className="text-xs w-32 text-center">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {filteredDepartments.map((d) => {
+                                            {paginatedDepartments.map((d) => {
                                                 const empCount = employees.filter((e) => e.department === d.name && e.status === "active").length;
                                                 const headName = getDeptHeadName(d.headId);
                                                 return (
@@ -2420,7 +2408,7 @@ const filteredAccounts = useMemo(() => {
                                                             </Badge>
                                                         </TableCell>
                                                         <TableCell>
-                                                            <div className="flex items-center justify-end gap-1">
+                                                            <div className="flex items-center justify-center gap-1">
                                                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Edit" onClick={() => openEditDept(d)}>
                                                                     <Pencil className="h-3.5 w-3.5" />
                                                                 </Button>
@@ -2460,6 +2448,26 @@ const filteredAccounts = useMemo(() => {
                             )}
                         </CardContent>
                     </Card>
+
+                    {/* Pagination */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select value={String(deptPageSize)} onValueChange={(v) => { setDeptPageSize(Number(v)); setDeptPage(1); }}>
+                                <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Page {deptSafePage} of {deptTotalPages}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={deptSafePage <= 1} onClick={() => setDeptPage(deptSafePage - 1)}>
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={deptSafePage >= deptTotalPages} onClick={() => setDeptPage(deptSafePage + 1)}>
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
 
                     {/* Info Card */}
                     <Card className="border border-cyan-500/20 bg-cyan-500/5">

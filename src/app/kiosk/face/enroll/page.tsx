@@ -17,7 +17,7 @@ const NEON_GREEN = "#39FF14";
 const NEON_GREEN_DIM = "rgba(57, 255, 20, 0.6)";
 
 /**
- * Face Enrollment — Front-face capture with multi-frame averaging.
+ * Face Enrollment â€” Front-face capture with multi-frame averaging.
  *
  * Captures multiple frames of the front face, averages the 128-d descriptors
  * for a robust embedding, and sends BOTH the embedding AND a reference image
@@ -56,7 +56,7 @@ export default function FaceEnrollPage() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
 
-    // PIN verification — redirect if not verified; guard browser back
+    // PIN verification â€” redirect if not verified; guard browser back
     useEffect(() => {
         const verified = sessionStorage.getItem("kiosk-pin-verified");
         const verifiedTime = sessionStorage.getItem("kiosk-pin-verified-time");
@@ -138,7 +138,7 @@ export default function FaceEnrollPage() {
             setScanProgress(Math.round(((i + 1) / MAX_ATTEMPTS) * 100));
             const result = await detectFace(videoRef.current);
             if (result && result.score >= 0.65) {
-                console.log(`[kiosk-enroll] Frame ${i + 1}: score=${result.score.toFixed(3)} ✓`);
+                console.log(`[kiosk-enroll] Frame ${i + 1}: score=${result.score.toFixed(3)} âœ“`);
                 validFrames.push({ descriptor: result.descriptor, score: result.score });
                 // Capture the best-scoring frame as the reference image
                 if (result.score > bestScore) {
@@ -153,7 +153,7 @@ export default function FaceEnrollPage() {
                     }
                 }
             } else {
-                console.log(`[kiosk-enroll] Frame ${i + 1}: ${result ? `score=${result.score.toFixed(3)} ✗ (below 0.65)` : "no face detected"}`);
+                console.log(`[kiosk-enroll] Frame ${i + 1}: ${result ? `score=${result.score.toFixed(3)} âœ— (below 0.65)` : "no face detected"}`);
             }
             if (i < MAX_ATTEMPTS - 1) {
                 await new Promise((r) => setTimeout(r, 350));
@@ -479,7 +479,7 @@ export default function FaceEnrollPage() {
                         </div>
                         <canvas ref={canvasRef} className="hidden" />
 
-                        {/* Action buttons — min 44px height for mobile touch targets */}
+                        {/* Action buttons â€” min 44px height for mobile touch targets */}
                         <div className="w-full flex" style={{ gap: "clamp(0.5rem, 1.5vw, 0.75rem)" }}>
                             {state === "idle" && (
                                 <button 
@@ -575,7 +575,7 @@ export default function FaceEnrollPage() {
                             boxShadow: `0 0 10px ${NEON_GREEN}`,
                         }}
                     />
-                    <span>{companyName || "Soren Data Solutions Inc."} • Face Enrollment</span>
+                    <span>{companyName || "NexHRIS"} â€¢ Face Enrollment</span>
                 </div>
             </footer>
         </div>

@@ -58,13 +58,13 @@ export default function FaceKioskPage() {
         return id;
     });
 
-    // Daily kiosk activity log — tracks each check-in/out event with name & time
+    // Daily kiosk activity log â€” tracks each check-in/out event with name & time
     const [kioskLog, setKioskLog] = useState<Array<{ name: string; type: "in" | "out"; time: string }>>([]);
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
 
-    // ── Auto-detect tracking refs ──
+    // â”€â”€ Auto-detect tracking refs â”€â”€
     const autoDetectRef = useRef<number | null>(null);
     const faceSeenSinceRef = useRef<number | null>(null);
     const scanCooldownRef = useRef<number>(0);
@@ -117,7 +117,7 @@ export default function FaceKioskPage() {
         return storeEntries;
     }, [attendanceLogs, employees, kioskLog]);
 
-    // PIN verification — redirect if not verified; also guard against browser back
+    // PIN verification â€” redirect if not verified; also guard against browser back
     useEffect(() => {
         const verified = sessionStorage.getItem("kiosk-pin-verified");
         const verifiedTime = sessionStorage.getItem("kiosk-pin-verified-time");
@@ -160,7 +160,7 @@ export default function FaceKioskPage() {
                 streamRef.current = stream;
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
-                    // Wait for metadata before enabling scan — ensures videoWidth/Height are ready
+                    // Wait for metadata before enabling scan â€” ensures videoWidth/Height are ready
                     await new Promise<void>((resolve) => {
                         const v = videoRef.current!;
                         if (v.readyState >= 2) { v.play().catch(() => {}); resolve(); return; }
@@ -176,13 +176,13 @@ export default function FaceKioskPage() {
         return () => { cancelled = true; streamRef.current?.getTracks().forEach((t) => t.stop()); };
     }, []);
 
-    // On a shared kiosk, enrollment check is skipped — matching happens server-side against all enrolled faces
+    // On a shared kiosk, enrollment check is skipped â€” matching happens server-side against all enrolled faces
     useEffect(() => {
         setIsEnrolled(true);
         setEnrollmentChecked(true);
     }, []);
 
-    // ── Auto-detect tracking refs and refs for handler functions ──
+    // â”€â”€ Auto-detect tracking refs and refs for handler functions â”€â”€
     const scanStateRef = useRef(scanState);
     scanStateRef.current = scanState;
     const feedbackRef = useRef(feedback);
@@ -254,7 +254,7 @@ export default function FaceKioskPage() {
                         setGuidanceHint("Improve lighting for better detection");
                         faceSeenSinceRef.current = null;
                     } else {
-                        setGuidanceHint("Hold steady — recognizing...");
+                        setGuidanceHint("Hold steady â€” recognizing...");
                         const now = Date.now();
                         if (!faceSeenSinceRef.current) {
                             faceSeenSinceRef.current = now;
@@ -305,7 +305,7 @@ export default function FaceKioskPage() {
         return () => clearInterval(timer);
     }, []);
 
-    // ── Scan & Verify ──
+    // â”€â”€ Scan & Verify â”€â”€
     const handleScan = useCallback(async () => {
         if (!videoRef.current) return;
         setScanState("scanning");
@@ -322,7 +322,7 @@ export default function FaceKioskPage() {
         for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             const result = await detectFace(videoRef.current);
             if (result) {
-                console.log(`[kiosk-face] Frame ${attempt + 1}: score=${result.score.toFixed(3)} ${result.score >= MIN_DETECTION_SCORE ? "✓" : "✗ (below threshold)"}`);
+                console.log(`[kiosk-face] Frame ${attempt + 1}: score=${result.score.toFixed(3)} ${result.score >= MIN_DETECTION_SCORE ? "âœ“" : "âœ— (below threshold)"}`);
                 if (result.score >= MIN_DETECTION_SCORE) {
                     validDescriptors.push({ descriptor: result.descriptor, score: result.score });
                 }
@@ -356,7 +356,7 @@ export default function FaceKioskPage() {
         console.log(`[kiosk-face] Frame consistency (avg pairwise distance): ${consistency.toFixed(4)} (max allowed: ${MAX_CONSISTENCY_DISTANCE})`);
 
         if (consistency > MAX_CONSISTENCY_DISTANCE) {
-            console.warn(`[kiosk-face] REJECTED: frames inconsistent (${consistency.toFixed(4)} > ${MAX_CONSISTENCY_DISTANCE}) — possible movement or lighting change`);
+            console.warn(`[kiosk-face] REJECTED: frames inconsistent (${consistency.toFixed(4)} > ${MAX_CONSISTENCY_DISTANCE}) â€” possible movement or lighting change`);
             toast.error("Face detection unstable. Hold still and ensure consistent lighting.");
             setScanState("idle");
             return;
@@ -416,7 +416,7 @@ export default function FaceKioskPage() {
                 setTrackingStatus("matched");
                 setTrackingBox(null);
                 setGuidanceHint("");
-                console.log(`[kiosk-face] ✅ MATCH: ${name} (distance=${matchData.distance?.toFixed(4)})`);
+                console.log(`[kiosk-face] âœ… MATCH: ${name} (distance=${matchData.distance?.toFixed(4)})`);
                 toast.success(`Matched: ${name} (distance: ${matchData.distance?.toFixed(3)})`);
 
                 // Auto-confirm after 3s countdown
@@ -439,9 +439,9 @@ export default function FaceKioskPage() {
                 const errorMsg = serverError
                     ? `Recognition failed: ${serverError}`
                     : "Face not recognized. Please ensure you have enrolled your face and try again.";
-                console.log(`[kiosk-face] ❌ NO MATCH: ${serverError || "face not recognized"}`);
+                console.log(`[kiosk-face] âŒ NO MATCH: ${serverError || "face not recognized"}`);
                 toast.error(errorMsg);
-                setGuidanceHint("Try again — look straight at the camera");
+                setGuidanceHint("Try again â€” look straight at the camera");
                 setScanState("idle");
             }
         } catch (err) {
@@ -452,7 +452,7 @@ export default function FaceKioskPage() {
     }, [employees]);
     handleScanRef.current = handleScan;
 
-    // ── Check-in/out ──
+    // â”€â”€ Check-in/out â”€â”€
     const checkWorkDay = useCallback((empId: string) => {
         if (!ks.warnOffDay) return;
         const emp = employees.find((e) => e.id === empId);
@@ -484,7 +484,7 @@ export default function FaceKioskPage() {
             return;
         }
 
-        // ── Duplicate check-in / check-out guard ──
+        // â”€â”€ Duplicate check-in / check-out guard â”€â”€
         const today = new Date().toISOString().split("T")[0];
         const todayLog = attendanceLogs.find((l) => l.employeeId === empId && l.date === today);
         if (mode === "in" && todayLog?.checkIn) {
@@ -565,7 +565,7 @@ export default function FaceKioskPage() {
     const handleConfirmRef = useRef(handleConfirm);
     handleConfirmRef.current = handleConfirm;
 
-    // ── Time display ──
+    // â”€â”€ Time display â”€â”€
     const h = now.getHours();
     const timeStr = ks.clockFormat === "12h"
         ? `${h % 12 || 12}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`
@@ -667,7 +667,7 @@ export default function FaceKioskPage() {
                         />
                     ) : (
                         <span className="font-semibold text-white/40" style={{ fontSize: "clamp(0.75rem, 1.2vw, 0.875rem)" }}>
-                            {companyName || "Soren Data Solutions Inc."}
+                            {companyName || "NexHRIS"}
                         </span>
                     )}
                 </div>
@@ -753,7 +753,7 @@ export default function FaceKioskPage() {
                 </div>
             )}
 
-            {/* Main content — two-column on desktop, stacked on mobile */}
+            {/* Main content â€” two-column on desktop, stacked on mobile */}
             <main 
                 className="relative z-10 flex flex-col lg:flex-row items-start justify-center flex-1 w-full mx-auto"
                 style={{ 
@@ -941,7 +941,7 @@ export default function FaceKioskPage() {
                                 )}
                             </div>
 
-                            {/* Verified result — prominent matched name */}
+                            {/* Verified result â€” prominent matched name */}
                             {scanState === "verified" && matchedName && (
                                 <div className="w-full space-y-3">
                                     <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 flex items-center gap-3">
@@ -975,7 +975,7 @@ export default function FaceKioskPage() {
                                 </div>
                             )}
 
-                            {/* Scan button — now secondary since auto-scan is active */}
+                            {/* Scan button â€” now secondary since auto-scan is active */}
                             {scanState === "idle" && (
                                 <button onClick={handleScan}
                                     className={cn(
@@ -987,7 +987,7 @@ export default function FaceKioskPage() {
                                     {trackingStatus === "hold-steady" ? (
                                         <><Loader2 className="h-4 w-4 inline mr-2 animate-spin" />Recognizing...</>
                                     ) : trackingStatus === "detecting" ? (
-                                        <><ScanFace className="h-4 w-4 inline mr-2" />Face Detected — Hold Steady</>
+                                        <><ScanFace className="h-4 w-4 inline mr-2" />Face Detected â€” Hold Steady</>
                                     ) : (
                                         <><Camera className="h-4 w-4 inline mr-2" />Scan Face</>
                                     )}
@@ -1012,7 +1012,7 @@ export default function FaceKioskPage() {
                                     style={{ fontSize: "clamp(0.55rem, 0.9vw, 0.65rem)" }}
                                 >
                                     {trackingStatus === "no-face"
-                                        ? "Step in front of the camera — auto-scan will detect your face"
+                                        ? "Step in front of the camera â€” auto-scan will detect your face"
                                         : "Hold steady for automatic recognition"}
                                 </p>
                             )}
@@ -1143,7 +1143,7 @@ export default function FaceKioskPage() {
                         className="h-1.5 w-1.5 rounded-full animate-pulse"
                         style={{ backgroundColor: NEON_GREEN }}
                     />
-                    <span>{companyName || "Soren Data Solutions Inc."} • Face Recognition Kiosk</span>
+                    <span>{companyName || "NexHRIS"} â€¢ Face Recognition Kiosk</span>
                 </div>
             </footer>
         </div>

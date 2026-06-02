@@ -29,16 +29,18 @@ import { getInitials, formatCurrency, formatDate, validatePhone } from "@/lib/fo
 import { SYSTEM_ROLES, LOCATIONS } from "@/lib/constants";
 import { useDepartmentsStore } from "@/store/departments.store";
 import { useJobTitlesStore } from "@/store/job-titles.store";
-import { Mail, MapPin, Phone, Briefcase, Calendar, DollarSign, FileText, Pencil, Banknote, UserMinus, X, FolderArchive, Gavel, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Mail, MapPin, Phone, Briefcase, Calendar, DollarSign, FileText, Pencil, Banknote, UserMinus, X, FolderArchive, Gavel, ShieldCheck, AlertTriangle, Fingerprint, Heart, Home } from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 import type { WorkType, PayFrequency } from "@/types";
 
+
+
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
     return (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between py-2 border-b last:border-0">
             <span className="flex items-center gap-2 text-sm text-muted-foreground">{icon}{label}</span>
-            <span className="text-sm font-medium">{value}</span>
+            <span className="text-sm font-medium text-right max-w-[60%] break-words">{value}</span>
         </div>
     );
 }
@@ -269,6 +271,8 @@ export default function AdminProfileView() {
                                 <InfoRow icon={<MapPin className="h-4 w-4" />} label="Address" value={employee.address || "—"} />
                                 <InfoRow icon={<Calendar className="h-4 w-4" />} label="Birthday" value={employee.birthday ? formatDate(employee.birthday) : "—"} />
                                 <InfoRow icon={<Phone className="h-4 w-4" />} label="Phone" value={employee.phone || "—"} />
+                                <InfoRow icon={<Heart className="h-4 w-4" />} label="Emergency Contact" value={employee.emergencyContact || "—"} />
+                                <InfoRow icon={<Fingerprint className="h-4 w-4" />} label="Biometric ID" value={employee.biometricId || "—"} />
                             </CardContent>
                         </Card>
                         <Card className="border border-border/50">
@@ -297,6 +301,15 @@ export default function AdminProfileView() {
                             <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Work Type" value={employee.workType} />
                             <InfoRow icon={<Calendar className="h-4 w-4" />} label="Joined" value={formatDate(employee.joinDate)} />
                             <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Team Leader" value={employee.teamLeader ? employees.find((e) => e.id === employee.teamLeader)?.name || "—" : "—"} />
+                             <InfoRow icon={<DollarSign className="h-4 w-4" />} label="Monthly Salary" value={`${formatCurrency(employee.salary ?? 0)}/mo`} />
+                            <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Shift" value={(() => {
+                                const shiftId = employee.shiftId;
+                                const { shiftTemplates } = useAttendanceStore.getState();
+                                return shiftId ? shiftTemplates.find((s) => s.id === shiftId)?.name || "—" : "Default";
+                            })()} />
+                            {employee.workDays && (
+                                <InfoRow icon={<Calendar className="h-4 w-4" />} label="Work Days" value={employee.workDays.join(", ")} />
+                            )}
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -633,8 +646,8 @@ export default function AdminProfileView() {
                     <DialogHeader><DialogTitle>Edit Profile — {employee.name}</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
                         <div className="grid grid-cols-2 gap-3">
-                            <div><label className="text-sm font-medium">Name *</label><Input value={editName} onChange={(e) => setEditName(e.target.value)} className="mt-1" /></div>
-                            <div><label className="text-sm font-medium">Email *</label><Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-sm font-medium">Name <span className="text-destructive">*</span></label><Input value={editName} onChange={(e) => setEditName(e.target.value)} className="mt-1" /></div>
+                            <div><label className="text-sm font-medium">Email <span className="text-destructive">*</span></label><Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="mt-1" /></div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div><label className="text-sm font-medium">Role</label>
@@ -661,7 +674,7 @@ export default function AdminProfileView() {
                         <div className="grid grid-cols-2 gap-3">
                             <div><label className="text-sm font-medium">Pay Frequency</label>
                                 <Select value={editPayFreq} onValueChange={setEditPayFreq}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>
-                                    <SelectItem value="company">Company Default ({(paySchedule?.defaultFrequency ?? "semi_monthly").replace("_", "-")})</SelectItem>
+                                    <SelectItem value="company">Default ({(paySchedule?.defaultFrequency ?? "semi_monthly").replace("_", "-")})</SelectItem>
                                     <SelectItem value="monthly">Monthly</SelectItem><SelectItem value="semi_monthly">Semi-Monthly</SelectItem><SelectItem value="bi_weekly">Bi-Weekly</SelectItem><SelectItem value="weekly">Weekly</SelectItem>
                                 </SelectContent></Select>
                             </div>

@@ -57,9 +57,6 @@ export default function PayrollSettingsPage() {
         <div className="space-y-6">
             {/* Header */}
             <div className="flex items-center gap-3">
-                <Link href={`/${role}/payroll`}>
-                    <Button variant="ghost" size="icon" className="h-8 w-8"><ArrowLeft className="h-4 w-4" /></Button>
-                </Link>
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                         <Settings className="h-6 w-6" /> Payroll Settings
@@ -144,6 +141,9 @@ function DeductionTemplatesTab({
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
+
+    // Filter state
+    const [typeFilter, setTypeFilter] = useState<"all" | "deduction" | "allowance">("all");
 
     // Form state
     const [name, setName] = useState("");
@@ -264,13 +264,29 @@ function DeductionTemplatesTab({
         hourly: "Per Hour",
     };
 
+    const filteredTemplates = useMemo(() =>
+        typeFilter === "all" ? templates : templates.filter((t) => t.type === typeFilter),
+        [templates, typeFilter]
+    );
+
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
                 <div>
                     <p className="text-sm font-medium">Custom Deduction &amp; Allowance Templates</p>
-                    <p className="text-xs text-muted-foreground">{templates.length} template{templates.length !== 1 ? "s" : ""}</p>
+                    <p className="text-xs text-muted-foreground">{filteredTemplates.length} of {templates.length} template{templates.length !== 1 ? "s" : ""}</p>
                 </div>
+                <div className="flex items-center gap-2">
+                    <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
+                        <SelectTrigger className="h-8 w-36 text-xs">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Types</SelectItem>
+                            <SelectItem value="deduction">Deduction (−)</SelectItem>
+                            <SelectItem value="allowance">Allowance (+)</SelectItem>
+                        </SelectContent>
+                    </Select>
                 <Dialog open={dialogOpen} onOpenChange={(v) => { setDialogOpen(v); if (!v) resetForm(); }}>
                     <DialogTrigger asChild>
                         <Button size="sm" className="gap-1.5" onClick={openCreate}>
@@ -379,6 +395,7 @@ function DeductionTemplatesTab({
                         </div>
                     </DialogContent>
                 </Dialog>
+                </div>
             </div>
 
             {/* Templates Table */}
@@ -396,11 +413,11 @@ function DeductionTemplatesTab({
                                 <TableHead className="text-xs text-center">Actions</TableHead>
                             </TableRow></TableHeader>
                             <TableBody>
-                                {templates.length === 0 ? (
+                                {filteredTemplates.length === 0 ? (
                                     <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">
-                                        {isLoading ? "Loading..." : "No templates yet. Create one to get started."}
+                                        {isLoading ? "Loading..." : typeFilter === "all" ? "No templates yet. Create one to get started." : `No ${typeFilter} templates found.`}
                                     </TableCell></TableRow>
-                                ) : templates.map((t) => (
+                                ) : filteredTemplates.map((t) => (
                                     <TableRow key={t.id}>
                                         <TableCell className="text-sm font-medium">{t.name}</TableCell>
                                         <TableCell>
@@ -478,6 +495,10 @@ function EmployeeAssignmentsTab({
     const [selectedEmployee, setSelectedEmployee] = useState("");
     const [selectedTemplate, setSelectedTemplate] = useState("");
     const [overrideValue, setOverrideValue] = useState("");
+
+    // ─── Pagination state ────────────────────────────────────────
+    const PAGE_SIZE = 10;
+    const [currentPage, setCurrentPage] = useState(1);
     const [effectiveFrom, setEffectiveFrom] = useState(new Date().toISOString().split("T")[0]);
 
     // ─── Bulk assign state ───────────────────────────────────────
@@ -522,6 +543,14 @@ function EmployeeAssignmentsTab({
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
     const getTemplateName = (id: string) => templates.find((t) => t.id === id)?.name || id;
+
+    const totalPages = Math.max(1, Math.ceil(assignments.length / PAGE_SIZE));
+    const paginatedAssignments = useMemo(() => {
+        const start = (currentPage - 1) * PAGE_SIZE;
+        return assignments.slice(start, start + PAGE_SIZE);
+    }, [assignments, currentPage]);
+
+    useEffect(() => { setCurrentPage(1); }, [assignments.length]);
 
     const handleAssign = async () => {
         if (!selectedEmployee || !selectedTemplate) {
@@ -725,7 +754,7 @@ function EmployeeAssignmentsTab({
                                     <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">
                                         {isLoading ? "Loading..." : "No assignments yet"}
                                     </TableCell></TableRow>
-                                ) : assignments.map((a) => (
+                                ) : paginatedAssignments.map((a) => (
                                     <TableRow key={a.id}>
                                         <TableCell className="text-sm font-medium">{getEmpName(a.employeeId)}</TableCell>
                                         <TableCell className="text-sm">{getTemplateName(a.templateId)}</TableCell>
@@ -759,6 +788,56 @@ function EmployeeAssignmentsTab({
                             </TableBody>
                         </Table>
                     </div>
+                    {/* Pagination Footer */}
+                    {assignments.length > PAGE_SIZE && (
+                        <div className="flex items-center justify-between px-4 py-3 border-t border-border/50">
+                            <p className="text-xs text-muted-foreground">
+                                Showing {((currentPage - 1) * PAGE_SIZE) + 1}–{Math.min(currentPage * PAGE_SIZE, assignments.length)} of {assignments.length} assignment{assignments.length !== 1 ? "s" : ""}
+                            </p>
+                            <div className="flex items-center gap-1">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 px-2.5 text-xs"
+                                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                >
+                                    Previous
+                                </Button>
+                                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                                    .reduce<(number | "…")[]>((acc, p, idx, arr) => {
+                                        if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push("…");
+                                        acc.push(p);
+                                        return acc;
+                                    }, [])
+                                    .map((p, i) =>
+                                        p === "…" ? (
+                                            <span key={`ellipsis-${i}`} className="px-1.5 text-xs text-muted-foreground">…</span>
+                                        ) : (
+                                            <Button
+                                                key={p}
+                                                variant={currentPage === p ? "default" : "outline"}
+                                                size="sm"
+                                                className="h-7 w-7 p-0 text-xs"
+                                                onClick={() => setCurrentPage(p as number)}
+                                            >
+                                                {p}
+                                            </Button>
+                                        )
+                                    )}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 px-2.5 text-xs"
+                                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                >
+                                    Next
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </div>

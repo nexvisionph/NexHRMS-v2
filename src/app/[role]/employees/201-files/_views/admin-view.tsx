@@ -459,8 +459,8 @@ export default function Documents201AdminView() {
                                                                 <span className="text-xs text-muted-foreground">{missing.length} of {REQUIRED_201_DOC_TYPES.length} missing</span>
                                                             )}
                                                         </TableCell>
-                                                        <TableCell className="text-right">
-                                                            <div className="flex items-center justify-end gap-1">
+                                                        <TableCell className="text-center">
+                                                            <div className="flex items-center justify-center gap-1">
                                                                 <Button size="icon" variant="ghost" className="h-8 w-8" title="View 201 file" onClick={() => setSelectedEmpId(emp.id)}>
                                                                     <Eye className="h-4 w-4" />
                                                                 </Button>
@@ -486,22 +486,20 @@ export default function Documents201AdminView() {
                     </Card>
 
                     {/* Pagination footer */}
-                    {totalPages > 1 && (
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">Rows per page:</span>
-                                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
-                                    <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
-                                    <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
-                                </Select>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
-                                <Button variant="outline" size="icon" className="h-8 w-8" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}><ChevronLeft className="h-4 w-4" /></Button>
-                                <Button variant="outline" size="icon" className="h-8 w-8" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}><ChevronRight className="h-4 w-4" /></Button>
-                            </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
+                                <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                            </Select>
                         </div>
-                    )}
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}><ChevronLeft className="h-4 w-4" /></Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}><ChevronRight className="h-4 w-4" /></Button>
+                        </div>
+                    </div>
                 </TabsContent>
 
                 {/* ════════════ TAB 2: Upload Logs ════════════ */}
@@ -543,7 +541,7 @@ export default function Documents201AdminView() {
                                             <TableHead>Document</TableHead>
                                             <TableHead>Status</TableHead>
                                             <TableHead>Date Uploaded</TableHead>
-                                            <TableHead className="text-right">Actions</TableHead>
+                                            <TableHead className="text-center">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -579,8 +577,8 @@ export default function Documents201AdminView() {
                                                         <TableCell className="text-sm text-muted-foreground">
                                                             {new Date(d.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
                                                         </TableCell>
-                                                        <TableCell className="text-right">
-                                                            <div className="flex items-center justify-end gap-0.5">
+                                                        <TableCell className="text-center">
+                                                            <div className="flex items-center justify-center gap-0.5">
                                                                 <Button size="sm" variant="ghost" className="h-7 px-2" title="View" onClick={() => setViewingDoc(d)}>
                                                                     <Eye className="h-3.5 w-3.5" />
                                                                 </Button>
@@ -611,22 +609,20 @@ export default function Documents201AdminView() {
                     </Card>
 
                     {/* Upload logs pagination */}
-                    {logTotalPages > 1 && (
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">Rows per page:</span>
-                                <Select value={String(logPageSize)} onValueChange={(v) => { setLogPageSize(Number(v)); setLogPage(1); }}>
-                                    <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
-                                    <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
-                                </Select>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">Page {logPage} of {logTotalPages}</span>
-                                <Button variant="outline" size="icon" className="h-8 w-8" disabled={logPage <= 1} onClick={() => setLogPage((p) => Math.max(1, p - 1))}><ChevronLeft className="h-4 w-4" /></Button>
-                                <Button variant="outline" size="icon" className="h-8 w-8" disabled={logPage >= logTotalPages} onClick={() => setLogPage((p) => Math.min(logTotalPages, p + 1))}><ChevronRight className="h-4 w-4" /></Button>
-                            </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select value={String(logPageSize)} onValueChange={(v) => { setLogPageSize(Number(v)); setLogPage(1); }}>
+                                <SelectTrigger className="w-[70px] h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>{PAGE_SIZES.map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                            </Select>
                         </div>
-                    )}
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Page {logPage} of {logTotalPages}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={logPage <= 1} onClick={() => setLogPage((p) => Math.max(1, p - 1))}><ChevronLeft className="h-4 w-4" /></Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={logPage >= logTotalPages} onClick={() => setLogPage((p) => Math.min(logTotalPages, p + 1))}><ChevronRight className="h-4 w-4" /></Button>
+                        </div>
+                    </div>
                 </TabsContent>
             </Tabs>
 

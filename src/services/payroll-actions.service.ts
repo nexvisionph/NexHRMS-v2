@@ -235,3 +235,113 @@ export async function deletePayslip(id: string): Promise<boolean> {
     }));
     return true;
 }
+
+import { POLICY_VERSIONS } from "@/lib/constants";
+import type { PayrollRun } from "@/types";
+
+/**
+ * Lock a payroll run — DB-first.
+ * Ensures the lock persists across page refreshes.
+ */
+export async function lockRunDbFirst(periodLabel: string, lockedBy = "system"): Promise<boolean> {
+    const store = usePayrollStore.getState();
+    const run = store.runs.find((r) => r.periodLabel === periodLabel);
+    if (!run || run.status !== "draft") return false;
+
+    const snapshot = {
+        taxTableVersion: POLICY_VERSIONS.taxTable,
+        sssVersion: POLICY_VERSIONS.sss,
+        philhealthVersion: POLICY_VERSIONS.philhealth,
+        pagibigVersion: POLICY_VERSIONS.pagibig,
+        holidayListVersion: POLICY_VERSIONS.holidayList,
+        formulaVersion: "2026-PH-PAYROLL-v1",
+        ruleSetVersion: "RS-DEFAULT-v1",
+        lockedBy,
+    };
+
+    const updatedRun: PayrollRun = {
+        ...run,
+        locked: true,
+        status: "locked",
+        lockedAt: new Date().toISOString(),
+        policySnapshot: snapshot,
+    };
+
+    const ok = await payrollDb.upsertRun(updatedRun);
+    if (!ok) return false;
+
+    usePayrollStore.setState((s) => ({
+        runs: s.runs.map((r) => (r.id === run.id ? updatedRun : r)),
+    }));
+    return true;
+}
+
+/**
+ * Unlock a payroll run — DB-first.
+ */
+export async function unlockRunDbFirst(periodLabel: string): Promise<boolean> {
+    const store = usePayrollStore.getState();
+    const run = store.runs.find((r) => r.periodLabel === periodLabel);
+    if (!run || run.status !== "locked") return false;
+
+    const updatedRun: PayrollRun = {
+        ...run,
+        locked: false,
+        status: "draft",
+        lockedAt: undefined,
+        policySnapshot: undefined,
+    };
+
+    const ok = await payrollDb.upsertRun(updatedRun);
+    if (!ok) return false;
+
+    usePayrollStore.setState((s) => ({
+        runs: s.runs.map((r) => (r.id === run.id ? updatedRun : r)),
+    }));
+    return true;
+}
+
+/**
+ * End a payroll run — DB-first.
+ */
+export async function endRunDbFirst(periodLabel: string): Promise<boolean> {
+    const store = usePayrollStore.getState();
+    const run = store.runs.find((r) => r.periodLabel === periodLabel);
+    if (!run || run.status !== "locked") return false;
+
+    const updatedRun: PayrollRun = {
+        ...run,
+        status: "ended",
+    };
+
+    const ok = await payrollDb.upsertRun(updatedRun);
+    if (!ok) return false;
+
+    usePayrollStore.setState((s) => ({
+        runs: s.runs.map((r) => (r.id === run.id ? updatedRun : r)),
+    }));
+    return true;
+}
+
+/**
+ * Mark payroll run as completed/paid — DB-first.
+ */
+export async function markRunPaidDbFirst(periodLabel: string): Promise<boolean> {
+    const store = usePayrollStore.getState();
+    const run = store.runs.find((r) => r.periodLabel === periodLabel);
+    if (!run) return false;
+
+    const updatedRun: PayrollRun = {
+        ...run,
+        status: "completed",
+        paidAt: new Date().toISOString(),
+    };
+
+    const ok = await payrollDb.upsertRun(updatedRun);
+    if (!ok) return false;
+
+    usePayrollStore.setState((s) => ({
+        runs: s.runs.map((r) => (r.id === run.id ? updatedRun : r)),
+    }));
+    return true;
+}

@@ -25,6 +25,68 @@ function toAttendanceLog(row: Record<string, unknown>) {
   };
 }
 
+/**
+ * Paginated fetch that works around Supabase's server-side max-rows limit (1000).
+ * Uses .range() to fetch in pages until all rows are retrieved.
+ */
+async function fetchAllRows(
+  admin: Awaited<ReturnType<typeof createAdminSupabaseClient>>,
+  filters: {
+    canReadAll: boolean;
+    employeeIds?: string[];
+    employeeId?: string | null;
+    date?: string | null;
+    from?: string | null;
+    to?: string | null;
+  }
+) {
+  const PAGE_SIZE = 1000;
+  const allRows: Record<string, unknown>[] = [];
+  let page = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const rangeStart = page * PAGE_SIZE;
+    const rangeEnd = rangeStart + PAGE_SIZE - 1;
+
+    let query = admin
+      .from("attendance_logs")
+      .select("*")
+      .order("date", { ascending: false })
+      .order("updated_at", { ascending: false })
+      .range(rangeStart, rangeEnd);
+
+    // Apply filters
+    if (!filters.canReadAll && filters.employeeIds) {
+      query = query.in("employee_id", filters.employeeIds);
+    } else if (filters.canReadAll && filters.employeeId) {
+      query = query.eq("employee_id", filters.employeeId);
+    }
+
+    if (filters.date) query = query.eq("date", filters.date);
+    if (filters.from) query = query.gte("date", filters.from);
+    if (filters.to) query = query.lte("date", filters.to);
+
+    const { data, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = data ?? [];
+    allRows.push(...(rows as Record<string, unknown>[]));
+
+    // If we got fewer rows than PAGE_SIZE, we've reached the end
+    hasMore = rows.length === PAGE_SIZE;
+    page++;
+
+    // Safety cap: don't fetch more than 10,000 rows total
+    if (allRows.length >= 10000) break;
+  }
+
+  return allRows;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const serverSupabase = await createServerSupabaseClient();
@@ -55,14 +117,10 @@ export async function GET(request: NextRequest) {
     const canReadAll = ["admin", "hr", "supervisor", "payroll", "finance", "auditor"].includes(role);
     const search = request.nextUrl.searchParams;
 
-    let query = admin
-      .from("attendance_logs")
-      .select("*")
-      .order("date", { ascending: false })
-      .order("updated_at", { ascending: false });
-
+    // Build employee IDs for non-admin users
+    let employeeIds: string[] | undefined;
     if (!canReadAll) {
-      const employeeIds = [employee.id];
+      employeeIds = [employee.id];
       if (employee.biometric_id) {
         const { data: biometricEmployees, error: biometricError } = await admin
           .from("employees")
@@ -77,24 +135,19 @@ export async function GET(request: NextRequest) {
           }
         }
       }
-      query = query.in("employee_id", employeeIds);
-    } else if (search.get("employeeId")) {
-      query = query.eq("employee_id", search.get("employeeId"));
     }
 
-    if (search.get("date")) query = query.eq("date", search.get("date"));
-    if (search.get("from")) query = query.gte("date", search.get("from"));
-    if (search.get("to")) query = query.lte("date", search.get("to"));
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error("[attendance/logs] fetch:", error.message);
-      return NextResponse.json({ error: "Attendance logs fetch failed" }, { status: 500 });
-    }
+    const allRows = await fetchAllRows(admin, {
+      canReadAll,
+      employeeIds,
+      employeeId: search.get("employeeId"),
+      date: search.get("date"),
+      from: search.get("from"),
+      to: search.get("to"),
+    });
 
     return NextResponse.json({
-      logs: (data ?? []).map((row) => toAttendanceLog(row as Record<string, unknown>)),
+      logs: allRows.map((row) => toAttendanceLog(row)),
     }, {
       headers: { "Cache-Control": "no-store" },
     });

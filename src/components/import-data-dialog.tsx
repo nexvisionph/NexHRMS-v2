@@ -160,6 +160,92 @@ const PAYROLL_TEMPLATE_COLS = [
 
 type PayrollRow = Record<(typeof PAYROLL_TEMPLATE_COLS)[number] | string, string>;
 
+// ─── Imported-payroll auto-field detection ────────────────────────────────────
+// Reserved row keys (prefixed "__") carry imported-only metadata through the
+// dialog as plain strings so the Record<string,string> contract is preserved.
+// The /api/import/payroll route reads these keys to persist DTR + custom items.
+
+const KNOWN_PAYROLL_HEADERS = new Set(
+  [
+    ...PAYROLL_TEMPLATE_COLS,
+    "Employee No", "Employee ID", "Full Name", "Position",
+    "Pay Period From", "Pay Period To", "Frequency", "Gross", "Monthly Salary",
+    "Basic Pay", "SSS Contribution", "PhilHealth Contribution", "Pag-IBIG Contribution",
+    "HDMF", "Withholding Tax", "BIR", "OT", "Overtime Pay", "Loan",
+  ].map((h) => h.toLowerCase())
+);
+
+// Maps a DTR-style header (case-insensitive) to its reserved key. Receipt-only.
+function dtrKeyForHeader(header: string): string | null {
+  const h = header.trim().toLowerCase();
+  if (h === "days present") return "__dtrDaysPresent";
+  if (h === "days absent" || h === "absences") return "__dtrDaysAbsent";
+  if (h === "late (min)" || h === "tardiness min" || h === "late min") return "__dtrLateMinutes";
+  if (h === "ot hours") return "__dtrOtHours";
+  if (h === "tard hr" || h === "tardiness hr") return "__dtrTardHours";
+  return null;
+}
+
+const DTR_FIELD_LABELS: Record<string, string> = {
+  __dtrDaysPresent: "Days Present",
+  __dtrDaysAbsent: "Days Absent",
+  __dtrLateMinutes: "Late (min)",
+  __dtrOtHours: "OT Hours",
+  __dtrTardHours: "Tard Hr",
+};
+const DTR_FIELD_KEYS = Object.keys(DTR_FIELD_LABELS);
+
+/**
+ * Scans every column of a raw parsed row. Known template/system columns are left
+ * on the row as-is; DTR columns become __dtr* reserved keys; any remaining column
+ * with a value becomes a custom field key "__custom__<Label>".
+ * Returns a new row object (does not mutate input).
+ */
+function detectImportedFields(row: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = { ...row };
+  for (const [header, value] of Object.entries(row)) {
+    if (header.startsWith("__")) continue;
+    const v = (value ?? "").toString().trim();
+    if (!v) continue;
+
+    const dtrKey = dtrKeyForHeader(header);
+    if (dtrKey) {
+      out[dtrKey] = v;
+      continue;
+    }
+    // Known system/template column → leave on the row untouched
+    if (KNOWN_PAYROLL_HEADERS.has(header.trim().toLowerCase())) continue;
+    // Unknown column with a value → custom field (default: deduction)
+    out[`__custom__${header}`] = v;
+  }
+  return out;
+}
+
+/**
+ * Builds the reserved "__"-prefixed payload the API route expects, from an
+ * (already edited) payroll row. Tags it as an imported payslip.
+ */
+function buildImportedRowPayload(
+  row: Record<string, string>,
+  fileName: string
+): Record<string, string> {
+  const payload: Record<string, string> = { ...row, __source: "imported", __importedFileName: fileName };
+
+  // Custom columns → line items (type stored under __customType__<Label>, default deduction)
+  const lineItems: Array<{ label: string; type: string; amount: number }> = [];
+  for (const [key, value] of Object.entries(row)) {
+    if (!key.startsWith("__custom__")) continue;
+    const label = key.slice("__custom__".length);
+    const amount = Number(String(value).replace(/[₱,\s]/g, ""));
+    if (!label || isNaN(amount) || amount === 0) continue;
+    const type = row[`__customType__${label}`] === "earning" ? "earning" : "deduction";
+    lineItems.push({ label, type, amount });
+  }
+  if (lineItems.length > 0) payload.__lineItemsJson = JSON.stringify(lineItems);
+
+  return payload;
+}
+
 // ─── PB File Converter ────────────────────────────────────────────────────────
 
 /**
@@ -273,13 +359,29 @@ function convertPBRawToPayrollRows(
       const position = strCell(raw, 5, blk.nameCol);
       const project = strCell(raw, 6, blk.nameCol);
 
+      // ── Header fields (Monthly Salary, Rate/day) ──
+      const monthlySalary = numCell(raw, 7, blk.valCol);
+      const dailyRate = numCell(raw, 8, blk.valCol);
+      // Hourly rate is at row 0 col 21 (right-side header) or derive from daily/8
+      const hourlyRate = dailyRate > 0 ? Math.round((dailyRate / 8) * 100) / 100 : 0;
+
+      // ── BASIC SALARY section ──
+      const semiMonthly = numCell(raw, 11, blk.valCol);
+      // Row 12: can be "Overtime Pay" or "Adjustment" depending on the employee
+      const basicOTOrAdj = numCell(raw, 12, blk.valCol);
+      const lwop = numCell(raw, 13, blk.valCol);
+      const tardiness = numCell(raw, 14, blk.valCol);
       const totalBasic = numCell(raw, 15, blk.valCol);
-      const overtimePay = numCell(raw, 17, blk.valCol);
+
+      // ── OVERTIME & OTHER ALLOWANCES section ──
+      const otAllowances = numCell(raw, 17, blk.valCol);
       const mealAllowance = numCell(raw, 18, blk.valCol);
       const projectAllow = numCell(raw, 19, blk.valCol);
       const taxiFare = numCell(raw, 20, blk.valCol);
       const othersAllow = numCell(raw, 21, blk.valCol);
       const totalAllowances = numCell(raw, 22, blk.valCol);
+
+      // ── DEDUCTIONS section ──
       const withholdingTax = numCell(raw, 24, blk.valCol);
       const sss = numCell(raw, 25, blk.valCol);
       const sssLoan = numCell(raw, 26, blk.valCol);
@@ -290,29 +392,39 @@ function convertPBRawToPayrollRows(
       const healthcard = numCell(raw, 31, blk.valCol);
       const netPay = numCell(raw, 33, blk.valCol);
 
-      const grossPay = totalBasic + totalAllowances;
+      // Determine if row 12 is OT or adjustment:
+      // If totalBasic = semiMonthly + row12 - lwop - tardiness, then row12 is OT added to basic
+      // If row12 is positive and contributes to totalBasic, it's OT in the basic salary section
+      const basicOvertimePay = basicOTOrAdj > 0 ? basicOTOrAdj : 0;
+      const adjustment = basicOTOrAdj < 0 ? basicOTOrAdj : 0;
+
+      // Total overtime = OT in basic salary section + OT in allowances section
+      const totalOvertimePay = basicOvertimePay + otAllowances;
+
+      // Gross Pay = Total Basic Salary (which already includes semi-monthly + OT - deductions)
+      const grossPay = totalBasic;
       const loanDeduction = sssLoan + pagibigLoan;
       const customDeductions = taxDef + healthcard;
-      const lwop = numCell(raw, 13, blk.valCol);
-      const tardiness = numCell(raw, 14, blk.valCol);
-      const adj = numCell(raw, 12, blk.valCol);
-      // "Other deductions" = only explicit deduction-type items.
-      // Row 12 (Adjustment/OT) is already factored into totalBasic (row 15),
-      // so only include it if negative (meaning it was a deduction).
-      const otherDeductions = lwop + tardiness + (adj < 0 ? Math.abs(adj) : 0);
+      const otherDeductions = lwop + tardiness + (adjustment < 0 ? Math.abs(adjustment) : 0);
 
       // Skip blocks where everything is zero (empty / no real data)
       if (totalBasic === 0 && netPay === 0 && grossPay === 0) continue;
 
+      // Build custom line items for allowances that have values
+      const lineItems: Array<{ label: string; type: string; amount: number }> = [];
+      if (mealAllowance > 0) lineItems.push({ label: "Meal Allowance", type: "earning", amount: mealAllowance });
+      if (projectAllow > 0) lineItems.push({ label: "Project Allowance", type: "earning", amount: projectAllow });
+      if (taxiFare > 0) lineItems.push({ label: "Taxi Fare", type: "earning", amount: taxiFare });
+      if (othersAllow > 0) lineItems.push({ label: "Others", type: "earning", amount: othersAllow });
+      // Individual deductions as line items
+      if (healthcard > 0) lineItems.push({ label: "Healthcard", type: "deduction", amount: healthcard });
+      if (taxDef > 0) lineItems.push({ label: "Tax Refund/Deficit", type: "deduction", amount: taxDef });
+
       const noteParts: string[] = [];
       if (project) noteParts.push(`Project: ${project}`);
-      if (overtimePay > 0) noteParts.push(`OT: ${overtimePay.toFixed(2)}`);
-      if (mealAllowance > 0) noteParts.push(`Meal: ${mealAllowance.toFixed(2)}`);
-      if (taxiFare > 0) noteParts.push(`Taxi: ${taxiFare.toFixed(2)}`);
-      if (projectAllow > 0) noteParts.push(`Proj allowance: ${projectAllow.toFixed(2)}`);
-      if (othersAllow > 0) noteParts.push(`Others: ${othersAllow.toFixed(2)}`);
+      if (monthlySalary > 0) noteParts.push(`Monthly: ${monthlySalary.toLocaleString()}`);
 
-      employees.push({
+      const row: PayrollRow = {
         "Employee Name": name,
         Email: "",
         Department: project || "",
@@ -328,20 +440,377 @@ function convertPBRawToPayrollRows(
         "Pag-IBIG": pagibig.toFixed(2),
         Tax: withholdingTax.toFixed(2),
         "Loan Deduction": loanDeduction.toFixed(2),
-        "Custom Deductions": customDeductions.toFixed(2),
+        "Custom Deductions": "0.00",
         "Other Deductions": otherDeductions.toFixed(2),
         "Net Pay": netPay.toFixed(2),
         "Payment Method": "",
         "Bank Reference": "",
         Notes: noteParts.join(" | "),
-      });
+      };
+
+      // Pass through imported metadata via reserved keys
+      row["__source"] = "imported";
+      row["__monthlySalary"] = monthlySalary.toFixed(2);
+      row["__dailyRate"] = dailyRate.toFixed(2);
+      row["__hourlyRate"] = hourlyRate.toFixed(2);
+      row["__semiMonthly"] = semiMonthly.toFixed(2);
+      if (totalOvertimePay > 0) row["__overtimePay"] = totalOvertimePay.toFixed(2);
+      if (lwop > 0) row["__leaveWithoutPay"] = lwop.toFixed(2);
+      if (tardiness > 0) row["__tardiness"] = tardiness.toFixed(2);
+      if (lineItems.length > 0) row["__lineItemsJson"] = JSON.stringify(lineItems);
+
+      // ── Extract per-day DTR from the right-side grid ──
+      // Actual column layout (from XLSX parse, 0-indexed):
+      //   17: Day label (SAT/SUN/HOL/DEC HD) — only for special days
+      //   18: Date number (26, 27, etc.)
+      //   19: IN hour
+      //   20: IN minute
+      //   21: Scheduled hours (8.00) — skip
+      //   22: OUT hour (single digit, unreliable)
+      //   23: OUT minute
+      //   24: OUT time as decimal from midnight (e.g., 16.87 = 4:52 PM)
+      //   25: Working hours (total hours worked, lunch already deducted by PB)
+      //   26: OT/UT decimal (positive = OT, negative = undertime)
+      const dtrPerDay: Array<{ date: string; day?: string; timeIn?: string; timeOut?: string; totalHrs?: number; otHrs?: number }> = [];
+      const dtrStartRow = 15;
+      const maxDtrRows = 20;
+
+      for (let ri = dtrStartRow; ri < dtrStartRow + maxDtrRows && ri < raw.length; ri++) {
+        const col17 = strCell(raw, ri, 17);
+        const col18 = numCell(raw, ri, 18);
+        const col19 = numCell(raw, ri, 19);
+        const col20 = numCell(raw, ri, 20);
+        const col24 = numCell(raw, ri, 24); // OUT as decimal from midnight
+        const col25 = numCell(raw, ri, 25); // Working hours
+        const col26 = numCell(raw, ri, 26); // OT/UT
+
+        // Date number is always at col 18
+        const dayNum = (col18 > 0 && col18 <= 31) ? Math.round(col18) : 0;
+        if (dayNum === 0) continue;
+
+        // Day label from col 17
+        let dayLabel = "";
+        if (col17 && /^(SAT|SUN|HOL|DEC|WFH|wfh)/i.test(col17)) {
+          dayLabel = col17.trim();
+        }
+
+        // IN time from col 19 (hour) and col 20 (minute)
+        let timeIn = "";
+        const inH = Math.floor(col19);
+        const inM = Math.round(col20);
+        if (inH > 0 || inM > 0) {
+          timeIn = `${String(inH).padStart(2, "0")}:${String(inM).padStart(2, "0")}`;
+        }
+
+        // OUT time from col 24 (decimal hours from midnight, e.g., 16.87 = 16:52)
+        let timeOut = "";
+        if (col24 > 0) {
+          const outH = Math.floor(col24);
+          const outM = Math.round((col24 - outH) * 60);
+          timeOut = `${String(outH).padStart(2, "0")}:${String(outM).padStart(2, "0")}`;
+        }
+
+        // Working hours (col 25) and OT (col 26)
+        const workingHrs = col25;
+        const otUt = col26;
+
+        dtrPerDay.push({
+          date: String(dayNum),
+          day: dayLabel || undefined,
+          timeIn: timeIn || undefined,
+          timeOut: timeOut || undefined,
+          totalHrs: workingHrs > 0 ? Math.round(workingHrs * 100) / 100 : undefined,
+          otHrs: otUt !== 0 ? Math.round(otUt * 100) / 100 : undefined,
+        });
+      }
+
+      if (dtrPerDay.length > 0) {
+        row["__dtrPerDayJson"] = JSON.stringify(dtrPerDay);
+      }
+
+      employees.push(row);
     }
   }
 
   return employees;
 }
 
+// ─── NexHRIS Export Format Converter ──────────────────────────────────────────
+
+/**
+ * Detects whether an uploaded file is in the new NexHRIS dynamic export format.
+ * Checks for "NexHRIS" company name and "ALLOWANCES"/"DEDUCTIONS" section headers.
+ */
+function isNexHRISFormat(rawRows: Record<string, unknown>[]): boolean {
+  if (rawRows.length < 10) return false;
+  // Check if cell A1 or B1 contains "NexHRIS"
+  const firstRowValues = Object.values(rawRows[0] || {}).map(v => String(v || "").trim());
+  const hasNexHRIS = firstRowValues.some(v => v === "NexHRIS");
+  if (!hasNexHRIS) return false;
+  // Check for ALLOWANCES or DEDUCTIONS section header in column B
+  const hasSectionHeaders = rawRows.some(row => {
+    const vals = Object.values(row).map(v => String(v || "").trim());
+    return vals.includes("ALLOWANCES") || vals.includes("DEDUCTIONS");
+  });
+  return hasSectionHeaders;
+}
+
+/**
+ * Converts NexHRIS format sheets (one per employee) into PayrollRows.
+ * Reads dynamic ALLOWANCES and DEDUCTIONS sections.
+ */
+function convertNexHRISToPayrollRows(
+  allSheets: Array<Record<string, unknown>[]>
+): PayrollRow[] {
+  const employees: PayrollRow[] = [];
+
+  for (const sheetRows of allSheets) {
+    if (sheetRows.length < 10) continue;
+
+    const raw = sheetRows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v])));
+
+    // Helper to get cell value by column index
+    const getCell = (rowIdx: number, colIdx: number): string => {
+      const row = raw[rowIdx];
+      if (!row) return "";
+      const v = row[colIdx] ?? row[String(colIdx)];
+      return v === undefined || v === null ? "" : String(v).trim();
+    };
+    const numVal = (rowIdx: number, colIdx: number): number => {
+      const s = getCell(rowIdx, colIdx).replace(/[₱,\s]/g, "");
+      const f = parseFloat(s);
+      return isNaN(f) ? 0 : f;
+    };
+
+    // Find employee name — R8 col 4 in the NexHRIS sheet layout
+    // (grid[8][4] = emp.name, grid[7][4] = emp.id)
+    const name = getCell(8, 4);
+    if (!name) continue;
+
+    // Employee ID — R7 col 4
+    const empId = getCell(7, 4);
+
+    // Period (R3, col 4) — format: "MMM dd, yyyy – MMM dd, yyyy" (em dash)
+    const periodStr = getCell(3, 4);
+    let periodStart = "";
+    let periodEnd = "";
+    if (periodStr) {
+      // Split on em dash (–) or regular dash surrounded by spaces
+      const parts = periodStr.split(/\s*[–\-]\s*/);
+      if (parts.length >= 2) {
+        try {
+          const fromDate = new Date(parts[0].trim());
+          const toDate = new Date(parts[parts.length - 1].trim());
+          if (!isNaN(fromDate.getTime())) periodStart = fromDate.toISOString().split("T")[0];
+          if (!isNaN(toDate.getTime())) periodEnd = toDate.toISOString().split("T")[0];
+        } catch { /* use raw strings */ }
+      }
+    }
+
+    // Monthly salary, daily rate from R7-R10
+    const monthlySalary = numVal(7, 7);
+    const position = getCell(9, 4);
+    const department = getCell(10, 4);
+
+    // Find ALLOWANCES and DEDUCTIONS sections
+    let allowancesHeaderRow = -1;
+    let deductionsHeaderRow = -1;
+    let totalAllowancesRow = -1;
+    let totalDeductionsRow = -1;
+    let netPayRow = -1;
+
+    for (let i = 0; i < raw.length; i++) {
+      const cellB = getCell(i, 1);
+      if (cellB === "ALLOWANCES") allowancesHeaderRow = i;
+      else if (cellB === "TOTAL ALLOWANCES") totalAllowancesRow = i;
+      else if (cellB === "DEDUCTIONS") deductionsHeaderRow = i;
+      else if (cellB === "TOTAL DEDUCTIONS") totalDeductionsRow = i;
+      else if (cellB === "NET PAY") netPayRow = i;
+    }
+
+    // Parse allowance rows
+    let totalAllowances = 0;
+    const allowanceNotes: string[] = [];
+    if (allowancesHeaderRow >= 0 && totalAllowancesRow > allowancesHeaderRow) {
+      for (let i = allowancesHeaderRow + 1; i < totalAllowancesRow; i++) {
+        const label = getCell(i, 1);
+        const amount = numVal(i, 7);
+        if (label && amount > 0) {
+          totalAllowances += amount;
+          allowanceNotes.push(`${label}: ${amount.toFixed(2)}`);
+        }
+      }
+    }
+
+    // Parse deduction rows
+    let sss = 0, philhealth = 0, pagibig = 0, tax = 0, loanDeduction = 0, customDeductions = 0;
+    if (deductionsHeaderRow >= 0 && totalDeductionsRow > deductionsHeaderRow) {
+      for (let i = deductionsHeaderRow + 1; i < totalDeductionsRow; i++) {
+        const label = getCell(i, 1).toLowerCase();
+        const amount = numVal(i, 7);
+        if (!label || amount === 0) continue;
+
+        if (label.includes("sss") && label.includes("loan")) loanDeduction += amount;
+        else if (label.includes("sss")) sss += amount;
+        else if (label.includes("philhealth")) philhealth += amount;
+        else if (label.includes("pag-ibig") || label.includes("pagibig") || label.includes("hdmf")) {
+          if (label.includes("loan")) loanDeduction += amount;
+          else pagibig += amount;
+        }
+        else if (label.includes("withholding") || label.includes("tax") || label.includes("bir")) tax += amount;
+        else customDeductions += amount;
+      }
+    }
+
+    const totalDeductions = numVal(totalDeductionsRow, 7) || (sss + philhealth + pagibig + tax + loanDeduction + customDeductions);
+    const netPay = numVal(netPayRow, 7);
+    const grossPay = monthlySalary > 0 ? monthlySalary / 2 : (netPay + totalDeductions - totalAllowances);
+
+    if (netPay === 0 && grossPay === 0) continue;
+
+    // Embed the employee ID (from R7 col 4) in Notes for reliable re-import matching
+    const noteStr = [
+      empId ? `ID:${empId}` : "",
+      allowanceNotes.length > 0 ? `Allowances: ${allowanceNotes.join(", ")}` : "",
+    ].filter(Boolean).join(" | ");
+
+    employees.push({
+      "Employee Name": name,
+      Email: "",
+      Department: department,
+      "Job Title": position,
+      "Period Start": periodStart,
+      "Period End": periodEnd,
+      "Pay Frequency": "Semi-monthly",
+      "Gross Pay": grossPay.toFixed(2),
+      Allowances: totalAllowances.toFixed(2),
+      "Holiday Pay": "0.00",
+      SSS: sss.toFixed(2),
+      PhilHealth: philhealth.toFixed(2),
+      "Pag-IBIG": pagibig.toFixed(2),
+      Tax: tax.toFixed(2),
+      "Loan Deduction": loanDeduction.toFixed(2),
+      "Custom Deductions": customDeductions.toFixed(2),
+      "Other Deductions": "0.00",
+      "Net Pay": netPay.toFixed(2),
+      "Payment Method": "",
+      "Bank Reference": "",
+      Notes: noteStr,
+    });
+  }
+
+  return employees;
+}
+
 // ─── Field layout helpers (matching the interfaces-field pattern) ─────────────
+
+/**
+ * Renders the imported-only field groups for one row:
+ *  - Custom fields (unknown columns) — editable label/type/amount, type defaults to deduction
+ *  - Attendance (DTR) — read-only-style numeric inputs, receipt only
+ * Only renders when the row actually has such fields.
+ */
+function ImportedExtrasFields({
+  row,
+  rowIdx,
+  updateCell,
+}: {
+  row: Record<string, string>;
+  rowIdx: number;
+  updateCell: (rowIdx: number, col: string, value: string) => void;
+}) {
+  const customKeys = Object.keys(row).filter((k) => k.startsWith("__custom__"));
+  const hasDtr = DTR_FIELD_KEYS.some((k) => row[k]?.toString().trim());
+
+  if (customKeys.length === 0 && !hasDtr) return null;
+
+  return (
+    <>
+      {customKeys.length > 0 && (
+        <div>
+          <Separator className="mb-4" />
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">
+            Custom Fields <span className="text-muted-foreground/60 normal-case">(detected from file)</span>
+          </p>
+          <div className="space-y-2.5">
+            {customKeys.map((key) => {
+              const label = key.slice("__custom__".length);
+              const typeKey = `__customType__${label}`;
+              const type = row[typeKey] === "earning" ? "earning" : "deduction";
+              return (
+                <div key={key} className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-medium text-muted-foreground leading-none">Label</label>
+                    <Input
+                      value={label}
+                      onChange={(e) => {
+                        const newLabel = e.target.value;
+                        // Re-key the custom column when the label changes
+                        updateCell(rowIdx, `__custom__${newLabel}`, row[key] ?? "");
+                        updateCell(rowIdx, `__customType__${newLabel}`, type);
+                        updateCell(rowIdx, key, ""); // clear old key (empty = dropped)
+                        if (typeKey !== `__customType__${newLabel}`) updateCell(rowIdx, typeKey, "");
+                      }}
+                      className="h-7 text-xs px-2 border-border/50"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-medium text-muted-foreground leading-none">Section</label>
+                    <Select value={type} onValueChange={(v) => updateCell(rowIdx, typeKey, v)}>
+                      <SelectTrigger className="!h-7 min-h-0 w-full px-2 text-xs border-border/50">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="deduction">Deduction</SelectItem>
+                        <SelectItem value="earning">Earning</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-medium text-muted-foreground leading-none">Amount</label>
+                    <Input
+                      value={row[key] ?? ""}
+                      onChange={(e) => updateCell(rowIdx, key, e.target.value)}
+                      className="h-7 text-xs px-2 border-border/50"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {hasDtr && (
+        <div>
+          <Separator className="mb-4" />
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+            Attendance (DTR)
+          </p>
+          <p className="text-[9px] text-muted-foreground mb-2.5">
+            Attendance data — will appear on receipt only, not saved to attendance_logs
+          </p>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 sm:grid-cols-3 lg:grid-cols-5">
+            {DTR_FIELD_KEYS.map((key) => (
+              <div key={key} className="flex flex-col gap-1">
+                <label className="text-[10px] font-medium text-muted-foreground leading-none">
+                  {DTR_FIELD_LABELS[key]}
+                </label>
+                <Input
+                  type="number"
+                  value={row[key] ?? ""}
+                  placeholder="—"
+                  onChange={(e) => updateCell(rowIdx, key, e.target.value)}
+                  className="h-7 text-xs px-2 border-border/50"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 function SectionLegend({ children }: { children: React.ReactNode }) {
   return (
@@ -475,6 +944,32 @@ function PBPreviewDialog({
         if (status !== "unmatched") status = "warning";
         hints.push("Net pay is zero — verify before importing");
       }
+      // Net-pay reconciliation: computed (gross + allowances + custom earnings
+      // − deductions) vs the imported net. Imported figure always wins.
+      const grossVal = parseFloat(row["Gross Pay"] || "0") || 0;
+      const allowVal = parseFloat(row["Allowances"] || "0") || 0;
+      const dedVal =
+        (parseFloat(row["SSS"] || "0") || 0) +
+        (parseFloat(row["PhilHealth"] || "0") || 0) +
+        (parseFloat(row["Pag-IBIG"] || "0") || 0) +
+        (parseFloat(row["Tax"] || "0") || 0) +
+        (parseFloat(row["Loan Deduction"] || "0") || 0) +
+        (parseFloat(row["Custom Deductions"] || "0") || 0) +
+        (parseFloat(row["Other Deductions"] || "0") || 0);
+      let customEarn = 0;
+      let customDed = 0;
+      for (const [k, v] of Object.entries(row)) {
+        if (!k.startsWith("__custom__")) continue;
+        const label = k.slice("__custom__".length);
+        const amt = parseFloat(String(v).replace(/[₱,\s]/g, "")) || 0;
+        if (row[`__customType__${label}`] === "earning") customEarn += amt;
+        else customDed += amt;
+      }
+      const computedNet = grossVal + allowVal + customEarn - dedVal - customDed;
+      if (!isNaN(netPay) && netPay !== 0 && Math.abs(computedNet - netPay) > 0.01) {
+        if (status === "matched") status = "warning";
+        hints.push("Imported net pay differs from computed. Imported figure will be used.");
+      }
 
       return { status, hints, matchedEmployee };
     });
@@ -537,7 +1032,12 @@ function PBPreviewDialog({
     },
   ];
 
-  const requiredFields = new Set(["Employee Name", "Email"]);
+  const requiredFields = new Set(["Employee Name", "Email", "Period Start", "Period End", "Gross Pay"]);
+
+  // Count rows still missing any required field (used to gate the confirm button)
+  const missingRequiredCount = rows.filter((r) =>
+    ["Employee Name", "Period Start", "Period End", "Gross Pay"].some((c) => !r[c]?.toString().trim())
+  ).length;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -757,6 +1257,7 @@ function PBPreviewDialog({
                       {sIdx < sections.length - 1 && <Separator className="mt-4" />}
                     </div>
                   ))}
+                  <ImportedExtrasFields row={row} rowIdx={rowIdx} updateCell={updateCell} />
                 </div>
               </div>
             );
@@ -791,7 +1292,7 @@ function PBPreviewDialog({
               Back
             </Button>
             <Button size="sm" className="gap-1.5 text-xs h-8" onClick={onConfirm}
-              disabled={rows.length === 0 || confirming || missingEmailCount > 0}>
+              disabled={rows.length === 0 || confirming || missingEmailCount > 0 || missingRequiredCount > 0}>
               {confirming
                 ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Importing…</>
                 : <><Upload className="h-3.5 w-3.5" />Confirm Import<ArrowRight className="h-3.5 w-3.5" /></>
@@ -889,7 +1390,14 @@ function TemplatePreviewDialog({
   }, [isPayroll, isAttendance]);
 
   const requiredFields = useMemo(() => {
-    return new Set(REQUIRED_COLS[module]);
+    const base = new Set(REQUIRED_COLS[module]);
+    // Payroll imports also require period + gross pay before confirm (Part 1, Step 4)
+    if (module === "payroll") {
+      base.add("Period Start");
+      base.add("Period End");
+      base.add("Gross Pay");
+    }
+    return base;
   }, [module]);
 
   // ── Row status — reuse same logic as PBPreviewDialog for payroll; generic for others ──
@@ -985,7 +1493,7 @@ function TemplatePreviewDialog({
   }, [rowStatuses]);
 
   const missingRequiredCount = rows.filter((r) =>
-    REQUIRED_COLS[module].some((c) => !r[c]?.trim())
+    Array.from(requiredFields).some((c) => !r[c]?.trim())
   ).length;
 
   const isReady = rows.length > 0 && missingRequiredCount === 0;
@@ -1220,6 +1728,9 @@ function TemplatePreviewDialog({
                       </div>
                     );
                   })}
+                  {isPayroll && (
+                    <ImportedExtrasFields row={row} rowIdx={rowIdx} updateCell={updateCell} />
+                  )}
                 </div>
               </div>
             );
@@ -1413,7 +1924,7 @@ export function ImportDataDialog({
 
         const fileHeaders = Object.keys(rows[0]);
 
-        // ── PB format detection (payroll module only) ───────────────────────
+        // ── PB / NexHRIS format detection (payroll module only) ───────────────
         if (isPayroll && isPBFormat(fileHeaders)) {
           // Re-read with header:1 to get array-of-arrays keyed by col index
           // Process ALL sheets — each sheet typically contains one employee
@@ -1436,6 +1947,36 @@ export function ImportDataDialog({
             if (indexedRows.length > 5) allSheets.push(indexedRows);
           }
 
+          // ── Try NexHRIS format FIRST (check for "NexHRIS" + section headers) ──
+          if (allSheets.length > 0 && isNexHRISFormat(allSheets[0])) {
+            const converted = convertNexHRISToPayrollRows(allSheets);
+            if (converted.length > 0) {
+              const allEmployees = useEmployeesStore.getState().employees;
+              let matchedCount = 0;
+              const enriched = converted.map((row) => {
+                const name = (row["Employee Name"] || "").trim();
+                const normName = normaliseForMatch(name);
+                // Try matching by employee ID first (most reliable), then by name
+                const empId = (row["Notes"] || "").match(/ID:(EMP-\w+)/)?.[1] || "";
+                const emp = (empId ? allEmployees.find((e) => e.id === empId) : null)
+                  || allEmployees.find((e) => normaliseForMatch(e.name) === normName);
+                if (emp) {
+                  matchedCount++;
+                  return { ...row, Email: row["Email"] || emp.email || "", Department: row["Department"] || emp.department || "", "Job Title": row["Job Title"] || emp.jobTitle || "" };
+                }
+                return row;
+              });
+
+              toast.info(`NexHRIS format detected — ${enriched.length} record(s) converted, ${matchedCount} matched. Review before importing.`);
+              setPbRows(enriched);
+              setPbFileName(f.name);
+              setLoading(false);
+              setPbPreviewOpen(true);
+              return;
+            }
+          }
+
+          // ── Fall back to PB format converter ──
           const converted = convertPBRawToPayrollRows(
             allSheets[0] ?? [],
             allSheets
@@ -1504,11 +2045,13 @@ export function ImportDataDialog({
           return;
         }
 
-        const stringRows = rows.map((r) =>
-          Object.fromEntries(
+        const stringRows = rows.map((r) => {
+          const base = Object.fromEntries(
             Object.entries(r).map(([k, v]) => [k, String(v ?? "")])
-          )
-        );
+          ) as Record<string, string>;
+          // Auto-detect DTR + custom columns for payroll imports only
+          return isPayroll ? detectImportedFields(base) : base;
+        });
 
         // Open the template preview dialog (mirrors PB flow)
         setTemplatePreviewRows(stringRows);
@@ -1577,11 +2120,13 @@ export function ImportDataDialog({
     if (pbRows.length === 0) return;
     setPbImporting(true);
     try {
-      const stringRows = pbRows.map((r) =>
-        Object.fromEntries(
+      const stringRows = pbRows.map((r) => {
+        const base = Object.fromEntries(
           Object.entries(r).map(([k, v]) => [k, String(v ?? "")])
-        )
-      );
+        ) as Record<string, string>;
+        // Tag as imported + surface DTR/custom columns for the API route
+        return buildImportedRowPayload(detectImportedFields(base), pbFileName);
+      });
       const res = await fetch(`/api/import/${module}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1613,7 +2158,7 @@ export function ImportDataDialog({
     } finally {
       setPbImporting(false);
     }
-  }, [pbRows, module, onImportComplete, reset]);
+  }, [pbRows, module, onImportComplete, reset, pbFileName]);
 
   // ── Template preview confirm import ─────────────────────────────────────────
 
@@ -1626,10 +2171,18 @@ export function ImportDataDialog({
     setTemplateImporting(true);
     setResult(null);
     try {
+      // For payroll imports, tag rows as imported and surface DTR/custom columns
+      // so the API route creates a locked run + persists receipt-only DTR data.
+      const outRows =
+        module === "payroll"
+          ? templatePreviewRows.map((r) =>
+              buildImportedRowPayload(detectImportedFields(r), templatePreviewFileName)
+            )
+          : templatePreviewRows;
       const res = await fetch(`/api/import/${module}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: templatePreviewRows, dryRun: false }),
+        body: JSON.stringify({ rows: outRows, dryRun: false }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Import failed" }));
@@ -1657,7 +2210,7 @@ export function ImportDataDialog({
     } finally {
       setTemplateImporting(false);
     }
-  }, [templatePreviewRows, module, onImportComplete, reset, validation]);
+  }, [templatePreviewRows, module, onImportComplete, reset, validation, templatePreviewFileName]);
 
   // ── Derived ─────────────────────────────────────────────────────────────────
 

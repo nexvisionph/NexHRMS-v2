@@ -148,6 +148,19 @@ export function AttendanceHeatmap({
         });
     }, [filteredEmployees, statusFilter, logMap, holidayDates]);
 
+    // ─── Pagination ───────────────────────────────────────────────
+    const [pageSize, setPageSize] = useState(10);
+    const [currentPage, setCurrentPage] = useState(1);
+
+    // Reset to page 1 whenever filters change
+    useEffect(() => { setCurrentPage(1); }, [displayEmployees.length, pageSize]);
+
+    const totalPages = Math.max(1, Math.ceil(displayEmployees.length / pageSize));
+    const pagedEmployees = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return displayEmployees.slice(start, start + pageSize);
+    }, [displayEmployees, currentPage, pageSize]);
+
     // ─── Modal state ──────────────────────────────────────────────
     const [modalOpen, setModalOpen] = useState(false);
     const [modalEmpId, setModalEmpId] = useState("");
@@ -280,10 +293,11 @@ export function AttendanceHeatmap({
     }, [filteredEmployees, logMap, holidayDates]);
 
     // ─── Cell size based on view ──────────────────────────────────
-    const cellW = isCompact ? "w-[28px]" : viewMode === "2weeks" ? "w-[48px]" : "w-[80px]";
     const cellH = isCompact ? "h-[28px]" : viewMode === "2weeks" ? "h-[40px]" : "h-[44px]";
     const dotSize = isCompact ? "w-3 h-3" : "w-4 h-4";
-    const empColW = isCompact ? "w-[200px]" : "w-[220px]";
+    const empColW = isCompact ? "w-[180px] min-w-[180px]" : "w-[200px] min-w-[200px]";
+    // Day cells stretch to fill remaining width; enforce a sensible minimum per cell
+    const cellMinW = isCompact ? "min-w-[24px]" : viewMode === "2weeks" ? "min-w-[40px]" : "min-w-[60px]";
 
     return (
         <div className="space-y-4">
@@ -383,17 +397,33 @@ export function AttendanceHeatmap({
                 </CardContent>
             </Card>
 
+                        {/* ─── Legend ──────────────────────────────────────────── */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground px-1">
+                <span className="font-semibold text-foreground/70 uppercase tracking-wider text-[10px]">Legend</span>
+                {Object.entries(STATUS_COLORS).map(([key, val]) => (
+                    <span key={key} className="flex items-center gap-1">
+                        <span className={`w-2.5 h-2.5 rounded-full ${val.bg}`} /> {val.label}
+                    </span>
+                ))}
+                <span className="flex items-center gap-1">
+                    <span className={`w-2.5 h-2.5 rounded-full ${WEEKEND_BG} border border-muted-foreground/20`} /> Weekend
+                </span>
+                <span className="flex items-center gap-1">
+                    <span className={`w-2.5 h-2.5 rounded-full ${EMPTY_BG} border border-dashed border-muted-foreground/20`} /> No Data
+                </span>
+            </div>
+
             {/* ─── Heatmap Grid ───────────────────────────────────── */}
             <Card className="border border-border/40 shadow-sm">
                 <CardContent className="p-0">
                     <div className="overflow-x-auto">
-                        <div className="min-w-fit">
+                        <div className="w-full">
                             {/* Header: dates */}
                             <div className="flex border-b border-border/40 sticky top-0 bg-background z-10">
                                 <div className={`shrink-0 ${empColW} p-2 border-r border-border/40 bg-muted/30`}>
                                     <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Employee / Role</p>
                                 </div>
-                                <div className="flex">
+                                <div className="flex flex-1 min-w-0">
                                     {dateRange.map((d) => {
                                         const isWknd = isWeekend(d);
                                         const isHol = holidayDates.has(format(d, "yyyy-MM-dd"));
@@ -401,7 +431,7 @@ export function AttendanceHeatmap({
                                         return (
                                             <div
                                                 key={d.toISOString()}
-                                                className={`${cellW} shrink-0 text-center border-r border-border/30 flex flex-col items-center justify-center ${
+                                                className={`flex-1 ${cellMinW} text-center border-r border-border/30 flex flex-col items-center justify-center ${
                                                     isCompact ? "py-1.5" : "py-2"
                                                 } ${
                                                     isToday ? "bg-blue-500/10" : isHol ? "bg-violet-500/5" : isWknd ? "bg-muted/20" : ""
@@ -426,7 +456,7 @@ export function AttendanceHeatmap({
                             {/* Rows: employees */}
                             {displayEmployees.length === 0 ? (
                                 <div className="p-8 text-center text-sm text-muted-foreground">No employees match the current filters.</div>
-                            ) : displayEmployees.map((emp) => {
+                            ) : pagedEmployees.map((emp) => {
                                 const proj = getProjectForEmp(emp.id);
                                 return (
                                     <div key={emp.id} className="flex border-b border-border/30 hover:bg-muted/10 transition-colors">
@@ -438,7 +468,7 @@ export function AttendanceHeatmap({
                                             </p>
                                         </div>
                                         {/* Cells */}
-                                        <div className="flex">
+                                        <div className="flex flex-1 min-w-0">
                                             {dateRange.map((d) => {
                                                 const dateStr = format(d, "yyyy-MM-dd");
                                                 const isWknd = isWeekend(d);
@@ -454,7 +484,7 @@ export function AttendanceHeatmap({
                                                         <TooltipTrigger asChild>
                                                             <button
                                                                 type="button"
-                                                                className={`${cellW} ${cellH} shrink-0 flex flex-col items-center justify-center gap-0.5 border-r border-border/30 transition-all ${
+                                                                className={`flex-1 ${cellMinW} ${cellH} flex flex-col items-center justify-center gap-0.5 border-r border-border/30 transition-all ${
                                                                     canEdit && !isWknd && !isFuture
                                                                         ? "cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-offset-background " + (colorInfo?.ring || "hover:ring-muted-foreground/30")
                                                                         : "cursor-default"
@@ -512,24 +542,56 @@ export function AttendanceHeatmap({
                             })}
                         </div>
                     </div>
+
+                    {/* ─── Pagination Footer ──────────────────────── */}
+                    {displayEmployees.length > 0 && (
+                        <div className="flex items-center justify-between px-4 py-3 border-t border-border/40 text-xs text-muted-foreground">
+                            {/* Rows per page */}
+                            <div className="flex items-center gap-2">
+                                <span>Rows per page:</span>
+                                <Select
+                                    value={String(pageSize)}
+                                    onValueChange={(v) => setPageSize(Number(v))}
+                                >
+                                    <SelectTrigger className="h-7 w-[70px] text-xs">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {[5, 10, 20, 50].map((n) => (
+                                            <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Page info + prev/next */}
+                            <div className="flex items-center gap-2">
+                                <span>
+                                    Page {currentPage} of {totalPages}
+                                </span>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                >
+                                    <ChevronLeft className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                >
+                                    <ChevronRight className="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
-
-            {/* ─── Legend ──────────────────────────────────────────── */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground px-1">
-                <span className="font-semibold text-foreground/70 uppercase tracking-wider text-[10px]">Legend</span>
-                {Object.entries(STATUS_COLORS).map(([key, val]) => (
-                    <span key={key} className="flex items-center gap-1">
-                        <span className={`w-2.5 h-2.5 rounded-full ${val.bg}`} /> {val.label}
-                    </span>
-                ))}
-                <span className="flex items-center gap-1">
-                    <span className={`w-2.5 h-2.5 rounded-full ${WEEKEND_BG} border border-muted-foreground/20`} /> Weekend
-                </span>
-                <span className="flex items-center gap-1">
-                    <span className={`w-2.5 h-2.5 rounded-full ${EMPTY_BG} border border-dashed border-muted-foreground/20`} /> No Data
-                </span>
-            </div>
 
             {/* ═══ Status Change Modal ════════════════════════════════ */}
             <Dialog open={modalOpen} onOpenChange={setModalOpen}>

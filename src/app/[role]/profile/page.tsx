@@ -12,10 +12,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getInitials, formatCurrency, formatDate } from "@/lib/format";
 import {
     Mail, MapPin, Phone, Briefcase, Calendar, DollarSign,
-    Heart, Home, Save, X, Camera, Loader2,
+    Heart, Home, Save, X, Camera, Loader2, Fingerprint,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
+
+// ─── Work Type Label Map ───────────────────────────────────────────────────────
+const workTypeLabels: Record<string, string> = {
+    WFO: "Work From Office",
+    WFH: "Work From Home",
+    HYBRID: "Hybrid",
+    REMOTE: "Remote",
+};
 
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
     return (
@@ -41,6 +49,8 @@ export default function ProfilePage() {
     const [birthday, setBirthday] = useState(employee?.birthday || "");
     const [emergencyContact, setEmergencyContact] = useState(employee?.emergencyContact || "");
     const [address, setAddress] = useState(employee?.address || "");
+    // ── NEW: Biometric ID state ──────────────────────────────────────────────
+    const [biometricId, setBiometricId] = useState(employee?.biometricId || "");
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Keep form fields in sync when employee data changes externally
@@ -50,6 +60,8 @@ export default function ProfilePage() {
             setBirthday(employee.birthday || "");
             setEmergencyContact(employee.emergencyContact || "");
             setAddress(employee.address || "");
+            // ── NEW ──────────────────────────────────────────────────────────
+            setBiometricId(employee.biometricId || "");
         }
     }, [employee, editing]);
 
@@ -128,6 +140,8 @@ export default function ProfilePage() {
         setBirthday(employee.birthday || "");
         setEmergencyContact(employee.emergencyContact || "");
         setAddress(employee.address || "");
+        // ── NEW ──────────────────────────────────────────────────────────────
+        setBiometricId(employee.biometricId || "");
         setEditing(true);
     };
 
@@ -144,6 +158,8 @@ export default function ProfilePage() {
                 birthday: birthday || null,
                 emergency_contact: emergencyContact || null,
                 address: address || null,
+                // ── NEW ──────────────────────────────────────────────────────
+                biometric_id: biometricId || null,
             };
 
             const res = await fetch("/api/settings/profile", {
@@ -163,6 +179,8 @@ export default function ProfilePage() {
                 birthday: birthday || undefined,
                 emergencyContact: emergencyContact || undefined,
                 address: address || undefined,
+                // ── NEW ──────────────────────────────────────────────────────
+                biometricId: biometricId || undefined,
             });
 
             useAuditStore.getState().log({
@@ -256,7 +274,8 @@ export default function ProfilePage() {
                 {/* Personal Information (editable) */}
                 <Card className="border border-border/50">
                     <CardHeader className="pb-3">
-                        <CardTitle className="text-sm font-semibold">Personal Information</CardTitle>
+                        {/* ── CHANGED: text-sm font-semibold → text-base font-bold ── */}
+                        <CardTitle className="text-base font-bold">Personal Information</CardTitle>
                     </CardHeader>
                     <CardContent>
                         {editing ? (
@@ -277,6 +296,11 @@ export default function ProfilePage() {
                                     <label className="text-xs font-medium text-muted-foreground">Address</label>
                                     <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Home address" className="mt-1 h-8 text-sm" />
                                 </div>
+                                {/* ── NEW: Biometric ID edit field ── */}
+                                <div>
+                                    <label className="text-xs font-medium text-muted-foreground">Biometric ID</label>
+                                    <Input value={biometricId} onChange={(e) => setBiometricId(e.target.value)} placeholder="Biometric ID" className="mt-1 h-8 text-sm" />
+                                </div>
                                 <div className="flex gap-2 pt-2">
                                     <Button onClick={handleSave} size="sm" className="gap-1.5" disabled={saving}>
                                         {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
@@ -293,6 +317,8 @@ export default function ProfilePage() {
                                 <InfoRow icon={<Calendar className="h-4 w-4" />} label="Birthday" value={employee.birthday ? formatDate(employee.birthday) : "—"} />
                                 <InfoRow icon={<Heart className="h-4 w-4" />} label="Emergency Contact" value={employee.emergencyContact || "—"} />
                                 <InfoRow icon={<Home className="h-4 w-4" />} label="Address" value={employee.address || "—"} />
+                                {/* ── NEW: Biometric ID read view ── */}
+                                <InfoRow icon={<Fingerprint className="h-4 w-4" />} label="Biometric ID" value={employee.biometricId || "—"} />
                             </div>
                         )}
                     </CardContent>
@@ -301,15 +327,26 @@ export default function ProfilePage() {
                 {/* Employment Details (read-only) */}
                 <Card className="border border-border/50">
                     <CardHeader className="pb-3">
-                        <CardTitle className="text-sm font-semibold">Employment Details</CardTitle>
+                        {/* ── CHANGED: text-sm font-semibold → text-base font-bold ── */}
+                        <CardTitle className="text-base font-bold">Employment Details</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-0.5">
                         <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Department" value={employee.department} />
-                        <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Role" value={employee.role} />
+                        {/* ── CHANGED: Role → Sentence Case ── */}
+                        <InfoRow
+                            icon={<Briefcase className="h-4 w-4" />}
+                            label="Role"
+                            value={employee.role ? employee.role.charAt(0).toUpperCase() + employee.role.slice(1).toLowerCase() : "—"}
+                        />
                         {employee.jobTitle && (
                             <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Job Title" value={employee.jobTitle} />
                         )}
-                        <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Work Type" value={employee.workType} />
+                        {/* ── CHANGED: Work Type → full label via map ── */}
+                        <InfoRow
+                            icon={<Briefcase className="h-4 w-4" />}
+                            label="Work Type"
+                            value={workTypeLabels[employee.workType?.toUpperCase()] || employee.workType}
+                        />
                         <InfoRow icon={<Calendar className="h-4 w-4" />} label="Join Date" value={formatDate(employee.joinDate)} />
                         <InfoRow icon={<DollarSign className="h-4 w-4" />} label="Monthly Salary" value={`${formatCurrency(employee.salary)}/mo`} />
                         <InfoRow icon={<Briefcase className="h-4 w-4" />} label="Shift" value={shiftName} />

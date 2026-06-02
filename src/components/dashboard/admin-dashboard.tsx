@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -28,6 +28,23 @@ import {
     Tooltip as RechartsTooltip, PieChart, Pie, Cell, AreaChart, Area,
 } from "recharts";
 import { isToday, parseISO, isAfter, startOfDay, format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval } from "date-fns";
+
+/* ─── Theme hook ─────────────────────────────────────────────── */
+
+function useIsDarkMode() {
+    const [isDark, setIsDark] = useState(() =>
+        typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+    );
+    useEffect(() => {
+        const el = document.documentElement;
+        const observer = new MutationObserver(() => {
+            setIsDark(el.classList.contains("dark"));
+        });
+        observer.observe(el, { attributes: true, attributeFilter: ["class"] });
+        return () => observer.disconnect();
+    }, []);
+    return isDark;
+}
 
 /* ─── Main Component ─────────────────────────────────────────── */
 
@@ -120,13 +137,18 @@ function KpiStatsRow() {
     }, []);
 
     const ADMIN_ACCESSED_ROLES = ["admin", "hr", "payroll_admin", "finance"];
-    const activeEmployees = employees.filter((e) => e.status === "active" && !ADMIN_ACCESSED_ROLES.includes(e.role)).length;
+    const activeEmployeeList = employees.filter((e) => e.status === "active" && !ADMIN_ACCESSED_ROLES.includes(e.role));
+    const activeEmployees = activeEmployeeList.length;
+    // Build a set of active non-admin employee IDs for consistent log filtering
+    const activeEmployeeIds = useMemo(() => new Set(activeEmployeeList.map((e) => e.id)), [activeEmployeeList]);
 
     // Find the most recent date with SUBSTANTIAL attendance records (not just 1 stray log)
     // This handles the case where today might have 1 manual log but yesterday has full data
     const { reportingDate, recentLogs: dayLogs } = useMemo(() => {
+        // Only consider logs belonging to active non-admin employees
+        const relevantLogs = logs.filter((l) => activeEmployeeIds.has(l.employeeId));
         const dateCounts = new Map<string, number>();
-        logs.forEach((l) => dateCounts.set(l.date, (dateCounts.get(l.date) || 0) + 1));
+        relevantLogs.forEach((l) => dateCounts.set(l.date, (dateCounts.get(l.date) || 0) + 1));
         const sortedDates = [...dateCounts.entries()]
             .sort(([a], [b]) => b.localeCompare(a)); // newest first
 
@@ -137,9 +159,9 @@ function KpiStatsRow() {
         const chosenDate = best?.[0] ?? sortedDates[0]?.[0] ?? new Date().toISOString().split("T")[0];
         return {
             reportingDate: chosenDate,
-            recentLogs: logs.filter((l) => l.date === chosenDate),
+            recentLogs: relevantLogs.filter((l) => l.date === chosenDate),
         };
-    }, [logs, activeEmployees]);
+    }, [logs, activeEmployees, activeEmployeeIds]);
 
     const presentCount = dayLogs.filter((l) => l.status === "present").length;
     const onLeaveCount = dayLogs.filter((l) => l.status === "on_leave").length;
@@ -392,6 +414,7 @@ const DEPT_COLORS = [
 function DepartmentDistributionChart() {
     const employees = useEmployeesStore((s) => s.employees);
     const rh = useRoleHref();
+    const isDark = useIsDarkMode();
 
     const data = useMemo(() => {
         const active = employees.filter(
@@ -505,16 +528,12 @@ function DepartmentDistributionChart() {
                                     return (
                                         <div
                                             style={{
-                                                backgroundColor:
-                                                    "#171717",
-                                                border:
-                                                    "1px solid rgba(255,255,255,.08)",
-                                                borderRadius:
-                                                    "12px",
-                                                padding:
-                                                    "8px 12px",
-                                                fontSize:
-                                                    "12px",
+                                                backgroundColor: isDark ? "#171717" : "#ffffff",
+                                                border: isDark ? "1px solid rgba(255,255,255,.08)" : "1px solid rgba(0,0,0,.08)",
+                                                borderRadius: "12px",
+                                                padding: "8px 12px",
+                                                fontSize: "12px",
+                                                boxShadow: isDark ? "none" : "0 4px 12px rgba(0,0,0,.08)",
                                             }}
                                         >
                                             <div
@@ -529,8 +548,7 @@ function DepartmentDistributionChart() {
 
                                             <div
                                                 style={{
-                                                    color:
-                                                        "#fff",
+                                                    color: isDark ? "#fff" : "#0a0a0a",
                                                 }}
                                             >
                                                 {
