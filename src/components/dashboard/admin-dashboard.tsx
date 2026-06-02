@@ -137,13 +137,18 @@ function KpiStatsRow() {
     }, []);
 
     const ADMIN_ACCESSED_ROLES = ["admin", "hr", "payroll_admin", "finance"];
-    const activeEmployees = employees.filter((e) => e.status === "active" && !ADMIN_ACCESSED_ROLES.includes(e.role)).length;
+    const activeEmployeeList = employees.filter((e) => e.status === "active" && !ADMIN_ACCESSED_ROLES.includes(e.role));
+    const activeEmployees = activeEmployeeList.length;
+    // Build a set of active non-admin employee IDs for consistent log filtering
+    const activeEmployeeIds = useMemo(() => new Set(activeEmployeeList.map((e) => e.id)), [activeEmployeeList]);
 
     // Find the most recent date with SUBSTANTIAL attendance records (not just 1 stray log)
     // This handles the case where today might have 1 manual log but yesterday has full data
     const { reportingDate, recentLogs: dayLogs } = useMemo(() => {
+        // Only consider logs belonging to active non-admin employees
+        const relevantLogs = logs.filter((l) => activeEmployeeIds.has(l.employeeId));
         const dateCounts = new Map<string, number>();
-        logs.forEach((l) => dateCounts.set(l.date, (dateCounts.get(l.date) || 0) + 1));
+        relevantLogs.forEach((l) => dateCounts.set(l.date, (dateCounts.get(l.date) || 0) + 1));
         const sortedDates = [...dateCounts.entries()]
             .sort(([a], [b]) => b.localeCompare(a)); // newest first
 
@@ -154,9 +159,9 @@ function KpiStatsRow() {
         const chosenDate = best?.[0] ?? sortedDates[0]?.[0] ?? new Date().toISOString().split("T")[0];
         return {
             reportingDate: chosenDate,
-            recentLogs: logs.filter((l) => l.date === chosenDate),
+            recentLogs: relevantLogs.filter((l) => l.date === chosenDate),
         };
-    }, [logs, activeEmployees]);
+    }, [logs, activeEmployees, activeEmployeeIds]);
 
     const presentCount = dayLogs.filter((l) => l.status === "present").length;
     const onLeaveCount = dayLogs.filter((l) => l.status === "on_leave").length;
