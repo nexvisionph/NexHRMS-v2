@@ -210,6 +210,44 @@ export async function POST(req: Request) {
         }))
       : null;
 
+    const baseAllowances = Number(row["Allowances"]) || 0;
+    const holidayPay = Number(row["Holiday Pay"]) || 0;
+    const sssDeduction = Number(row["SSS"]) || 0;
+    const philhealthDeduction = Number(row["PhilHealth"]) || 0;
+    const pagibigDeduction = Number(row["Pag-IBIG"]) || 0;
+    const taxDeduction = Number(row["Tax"]) || 0;
+    const loanDeduction = Number(row["Loan Deduction"]) || 0;
+    const customDeductions = Number(row["Custom Deductions"]) || 0;
+    const otherDeductions = Number(row["Other Deductions"]) || 0;
+    const importedNetPay = Number(row["Net Pay"]) || 0;
+
+    const customEarnings = (lineItems || [])
+      .filter((li) => li.type === "earning")
+      .reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+    const customLineItemDeductions = (lineItems || [])
+      .filter((li) => li.type === "deduction")
+      .reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+
+    // For converted/imported payroll files, deductions should always affect the
+    // stored net pay. We therefore recompute net from the imported line items.
+    // For normal template imports, keep the explicit Net Pay value.
+    const computedNetPay =
+      grossPay +
+      baseAllowances +
+      holidayPay +
+      customEarnings -
+      (sssDeduction +
+        philhealthDeduction +
+        pagibigDeduction +
+        taxDeduction +
+        loanDeduction +
+        customDeductions +
+        otherDeductions +
+        customLineItemDeductions);
+    const netPayToStore = rowIsImported
+      ? Math.max(0, Math.round(computedNetPay * 100) / 100)
+      : importedNetPay;
+
     const record: Record<string, unknown> = {
       id: payslipId,
       employee_id: employeeId,
@@ -217,16 +255,16 @@ export async function POST(req: Request) {
       period_end: periodEnd,
       pay_frequency: payFreq,
       gross_pay: grossPay,
-      allowances: Number(row["Allowances"]) || 0,
-      holiday_pay: Number(row["Holiday Pay"]) || 0,
-      sss_deduction: Number(row["SSS"]) || 0,
-      philhealth_deduction: Number(row["PhilHealth"]) || 0,
-      pagibig_deduction: Number(row["Pag-IBIG"]) || 0,
-      tax_deduction: Number(row["Tax"]) || 0,
-      loan_deduction: Number(row["Loan Deduction"]) || 0,
-      custom_deductions: Number(row["Custom Deductions"]) || 0,
-      other_deductions: Number(row["Other Deductions"]) || 0,
-      net_pay: netPay,
+      allowances: baseAllowances,
+      holiday_pay: holidayPay,
+      sss_deduction: sssDeduction,
+      philhealth_deduction: philhealthDeduction,
+      pagibig_deduction: pagibigDeduction,
+      tax_deduction: taxDeduction,
+      loan_deduction: loanDeduction,
+      custom_deductions: customDeductions,
+      other_deductions: otherDeductions,
+      net_pay: netPayToStore,
       status: "draft",
       payment_method: String(row["Payment Method"] || "bank_transfer"),
       bank_reference_id: String(row["Bank Reference"] || ""),

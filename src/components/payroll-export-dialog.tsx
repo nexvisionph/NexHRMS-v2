@@ -113,7 +113,7 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
     { label: "PhilHealth Contribution", amount: emp.philhealthContribution },
     { label: "Pag-IBIG Contribution", amount: emp.pagibigContribution },
     ...emp.deductionItems,
-    ...(emp.sssSalaryLoan > 0 ? [{ label: "SSS Salary Loan", amount: emp.sssSalaryLoan }] : []),
+    ...(emp.sssSalaryLoan > 0 ? [{ label: "Loan Deduction", amount: emp.sssSalaryLoan }] : []),
     ...(emp.pagibigLoan > 0 ? [{ label: "Pag-IBIG Loan", amount: emp.pagibigLoan }] : []),
     ...(emp.leaveWithoutPay > 0 ? [{ label: "Leave w/o Pay", amount: emp.leaveWithoutPay }] : []),
    ...(emp.tardinessUndertime > 0 ? [{ label: "Absent / Late / Undertime", amount: emp.tardinessUndertime }] : []),
@@ -193,6 +193,7 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   grid[10][5] = "Semi-Monthly Pay"; grid[10][7] = emp.semiMonthlySalary;
   grid[11][1] = "Civil Status"; grid[11][4] = "";
   grid[12][1] = "No. of Dependents"; grid[12][4] = "";
+  grid[12][5] = "Gross Pay"; grid[12][7] = emp.totalBasicSalary;
 
   // ALLOWANCES header
   grid[ALLOWANCES_HEADER][1] = "ALLOWANCES";
@@ -281,6 +282,7 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
       { s: { r, c: 5 }, e: { r, c: 6 } },
     ]),
     ...[11, 12].map(r => ({ s: { r, c: 1 }, e: { r, c: 3 } })),
+    { s: { r: 12, c: 5 }, e: { r: 12, c: 6 } },
     { s: { r: ALLOWANCES_HEADER, c: 1 }, e: { r: ALLOWANCES_HEADER, c: 7 } },
     ...Array.from({ length: allowanceRows.length + 1 }, (_, i) => ({ s: { r: ALLOWANCES_START + i, c: 1 }, e: { r: ALLOWANCES_START + i, c: 6 } })),
     { s: { r: TOTAL_ALLOWANCES_ROW, c: 1 }, e: { r: TOTAL_ALLOWANCES_ROW, c: 6 } },
@@ -364,6 +366,7 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   empRowStyles.forEach((s, i) => styleRange(7 + i, 1, 7 + i, 7, s));
   styleRange(11, 1, 11, 4, whiteRow);
   styleRange(12, 1, 12, 4, ltGrayRow);
+  styleRange(12, 5, 12, 7, ltGrayRow);
 
   // Allowances section styles
   styleRange(ALLOWANCES_HEADER, 1, ALLOWANCES_HEADER, 7, tealSection);
@@ -534,6 +537,7 @@ function generatePayrollPDF(employees: EmployeePayrollData[], filename: string) 
               <tr><td class="label">Full Name</td><td>${emp.name}</td><td class="label">Daily Rate</td><td class="num">${fmt(emp.dailyRate)}</td></tr>
               <tr><td class="label">Position</td><td>${emp.position}</td><td class="label">Hourly Rate</td><td class="num">${fmt(emp.hourlyRate)}</td></tr>
               <tr><td class="label">Project</td><td>${emp.project}</td><td class="label">Semi-Monthly Pay</td><td class="num">${fmt(emp.semiMonthlySalary)}</td></tr>
+              <tr><td class="label"></td><td></td><td class="label">Gross Pay</td><td class="num">${fmt(emp.totalBasicSalary)}</td></tr>
             </table>
 
             <div class="section-title">ALLOWANCES</div>
@@ -550,7 +554,7 @@ function generatePayrollPDF(employees: EmployeePayrollData[], filename: string) 
               <tr><td>PhilHealth Contribution</td><td class="num">${fmt(emp.philhealthContribution)}</td></tr>
               <tr><td>Pag-IBIG Contribution</td><td class="num">${fmt(emp.pagibigContribution)}</td></tr>
               ${emp.deductionItems.map(d => `<tr><td>${d.label}</td><td class="num">${fmt(d.amount)}</td></tr>`).join("")}
-              ${emp.sssSalaryLoan > 0 ? `<tr><td>SSS Salary Loan</td><td class="num">${fmt(emp.sssSalaryLoan)}</td></tr>` : ""}
+              ${emp.sssSalaryLoan > 0 ? `<tr><td>Loan Deduction</td><td class="num">${fmt(emp.sssSalaryLoan)}</td></tr>` : ""}
               ${emp.pagibigLoan > 0 ? `<tr><td>Pag-IBIG Loan</td><td class="num">${fmt(emp.pagibigLoan)}</td></tr>` : ""}
               ${emp.tardinessUndertime > 0 ? `<tr><td>Tardiness / Undertime</td><td class="num">${fmt(emp.tardinessUndertime)}</td></tr>` : ""}
               <tr class="total-row"><td><strong>TOTAL DEDUCTIONS</strong></td><td class="num"><strong>${fmt(emp.totalDeductions)}</strong></td></tr>
@@ -1016,7 +1020,15 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
         }
       }
 
-      const deductionItems = customDeductionItems;
+      const deductionItems = [
+        ...customDeductionItems,
+        ...(payslip && Number(payslip.customDeductions ?? 0) > 0
+          ? [{ label: "Custom Deductions", amount: Number(payslip.customDeductions ?? 0) }]
+          : []),
+        ...(payslip && Number(payslip.otherDeductions ?? 0) > 0
+          ? [{ label: "Other Deductions", amount: Number(payslip.otherDeductions ?? 0) }]
+          : []),
+      ];
 
       return {
         id: emp.id,
