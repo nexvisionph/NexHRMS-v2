@@ -40,12 +40,13 @@ interface PayslipTableProps {
     runs?: PayrollRun[];
     getEmpName: (id: string) => string;
     getEmpDetails?: (id: string) => { department?: string; jobTitle?: string };
+    getPaymentEligibility?: (payslip: Payslip) => { eligible: boolean; reason?: string };
     onMarkPaid?: (id: string, method: PaymentMethod, reference: string, cashAmount?: number, paymentProofUrl?: string) => void;
     onReissue?: (id: string) => void;
     isAdmin?: boolean;
 }
 
-export function PayslipTable({ payslips, runs = [], getEmpName, getEmpDetails, onMarkPaid, onReissue, isAdmin }: PayslipTableProps) {
+export function PayslipTable({ payslips, runs = [], getEmpName, getEmpDetails, getPaymentEligibility, onMarkPaid, onReissue, isAdmin }: PayslipTableProps) {
     const isPayslipRunLocked = (ps: Payslip) => {
         if (!ps.payrollBatchId) return false;
         const run = runs.find((r) => r.id === ps.payrollBatchId);
@@ -284,8 +285,15 @@ export function PayslipTable({ payslips, runs = [], getEmpName, getEmpDetails, o
                                                         </Button>
                                                         {isAdmin && (ps.status === "published" || ps.status === "signed" || ps.status === "payment_hold") && (() => {
                                                             const runLocked = isPayslipRunLocked(ps);
-                                                            const canPay = !!ps.signedAt && runLocked;
-                                                            const title = !runLocked ? "Payroll run must be locked first" : !ps.signedAt ? "Unsigned - not eligible for payment" : "Mark as Paid";
+                                                            const eligibility = getPaymentEligibility?.(ps) ?? { eligible: true };
+                                                            const canPay = !!ps.signedAt && runLocked && eligibility.eligible;
+                                                            const title = !runLocked
+                                                                ? "Payroll run must be locked first"
+                                                                : !ps.signedAt
+                                                                    ? "Unsigned - not eligible for payment"
+                                                                    : !eligibility.eligible
+                                                                        ? (eligibility.reason || "Not eligible for payment")
+                                                                        : "Mark as Paid";
                                                             return (
                                                                 <Button
                                                                     variant="ghost"
