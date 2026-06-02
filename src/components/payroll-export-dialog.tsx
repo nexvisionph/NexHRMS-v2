@@ -15,6 +15,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Download, FileSpreadsheet, FileText, Loader2, X, Users, Building2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { format, getDaysInMonth } from "date-fns";
@@ -45,6 +46,8 @@ interface SelectedEmployee {
 interface PayrollExportDialogProps {
   trigger?: React.ReactNode;
 }
+
+type ExportMode = "period" | "run";
 
 interface EmployeePayrollData {
   id: string;
@@ -113,7 +116,7 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
     { label: "PhilHealth Contribution", amount: emp.philhealthContribution },
     { label: "Pag-IBIG Contribution", amount: emp.pagibigContribution },
     ...emp.deductionItems,
-    ...(emp.sssSalaryLoan > 0 ? [{ label: "SSS Salary Loan", amount: emp.sssSalaryLoan }] : []),
+    ...(emp.sssSalaryLoan > 0 ? [{ label: "Loan Deduction", amount: emp.sssSalaryLoan }] : []),
     ...(emp.pagibigLoan > 0 ? [{ label: "Pag-IBIG Loan", amount: emp.pagibigLoan }] : []),
     ...(emp.leaveWithoutPay > 0 ? [{ label: "Leave w/o Pay", amount: emp.leaveWithoutPay }] : []),
    ...(emp.tardinessUndertime > 0 ? [{ label: "Absent / Late / Undertime", amount: emp.tardinessUndertime }] : []),
@@ -193,6 +196,7 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   grid[10][5] = "Semi-Monthly Pay"; grid[10][7] = emp.semiMonthlySalary;
   grid[11][1] = "Civil Status"; grid[11][4] = "";
   grid[12][1] = "No. of Dependents"; grid[12][4] = "";
+  grid[12][5] = "Gross Pay"; grid[12][7] = emp.totalBasicSalary;
 
   // ALLOWANCES header
   grid[ALLOWANCES_HEADER][1] = "ALLOWANCES";
@@ -281,6 +285,7 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
       { s: { r, c: 5 }, e: { r, c: 6 } },
     ]),
     ...[11, 12].map(r => ({ s: { r, c: 1 }, e: { r, c: 3 } })),
+    { s: { r: 12, c: 5 }, e: { r: 12, c: 6 } },
     { s: { r: ALLOWANCES_HEADER, c: 1 }, e: { r: ALLOWANCES_HEADER, c: 7 } },
     ...Array.from({ length: allowanceRows.length + 1 }, (_, i) => ({ s: { r: ALLOWANCES_START + i, c: 1 }, e: { r: ALLOWANCES_START + i, c: 6 } })),
     { s: { r: TOTAL_ALLOWANCES_ROW, c: 1 }, e: { r: TOTAL_ALLOWANCES_ROW, c: 6 } },
@@ -364,6 +369,7 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   empRowStyles.forEach((s, i) => styleRange(7 + i, 1, 7 + i, 7, s));
   styleRange(11, 1, 11, 4, whiteRow);
   styleRange(12, 1, 12, 4, ltGrayRow);
+  styleRange(12, 5, 12, 7, ltGrayRow);
 
   // Allowances section styles
   styleRange(ALLOWANCES_HEADER, 1, ALLOWANCES_HEADER, 7, tealSection);
@@ -534,6 +540,7 @@ function generatePayrollPDF(employees: EmployeePayrollData[], filename: string) 
               <tr><td class="label">Full Name</td><td>${emp.name}</td><td class="label">Daily Rate</td><td class="num">${fmt(emp.dailyRate)}</td></tr>
               <tr><td class="label">Position</td><td>${emp.position}</td><td class="label">Hourly Rate</td><td class="num">${fmt(emp.hourlyRate)}</td></tr>
               <tr><td class="label">Project</td><td>${emp.project}</td><td class="label">Semi-Monthly Pay</td><td class="num">${fmt(emp.semiMonthlySalary)}</td></tr>
+              <tr><td class="label"></td><td></td><td class="label">Gross Pay</td><td class="num">${fmt(emp.totalBasicSalary)}</td></tr>
             </table>
 
             <div class="section-title">ALLOWANCES</div>
@@ -550,7 +557,7 @@ function generatePayrollPDF(employees: EmployeePayrollData[], filename: string) 
               <tr><td>PhilHealth Contribution</td><td class="num">${fmt(emp.philhealthContribution)}</td></tr>
               <tr><td>Pag-IBIG Contribution</td><td class="num">${fmt(emp.pagibigContribution)}</td></tr>
               ${emp.deductionItems.map(d => `<tr><td>${d.label}</td><td class="num">${fmt(d.amount)}</td></tr>`).join("")}
-              ${emp.sssSalaryLoan > 0 ? `<tr><td>SSS Salary Loan</td><td class="num">${fmt(emp.sssSalaryLoan)}</td></tr>` : ""}
+              ${emp.sssSalaryLoan > 0 ? `<tr><td>Loan Deduction</td><td class="num">${fmt(emp.sssSalaryLoan)}</td></tr>` : ""}
               ${emp.pagibigLoan > 0 ? `<tr><td>Pag-IBIG Loan</td><td class="num">${fmt(emp.pagibigLoan)}</td></tr>` : ""}
               ${emp.tardinessUndertime > 0 ? `<tr><td>Tardiness / Undertime</td><td class="num">${fmt(emp.tardinessUndertime)}</td></tr>` : ""}
               <tr class="total-row"><td><strong>TOTAL DEDUCTIONS</strong></td><td class="num"><strong>${fmt(emp.totalDeductions)}</strong></td></tr>
@@ -722,11 +729,14 @@ function buildDtrFromPayslip(
 
 export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
   const [open, setOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<ExportMode>("run");
   const [month, setMonth] = useState<number>(new Date().getMonth());
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [range, setRange] = useState<PayrollRange>("first_half");
   const [departmentId, setDepartmentId] = useState<string>("");
   const [selectedEmployees, setSelectedEmployees] = useState<SelectedEmployee[]>([]);
+  const [runEmployeeId, setRunEmployeeId] = useState<string>("");
+  const [selectedRunPayslipId, setSelectedRunPayslipId] = useState<string>("");
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -763,11 +773,14 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
 
   useEffect(() => {
     if (!open) {
+      setExportMode("run");
       setMonth(new Date().getMonth());
       setYear(new Date().getFullYear());
       setRange("first_half");
       setDepartmentId("");
       setSelectedEmployees([]);
+      setRunEmployeeId("");
+      setSelectedRunPayslipId("");
       setEmployeeSearch("");
       setErrors({});
       setLoading(false);
@@ -785,12 +798,15 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
 
   const validate = useCallback(() => {
     const errs: Record<string, string> = {};
-    if (!departmentId && selectedEmployees.length === 0) {
+    if (exportMode === "run") {
+      if (!runEmployeeId) errs.filter = "Select an employee.";
+      else if (!selectedRunPayslipId) errs.filter = "Select a payroll run.";
+    } else if (!departmentId && selectedEmployees.length === 0) {
       errs.filter = "Select at least a department or one employee.";
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
-  }, [departmentId, selectedEmployees]);
+  }, [departmentId, selectedEmployees, exportMode, runEmployeeId, selectedRunPayslipId]);
 
   const getPeriodDates = useCallback(() => {
     const daysInMonth = getDaysInMonth(new Date(year, month));
@@ -911,6 +927,37 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
     return dtrEntries;
   }, [attendanceLogs]);
 
+  const runPayslipOptions = useMemo(() => {
+    if (!runEmployeeId) return [];
+    return payslips
+      .filter((p) => p.employeeId === runEmployeeId)
+      .sort((a, b) => b.periodStart.localeCompare(a.periodStart))
+      .map((p) => ({
+        id: p.id,
+        label: `${p.periodStart} to ${p.periodEnd} (${String(p.payFrequency || "").replace(/_/g, "-") || "period"})`,
+        source: p.source === "imported" || p.computedExternally ? "Imported" : "System",
+      }));
+  }, [payslips, runEmployeeId]);
+
+  const runEmployeeOptions = useMemo(() =>
+    employees
+      .filter((e) => e.status === "active")
+      .map((e) => ({
+        value: e.id,
+        label: `${e.name}${e.department ? ` — ${e.department}` : ""}${e.email ? ` (${e.email})` : ""}`,
+      })),
+  [employees]);
+
+  useEffect(() => {
+    if (!runEmployeeId) {
+      setSelectedRunPayslipId("");
+      return;
+    }
+    if (!runPayslipOptions.some((opt) => opt.id === selectedRunPayslipId)) {
+      setSelectedRunPayslipId("");
+    }
+  }, [runEmployeeId, runPayslipOptions, selectedRunPayslipId]);
+
   // Build all employee data for export
   const buildEmployeeData = useCallback((): EmployeePayrollData[] => {
     const targetEmployees = getTargetEmployees();
@@ -925,7 +972,7 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
       // ── Imported payroll branch (Part 3) ─────────────────────────────────
       // For imported payslips, DTR comes from the payslip record (receipt only),
       // NOT from attendance_logs. Normal payslips are unchanged.
-      const isImported = payslip?.source === "imported" || payslip?.computedExternally === true || (payslip != null && (payslip.dailyRate ?? 0) > 0 && (payslip.overtimePay ?? 0) >= 0);
+      const isImported = payslip?.source === "imported" || payslip?.computedExternally === true;
 
       // For imported payslips, use rates from the payslip record (from the original file).
       // For normal payslips, derive from the employee's current salary.
@@ -1016,7 +1063,15 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
         }
       }
 
-      const deductionItems = customDeductionItems;
+      const deductionItems = [
+        ...customDeductionItems,
+        ...(payslip && Number(payslip.customDeductions ?? 0) > 0
+          ? [{ label: "Custom Deductions", amount: Number(payslip.customDeductions ?? 0) }]
+          : []),
+        ...(payslip && Number(payslip.otherDeductions ?? 0) > 0
+          ? [{ label: "Other Deductions", amount: Number(payslip.otherDeductions ?? 0) }]
+          : []),
+      ];
 
       return {
         id: emp.id,
@@ -1065,6 +1120,85 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
     });
   }, [getTargetEmployees, getPeriodDates, range, payslips, getDTRForEmployee, overtimeRequests, computeDeductionsForEmployee, deductionTemplates]);
 
+  const buildEmployeeDataByRun = useCallback((): EmployeePayrollData[] => {
+    if (!runEmployeeId || !selectedRunPayslipId) return [];
+    const emp = employees.find((e) => e.id === runEmployeeId);
+    const payslip = payslips.find((p) => p.id === selectedRunPayslipId && p.employeeId === runEmployeeId);
+    if (!emp || !payslip) return [];
+
+    const isImported = payslip.source === "imported" || payslip.computedExternally === true;
+    const baseSalary = emp.salary ?? 0;
+    let importedMonthlySalary = 0;
+    if (payslip.notes) {
+      const monthlyMatch = payslip.notes.match(/Monthly:\s*([\d,]+(?:\.\d+)?)/);
+      if (monthlyMatch) importedMonthlySalary = Number(monthlyMatch[1].replace(/,/g, "")) || 0;
+    }
+    const monthlySalary = (payslip.dailyRate && payslip.dailyRate > 0)
+      ? (importedMonthlySalary > 0 ? importedMonthlySalary : Math.round(payslip.dailyRate * 22 * 100) / 100)
+      : baseSalary;
+    const dailyRate = (payslip.dailyRate && payslip.dailyRate > 0)
+      ? payslip.dailyRate
+      : Math.round((baseSalary / 22) * 100) / 100;
+    const hourlyRate = (payslip.hourlyRate && payslip.hourlyRate > 0)
+      ? payslip.hourlyRate
+      : Math.round((dailyRate / 8) * 100) / 100;
+    const semiMonthlySalary = Math.round((monthlySalary / 2) * 100) / 100;
+
+    const dtr = isImported
+      ? buildDtrFromPayslip(payslip, payslip.periodStart || "", payslip.periodEnd || "")
+      : getDTRForEmployee(emp.id, payslip.periodStart, payslip.periodEnd);
+
+    const lineItems = payslip.lineItemsJson;
+    let customAllowanceItems: { label: string; amount: number }[] = [];
+    let customDeductionItems: { label: string; amount: number }[] = [];
+    if (lineItems && lineItems.length > 0) {
+      customAllowanceItems = lineItems.filter((li) => li.type === "earning").map((li) => ({ label: li.label, amount: li.amount }));
+      customDeductionItems = lineItems.filter((li) => li.type === "deduction").map((li) => ({ label: li.label, amount: li.amount }));
+    }
+    const deductionItems = [
+      ...customDeductionItems,
+      ...(Number(payslip.customDeductions ?? 0) > 0 ? [{ label: "Custom Deductions", amount: Number(payslip.customDeductions ?? 0) }] : []),
+      ...(Number(payslip.otherDeductions ?? 0) > 0 ? [{ label: "Other Deductions", amount: Number(payslip.otherDeductions ?? 0) }] : []),
+    ];
+
+    return [{
+      id: emp.id,
+      name: emp.name,
+      position: emp.jobTitle || "",
+      project: emp.department || "",
+      department: emp.department || "",
+      monthlySalary,
+      dailyRate,
+      hourlyRate,
+      semiMonthlySalary,
+      periodFrom: format(new Date(payslip.periodStart), "MMM dd, yyyy"),
+      periodTo: format(new Date(payslip.periodEnd), "MMM dd, yyyy"),
+      range: `${String(payslip.payFrequency || "period").replace(/_/g, "-")} (${payslip.periodStart} to ${payslip.periodEnd})`,
+      overtimePay: Number(payslip.overtimePay ?? 0),
+      totalBasicSalary: Number(payslip.grossPay ?? semiMonthlySalary),
+      allowanceItems: customAllowanceItems,
+      deductionItems,
+      withholdingTax: Number(payslip.taxDeduction ?? 0),
+      sssContribution: Number(payslip.sssDeduction ?? 0),
+      sssSalaryLoan: Number(payslip.loanDeduction ?? 0),
+      philhealthContribution: Number(payslip.philhealthDeduction ?? 0),
+      pagibigContribution: Number(payslip.pagibigDeduction ?? 0),
+      pagibigLoan: 0,
+      leaveWithoutPay: 0,
+      tardinessUndertime: Number(payslip.lateDeduction ?? 0) + Number(payslip.undertimeDeduction ?? 0) + Number(payslip.absentDeduction ?? 0),
+      totalDeductions: Number(payslip.sssDeduction ?? 0) + Number(payslip.philhealthDeduction ?? 0) +
+        Number(payslip.pagibigDeduction ?? 0) + Number(payslip.taxDeduction ?? 0) +
+        Number(payslip.loanDeduction ?? 0) + Number(payslip.otherDeductions ?? 0) +
+        Number(payslip.customDeductions ?? 0) + Number(payslip.absentDeduction ?? 0) +
+        Number(payslip.lateDeduction ?? 0) + Number(payslip.undertimeDeduction ?? 0),
+      netPay: Number(payslip.netPay ?? 0),
+      dtr,
+      imported: isImported,
+      importedFileName: payslip.importedFileName ?? undefined,
+      dtrFromImport: isImported,
+    }];
+  }, [employees, payslips, runEmployeeId, selectedRunPayslipId, getDTRForEmployee]);
+
   const handleExport = useCallback(async (type: "xlsx" | "pdf") => {
     if (!validate()) return;
 
@@ -1072,7 +1206,7 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
     setExportType(type);
 
     try {
-      const employeeData = buildEmployeeData();
+      const employeeData = exportMode === "run" ? buildEmployeeDataByRun() : buildEmployeeData();
       if (employeeData.length === 0) {
         toast.error("No employees found for the selected filters.");
         setLoading(false);
@@ -1117,7 +1251,7 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
       setLoading(false);
       setExportType(null);
     }
-  }, [validate, buildEmployeeData, buildFilename]);
+  }, [validate, buildEmployeeData, buildEmployeeDataByRun, buildFilename, exportMode]);
 
   const handleAddEmployee = (emp: { id: string; name: string; department?: string }) => {
     setSelectedEmployees((prev) => [...prev, { id: emp.id, name: emp.name, department: emp.department }]);
@@ -1155,6 +1289,53 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
             </p>
           </div>
 
+          <div>
+            <label className="text-sm font-medium">Export Mode</label>
+            <Select value={exportMode} onValueChange={(v) => setExportMode(v as ExportMode)}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="run">By Payroll Run (recommended)</SelectItem>
+                <SelectItem value="period">By Period (legacy)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {exportMode === "run" ? (
+            <>
+              <div>
+                <label className="text-sm font-medium">Employee</label>
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={runEmployeeId}
+                    onValueChange={(v) => { setRunEmployeeId(v); setErrors({}); }}
+                    options={runEmployeeOptions}
+                    placeholder="Select employee"
+                    searchPlaceholder="Search employee..."
+                    className="w-full"
+                    popoverWidth="w-[420px]"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Payroll Run</label>
+                <Select
+                  value={selectedRunPayslipId}
+                  onValueChange={(v) => { setSelectedRunPayslipId(v); setErrors({}); }}
+                  disabled={!runEmployeeId}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue placeholder={runEmployeeId ? "Select payroll run" : "Select employee first"} /></SelectTrigger>
+                  <SelectContent>
+                    {runPayslipOptions.map((opt) => (
+                      <SelectItem key={opt.id} value={opt.id}>
+                        {opt.label} • {opt.source}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          ) : (
+            <>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-sm font-medium">Month</label>
@@ -1273,6 +1454,8 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
               )}
             </div>
           </div>
+            </>
+          )}
 
           {errors.filter && (
             <div className="flex items-center gap-2 text-destructive text-xs">

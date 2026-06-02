@@ -88,6 +88,41 @@
         const canIssue = hasPermission(currentUser.role, "payroll:generate");
         const canLock = hasPermission(currentUser.role, "payroll:lock");
         const canReset = mode === "admin";
+        const getPaymentEligibility = useCallback((ps: { employeeId: string; periodStart: string; periodEnd: string; source?: string; computedExternally?: boolean }) => {
+            // Imported payslips are external-authoritative snapshots; allow payment.
+            if (ps.source === "imported" || ps.computedExternally) {
+                return { eligible: true as const };
+            }
+
+            const start = parseISO(ps.periodStart);
+            const end = parseISO(ps.periodEnd);
+            if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+                return { eligible: true as const };
+            }
+
+            // Count weekdays in period and how many have a present log.
+            let workdays = 0;
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                const dow = d.getDay();
+                if (dow !== 0 && dow !== 6) workdays++;
+            }
+            if (workdays === 0) return { eligible: true as const };
+
+            const periodLogs = attendanceLogs.filter(
+                (l) => l.employeeId === ps.employeeId && l.date >= ps.periodStart && l.date <= ps.periodEnd
+            );
+            const presentDays = periodLogs.filter(
+                (l) => l.status === "present" || (l.hours ?? 0) > 0 || !!l.checkIn
+            ).length;
+
+            if (presentDays === 0) {
+                return {
+                    eligible: false as const,
+                    reason: "Employee has no present attendance in this period",
+                };
+            }
+            return { eligible: true as const };
+        }, [attendanceLogs]);
 
         const handleReset = async () => {
             // Nuclear reset: wipe ALL payroll data from Supabase (not filtered by IDs).
@@ -1694,10 +1729,17 @@
                                             payslips={activeRunPayslips}
                                             runs={runs}
                                             getEmpName={getEmpName}
+                                            getPaymentEligibility={getPaymentEligibility}
                                             isAdmin={canIssue}
                                             onMarkPaid={(id, method, reference, cashAmount, paymentProofUrl) => {
-                                                confirmPaidByFinance(id, currentUser.name, method, reference, cashAmount, paymentProofUrl);
                                                 const ps = payslips.find(p => p.id === id);
+                                                if (!ps) return;
+                                                const eligibility = getPaymentEligibility(ps);
+                                                if (!eligibility.eligible) {
+                                                    toast.error(eligibility.reason || "This payslip is not eligible for payment");
+                                                    return;
+                                                }
+                                                confirmPaidByFinance(id, currentUser.name, method, reference, cashAmount, paymentProofUrl);
                                                 if (ps) dispatchNotification("payment_confirmed", { name: getEmpName(ps.employeeId), period: `${ps.periodStart} — ${ps.periodEnd}`, method }, ps.employeeId);
                                                 toast.success("Payment confirmed");
                                             }}
@@ -1801,6 +1843,13 @@
                                                         <Button variant="outline" size="sm" onClick={() => resetHoldPaymentDialog()} disabled={holdIsUploading}>Cancel</Button>
                                                         <Button size="sm" className="gap-1.5" disabled={holdIsUploading} onClick={async () => {
                                                             if (!holdApprovePsId) return;
+                                                            const holdPs = payslips.find((p) => p.id === holdApprovePsId);
+                                                            if (!holdPs) return;
+                                                            const eligibility = getPaymentEligibility(holdPs);
+                                                            if (!eligibility.eligible) {
+                                                                toast.error(eligibility.reason || "This payslip is not eligible for payment");
+                                                                return;
+                                                            }
                                                             if (holdPayMethod !== "cash" && !holdPayRef.trim()) {
                                                                 toast.error(holdPayMethod === "bank_transfer" ? "Enter bank reference" : holdPayMethod === "gcash" ? "Enter GCash reference" : "Enter check number");
                                                                 return;

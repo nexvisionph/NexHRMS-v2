@@ -474,6 +474,16 @@ function convertPBRawToPayrollRows(
       const dtrPerDay: Array<{ date: string; day?: string; timeIn?: string; timeOut?: string; totalHrs?: number; otHrs?: number }> = [];
       const dtrStartRow = 15;
       const maxDtrRows = 20;
+      const resolveDateInPeriod = (dayNum: number): string => {
+        if (!periodFrom || !periodTo || dayNum <= 0) return "";
+        const from = new Date(periodFrom);
+        const to = new Date(periodTo);
+        if (isNaN(from.getTime()) || isNaN(to.getTime()) || from > to) return "";
+        for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+          if (d.getDate() === dayNum) return d.toISOString().split("T")[0];
+        }
+        return "";
+      };
 
       for (let ri = dtrStartRow; ri < dtrStartRow + maxDtrRows && ri < raw.length; ri++) {
         const col17 = strCell(raw, ri, 17);
@@ -514,8 +524,11 @@ function convertPBRawToPayrollRows(
         const workingHrs = col25;
         const otUt = col26;
 
+        const resolvedDate = resolveDateInPeriod(dayNum);
+        if (!resolvedDate) continue; // skip rows outside the imported payroll period
+
         dtrPerDay.push({
-          date: String(dayNum),
+          date: resolvedDate,
           day: dayLabel || undefined,
           timeIn: timeIn || undefined,
           timeOut: timeOut || undefined,
@@ -968,7 +981,7 @@ function PBPreviewDialog({
       const computedNet = grossVal + allowVal + customEarn - dedVal - customDed;
       if (!isNaN(netPay) && netPay !== 0 && Math.abs(computedNet - netPay) > 0.01) {
         if (status === "matched") status = "warning";
-        hints.push("Imported net pay differs from computed. Imported figure will be used.");
+        hints.push("Imported net pay differs from computed. Deductions-based computed net will be used on import.");
       }
 
       return { status, hints, matchedEmployee };
