@@ -89,8 +89,19 @@ export async function assignEmployee(projectId: string, employeeId: string): Pro
     if (!ok) return false;
 
     // 2. Update local cache
+    // The DB trigger enforces "1 project per employee", so we must remove
+    // this employee from any other project in local state too.
     useProjectsStore.setState((s) => ({
-        projects: s.projects.map((p) => (p.id === projectId ? updated : p)),
+        projects: s.projects.map((p) => {
+            if (p.id === projectId) return updated;
+            if (p.assignedEmployeeIds.includes(employeeId)) {
+                return {
+                    ...p,
+                    assignedEmployeeIds: p.assignedEmployeeIds.filter((id) => id !== employeeId),
+                };
+            }
+            return p;
+        }),
     }));
     return true;
 }

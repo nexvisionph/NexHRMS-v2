@@ -25,6 +25,13 @@ import { sendNotification } from "@/lib/notifications";
 import { FolderKanban, Plus, MapPin, UserPlus, Trash2, ScanFace, QrCode, UserCheck, Pencil, Search } from "lucide-react";
 import type { Project, VerificationMethod } from "@/types";
 import { ProjectQrDialog } from "@/components/projects/project-qr-dialog";
+import {
+    addProject as addProjectAction,
+    assignEmployee as assignEmployeeAction,
+    deleteProject as deleteProjectAction,
+    removeEmployee as removeEmployeeAction,
+    updateProject as updateProjectAction,
+} from "@/services/projects-actions.service";
 
 const MapSelector = dynamic(
     () => import("@/components/projects/map-selector").then((m) => m.MapSelector),
@@ -33,7 +40,7 @@ const MapSelector = dynamic(
 import { toast } from "sonner";
 
 export default function AdminProjectsView() {
-    const { projects, addProject, deleteProject, assignEmployee, removeEmployee, updateProject } = useProjectsStore();
+    const projects = useProjectsStore((s) => s.projects);
     const employees = useEmployeesStore((s) => s.employees);
 
     const [addOpen, setAddOpen] = useState(false);
@@ -55,6 +62,7 @@ export default function AdminProjectsView() {
     const [editOpen, setEditOpen] = useState(false);
     const [editProject, setEditProject] = useState<Project | null>(null);
     const [saving, setSaving] = useState(false);
+    const [assignSaving, setAssignSaving] = useState(false);
     const [editName, setEditName] = useState("");
     const [editDescription, setEditDescription] = useState("");
     const [editLat, setEditLat] = useState("");
@@ -75,7 +83,7 @@ export default function AdminProjectsView() {
         setEditOpen(true);
     };
 
-    const handleEditSave = () => {
+    const handleEditSave = async () => {
         if (!editProject) return;
         if (!editName.trim()) { toast.error("Project name is required"); return; }
         if (editName.trim().length > 50) { toast.error("Project name must be 50 characters or fewer"); return; }
@@ -93,12 +101,13 @@ export default function AdminProjectsView() {
         }
         setSaving(true);
         try {
-            updateProject(editProject.id, {
+            const ok = await updateProjectAction(editProject.id, {
                 name: editName.trim(),
                 description: editDescription.trim(),
                 location: { lat: latNum, lng: lngNum, radius: radiusNum, address: editLocationAddress.trim() || undefined },
                 verificationMethod: editVerificationMethod,
             });
+            if (!ok) throw new Error("Supabase upsert failed");
             toast.success(`Project "${editName}" updated!`);
             setEditOpen(false);
             setEditProject(null);
@@ -109,7 +118,7 @@ export default function AdminProjectsView() {
         }
     };
 
-    const handleAddProject = () => {
+    const handleAddProject = async () => {
         if (!name.trim()) { toast.error("Project name is required"); return; }
         if (name.trim().length > 50) { toast.error("Project name must be 50 characters or fewer"); return; }
         if (!lat || !lng) { toast.error("Location coordinates are required"); return; }
@@ -126,7 +135,13 @@ export default function AdminProjectsView() {
         }
         setSaving(true);
         try {
-            addProject({ name: name.trim(), description: description.trim(), location: { lat: latNum, lng: lngNum, radius: radiusNum, address: locationAddress.trim() || undefined }, assignedEmployeeIds: [], verificationMethod });
+            const ok = await addProjectAction({
+                name: name.trim(),
+                description: description.trim(),
+                location: { lat: latNum, lng: lngNum, radius: radiusNum, address: locationAddress.trim() || undefined },
+                verificationMethod,
+            });
+            if (!ok) throw new Error("Supabase upsert failed");
             toast.success(`Project "${name}" created!`);
             setName(""); setDescription(""); setLat(""); setLng(""); setRadius("100"); setLocationAddress(""); setVerificationMethod("face_only");
             setAddOpen(false);
@@ -145,25 +160,28 @@ export default function AdminProjectsView() {
         setAssignOpen(true);
     };
 
-    const handleAssignSave = () => {
+    const handleAssignSave = async () => {
         if (!assignProjectId) return;
         const project = projects.find((p) => p.id === assignProjectId);
         if (!project) return;
         try {
+        setAssignSaving(true);
         const currentIds = project.assignedEmployeeIds;
         const toAdd = selectedEmpIds.filter((id) => !currentIds.includes(id));
         const toRemove = currentIds.filter((id) => !selectedEmpIds.includes(id));
         // Warn about employees being moved from another project
         const moved = toAdd.filter((id) => projects.some((p) => p.id !== assignProjectId && p.assignedEmployeeIds.includes(id)));
-        toAdd.forEach((empId) => {
-            // assignEmployee in the store already strips from other projects
-            assignEmployee(assignProjectId, empId);
+        for (const empId of toAdd) {
+            const ok = await assignEmployeeAction(assignProjectId, empId);
+            if (!ok) continue;
             const emp = employees.find((e) => e.id === empId);
             if (emp) {
                 sendNotification({ type: "assignment", employeeId: empId, employeeName: emp.name, employeeEmail: emp.email, subject: `New Project Assignment: ${project.name}`, body: `Hi ${emp.name}, you have been assigned to "${project.name}". Please report to the project site. Contact HR for details.` });
             }
-        });
-        toRemove.forEach((empId) => removeEmployee(assignProjectId, empId));
+        }
+        for (const empId of toRemove) {
+            await removeEmployeeAction(assignProjectId, empId);
+        }
         if (moved.length) {
             const names = moved.map((id) => employees.find((e) => e.id === id)?.name || id).join(", ");
             toast.success(`Assignments updated! ${names} moved from their previous project.`);
@@ -173,6 +191,8 @@ export default function AdminProjectsView() {
         setAssignOpen(false);
         } catch (err) {
             toast.error(`Failed to update assignments: ${err instanceof Error ? err.message : "Unknown error"}`);
+        } finally {
+            setAssignSaving(false);
         }
     };
 
@@ -297,7 +317,11 @@ export default function AdminProjectsView() {
                                         </TableCell>
                                         <TableCell className="text-sm">{project.location.radius}m</TableCell>
                                         <TableCell>
-                                            <Select value={project.status || "active"} onValueChange={(v) => updateProject(project.id, { status: v as "active" | "completed" | "on_hold" })}>
+                                            <Select value={project.status || "active"} onValueChange={(v) => {
+                                                void updateProjectAction(project.id, { status: v as "active" | "completed" | "on_hold" }).then((ok) => {
+                                                    if (!ok) toast.error("Failed to update project status");
+                                                }).catch(() => toast.error("Failed to update project status"));
+                                            }}>
                                                 <SelectTrigger className="h-7 w-full sm:w-[110px] text-xs border-0 bg-transparent"><SelectValue /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="active">🟢 Active</SelectItem>
@@ -307,7 +331,11 @@ export default function AdminProjectsView() {
                                             </Select>
                                         </TableCell>
                                         <TableCell>
-                                            <VerificationBadge method={project.verificationMethod || "face_only"} onUpdate={(m) => updateProject(project.id, { verificationMethod: m })} />
+                                            <VerificationBadge method={project.verificationMethod || "face_only"} onUpdate={(m) => {
+                                                void updateProjectAction(project.id, { verificationMethod: m }).then((ok) => {
+                                                    if (!ok) toast.error("Failed to update verification method");
+                                                }).catch(() => toast.error("Failed to update verification method"));
+                                            }} />
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-1">
@@ -333,7 +361,17 @@ export default function AdminProjectsView() {
                                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(project)}>
                                                     <Pencil className="h-3.5 w-3.5" />
                                                 </Button>
-                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-500/10" onClick={() => { try { deleteProject(project.id); toast.success("Project deleted"); } catch (err) { toast.error(`Failed to delete project: ${err instanceof Error ? err.message : "Unknown error"}`); } }}>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                                                    onClick={() => {
+                                                        void deleteProjectAction(project.id).then((ok) => {
+                                                            if (ok) toast.success("Project deleted");
+                                                            else toast.error("Failed to delete project");
+                                                        }).catch(() => toast.error("Failed to delete project"));
+                                                    }}
+                                                >
                                                     <Trash2 className="h-3.5 w-3.5" />
                                                 </Button>
                                             </div>
@@ -393,7 +431,9 @@ export default function AdminProjectsView() {
                             <p className="text-sm text-muted-foreground text-center py-6">No employees match &quot;{assignSearch}&quot;</p>
                         )}
                     </div>
-                    <Button onClick={handleAssignSave} className="w-full mt-2">Save Assignments ({selectedEmpIds.length} selected)</Button>
+                    <Button onClick={() => void handleAssignSave()} className="w-full mt-2" disabled={assignSaving}>
+                        {assignSaving ? "Saving…" : `Save Assignments (${selectedEmpIds.length} selected)`}
+                    </Button>
                 </DialogContent>
             </Dialog>
 
