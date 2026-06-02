@@ -14,12 +14,14 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronUp, Apple, CircleHelp, ArrowLeft, Moon, Sun } from "lucide-react";
+import { ChevronDown, ChevronUp, CircleHelp, ArrowLeft } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { createClient } from "@/services/supabase-browser";
+import { ThemeToggleButton, useResolvedAppTheme } from "@/components/shell/theme-toggle";
 
 // Set to true to use local demo login (no Supabase required)
 const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+const LOGIN_COMPANY_NAME = "NexVision Innovations Inc.";
 
 const DEMO_ACCOUNTS = [
     { role: "Admin", email: "admin@nexhrms.com", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
@@ -54,25 +56,19 @@ export default function LoginPage() {
     const [confirmPassword, setConfirmPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [showPayrollAccounts, setShowPayrollAccounts] = useState(false);
-    const [themeMode, setThemeMode] = useState<"dark" | "light">("dark");
     const [mode, setMode] = useState<"signIn" | "recovery">("recovery" === searchParams.get("type") ? "recovery" : "signIn");
-    const isLightMode = themeMode === "light";
+    const isLightMode = useResolvedAppTheme() === "light";
     const employees = useEmployeesStore((s) => s.employees);
     const supabase = useMemo(() => createClient(), []);
 
     // Consolidated branding from appearance store
     const {
-        loginHeading, loginSubheading, loginBackground, loginBgColor,
-        loginCardStyle, logoUrl, companyName, brandTagline
+        loginSubheading, loginBackground, loginBgColor, brandTagline
     } = useAppearanceStore(
         useShallow((s) => ({
-            loginHeading: s.loginHeading,
             loginSubheading: s.loginSubheading,
             loginBackground: s.loginBackground,
             loginBgColor: s.loginBgColor,
-            loginCardStyle: s.loginCardStyle,
-            logoUrl: s.logoUrl,
-            companyName: s.companyName,
             brandTagline: s.brandTagline,
         }))
     );
@@ -86,25 +82,6 @@ export default function LoginPage() {
 
     const redirectAfterAuth = (role: string) => {
         router.push(`/${role}/dashboard`);
-    };
-
-    const handleOAuthLogin = async (provider: "google" | "apple") => {
-        setLoading(true);
-        try {
-            const { error } = await supabase.auth.signInWithOAuth({
-                provider,
-                options: {
-                    redirectTo: `${window.location.origin}/login`,
-                },
-            });
-            if (error) {
-                toast.error(error.message);
-                setLoading(false);
-            }
-        } catch {
-            toast.error("OAuth sign-in failed. Please try again.");
-            setLoading(false);
-        }
     };
 
     const handleSupabaseLogin = async (loginEmail: string, loginPassword: string) => {
@@ -219,10 +196,10 @@ export default function LoginPage() {
     };
 
 const panelCardClass = cn(
-    "mx-auto w-full max-w-xl max-h-[90vh] overflow-y-auto space-y-6 rounded-3xl",
+    "mx-auto w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl",
     isLightMode
-        ? "bg-white shadow-xl"
-        : "bg-[#121212] border border-[#1f1f1f]"
+        ? "bg-white shadow-2xl shadow-slate-200/80 ring-1 ring-slate-200/60"
+        : "bg-[#111111] border border-white/[0.06] shadow-2xl shadow-black/60"
 );
 
     const headingTextClass = isLightMode ? "text-slate-900" : "text-white";
@@ -260,30 +237,78 @@ const panelCardClass = cn(
             )}
             style={isLightMode ? undefined : loginBackground === "solid" ? { backgroundColor: loginBgColor || undefined } : undefined}
         >
-            <div className="relative hidden lg:flex flex-col p-10 overflow-hidden" style={{ backgroundColor: isLightMode ? '#F8FAFC' : '#121212' }}>
+            <div className="relative hidden lg:flex flex-col p-12 overflow-hidden" style={{ backgroundColor: isLightMode ? '#F0F4F8' : '#0E1117' }}>
+                {/* Decorative corner accent top-right */}
+                <div className="absolute top-0 right-0 w-64 h-64 opacity-[0.06] pointer-events-none">
+                    <svg viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+                        <circle cx="256" cy="0" r="200" stroke="#02B0B2" strokeWidth="1" />
+                        <circle cx="256" cy="0" r="150" stroke="#02B0B2" strokeWidth="0.8" />
+                        <circle cx="256" cy="0" r="100" stroke="#02B0B2" strokeWidth="0.6" />
+                    </svg>
+                </div>
+                {/* Floating paths background */}
                 <div className="absolute inset-0 text-[#02B0B2]">
                     <FloatingPaths position={1} />
                     <FloatingPaths position={-1} />
                 </div>
+                {/* Fine grid overlay */}
+                <div
+                    className="absolute inset-0 opacity-[0.03] pointer-events-none"
+                    style={{
+                        backgroundImage: `linear-gradient(${isLightMode ? '#0f172a' : '#02B0B2'} 1px, transparent 1px), linear-gradient(90deg, ${isLightMode ? '#0f172a' : '#02B0B2'} 1px, transparent 1px)`,
+                        backgroundSize: '40px 40px',
+                    }}
+                />
+                {/* Teal bottom-left glow */}
+                <div className="absolute bottom-0 left-0 w-96 h-96 rounded-full opacity-[0.07] pointer-events-none" style={{ background: 'radial-gradient(circle, #02B0B2 0%, transparent 70%)', transform: 'translate(-30%, 30%)' }} />
+
+                {/* Logo */}
                 <div className="relative z-10">
-                    <Image src={isLightMode ? "/blacklogo.png" : "/finalwhitelogo.png"} alt="NEXVision wordmark" width={280} height={80} className="object-contain" />
+                    <Image src={isLightMode ? "/blacklogo.png" : "/finalwhitelogo.png"} alt="NEXVision wordmark" width={240} height={64} className="object-contain" />
                 </div>
-                <div className={isLightMode ? "relative z-10 mt-auto text-black" : "relative z-10 mt-auto text-gray-300"}>
-                    <p className="text-sm leading-relaxed">{brandTagline || 'Streamlined HR Management for Modern Organizations'}</p>
+
+                {/* Center feature callouts */}
+                <div className="relative z-10 mt-auto mb-auto flex flex-col gap-5 pt-16">
+                    {[
+                        { icon: "◈", label: "Workforce Intelligence", desc: "Real-time analytics and headcount visibility across all departments." },
+                        { icon: "◉", label: "Payroll Automation", desc: "Accurate, compliant payroll processing with full audit trails." },
+                        { icon: "◎", label: "Attendance & Compliance", desc: "Biometric-ready timekeeping with policy enforcement built in." },
+                    ].map((item) => (
+                        <div key={item.label} className="flex items-start gap-4 group">
+                            <span className={cn("text-xl mt-0.5 leading-none font-light", isLightMode ? "text-teal-600" : "text-teal-400")}>{item.icon}</span>
+                            <div>
+                                <p className={cn("text-sm font-semibold tracking-wide", isLightMode ? "text-slate-800" : "text-slate-100")}>{item.label}</p>
+                                <p className={cn("text-xs mt-0.5 leading-relaxed", isLightMode ? "text-slate-500" : "text-slate-400")}>{item.desc}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Bottom tagline + rule */}
+                <div className="relative z-10 mt-auto">
+                    <div className={cn("w-10 h-px mb-4", isLightMode ? "bg-teal-500" : "bg-teal-400")} />
+                    <p className={cn("text-xs leading-relaxed max-w-xs", isLightMode ? "text-slate-500" : "text-slate-400")}>
+                        {brandTagline || 'Empowering HR leaders with the tools, insights, and automation needed to build high-performing, people-first organizations — from onboarding to offboarding and everything in between.'}
+                    </p>
+                    <p className={cn("text-[10px] mt-4 tracking-widest uppercase font-medium", isLightMode ? "text-slate-400" : "text-slate-600")}>
+                        NEXVision HRMS &nbsp;·&nbsp; Enterprise Edition
+                    </p>
                 </div>
             </div>
 
-            <div className="relative flex min-h-screen flex-col justify-center p-4 md:p-8" style={{ backgroundColor: isLightMode ? '#F0ECEC' : '#181818' }}>
-                <div className="absolute top-4 right-4">
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className={isLightMode ? "h-10 w-10 rounded-full text-black hover:bg-black/5 hover:text-black transition-colors" : "h-10 w-10 rounded-full text-white hover:bg-teal-500/10 hover:text-white transition-colors"}
-                        onClick={() => setThemeMode(isLightMode ? "dark" : "light")}
-                    >
-                        {isLightMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-                    </Button>
+            <div className="relative flex min-h-screen flex-col justify-center p-4 md:p-8" style={{ backgroundColor: isLightMode ? '#F5F1F1' : '#161616' }}>
+                {/* Subtle corner decoration */}
+                <div className="absolute bottom-0 right-0 w-80 h-80 opacity-[0.04] pointer-events-none">
+                    <svg viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+                        <circle cx="320" cy="320" r="280" stroke="#02B0B2" strokeWidth="1" />
+                        <circle cx="320" cy="320" r="200" stroke="#02B0B2" strokeWidth="0.8" />
+                        <circle cx="320" cy="320" r="120" stroke="#02B0B2" strokeWidth="0.6" />
+                    </svg>
+                </div>
+                <div className="absolute top-4 right-4 z-20">
+                    <ThemeToggleButton
+                        className={isLightMode ? "h-9 w-9 rounded-full text-slate-500 hover:bg-black/5 hover:text-slate-800 transition-colors" : "h-9 w-9 rounded-full text-slate-400 hover:bg-teal-500/10 hover:text-slate-200 transition-colors"}
+                    />
                 </div>
                 <div className={panelCardClass}>
                     {mode === "recovery" && (
@@ -298,18 +323,29 @@ const panelCardClass = cn(
                         </Button>
                     )}
 
-                    <div className={cn("text-center space-y-1 pb-4 pt-12", headingTextClass)}>
-                        <div className="flex justify-center mb-6">
-                            <h1 className="text-4xl font-bold uppercase tracking-[0.2em]">SIGN IN</h1>
+                    {/* Card header */}
+                    <div className={cn("pb-6 pt-10 px-6 md:px-10", headingTextClass)}>
+                        {/* Top accent line */}
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="h-px flex-1 bg-border/40" />
+                            <span className={cn("text-[10px] tracking-[0.25em] uppercase font-semibold", isLightMode ? "text-teal-600" : "text-teal-400")}>
+                                Secure Portal
+                            </span>
+                            <div className="h-px flex-1 bg-border/40" />
                         </div>
-                        <div>
-                            <p className={cn("text-sm md:text-base font-medium", subheadingTextClass)}>
-                                {loginSubheading || "Sign in to your account to continue"}
+                        <div className="space-y-1">
+                            <h1 className={cn("text-3xl font-bold tracking-tight", headingTextClass)}>
+                                {mode === "recovery" ? "Reset Password" : LOGIN_COMPANY_NAME}
+                            </h1>
+                            <p className={cn("text-sm leading-relaxed", subheadingTextClass)}>
+                                {mode === "recovery"
+                                    ? "Set a new password for your account below."
+                                    : (loginSubheading || "Enter your credentials to access your workspace. Unauthorized access is strictly prohibited.")}
                             </p>
                         </div>
                     </div>
 
-                    <div className="space-y-6 px-6 md:px-10 pb-8">
+                    <div className="space-y-5 px-6 md:px-10 pb-10">
                         {/* Login Form */}
                         <form onSubmit={handleLogin} className="space-y-4">
                             {mode !== "recovery" && (
@@ -350,7 +386,7 @@ const panelCardClass = cn(
                                     </div>
                                 </>
                             )}
-                            <Button type="submit" size="lg" className="w-full bg-teal-500 text-white hover:bg-teal-400 focus-visible:ring-teal-300 text-base font-semibold transition-transform active:scale-[0.99] shadow-md" disabled={loading}>
+                            <Button type="submit" size="lg" className="w-full bg-teal-500 text-white hover:bg-teal-400 focus-visible:ring-teal-300 text-sm font-semibold tracking-wide transition-all active:scale-[0.99] shadow-lg shadow-teal-500/20 rounded-xl" disabled={loading}>
                                 {loading ? "Authenticating..." : mode === "recovery" ? "Update Password" : "Secure Sign In"}
                             </Button>
                         </form>
@@ -365,12 +401,12 @@ const panelCardClass = cn(
                         </div>
 
                         {/* Divider */}
-                        <div className="relative py-2">
+                        <div className="relative py-1">
                             <div className="absolute inset-0 flex items-center">
-                                <div className={cn("w-full border-t", isLightMode ? "border-border/60" : "border-transparent")} />
+                                <div className={cn("w-full border-t", isLightMode ? "border-slate-200" : "border-white/[0.06]")} />
                             </div>
-                            <div className="relative flex justify-center text-xs uppercase font-medium tracking-widest">
-                                <span className={isLightMode ? "px-4 text-teal-600" : "px-4 text-teal-300"}>Demo Access</span>
+                            <div className="relative flex justify-center">
+                                <span className={cn("px-4 text-[10px] uppercase tracking-[0.2em] font-semibold", isLightMode ? "bg-white text-teal-600" : "bg-[#111111] text-teal-400")}>Demo Access</span>
                             </div>
                         </div>
 
@@ -423,10 +459,10 @@ const panelCardClass = cn(
                         </div>
 
                         {/* Demo hint */}
-                        <div className={cn("pt-2 text-center rounded-lg pb-2", isLightMode ? "bg-muted/30" : "bg-slate-800") }>
-                            <p className={cn("text-xs font-medium", isLightMode ? "text-muted-foreground" : "text-gray-300")}>
-                                <span className="opacity-80">Default password: </span>
-                                <code className={cn("font-mono px-2 py-0.5 rounded text-[11px] select-all", isLightMode ? "bg-background border" : "bg-slate-700 text-gray-200")}>demo1234</code>
+                        <div className={cn("py-3 px-4 text-center rounded-xl border", isLightMode ? "bg-slate-50 border-slate-200" : "bg-white/[0.03] border-white/[0.06]")}>
+                            <p className={cn("text-xs font-medium", isLightMode ? "text-slate-500" : "text-slate-400")}>
+                                <span className="opacity-70">Default demo password: </span>
+                                <code className={cn("font-mono px-2 py-0.5 rounded text-[11px] select-all", isLightMode ? "bg-white border border-slate-200 text-slate-700" : "bg-white/[0.07] text-slate-300")}>demo1234</code>
                             </p>
                         </div>
                     </div>
@@ -467,7 +503,7 @@ function FloatingPaths({ position }: { position: number }) {
                             pathOffset: [0, 1, 0],
                         }}
                         transition={{
-                            duration: 20 + Math.random() * 10,
+                            duration: 20 + (path.id % 10),
                             repeat: Number.POSITIVE_INFINITY,
                             ease: 'linear',
                         }}
@@ -477,4 +513,3 @@ function FloatingPaths({ position }: { position: number }) {
         </div>
     );
 }
-
