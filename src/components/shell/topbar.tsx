@@ -10,6 +10,8 @@ import { DEMO_USERS } from "@/data/seed";
 import {
     Search,
     Bell,
+    Moon,
+    Sun,
     Menu,
     ChevronDown,
     LogOut,
@@ -46,10 +48,9 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAppearanceStore } from "@/store/appearance.store";
-import { ThemeToggleButton } from "@/components/shell/theme-toggle";
 
 export function Topbar() {
-    const { currentUser, switchRole, logout } = useAuthStore();
+    const { currentUser, theme, setTheme, switchRole, logout } = useAuthStore();
     const { sidebarOpen, toggleMobileSidebar } = useUIStore();
     const employees = useEmployeesStore((s) => s.employees);
     const router = useRouter();
@@ -197,7 +198,14 @@ export function Topbar() {
 
                 <div className="flex items-center gap-1 sm:gap-2 ml-auto">
                     {/* Theme toggle */}
-                    <ThemeToggleButton />
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                        className="text-muted-foreground hover:text-foreground"
+                    >
+                        {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                    </Button>
 
                     {/* Notifications Dropdown */}
                     <DropdownMenu>

@@ -377,31 +377,27 @@ export const useAppearanceStore = create<AppearanceState>()(
 
       resetAppearance: () => set(INITIAL_STATE),
     }),
-      {
-        name: "soren-appearance",
-        version: 3,
-        storage: safePersistStorage,
-        migrate: (persisted, version) => {
-            const state = persisted as Record<string, unknown>;
-            if (version < 3) {
-                state.companyName = "NexHRIS";
-                state.loginHeading = "NexHRIS";
-            }
-            if (version < 2) {
-                const oldModules = (state.modules ?? {}) as Record<string, boolean>;
-                state.modules = { ...DEFAULT_MODULE_FLAGS, ...oldModules };
-            }
-            return state as unknown as AppearanceState;
-        },
-        merge: (persisted, current) => {
-          const p = (persisted ?? {}) as Partial<AppearanceState>;
-          // Deep-merge modules so new defaults are always present
-          return {
-            ...current,
-            ...p,
-            modules: { ...DEFAULT_MODULE_FLAGS, ...(p.modules ?? {}) },
-          };
-        },
-      }
+    {
+      name: "soren-appearance",
+      version: 2,
+      storage: safePersistStorage,
+      migrate: (persisted, version) => {
+        const state = persisted as Record<string, unknown>;
+        if (version < 2) {
+          const oldModules = (state.modules ?? {}) as Record<string, boolean>;
+          state.modules = { ...DEFAULT_MODULE_FLAGS, ...oldModules };
+        }
+        return state as unknown as AppearanceState;
+      },
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AppearanceState>;
+        // Deep-merge modules so new defaults are always present
+        return {
+          ...current,
+          ...p,
+          modules: { ...DEFAULT_MODULE_FLAGS, ...(p.modules ?? {}) },
+        };
+      },
+    }
   )
 );
