@@ -386,6 +386,7 @@ export default function MyBiometricPage() {
                       <TableHead>In</TableHead>
                       <TableHead>Out</TableHead>
                       <TableHead>Hours</TableHead>
+                      <TableHead>OT</TableHead>
                       <TableHead>Late</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
@@ -399,6 +400,7 @@ export default function MyBiometricPage() {
                         <TableCell>{log.checkIn || "-"}</TableCell>
                         <TableCell>{log.checkOut || "-"}</TableCell>
                         <TableCell>{log.hours ?? "-"}</TableCell>
+                        <TableCell>{log.otHours ?? 0}</TableCell>
                         <TableCell>{log.lateMinutes ?? 0} min</TableCell>
                         <TableCell><Badge variant="outline">{prettify(log.status)}</Badge></TableCell>
                       </TableRow>

@@ -338,6 +338,18 @@ export function PrintablePayslip({
                                 <span style={{ color: "#666", display: "block", fontSize: "9px", textTransform: "uppercase" }}>Days Present</span>
                                 <strong style={{ color: "#16a34a" }}>{payslip.attendanceDaysPresent ?? "—"}</strong>
                             </div>
+                            {(payslip.attendanceTotalHours ?? 0) > 0 && (
+                                <div style={{ marginTop: "6px" }}>
+                                    <span style={{ color: "#666", display: "block", fontSize: "9px", textTransform: "uppercase" }}>Total Hours</span>
+                                    <strong style={{ color: "#1a1a1a" }}>{payslip.attendanceTotalHours}</strong>
+                                </div>
+                            )}
+                            {(payslip.attendanceOtHours ?? 0) > 0 && (
+                                <div style={{ marginTop: "6px" }}>
+                                    <span style={{ color: "#666", display: "block", fontSize: "9px", textTransform: "uppercase" }}>OT Hours</span>
+                                    <strong style={{ color: "#16a34a" }}>{payslip.attendanceOtHours}</strong>
+                                </div>
+                            )}
                             <div>
                                 <span style={{ color: "#666", display: "block", fontSize: "9px", textTransform: "uppercase" }}>Days Absent</span>
                                 <strong style={{ color: (payslip.attendanceDaysAbsent ?? 0) > 0 ? "#dc2626" : "#1a1a1a" }}>{payslip.attendanceDaysAbsent ?? 0}</strong>

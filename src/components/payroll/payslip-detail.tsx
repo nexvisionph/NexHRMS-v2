@@ -152,6 +152,12 @@ export function PayslipDetail({ payslip, employeeName, department, jobTitle, onS
                             {!!(payslip.attendanceUndertimeHours) && (
                                 <div className="flex justify-between text-xs"><span className="text-muted-foreground">Undertime</span><span className="font-medium text-amber-600">{payslip.attendanceUndertimeHours.toFixed(1)} hrs</span></div>
                             )}
+                            {payslip.attendanceTotalHours !== undefined && (
+                                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Total Hours</span><span className="font-medium">{payslip.attendanceTotalHours}</span></div>
+                            )}
+                            {payslip.attendanceOtHours !== undefined && (
+                                <div className="flex justify-between text-xs"><span className="text-muted-foreground">OT Hours</span><span className="font-medium">{payslip.attendanceOtHours}</span></div>
+                            )}
                             {(payslip.dailyRate || payslip.hourlyRate) && (
                                 <>
                                     <Separator className="my-1" />

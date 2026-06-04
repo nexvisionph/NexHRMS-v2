@@ -458,6 +458,7 @@ export interface AttendanceLog {
   checkIn?: string;
   checkOut?: string;
   hours?: number;
+  otHours?: number;
   status: AttendanceStatus;
   projectId?: string;
   locationSnapshot?: {
@@ -703,6 +704,8 @@ export interface Payslip {
   // ─── Attendance snapshot (for receipt display) ──
   attendanceDaysPresent?: number;    // # of present logs in period
   attendanceDaysAbsent?: number;     // # of absent logs in period
+  attendanceTotalHours?: number;     // total hours worked in period
+  attendanceOtHours?: number;        // total OT hours in period
   attendanceLateMinutes?: number;    // total late minutes in period
   attendanceUndertimeHours?: number; // total undertime hours in period (shift - actual)
   // ─── Gross override ──

@@ -88,9 +88,14 @@
         const canIssue = hasPermission(currentUser.role, "payroll:generate");
         const canLock = hasPermission(currentUser.role, "payroll:lock");
         const canReset = mode === "admin";
-        const getPaymentEligibility = useCallback((ps: { employeeId: string; periodStart: string; periodEnd: string; source?: string; computedExternally?: boolean }) => {
+        const getPaymentEligibility = useCallback((ps: { employeeId: string; periodStart: string; periodEnd: string; source?: string; computedExternally?: boolean; signedAt?: string }) => {
             // Imported payslips are external-authoritative snapshots; allow payment.
             if (ps.source === "imported" || ps.computedExternally) {
+                return { eligible: true as const };
+            }
+
+            // If the payslip is already signed by the employee, allow payment even if attendance logs are missing
+            if ((ps as any).signedAt) {
                 return { eligible: true as const };
             }
 
@@ -143,6 +148,7 @@
         const [snapshotRunDate, setSnapshotRunDate] = useState<string | null>(null);
         const [checklistPassedMap, setChecklistPassedMap] = useState<Record<string, boolean>>({});
         const [viewSlip, setViewSlip] = useState<string | null>(null);
+        const [detailEmpId, setDetailEmpId] = useState<string | null>(null);
         const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
         const [formAllowances, setFormAllowances] = useState("0");
         const [formOtherDeductions, setFormOtherDeductions] = useState("0");
@@ -210,6 +216,9 @@
         const [searchTerm, setSearchTerm] = useState("");
         const [statusFilter, setStatusFilter] = useState<string>("all");
         const [page, setPage] = useState(1);
+        const [attendanceSummaryOpen, setAttendanceSummaryOpen] = useState(false);
+        const [attendanceSummaryRows, setAttendanceSummaryRows] = useState<{ empId: string; name: string; presentDays: number; absentDays: number; totalHours: number; otHours: number; grossPay?: number; allowances?: number; overtimePay?: number; totalGovDed?: number; otherDeductions?: number; loanDeduction?: number; customDedTotal?: number; holidayPay?: number; autoDedTotal?: number; netPay?: number; expanded?: boolean }[]>([]);
+        const [pendingIssueAfterModal, setPendingIssueAfterModal] = useState(false);
         const [publishPage, setPublishPage] = useState(1);
         const [signPage, setSignPage] = useState(1);
         const [runsPage, setRunsPage] = useState(1);
@@ -437,6 +446,26 @@
                 }
             }
             if (selectedEmployeeIds.length === 0 || !cutoffDates.start || !cutoffDates.end) { toast.error("Please select at least one employee and set cutoff dates"); return; }
+            // Pre-issuance attendance validation: compute present days per selected employee
+            const employeesWithAttendance = selectedEmployeeIds.map((empId) => {
+                const emp = employees.find((e) => e.id === empId);
+                const periodLogs = attendanceLogs.filter((l) => l.employeeId === empId && l.date >= cutoffDates.start && l.date <= cutoffDates.end);
+                const presentDays = periodLogs.filter((l) => l.status === "present" || (l.hours ?? 0) > 0 || !!l.checkIn).length;
+                const absentDays = periodLogs.filter((l) => l.status === "absent").length;
+                const totalHours = Math.round(periodLogs.reduce((s, l) => s + (l.hours || 0), 0) * 100) / 100;
+                const otHours = Math.round(periodLogs.reduce((s, l) => s + (l.otHours || 0), 0) * 100) / 100;
+                return { empId, name: emp?.name ?? empId, presentDays, absentDays, totalHours, otHours };
+            });
+            // Always open the Attendance & Pay Review modal for any issuance attempt (single or bulk)
+            if (!pendingIssueAfterModal) {
+                const previewRows = employeesWithAttendance.map((r) => ({ ...r, ...(computePayrollPreview(r.empId) || {}) }));
+                setAttendanceSummaryRows(previewRows);
+                setAttendanceSummaryOpen(true);
+                setPendingIssueAfterModal(true);
+                return;
+            }
+            // If we're here, pendingIssueAfterModal is true => user confirmed and we should proceed. Clear the flag.
+            setPendingIssueAfterModal(false);
             if (cutoffDates.start > cutoffDates.end) { toast.error("Cutoff start date must be before end date"); return; }
             const allowancesVal = Number(formAllowances) || 0;
             const otherDedVal = Number(formOtherDeductions) || 0;
@@ -768,6 +797,160 @@
         }, [runs, cutoffDates]);
         const viewedPayslip = viewSlip ? payslips.find((p) => p.id === viewSlip) : null;
 
+        // Attendance Summary Modal handlers
+        const handleAttendanceRemove = (empId: string) => {
+            setAttendanceSummaryRows((prev) => prev.filter((r) => r.empId !== empId));
+            setSelectedEmployeeIds((prev) => prev.filter((id) => id !== empId));
+        };
+
+        
+        const handleAttendanceCancel = () => {
+            setAttendanceSummaryOpen(false);
+            setPendingIssueAfterModal(false);
+            toast.info("Issuance aborted");
+        };
+        const handleAttendanceConfirm = () => {
+            const remaining = attendanceSummaryRows.filter((r) => selectedEmployeeIds.includes(r.empId)).map((r) => r.empId);
+            if (remaining.length === 0) {
+                setAttendanceSummaryOpen(false);
+                setPendingIssueAfterModal(false);
+                toast.error("No employees left to issue after removing zero-present employees");
+                return;
+            }
+            setAttendanceSummaryOpen(false);
+            setPendingIssueAfterModal(false);
+            setSelectedEmployeeIds(remaining);
+            // Re-run issue flow with remaining selection
+            handleIssue();
+        };
+
+        // Compute payroll preview for an employee using same logic as issuance (read-only)
+        const computePayrollPreview = (empId: string) => {
+            const emp = employees.find((e) => e.id === empId);
+            if (!emp) return null;
+            const freq = emp.payFrequency || paySchedule.defaultFrequency;
+            const { factor: prorFactor, isPartial: isProrPartial, actualDays: prorActual, nominalDays: prorNominal } = prorationInfo;
+            let fullPeriodGross: number;
+            if (freq === "semi_monthly") fullPeriodGross = Math.round(emp.salary / 2);
+            else if (freq === "bi_weekly") fullPeriodGross = Math.round((emp.salary * 12) / 26);
+            else if (freq === "weekly") fullPeriodGross = Math.round((emp.salary * 12) / 52);
+            else {
+                const daysInMo = getDaysInMonth(parseISO(naturalBounds.start));
+                fullPeriodGross = emp.salary;
+                const monthFactor = Math.min(1, prorActual / daysInMo);
+                fullPeriodGross = Math.round(emp.salary * monthFactor);
+            }
+            const grossPay = freq === "monthly" ? fullPeriodGross : Math.round(fullPeriodGross * prorFactor);
+
+            const overrideStr = grossOverrides[empId];
+            const effectiveGrossPay = (overrideStr && Number(overrideStr) > 0) ? Math.round(Number(overrideStr)) : grossPay;
+
+            const phDeductions = computeAllPHDeductions(emp.salary);
+            let govMultiplier = 1;
+            if (freq === "semi_monthly") {
+                if (paySchedule.deductGovFrom === "both") govMultiplier = 0.5;
+                else if (paySchedule.deductGovFrom === "first" && cutoff !== "first") govMultiplier = 0;
+                else if (paySchedule.deductGovFrom === "second" && cutoff !== "second") govMultiplier = 0;
+            }
+
+            const computeDeductionPreview = (type: DeductionType, autoValue: number, basis: number = effectiveGrossPay) => {
+                const override = getDeductionOverride(empId, type);
+                const globalDef = getGlobalDefault(type);
+                if (globalDef && !globalDef.enabled) return 0;
+                const effective = override ?? (globalDef && globalDef.mode !== "auto" ? { mode: globalDef.mode, percentage: globalDef.percentage, fixedAmount: globalDef.fixedAmount } : null);
+                if (!effective || effective.mode === "auto") return Math.round(autoValue * govMultiplier);
+                if (effective.mode === "exempt") return 0;
+                if (effective.mode === "percentage" && effective.percentage !== undefined) return Math.round(basis * (effective.percentage / 100) * govMultiplier);
+                if (effective.mode === "fixed" && effective.fixedAmount !== undefined) return Math.round(effective.fixedAmount * govMultiplier);
+                return Math.round(autoValue * govMultiplier);
+            };
+
+            const sss = emp.deductionExempt ? 0 : computeDeductionPreview("sss", phDeductions.sss);
+            const ph = emp.deductionExempt ? 0 : computeDeductionPreview("philhealth", phDeductions.philHealth);
+            const pi = emp.deductionExempt ? 0 : computeDeductionPreview("pagibig", phDeductions.pagIBIG);
+            const taxableIncome = Math.max(0, effectiveGrossPay - sss - ph - pi);
+            let tax: number;
+            const birOverride = getDeductionOverride(empId, "bir");
+            const birGlobal = getGlobalDefault("bir");
+            if (emp.deductionExempt || (birGlobal && !birGlobal.enabled)) tax = 0;
+            else {
+                const birEffective = birOverride ?? (birGlobal && birGlobal.mode !== "auto" ? { mode: birGlobal.mode, percentage: birGlobal.percentage, fixedAmount: birGlobal.fixedAmount } : null);
+                if (!birEffective || birEffective.mode === "auto") tax = Math.round(phDeductions.withholdingTax * govMultiplier);
+                else if (birEffective.mode === "exempt") tax = 0;
+                else if (birEffective.mode === "percentage" && birEffective.percentage !== undefined) tax = Math.round(taxableIncome * (birEffective.percentage / 100));
+                else if (birEffective.mode === "fixed" && birEffective.fixedAmount !== undefined) tax = Math.round(birEffective.fixedAmount * govMultiplier);
+                else tax = Math.round(phDeductions.withholdingTax * govMultiplier);
+            }
+
+            const totalGovDed = sss + ph + pi + tax;
+
+            // allowances/OT/holiday/custom approximations from existing logic
+            const periodLogs = attendanceLogs.filter((l) => l.employeeId === empId && l.date >= cutoffDates.start && l.date <= cutoffDates.end);
+            const presentDays = periodLogs.filter((l) => l.status === "present" || (l.hours ?? 0) > 0 || !!l.checkIn).length;
+            const lateMinutesAgg = periodLogs.reduce((sum, l) => sum + (l.lateMinutes || 0), 0);
+            const dailyRate = Math.round(emp.salary / 22);
+            const hourlyRate = Math.round(dailyRate / 8);
+            // OT rule: any hours beyond 9 in a single day count as OT
+            const perLogOt = periodLogs.reduce((s, l) => s + Math.max(0, (l.hours || 0) - 9), 0);
+            const approvedOtHours = overtimeRequests.filter((r) => r.employeeId === empId && r.status === "approved" && r.date >= cutoffDates.start && r.date <= cutoffDates.end).reduce((s, r) => s + (r.hoursRequested || 0), 0);
+            const manualOt = Number(formOTHours) || 0;
+            const effectiveOtHours = Math.round((perLogOt + approvedOtHours + manualOt) * 100) / 100;
+            const otPay = Math.round(effectiveOtHours * hourlyRate * 1.25);
+            const nightDiffHours = Number(formNightDiffHours) || 0;
+            const nightDiffPay = Math.round(nightDiffHours * hourlyRate * 0.10);
+
+            const customItems = emp.deductionExempt ? [] : computeDeductionsForEmployee(empId, emp.salary, emp.workDays?.length ? Math.round(emp.workDays.length * (22 / 5)) : 22);
+            const customDedTotal = customItems.filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "deduction").reduce((sum, item) => sum + item.amount, 0);
+            const customAllowanceTotal = customItems.filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "allowance").reduce((sum, item) => sum + item.amount, 0);
+
+            const activeRuleSet = ruleSets[0];
+            const stdHours = activeRuleSet?.standardHoursPerDay ?? 8;
+            const presentLogs = periodLogs.filter((l) => l.status === "present");
+            const expectedHoursTotal = presentLogs.length * stdHours;
+            const actualHoursTotal = presentLogs.reduce((sum, l) => sum + (l.hours || 0), 0);
+            const libDailyRate = computeDailyRate(emp.salary, paySchedule.workDaysPerMonth);
+            const libHourlyRate = computeHourlyRate(libDailyRate, stdHours);
+            const autoBreakdown = buildPayslipDeductions({
+                autoDeductLate: paySchedule.autoDeductLate,
+                autoDeductAbsent: paySchedule.autoDeductAbsent,
+                autoDeductUndertime: paySchedule.autoDeductUndertime,
+                autoAddOvertime: false,
+                dailyRate: libDailyRate,
+                hourlyRate: libHourlyRate,
+                lateMinutes: lateMinutesAgg,
+                absentDays: 0,
+                shiftHours: expectedHoursTotal,
+                actualHours: actualHoursTotal,
+                overtimeEntries: [],
+                multipliers: {
+                    otMultiplierRegular: activeRuleSet?.otMultiplierRegular ?? 1.25,
+                    otMultiplierRestDay: activeRuleSet?.otMultiplierRestDay ?? 1.30,
+                    otMultiplierSpecialHoliday: activeRuleSet?.otMultiplierSpecialHoliday ?? 1.30,
+                    otMultiplierRegularHoliday: activeRuleSet?.otMultiplierRegularHoliday ?? 2.00,
+                    otMultiplierNightDiff: activeRuleSet?.otMultiplierNightDiff ?? 1.10,
+                },
+            });
+
+            const autoDedTotal = autoBreakdown.totalDeductions;
+
+            const holidayPaySupp = holidays.filter((h) => h.date >= cutoffDates.start && h.date <= cutoffDates.end).reduce((sum, hol) => {
+                const log = periodLogs.find((l) => l.employeeId === empId && l.date === hol.date);
+                const worked = log?.status === "present";
+                if (hol.type === "regular") { return sum + (worked ? dailyRate : 0); }
+                return sum + (worked ? Math.round(dailyRate * (PH_HOLIDAY_MULTIPLIERS.special_holiday.worked - 1)) : -dailyRate);
+            }, 0);
+
+            const allowances = Number(formAllowances) || 0;
+            const otherDed = Number(formOtherDeductions) || 0;
+
+            const loanDed = getActiveByEmployee(empId).reduce((s,l)=>s+Math.min(l.monthlyDeduction,l.remainingBalance),0);
+
+            const rawNetPay = effectiveGrossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - loanDed - customDedTotal - autoDedTotal;
+            const netPay = Math.max(0, rawNetPay);
+
+            return { grossPay: effectiveGrossPay, allowances: allowances + customAllowanceTotal, overtimePay: otPay, totalGovDed, otherDeductions: otherDed, loanDeduction: loanDed, customDedTotal, holidayPay: holidayPaySupp, autoDedTotal, netPay };
+        };
+
         const viewTitle = mode === "admin" ? "Payroll Management" : mode === "finance" ? "Payroll & Finance" : "Payroll Administration";
 
         // ─── Batch action state ──────────────────────────────────────
@@ -969,6 +1152,134 @@
 
         return (
             <div className="space-y-6">
+              {/* Attendance & Pay Review Dialog */}
+                <Dialog open={attendanceSummaryOpen} onOpenChange={(v) => { if (!v) { setAttendanceSummaryOpen(false); setPendingIssueAfterModal(false); } }}>
+                    <DialogContent className="!max-w-4xl w-[90vw]">
+                        <DialogHeader>
+                            <DialogTitle>Attendance & Pay Review — Review before Issuing</DialogTitle>
+                            <p className="text-sm text-muted-foreground">Verify attendance and payroll preview for selected employees. Remove any employees you do not wish to issue.</p>
+                        </DialogHeader>
+                        <div className="mt-4">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Employee</TableHead>
+                                        <TableHead>Present</TableHead>
+                                        <TableHead>Absent</TableHead>
+                                        <TableHead>Total Hours</TableHead>
+                                        <TableHead>OT Hours</TableHead>
+                                        <TableHead>Gross</TableHead>
+                                        <TableHead>Net</TableHead>
+                                        <TableHead>Actions</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {attendanceSummaryRows.map((r) => (
+                                        <TableRow key={r.empId}>
+                                            <TableCell>{r.name}</TableCell>
+                                            <TableCell>{r.presentDays}</TableCell>
+                                            <TableCell>{r.absentDays}</TableCell>
+                                            <TableCell>{r.totalHours}</TableCell>
+                                            <TableCell>{r.otHours}</TableCell>
+                                            <TableCell>{r.grossPay !== undefined ? formatCurrency(r.grossPay) : "—"}</TableCell>
+                                            <TableCell>{r.netPay !== undefined ? formatCurrency(r.netPay) : "—"}</TableCell>
+                                            <TableCell className="flex gap-2">
+                                                <Button size="sm" variant="ghost" onClick={() => setDetailEmpId(r.empId)} title="View payslip detail"><Eye className="h-4 w-4" /></Button>
+                                                <Button size="sm" variant="ghost" onClick={() => handleAttendanceRemove(r.empId)} title="Remove employee">Remove</Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                            <div className="flex items-center justify-end gap-3 mt-4">
+                                <Button type="button" variant="ghost" onClick={handleAttendanceCancel}>Cancel</Button>
+                                <Button type="button" variant="outline" onClick={() => { const first = attendanceSummaryRows[0]; if (first) setDetailEmpId(first.empId); else toast.info('No employee selected'); }}>Review & Edit</Button>
+                                <Button type="button" onClick={handleAttendanceConfirm}>Confirm & Issue Payslips</Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+                {/* Detail dialog for computed payslip preview */}
+                <Dialog open={!!detailEmpId} onOpenChange={(v) => { if (!v) setDetailEmpId(null); }}>
+                    <DialogContent className="!max-w-3xl w-[80vw]">
+                        <DialogHeader>
+                            <DialogTitle>Payslip Preview — Detail</DialogTitle>
+                        </DialogHeader>
+                        <div>
+                            {detailEmpId && (() => {
+                                const emp = employees.find(e => e.id === detailEmpId);
+                                if (!emp) return <p>Employee not found</p>;
+                                const preview = computePayrollPreview(detailEmpId);
+                                const periodLogs = attendanceLogs.filter(l => l.employeeId === detailEmpId && l.date >= cutoffDates.start && l.date <= cutoffDates.end);
+                                return (
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <p className="text-sm font-semibold">{emp.name}</p>
+                                                <p className="text-xs text-muted-foreground">{emp.role} • {emp.department}</p>
+                                                <p className="text-xs text-muted-foreground mt-1">Period: {cutoffDates.label}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm">Gross: {preview?.grossPay ? formatCurrency(preview.grossPay) : '—'}</p>
+                                                <p className="text-sm">Net: {preview?.netPay ? formatCurrency(preview.netPay) : '—'}</p>
+                                            </div>
+                                        </div>
+                                        <Card>
+                                            <CardContent>
+                                                <p className="text-xs font-medium mb-2">Attendance details</p>
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHead>Date</TableHead>
+                                                            <TableHead>Status</TableHead>
+                                                            <TableHead>Hours</TableHead>
+                                                            <TableHead>OT</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {periodLogs.map((l) => (
+                                                            <TableRow key={l.id || l.date}>
+                                                                <TableCell>{l.date}</TableCell>
+                                                                <TableCell>{l.status}</TableCell>
+                                                                <TableCell>{l.hours ?? 0}</TableCell>
+                                                                <TableCell>{l.otHours ?? 0}</TableCell>
+                                                            </TableRow>
+                                                        ))}
+                                                    </TableBody>
+                                                </Table>
+                                            </CardContent>
+                                        </Card>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <Card>
+                                                <CardContent>
+                                                    <p className="text-xs font-medium">Earnings</p>
+                                                    <div className="mt-2 space-y-1 text-sm">
+                                                        <div className="flex justify-between"><span>Gross</span><span>{preview?.grossPay ? formatCurrency(preview.grossPay) : '—'}</span></div>
+                                                        <div className="flex justify-between"><span>Allowances</span><span>{preview?.allowances ? formatCurrency(preview.allowances) : '—'}</span></div>
+                                                        <div className="flex justify-between"><span>Overtime</span><span>{preview?.overtimePay ? formatCurrency(preview.overtimePay) : '—'}</span></div>
+                                                        <div className="flex justify-between"><span>Holiday Pay</span><span>{preview?.holidayPay ? formatCurrency(preview.holidayPay) : '—'}</span></div>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                            <Card>
+                                                <CardContent>
+                                                    <p className="text-xs font-medium">Deductions</p>
+                                                    <div className="mt-2 space-y-1 text-sm">
+                                                        <div className="flex justify-between"><span>Gov't Deductions</span><span>{preview?.totalGovDed ? formatCurrency(preview.totalGovDed) : '—'}</span></div>
+                                                        <div className="flex justify-between"><span>Other</span><span>{preview?.otherDeductions ? formatCurrency(preview.otherDeductions) : '—'}</span></div>
+                                                        <div className="flex justify-between"><span>Loans</span><span>{preview?.loanDeduction ? formatCurrency(preview.loanDeduction) : '—'}</span></div>
+                                                        <div className="flex justify-between"><span>Auto deductions</span><span>{preview?.autoDedTotal ? formatCurrency(preview.autoDedTotal) : '—'}</span></div>
+                                                        <div className="flex justify-between font-semibold"><span>Net Pay</span><span>{preview?.netPay ? formatCurrency(preview.netPay) : '—'}</span></div>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    </DialogContent>
+                </Dialog>
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
@@ -3022,6 +3333,8 @@
                 </Tabs>
 
                 {/* Printable Payslip Dialog */}
+                {/* Attendance Summary Modal */}
+            
                 {(() => {
                     const printPS = printPayslipId ? payslips.find((p) => p.id === printPayslipId) : null;
                     const printEmp = printPS ? employees.find((e) => e.id === printPS.employeeId) : null;
@@ -3154,6 +3467,8 @@
             </div>
         );
     }
+
+    
 
     /* ═══════════════════════════════════════════════════════════════
     DEDUCTION TEMPLATES SECTION COMPONENT

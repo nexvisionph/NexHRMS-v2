@@ -522,7 +522,9 @@ export const useAttendanceStore = create<AttendanceState>()(
                 set((s) => ({
                     logs: s.logs.map((l) => {
                         if (l.employeeId === employeeId && l.date === today && l.checkIn) {
-                            return { ...l, checkOut: timeStr, checkOutMethod, hours: calculateHours(l.checkIn, timeStr), updatedAt: now.toISOString() };
+                            const hours = calculateHours(l.checkIn, timeStr);
+                            const otHours = Math.max(0, Math.round((hours - 8) * 100) / 100);
+                            return { ...l, checkOut: timeStr, checkOutMethod, hours, otHours, updatedAt: now.toISOString() };
                         }
                         return l;
                     }),
@@ -629,7 +631,9 @@ export const useAttendanceStore = create<AttendanceState>()(
                         const updated = { ...l, ...patch, updatedAt: new Date().toISOString() };
                         // Recalculate hours if both times are present; handle overnight shifts
                         if (updated.checkIn && updated.checkOut) {
-                            updated.hours = calculateHours(updated.checkIn, updated.checkOut);
+                            const hours = calculateHours(updated.checkIn, updated.checkOut);
+                            updated.hours = hours;
+                            updated.otHours = Math.max(0, Math.round((hours - 9) * 100) / 100);
                         }
                         return updated;
                     }),
@@ -646,9 +650,11 @@ export const useAttendanceStore = create<AttendanceState>()(
                         const entry: AttendanceLog = idx >= 0
                             ? { ...logs[idx], ...row, updatedAt: nowISO }
                             : { id: `ATT-${row.date}-${row.employeeId}`, ...row, createdAt: nowISO, updatedAt: nowISO };
-                        // recalc hours
+                        // recalc hours and overtime
                         if (entry.checkIn && entry.checkOut) {
-                            entry.hours = calculateHours(entry.checkIn, entry.checkOut);
+                            const hours = calculateHours(entry.checkIn, entry.checkOut);
+                            entry.hours = hours;
+                            entry.otHours = Math.max(0, Math.round((hours - 9) * 100) / 100);
                         }
                         if (idx >= 0) logs[idx] = entry; else logs.push(entry);
                     }
