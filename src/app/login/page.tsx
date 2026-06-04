@@ -264,7 +264,14 @@ const panelCardClass = cn(
 
                 {/* Logo */}
                 <div className="relative z-10">
-                    <Image src={isLightMode ? "/blacklogo.png" : "/finalwhitelogo.png"} alt="NEXVision wordmark" width={240} height={64} className="object-contain" />
+                    <Image
+  src={isLightMode ? "/blacklogo.png" : "/finalwhitelogo.png"}
+  alt="NEXVision wordmark"
+  width={240}
+  height={64}
+  className="object-contain"
+  unoptimized
+/>
                 </div>
 
                 {/* Center feature callouts */}
