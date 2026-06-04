@@ -355,6 +355,7 @@ export default function EmployeeView() {
     const handleSubmitOT = () => {
         if (!myEmployeeId) { toast.error("Unable to identify employee"); return; }
         if (!otDate) { toast.error("Please select a date"); return; }
+        if (otDate < todayDateStr) { toast.error("Overtime date must be today or a future date"); return; }
         if (!otHours || Number(otHours) < 1) { toast.error("Please enter valid hours"); return; }
         if (!otReason || otReason.length < 3) { toast.error("Please provide a reason"); return; }
         submitOvertimeRequest({ employeeId: myEmployeeId, date: otDate, hoursRequested: Number(otHours), reason: otReason });
@@ -931,7 +932,7 @@ export default function EmployeeView() {
                 <DialogContent className="max-w-sm">
                     <DialogHeader><DialogTitle className="flex items-center gap-2"><Timer className="h-5 w-5" /> Request Overtime</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
-                        <div><label className="text-sm font-medium">Date</label><Input type="date" value={otDate} onChange={(e) => setOtDate(e.target.value)} className="mt-1" /></div>
+                        <div><label className="text-sm font-medium">Date</label><Input type="date" value={otDate} min={todayDateStr} onChange={(e) => setOtDate(e.target.value)} className="mt-1" /></div>
                         <div><label className="text-sm font-medium">Hours (1–8)</label><Input type="number" min="1" max="8" value={otHours} onChange={(e) => setOtHours(e.target.value)} className="mt-1" /></div>
                         <div><label className="text-sm font-medium">Reason</label><Input value={otReason} onChange={(e) => setOtReason(e.target.value)} placeholder="e.g. Project deadline" className="mt-1" /></div>
                         <Button onClick={handleSubmitOT} className="w-full">Submit Request</Button>

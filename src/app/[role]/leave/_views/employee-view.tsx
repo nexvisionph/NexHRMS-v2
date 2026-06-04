@@ -21,6 +21,7 @@ import {
 import { Plus, Palmtree, Stethoscope, AlertTriangle, FileQuestion, Baby, Heart, Users } from "lucide-react";
 import { toast } from "sonner";
 import type { LeaveType, LeaveDuration } from "@/types";
+import { getTomorrowDateString, validateFutureDate } from "@/lib/format";
 
 /* ═══════════════════════════════════════════════════════════════
    EMPLOYEE VIEW — My Leave Dashboard
@@ -112,6 +113,10 @@ export default function EmployeeLeaveView() {
     const handleSubmit = () => {
         if (!formStart) { toast.error("Please select a start date"); return; }
         if (!formEnd) { toast.error("Please select an end date"); return; }
+        const startDateCheck = validateFutureDate(formStart, "Start date");
+        if (!startDateCheck.valid) { toast.error(startDateCheck.error || "Start date must be a future date"); return; }
+        const endDateCheck = validateFutureDate(formEnd, "End date");
+        if (!endDateCheck.valid) { toast.error(endDateCheck.error || "End date must be a future date"); return; }
         if (formReason.length < 5) { toast.error("Reason must be at least 5 characters"); return; }
         if (formEnd < formStart) { toast.error("End date cannot be before start date"); return; }
         // Half-day only valid for single-day requests
@@ -155,11 +160,11 @@ export default function EmployeeLeaveView() {
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-sm font-medium">Start Date</label>
-                                    <Input type="date" value={formStart} onChange={(e) => setFormStart(e.target.value)} className="mt-1" />
+                                    <Input type="date" value={formStart} min={getTomorrowDateString()} onChange={(e) => setFormStart(e.target.value)} className="mt-1" />
                                 </div>
                                 <div>
                                     <label className="text-sm font-medium">End Date</label>
-                                    <Input type="date" value={formEnd} onChange={(e) => setFormEnd(e.target.value)} className="mt-1" />
+                                    <Input type="date" value={formEnd} min={getTomorrowDateString()} onChange={(e) => setFormEnd(e.target.value)} className="mt-1" />
                                 </div>
                             </div>
                             <div>

@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 import type { LeaveType } from "@/types";
 import { EmployeeCombobox } from "@/components/ui/employee-combobox";
+import { getTomorrowDateString, validateFutureDate } from "@/lib/format";
 
 /* ═══════════════════════════════════════════════════════════════
    ADMIN/HR/SUPERVISOR VIEW — Leave Management
@@ -173,6 +174,10 @@ export default function AdminLeaveView() {
         if (!formEmpId) { toast.error("Please select an employee"); return; }
         if (!formStart) { toast.error("Please select a start date"); return; }
         if (!formEnd) { toast.error("Please select an end date"); return; }
+        const startCheck = validateFutureDate(formStart, "Start date");
+        if (!startCheck.valid) { toast.error(startCheck.error || "Start date must be a future date"); return; }
+        const endCheck = validateFutureDate(formEnd, "End date");
+        if (!endCheck.valid) { toast.error(endCheck.error || "End date must be a future date"); return; }
         if (formReason.length < 5) { toast.error("Reason must be at least 5 characters"); return; }
         if (formEnd < formStart) { toast.error("End date cannot be before start date"); return; }
         addRequest({ employeeId: formEmpId, type: formType, startDate: formStart, endDate: formEnd, reason: formReason, duration: "full_day" });
@@ -235,11 +240,11 @@ export default function AdminLeaveView() {
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-sm font-medium">Start Date</label>
-                                    <Input type="date" value={formStart} onChange={(e) => setFormStart(e.target.value)} className="mt-1" />
+                                    <Input type="date" value={formStart} min={getTomorrowDateString()} onChange={(e) => setFormStart(e.target.value)} className="mt-1" />
                                 </div>
                                 <div>
                                     <label className="text-sm font-medium">End Date</label>
-                                    <Input type="date" value={formEnd} onChange={(e) => setFormEnd(e.target.value)} className="mt-1" />
+                                    <Input type="date" value={formEnd} min={getTomorrowDateString()} onChange={(e) => setFormEnd(e.target.value)} className="mt-1" />
                                 </div>
                             </div>
                             <div className="grid gap-2">
