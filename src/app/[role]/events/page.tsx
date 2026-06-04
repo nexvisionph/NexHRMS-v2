@@ -108,6 +108,18 @@ export default function EventsPage() {
     const [activeTab, setActiveTab] = useState("upcoming");
 
     const today = startOfDay(new Date());
+    const todayStr = format(today, "yyyy-MM-dd");
+
+    // Notification state
+    type NotifyTarget = "everyone" | "departments" | "employees";
+    const [notifyTarget, setNotifyTarget] = useState<NotifyTarget>("everyone");
+    const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
+    const [deptScope, setDeptScope] = useState<"leads" | "members" | "both">("both");
+    const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+
+    // Mock data — replace with real store data
+    const DEPARTMENTS = ["Engineering", "HR", "Finance", "Operations", "Sales", "Marketing"];
+    const EMPLOYEES = ["Alice Reyes", "Bob Santos", "Clara Tan", "Dave Lim", "Eva Cruz"];
 
     const filteredEvents = useMemo(() => {
         let filtered = [...events];
@@ -185,11 +197,18 @@ export default function EventsPage() {
             toast.error("Please fill in all fields");
             return;
         }
+        if (date < todayStr) {
+            toast.error("Event date must be today or in the future");
+            return;
+        }
         addEvent({ title, date, time, type });
         setTitle("");
         setDate("");
         setTime("");
         setType("event");
+        setNotifyTarget("everyone");
+        setSelectedDepts([]);
+        setSelectedEmployees([]);
         setAddOpen(false);
         toast.success("Event created successfully");
     };
@@ -206,6 +225,10 @@ export default function EventsPage() {
     const handleEdit = () => {
         if (!editEvent || !title || !date || !time) {
             toast.error("Please fill in all fields");
+            return;
+        }
+        if (date < todayStr) {
+            toast.error("Event date must be today or in the future");
             return;
         }
         updateEvent(editEvent.id, { title, date, time, type });
@@ -231,6 +254,10 @@ export default function EventsPage() {
         setTime("");
         setType("event");
         setEditEvent(null);
+        setNotifyTarget("everyone");
+        setSelectedDepts([]);
+        setDeptScope("both");
+        setSelectedEmployees([]);
     };
 
     const renderEventRow = (event: CalendarEvent) => {
@@ -451,7 +478,7 @@ export default function EventsPage() {
 
             {/* Add Dialog (standalone, controlled) */}
             <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetForm(); }}>
-                <DialogContent>
+                <DialogContent className="max-w-lg">
                     <DialogHeader>
                         <DialogTitle>Add New Event</DialogTitle>
                     </DialogHeader>
@@ -471,9 +498,13 @@ export default function EventsPage() {
                                 <Input 
                                     id="date" 
                                     type="date" 
-                                    value={date} 
+                                    value={date}
+                                    min={todayStr}
                                     onChange={(e) => setDate(e.target.value)} 
                                 />
+                                {date && date < todayStr && (
+                                    <p className="text-xs text-red-500">Date must be today or in the future</p>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="time">Time</Label>
@@ -487,7 +518,7 @@ export default function EventsPage() {
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="type">Type</Label>
-                            <Select value={type} onValueChange={setType}>
+                            <Select value={type} onValueChange={(v) => { setType(v); setNotifyTarget("everyone"); setSelectedDepts([]); setSelectedEmployees([]); }}>
                                 <SelectTrigger>
                                     <SelectValue />
                                 </SelectTrigger>
@@ -498,6 +529,100 @@ export default function EventsPage() {
                                 </SelectContent>
                             </Select>
                         </div>
+
+                        {/* Notification options — only for meeting and training */}
+                        {(type === "meeting" || type === "training") && (
+                            <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
+                                <Label className="text-sm font-medium">Notify</Label>
+                                <div className="flex gap-2 flex-wrap">
+                                    {(["everyone", "departments", ...(type === "training" ? ["employees"] : [])] as const).map((opt) => (
+                                        <button
+                                            key={opt}
+                                            type="button"
+                                            onClick={() => { setNotifyTarget(opt as NotifyTarget); setSelectedDepts([]); setSelectedEmployees([]); }}
+                                            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                                                notifyTarget === opt
+                                                    ? "bg-primary text-primary-foreground border-primary"
+                                                    : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                                            }`}
+                                        >
+                                            {opt === "everyone" ? "Everyone" : opt === "departments" ? "Selected Departments" : "Selected Employees"}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Department picker */}
+                                {notifyTarget === "departments" && (
+                                    <div className="space-y-2">
+                                        <Label className="text-xs text-muted-foreground">Departments</Label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {DEPARTMENTS.map((dept) => (
+                                                <button
+                                                    key={dept}
+                                                    type="button"
+                                                    onClick={() => setSelectedDepts((prev) =>
+                                                        prev.includes(dept) ? prev.filter((d) => d !== dept) : [...prev, dept]
+                                                    )}
+                                                    className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${
+                                                        selectedDepts.includes(dept)
+                                                            ? "bg-primary/10 border-primary text-primary"
+                                                            : "bg-background border-border text-muted-foreground hover:border-primary/40"
+                                                    }`}
+                                                >
+                                                    {dept}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {selectedDepts.length > 0 && (
+                                            <div className="space-y-1.5 pt-1">
+                                                <Label className="text-xs text-muted-foreground">Include</Label>
+                                                <div className="flex gap-2">
+                                                    {(["leads", "members", "both"] as const).map((scope) => (
+                                                        <button
+                                                            key={scope}
+                                                            type="button"
+                                                            onClick={() => setDeptScope(scope)}
+                                                            className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${
+                                                                deptScope === scope
+                                                                    ? "bg-primary/10 border-primary text-primary"
+                                                                    : "bg-background border-border text-muted-foreground hover:border-primary/40"
+                                                            }`}
+                                                        >
+                                                            {scope === "leads" ? "Leads only" : scope === "members" ? "Members only" : "Leads & Members"}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Employee picker (training only) */}
+                                {notifyTarget === "employees" && type === "training" && (
+                                    <div className="space-y-2">
+                                        <Label className="text-xs text-muted-foreground">Employees</Label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {EMPLOYEES.map((emp) => (
+                                                <button
+                                                    key={emp}
+                                                    type="button"
+                                                    onClick={() => setSelectedEmployees((prev) =>
+                                                        prev.includes(emp) ? prev.filter((e) => e !== emp) : [...prev, emp]
+                                                    )}
+                                                    className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${
+                                                        selectedEmployees.includes(emp)
+                                                            ? "bg-primary/10 border-primary text-primary"
+                                                            : "bg-background border-border text-muted-foreground hover:border-primary/40"
+                                                    }`}
+                                                >
+                                                    {emp}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
                         <DialogClose asChild>
@@ -570,9 +695,13 @@ export default function EventsPage() {
                                 <Input 
                                     id="edit-date" 
                                     type="date" 
-                                    value={date} 
+                                    value={date}
+                                    min={todayStr}
                                     onChange={(e) => setDate(e.target.value)} 
                                 />
+                                {date && date < todayStr && (
+                                    <p className="text-xs text-red-500">Date must be today or in the future</p>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="edit-time">Time</Label>

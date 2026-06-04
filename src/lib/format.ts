@@ -209,3 +209,58 @@ export function validateEmailDomain(email: string): EmailValidationResult {
 
   return { valid: true };
 }
+
+export interface DateValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+export function getTodayDateString(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function getTomorrowDateString(): string {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const year = tomorrow.getFullYear();
+  const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
+  const day = String(tomorrow.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function validateFutureDate(date: string, fieldLabel = "Date"): DateValidationResult {
+  if (!date) return { valid: false, error: `${fieldLabel} is required` };
+  if (date <= getTodayDateString()) {
+    return { valid: false, error: `${fieldLabel} must be a future date` };
+  }
+  return { valid: true };
+}
+
+export function validateBirthday(date: string): DateValidationResult {
+  if (!date) return { valid: true };
+
+  const today = getTodayDateString();
+  if (date > today) {
+    return { valid: false, error: "Birthday cannot be a future date" };
+  }
+
+  const birthday = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(birthday.getTime())) {
+    return { valid: false, error: "Please enter a valid birthday" };
+  }
+
+  const eighteenthBirthday = new Date(birthday);
+  eighteenthBirthday.setFullYear(eighteenthBirthday.getFullYear() + 18);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  if (eighteenthBirthday > now) {
+    return { valid: false, error: "Employee must be at least 18 years old" };
+  }
+
+  return { valid: true };
+}

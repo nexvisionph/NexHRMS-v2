@@ -43,7 +43,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { nanoid } from "nanoid";
 import { Search, SlidersHorizontal, Eye, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, UserMinus, Pencil, Mail, MapPin, Phone, Cake, DollarSign, RefreshCw, KeyRound, ShieldCheck, Briefcase, User, FolderKanban, Users, Tag, Crown, Building2, Receipt, Calculator, XCircle } from "lucide-react";
-import { getInitials, formatCurrency, formatDate, validatePhone, validateEmailDomain } from "@/lib/format";
+import { getInitials, formatCurrency, formatDate, validatePhone, validateEmailDomain, validateBirthday, getTodayDateString } from "@/lib/format";
 import Link from "next/link";
 import { ImportDataDialog } from "@/components/import-data-dialog";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
@@ -375,7 +375,7 @@ export default function AdminEmployeesView() {
     };
 
     const handleResetPassword = async () => {
-        if (!resetPwUserId || resetPwValue.length < 6) { toast.error("Password must be at least 6 characters."); return; }
+        if (!resetPwUserId || resetPwValue.length < 8) { toast.error("Password must be at least 8 characters."); return; }
         if (/\s/.test(resetPwValue)) { toast.error("Password cannot contain spaces."); return; }
         setActionLoading(true);
         if (USE_DEMO_MODE) {
@@ -594,7 +594,10 @@ const filteredAccounts = useMemo(() => {
         if (!newName.trim()) { toast.error("Employee name is required"); return; }
         if (!newEmail.trim()) { toast.error("Email address is required"); return; }
         if (!newJobTitle || !newDept) { toast.error("Please fill all required fields (job title, department)"); return; }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) { toast.error("Please enter a valid email address"); return; }
+        const newEmailCheck = validateEmailDomain(newEmail.trim());
+        if (!newEmailCheck.valid) { toast.error(newEmailCheck.error || "Please enter a valid email address"); return; }
+        const newBirthdayCheck = validateBirthday(newBirthday);
+        if (!newBirthdayCheck.valid) { toast.error(newBirthdayCheck.error || "Please enter a valid birthday"); return; }
         // Fix 4 — Monthly Salary required and must be > 0
         const salaryVal = Number(newSalary);
         if (!newSalary || salaryVal <= 0) { toast.error("Monthly salary is required and must be greater than ₱0"); return; }
@@ -776,6 +779,8 @@ const filteredAccounts = useMemo(() => {
         if (!editDept) { toast.error("Department is required"); return; }
         const editEmailCheck = validateEmailDomain(editEmail.trim());
         if (!editEmailCheck.valid) { toast.error(editEmailCheck.error || "Please enter a valid email address"); return; }
+        const editBirthdayCheck = validateBirthday(editBirthday);
+        if (!editBirthdayCheck.valid) { toast.error(editBirthdayCheck.error || "Please enter a valid birthday"); return; }
         if (employees.some((e) => e.id !== editingEmp.id && e.email.toLowerCase() === editEmail.trim().toLowerCase())) { toast.error("An employee with this email already exists"); return; }
         if (editBiometricId.trim() && employees.some((e) => e.id !== editingEmp.id && e.biometricId === editBiometricId.trim())) { toast.error("This biometric ID is already assigned to another employee"); return; }
         const editSalaryNum = Number(editSalary);
@@ -935,7 +940,7 @@ const filteredAccounts = useMemo(() => {
                                         <div className="p-4 space-y-3">
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div><label className="text-xs font-medium text-muted-foreground">Full Name <span className="text-destructive">*</span></label><Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Juan dela Cruz" className="mt-1 h-8 text-sm" /></div>
-                                                <div><label className="text-xs font-medium text-muted-foreground">Email Address <span className="text-destructive">*</span></label><Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="juan@company.com" className="mt-1 h-8 text-sm" /></div>
+                                                <div><label className="text-xs font-medium text-muted-foreground">Email Address <span className="text-destructive">*</span></label><Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="juan@nexsdsi.com" className="mt-1 h-8 text-sm" /></div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div><label className="text-xs font-medium text-muted-foreground">Phone</label><Input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+63 912 345 6789" className="mt-1 h-8 text-sm" /></div>
@@ -946,7 +951,7 @@ const filteredAccounts = useMemo(() => {
                                                 <div className="flex items-end"><p className="text-[11px] text-muted-foreground pb-1">Use the user ID created directly on the biometric scanner.</p></div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div><label className="text-xs font-medium text-muted-foreground">Birthday</label><Input type="date" value={newBirthday} onChange={(e) => setNewBirthday(e.target.value)} className="mt-1 h-8 text-sm" /></div>
+                                                <div><label className="text-xs font-medium text-muted-foreground">Birthday</label><Input type="date" value={newBirthday} onChange={(e) => setNewBirthday(e.target.value)} max={getTodayDateString()} className="mt-1 h-8 text-sm" /></div>
                                                 <div><label className="text-xs font-medium text-muted-foreground">Address</label><Input value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="Home address" className="mt-1 h-8 text-sm" /></div>
                                             </div>
                                         </div>
@@ -1229,7 +1234,7 @@ const filteredAccounts = useMemo(() => {
                             <div className="space-y-4 pt-2">
                                 <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-sm font-medium">Full Name <span className="text-destructive">*</span></label><Input value={editName} onChange={(e) => setEditName(e.target.value)} className="mt-1" /></div>
-                                    <div><label className="text-sm font-medium">Email <span className="text-destructive">*</span></label><Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="mt-1" /></div>
+                                    <div><label className="text-sm font-medium">Email <span className="text-destructive">*</span></label><Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="juan@nexsdsi.com" className="mt-1" /></div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-sm font-medium">Job Title</label>
@@ -1277,7 +1282,7 @@ const filteredAccounts = useMemo(() => {
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-sm font-medium">Address</label><Input value={editAddress} onChange={(e) => setEditAddress(e.target.value)} placeholder="Home address" className="mt-1" /></div>
-                                    <div><label className="text-sm font-medium">Birthday</label><Input type="date" value={editBirthday} onChange={(e) => setEditBirthday(e.target.value)} className="mt-1" /></div>
+                                    <div><label className="text-sm font-medium">Birthday</label><Input type="date" value={editBirthday} onChange={(e) => setEditBirthday(e.target.value)} max={getTodayDateString()} className="mt-1" /></div>
                                 </div>
                                 {/* Work Days */}
                                 <div>
@@ -2583,7 +2588,7 @@ const filteredAccounts = useMemo(() => {
                         <p className="text-sm text-muted-foreground">Set a new temporary password for <strong>{accounts.find((a) => a.id === resetPwUserId)?.name}</strong>. They will be prompted to change it on next login.</p>
                         <div className="space-y-1.5">
                             <label className="text-sm font-medium">New Password *</label>
-                            <Input type="password" value={resetPwValue} onChange={(e) => setResetPwValue(e.target.value.replace(/\s/g, ""))} placeholder="Minimum 6 characters" />
+                            <Input type="password" value={resetPwValue} onChange={(e) => setResetPwValue(e.target.value.replace(/\s/g, ""))} placeholder="Minimum 8 characters" />
                         </div>
                         <div className="flex gap-2 pt-1">
                             <Button variant="outline" className="flex-1" onClick={() => { setResetPwUserId(null); setResetPwValue(""); }}>Cancel</Button>
