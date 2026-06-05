@@ -156,3 +156,98 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+/**
+ * PATCH /api/attendance/logs
+ * Update an existing attendance log record.
+ * Body: { employeeId, date, checkIn?, checkOut?, status?, lateMinutes?, hours? }
+ * Only admin/hr/supervisor roles can update.
+ * Uses employee_id + date composite unique constraint for reliable matching.
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const serverSupabase = await createServerSupabaseClient();
+    const { data: { user }, error: authError } = await serverSupabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const admin = await createAdminSupabaseClient();
+    const { data: employee, error: employeeError } = await admin
+      .from("employees")
+      .select("id, role")
+      .or(`profile_id.eq.${user.id},email.eq.${user.email ?? ""}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (employeeError || !employee?.id) {
+      return NextResponse.json({ error: "Employee not found" }, { status: 404 });
+    }
+
+    const role = String(employee.role || "").toLowerCase();
+    const canEdit = ["admin", "hr", "supervisor"].includes(role);
+    if (!canEdit) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { employeeId, date, checkIn, checkOut, status, lateMinutes, hours } = body;
+
+    if (!employeeId || !date) {
+      return NextResponse.json({ error: "Missing employeeId or date" }, { status: 400 });
+    }
+
+    // Build the upsert payload — always include employee_id + date for composite key matching
+    const payload: Record<string, unknown> = {
+      employee_id: employeeId,
+      date: date,
+      updated_at: new Date().toISOString(),
+    };
+    if (checkIn !== undefined) payload.check_in = checkIn || null;
+    if (checkOut !== undefined) payload.check_out = checkOut || null;
+    if (status !== undefined) payload.status = status;
+    if (lateMinutes !== undefined) payload.late_minutes = lateMinutes;
+    if (hours !== undefined) payload.hours = hours;
+
+    // First try to update existing row by composite key
+    const { data: existing, error: lookupError } = await admin
+      .from("attendance_logs")
+      .select("id")
+      .eq("employee_id", employeeId)
+      .eq("date", date)
+      .maybeSingle();
+
+    if (existing) {
+      // Row exists — update it directly by its actual DB id
+      const { error: updateError } = await admin
+        .from("attendance_logs")
+        .update(payload)
+        .eq("id", existing.id);
+
+      if (updateError) {
+        console.error("[attendance/logs] PATCH update error:", updateError.message);
+        return NextResponse.json({ error: updateError.message }, { status: 500 });
+      }
+    } else {
+      // Row doesn't exist yet — insert with a generated id
+      payload.id = `ATT-${date}-${employeeId}`;
+      payload.created_at = new Date().toISOString();
+      if (!payload.status) payload.status = "absent";
+
+      const { error: insertError } = await admin
+        .from("attendance_logs")
+        .insert(payload);
+
+      if (insertError) {
+        console.error("[attendance/logs] PATCH insert error:", insertError.message);
+        return NextResponse.json({ error: insertError.message }, { status: 500 });
+      }
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[attendance/logs] PATCH error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

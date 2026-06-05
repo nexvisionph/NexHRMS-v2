@@ -534,6 +534,9 @@ export const payrollDb = {
     delete row.attendanceDaysAbsent;
     delete row.attendanceLateMinutes;
     delete row.attendanceUndertimeHours;
+    // Ensure NOT NULL columns have defaults (migration 056 added these with NOT NULL DEFAULT 0)
+    if (row.nonTaxableCompensation == null) row.nonTaxableCompensation = 0;
+    if (row.taxableCompensation == null) row.taxableCompensation = 0;
     return upsertRow("payslips", row);
   },
 
@@ -548,6 +551,9 @@ export const payrollDb = {
       delete row.attendanceDaysAbsent;
       delete row.attendanceLateMinutes;
       delete row.attendanceUndertimeHours;
+      // Ensure NOT NULL columns have defaults (migration 056 added these with NOT NULL DEFAULT 0)
+      if (row.nonTaxableCompensation == null) row.nonTaxableCompensation = 0;
+      if (row.taxableCompensation == null) row.taxableCompensation = 0;
       return row;
     });
     return batchUpsertRows("payslips", rows);

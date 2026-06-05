@@ -237,6 +237,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const [biometricImportOpen, setBiometricImportOpen] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const isImportingRef = useRef(false);
+    const isSavingRef = useRef(false);
 
     // Keep ref in sync so the event listener closure always sees current value
     useEffect(() => { isImportingRef.current = isImporting; }, [isImporting]);
@@ -246,7 +247,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
         forceRehydrate().catch(() => { /* keep local state if refresh fails */ });
 
         const refreshOnFocus = () => {
-            if (document.visibilityState === "visible" && !isImportingRef.current) {
+            if (document.visibilityState === "visible" && !isImportingRef.current && !isSavingRef.current) {
                 forceRehydrate().catch(() => { /* keep local state if refresh fails */ });
             }
         };
@@ -373,14 +374,42 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
         setEditingLog(log); setOvCheckIn(log.checkIn || ""); setOvCheckOut(log.checkOut || "");
         setOvStatus(log.status as "present" | "absent" | "on_leave"); setOvLate(log.lateMinutes != null ? String(log.lateMinutes) : ""); setOverrideOpen(true);
     };
-    const handleSaveOverride = () => {
+    const handleSaveOverride = async () => {
         if (!editingLog) return;
         const prevStatus = editingLog.status;
         const prevCheckIn = editingLog.checkIn;
         const prevCheckOut = editingLog.checkOut;
-        updateLog(editingLog.id, { checkIn: ovCheckIn || undefined, checkOut: ovCheckOut || undefined, status: ovStatus, lateMinutes: ovLate !== "" ? Number(ovLate) : undefined });
+        const patch: Record<string, unknown> = { checkIn: ovCheckIn || undefined, checkOut: ovCheckOut || undefined, status: ovStatus, lateMinutes: ovLate !== "" ? Number(ovLate) : undefined };
+        // Calculate hours if both times are present
+        if (ovCheckIn && ovCheckOut) {
+            const toSec = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 3600 + m * 60; };
+            const inSec = toSec(ovCheckIn); const outSec = toSec(ovCheckOut);
+            const diff = outSec >= inSec ? outSec - inSec : 24 * 3600 - inSec + outSec;
+            patch.hours = diff > 0 ? Math.round((diff / 3600) * 100) / 100 : 0;
+        }
+        // Update local state immediately for responsiveness
+        updateLog(editingLog.id, patch as Parameters<typeof updateLog>[1]);
         appendEvent({ employeeId: editingLog.employeeId, eventType: "OVERRIDE", timestampUTC: new Date().toISOString(), projectId: editingLog.projectId, performedBy: currentUser.id, description: `Override for ${getEmpName(editingLog.employeeId)} on ${editingLog.date}: status ${prevStatus}→${ovStatus}, in ${prevCheckIn || "—"}→${ovCheckIn || "—"}, out ${prevCheckOut || "—"}→${ovCheckOut || "—"}`, metadata: { logId: editingLog.id, prevStatus, newStatus: ovStatus, prevCheckIn, newCheckIn: ovCheckIn, prevCheckOut, newCheckOut: ovCheckOut } });
-        toast.success("Attendance record updated"); setOverrideOpen(false);
+        setOverrideOpen(false);
+        // Persist to database directly (guard against focus-rehydrate race)
+        isSavingRef.current = true;
+        try {
+            const res = await fetch("/api/attendance/logs", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: editingLog.id, employeeId: editingLog.employeeId, date: editingLog.date, ...patch }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || "Update failed");
+            }
+            toast.success("Attendance record updated");
+        } catch (err) {
+            console.error("[attendance] override persist failed:", err);
+            toast.error("Failed to save to database. Change may not persist after refresh.");
+        } finally {
+            isSavingRef.current = false;
+        }
     };
 
     const allLogsSelected = filteredLogs.length > 0 && filteredLogs.every((l) => selectedLogIds.has(l.id));
@@ -840,27 +869,46 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                         canEdit={canEdit}
                         shiftTemplates={shiftTemplates}
                         employeeShifts={employeeShifts}
-                        onStatusChange={(empId, date, newStatus, checkIn, checkOut, lateMinutes) => {
+                        onStatusChange={async (empId, date, newStatus, checkIn, checkOut, lateMinutes) => {
                             const existingLog = logs.find((l) => l.employeeId === empId && l.date === date);
+                            const patch = {
+                                status: newStatus as "present" | "absent" | "on_leave",
+                                checkIn: checkIn,
+                                checkOut: checkOut,
+                                lateMinutes: lateMinutes,
+                            };
+                            // Update local state immediately
                             if (existingLog) {
-                                updateLog(existingLog.id, {
-                                    status: newStatus as "present" | "absent" | "on_leave",
-                                    checkIn: checkIn,
-                                    checkOut: checkOut,
-                                    lateMinutes: lateMinutes,
-                                });
+                                updateLog(existingLog.id, patch);
                             } else {
-                                bulkUpsertLogs([{
-                                    employeeId: empId,
-                                    date,
-                                    status: newStatus as "present" | "absent" | "on_leave",
-                                    checkIn,
-                                    checkOut,
-                                    lateMinutes,
-                                }]);
+                                bulkUpsertLogs([{ employeeId: empId, date, ...patch }]);
                             }
                             appendEvent({ employeeId: empId, eventType: "OVERRIDE", timestampUTC: new Date().toISOString(), projectId: existingLog?.projectId, performedBy: currentUser.id, description: `Heatmap override for ${getEmpName(empId)} on ${date}: set to ${newStatus}${checkIn ? `, in=${checkIn}` : ""}${checkOut ? `, out=${checkOut}` : ""}`, metadata: { source: "heatmap", newStatus, checkIn, checkOut, lateMinutes } });
-                            toast.success(`Attendance updated for ${getEmpName(empId)}`);
+                            // Persist to database directly
+                            isSavingRef.current = true;
+                            try {
+                                const hours = checkIn && checkOut ? (() => {
+                                    const toSec = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 3600 + m * 60; };
+                                    const inSec = toSec(checkIn); const outSec = toSec(checkOut);
+                                    const diff = outSec >= inSec ? outSec - inSec : 24 * 3600 - inSec + outSec;
+                                    return diff > 0 ? Math.round((diff / 3600) * 100) / 100 : 0;
+                                })() : undefined;
+                                const res = await fetch("/api/attendance/logs", {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ employeeId: empId, date, ...patch, hours }),
+                                });
+                                if (!res.ok) {
+                                    const err = await res.json().catch(() => ({}));
+                                    throw new Error(err.error || "Update failed");
+                                }
+                                toast.success(`Attendance updated for ${getEmpName(empId)}`);
+                            } catch (err) {
+                                console.error("[attendance] heatmap persist failed:", err);
+                                toast.error("Failed to save to database. Change may not persist after refresh.");
+                            } finally {
+                                isSavingRef.current = false;
+                            }
                         }}
                     />
                 </TabsContent>

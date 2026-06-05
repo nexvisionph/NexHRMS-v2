@@ -132,19 +132,36 @@ export async function issuePayslip(
     // Use the existing store action to compute the new payslip
     // (it has duplicate guards and run management logic we don't want to duplicate).
     // Then upsert to DB after the store has computed the new state.
-    const before = usePayrollStore.getState().payslips;
+    const beforePayslips = usePayrollStore.getState().payslips;
+    const beforeRuns = usePayrollStore.getState().runs;
     usePayrollStore.getState().issuePayslip(data);
-    const after = usePayrollStore.getState().payslips;
+    const afterPayslips = usePayrollStore.getState().payslips;
+    const afterRuns = usePayrollStore.getState().runs;
 
     // Find newly added or updated payslip(s)
-    const newOrUpdated = after.filter((a) => {
-        const prev = before.find((b) => b.id === a.id);
+    const newOrUpdatedPayslips = afterPayslips.filter((a) => {
+        const prev = beforePayslips.find((b) => b.id === a.id);
         return !prev || JSON.stringify(prev) !== JSON.stringify(a);
     });
 
-    if (newOrUpdated.length === 0) return true;
+    // Find newly added or updated run(s) — run gets updated with payslipIds
+    const newOrUpdatedRuns = afterRuns.filter((a) => {
+        const prev = beforeRuns.find((b) => b.id === a.id);
+        return !prev || JSON.stringify(prev) !== JSON.stringify(a);
+    });
 
-    return await payrollDb.batchUpsertPayslips(newOrUpdated);
+    if (newOrUpdatedPayslips.length === 0) return true;
+
+    // Persist payslips first (run's junction table references them via FK)
+    const psOk = await payrollDb.batchUpsertPayslips(newOrUpdatedPayslips);
+    if (!psOk) return false;
+
+    // Persist updated run(s) so payslipIds are stored in DB
+    for (const run of newOrUpdatedRuns) {
+        await payrollDb.upsertRun(run);
+    }
+
+    return true;
 }
 
 /**
