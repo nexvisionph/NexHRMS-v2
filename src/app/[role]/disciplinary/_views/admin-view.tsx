@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Gavel, Plus, Search, AlertTriangle, FileText, ShieldAlert, Clock, CheckCircle2, Hourglass, TrendingUp } from "lucide-react";
+import { Gavel, Plus, Search, AlertTriangle, FileText, ShieldAlert, Clock, CheckCircle2, Hourglass, TrendingUp, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import type { DisciplinaryCaseStatus } from "@/types";
 
@@ -71,8 +71,18 @@ export default function DisciplinaryAdminView() {
         incidentLocation: "",
         description: "",
     });
+    const [employeeSearch, setEmployeeSearch] = useState("");
+    const [showEmpDropdown, setShowEmpDropdown] = useState(false);
 
     const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+
+    const filteredEmpOptions = useMemo(() => {
+        const q = employeeSearch.trim().toLowerCase();
+        return employees
+            .filter((e) => e.status === "active")
+            .filter((e) => !q || e.name.toLowerCase().includes(q) || (e.department ?? "").toLowerCase().includes(q))
+            .slice(0, 10);
+    }, [employees, employeeSearch]);
 
     const rows = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -114,6 +124,7 @@ export default function DisciplinaryAdminView() {
             incidentLocation: "",
             description: "",
         });
+        setEmployeeSearch("");
     };
 
     return (
@@ -251,7 +262,7 @@ export default function DisciplinaryAdminView() {
             </Card>
 
             {/* Create Case Dialog */}
-            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <Dialog open={createOpen} onOpenChange={(v) => { setCreateOpen(v); if (!v) { setEmployeeSearch(""); setShowEmpDropdown(false); } }}>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
                         <DialogTitle>New Disciplinary Case</DialogTitle>
@@ -259,14 +270,64 @@ export default function DisciplinaryAdminView() {
                     <div className="space-y-3">
                         <div>
                             <Label>Employee</Label>
-                            <Select value={form.employeeId} onValueChange={(v) => setForm((f) => ({ ...f, employeeId: v }))}>
-                                <SelectTrigger><SelectValue placeholder="Select employee…" /></SelectTrigger>
-                                <SelectContent>
-                                    {employees.filter((e) => e.status === "active").map((e) => (
-                                        <SelectItem key={e.id} value={e.id}>{e.name} — {e.department}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <div className="mt-1 relative">
+                                <div className="flex items-center gap-2 px-3 min-h-[38px] rounded-md border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
+                                    <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                    {form.employeeId && !showEmpDropdown ? (
+                                        <div className="flex flex-1 items-center justify-between">
+                                            <span className="text-sm truncate">
+                                                {empMap.get(form.employeeId)?.name ?? form.employeeId}
+                                                {empMap.get(form.employeeId)?.department && (
+                                                    <span className="text-muted-foreground ml-1 text-xs">— {empMap.get(form.employeeId)?.department}</span>
+                                                )}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setForm((f) => ({ ...f, employeeId: "" })); setEmployeeSearch(""); }}
+                                                className="ml-2 rounded-full hover:bg-destructive/20 p-0.5 shrink-0"
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <Input
+                                            placeholder="Search employee…"
+                                            value={employeeSearch}
+                                            onChange={(e) => { setEmployeeSearch(e.target.value); setShowEmpDropdown(true); }}
+                                            onFocus={() => setShowEmpDropdown(true)}
+                                            onBlur={() => setTimeout(() => setShowEmpDropdown(false), 200)}
+                                            className="border-0 shadow-none p-0 h-6 flex-1 focus-visible:ring-0"
+                                        />
+                                    )}
+                                </div>
+                                {showEmpDropdown && (
+                                    <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-md border bg-popover shadow-md max-h-[200px] overflow-y-auto">
+                                        {filteredEmpOptions.length === 0 ? (
+                                            <p className="text-xs text-muted-foreground text-center py-3">No employees found</p>
+                                        ) : (
+                                            filteredEmpOptions.map((e) => (
+                                                <button
+                                                    key={e.id}
+                                                    type="button"
+                                                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2"
+                                                    onMouseDown={(ev) => ev.preventDefault()}
+                                                    onClick={() => {
+                                                        setForm((f) => ({ ...f, employeeId: e.id }));
+                                                        setEmployeeSearch("");
+                                                        setShowEmpDropdown(false);
+                                                    }}
+                                                >
+                                                    <Users className="h-3 w-3 text-muted-foreground shrink-0" />
+                                                    <div className="min-w-0">
+                                                        <p className="font-medium truncate">{e.name}</p>
+                                                        {e.department && <p className="text-[10px] text-muted-foreground">{e.department}</p>}
+                                                    </div>
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div>
@@ -284,6 +345,7 @@ export default function DisciplinaryAdminView() {
                             <div>
                                 <Label>Incident Date</Label>
                                 <Input type="date" value={form.incidentDate}
+                                    max={new Date().toISOString().slice(0, 10)}
                                     onChange={(e) => setForm((f) => ({ ...f, incidentDate: e.target.value }))} />
                             </div>
                             <div>
@@ -292,11 +354,12 @@ export default function DisciplinaryAdminView() {
                                     onChange={(e) => setForm((f) => ({ ...f, incidentLocation: e.target.value }))} />
                             </div>
                         </div>
-                        <div>
-                            <Label>Description</Label>
-                            <Textarea rows={4} value={form.description}
+                        <div className="grid gap-2">
+                            <Label className="text-sm font-medium">Description</Label>
+                            <Textarea rows={6} value={form.description}
                                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                                placeholder="Detailed description of the incident…" />
+                                placeholder="Detailed description of the incident…"
+                                className="resize-none max-h-[9rem] overflow-y-auto" />
                         </div>
                     </div>
                     <DialogFooter>
