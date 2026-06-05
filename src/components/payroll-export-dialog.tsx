@@ -1000,7 +1000,9 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
 
       const dtr = isImported
         ? buildDtrFromPayslip(payslip!, isImported && payslip?.periodStart ? payslip.periodStart : periodFrom, isImported && payslip?.periodEnd ? payslip.periodEnd : periodTo)
-        : getDTRForEmployee(emp.id, periodFrom, periodTo);
+        : (payslip?.dtrPerDayJson && payslip.dtrPerDayJson.length > 0)
+          ? buildDtrFromPayslip(payslip, payslip.periodStart || periodFrom, payslip.periodEnd || periodTo)
+          : getDTRForEmployee(emp.id, periodFrom, periodTo);
 
       // ── Dynamic line items from payslip ──────────────────────────────────
       // lineItemsJson holds custom deduction-template items (allowances + deductions).
@@ -1065,7 +1067,8 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
 
       const deductionItems = [
         ...customDeductionItems,
-        ...(payslip && Number(payslip.customDeductions ?? 0) > 0
+        // Only show "Custom Deductions" lump sum if no individual line items exist
+        ...(customDeductionItems.length === 0 && payslip && Number(payslip.customDeductions ?? 0) > 0
           ? [{ label: "Custom Deductions", amount: Number(payslip.customDeductions ?? 0) }]
           : []),
         ...(payslip && Number(payslip.otherDeductions ?? 0) > 0
@@ -1146,7 +1149,9 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
 
     const dtr = isImported
       ? buildDtrFromPayslip(payslip, payslip.periodStart || "", payslip.periodEnd || "")
-      : getDTRForEmployee(emp.id, payslip.periodStart, payslip.periodEnd);
+      : (payslip.dtrPerDayJson && payslip.dtrPerDayJson.length > 0)
+        ? buildDtrFromPayslip(payslip, payslip.periodStart, payslip.periodEnd)
+        : getDTRForEmployee(emp.id, payslip.periodStart, payslip.periodEnd);
 
     const lineItems = payslip.lineItemsJson;
     let customAllowanceItems: { label: string; amount: number }[] = [];
@@ -1157,9 +1162,19 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
     }
     const deductionItems = [
       ...customDeductionItems,
-      ...(Number(payslip.customDeductions ?? 0) > 0 ? [{ label: "Custom Deductions", amount: Number(payslip.customDeductions ?? 0) }] : []),
-      ...(Number(payslip.otherDeductions ?? 0) > 0 ? [{ label: "Other Deductions", amount: Number(payslip.otherDeductions ?? 0) }] : []),
+      // Only show "Custom Deductions" as a lump sum if there are no individual line items
+      ...(customDeductionItems.length === 0 && Number(payslip.customDeductions ?? 0) > 0
+        ? [{ label: "Custom Deductions", amount: Number(payslip.customDeductions ?? 0) }]
+        : []),
+      ...(Number(payslip.otherDeductions ?? 0) > 0
+        ? [{ label: "Other Deductions", amount: Number(payslip.otherDeductions ?? 0) }]
+        : []),
     ];
+
+    // Total deductions: use individual line items when available to avoid double-counting
+    const customDedForTotal = customDeductionItems.length > 0
+      ? customDeductionItems.reduce((s, i) => s + i.amount, 0)
+      : Number(payslip.customDeductions ?? 0);
 
     return [{
       id: emp.id,
@@ -1189,7 +1204,7 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
       totalDeductions: Number(payslip.sssDeduction ?? 0) + Number(payslip.philhealthDeduction ?? 0) +
         Number(payslip.pagibigDeduction ?? 0) + Number(payslip.taxDeduction ?? 0) +
         Number(payslip.loanDeduction ?? 0) + Number(payslip.otherDeductions ?? 0) +
-        Number(payslip.customDeductions ?? 0) + Number(payslip.absentDeduction ?? 0) +
+        customDedForTotal + Number(payslip.absentDeduction ?? 0) +
         Number(payslip.lateDeduction ?? 0) + Number(payslip.undertimeDeduction ?? 0),
       netPay: Number(payslip.netPay ?? 0),
       dtr,

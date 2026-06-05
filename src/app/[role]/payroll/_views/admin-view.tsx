@@ -54,7 +54,7 @@
     import { ExportBackupDialog } from "@/components/export-backup-dialog";
     import { ImportDataDialog } from "@/components/import-data-dialog";
     import { PayrollExportDialog } from "@/components/payroll-export-dialog";
-    import { lockRunDbFirst, unlockRunDbFirst, endRunDbFirst, markRunPaidDbFirst } from "@/services/payroll-actions.service";
+    import { lockRunDbFirst, unlockRunDbFirst, endRunDbFirst, markRunPaidDbFirst, batchPublishPayslips as batchPublishPayslipsDb } from "@/services/payroll-actions.service";
     import PayrollPaymentWizard, { type WizardStep, usePayrollProgress } from "@/features/payroll-payment/payroll-payment-wizard";
     import Link from "next/link";
     import { useParams } from "next/navigation";
@@ -88,9 +88,14 @@
         const canIssue = hasPermission(currentUser.role, "payroll:generate");
         const canLock = hasPermission(currentUser.role, "payroll:lock");
         const canReset = mode === "admin";
-        const getPaymentEligibility = useCallback((ps: { employeeId: string; periodStart: string; periodEnd: string; source?: string; computedExternally?: boolean }) => {
+        const getPaymentEligibility = useCallback((ps: { employeeId: string; periodStart: string; periodEnd: string; source?: string; computedExternally?: boolean; status?: string; signedAt?: string }) => {
             // Imported payslips are external-authoritative snapshots; allow payment.
             if (ps.source === "imported" || ps.computedExternally) {
+                return { eligible: true as const };
+            }
+
+            // If the payslip is already signed, the employee has acknowledged it — allow payment.
+            if (ps.signedAt || ps.status === "signed") {
                 return { eligible: true as const };
             }
 
@@ -467,23 +472,26 @@
                     if (existingPayslip) { skippedDuplicates++; return; }
 
                     // ─── Proration: compute per-employee factor based on freq ──────────
-                    // For semi-monthly / bi-weekly / weekly we prorate relative to the
-                    // nominal period days.  For monthly we prorate against days-in-month.
+                    // For all frequencies with a partial period, use daily rate × weekdays worked.
                     const { factor: prorFactor, isPartial: isProrPartial, actualDays: prorActual, nominalDays: prorNominal } = prorationInfo;
                     let fullPeriodGross: number;
                     if (freq === "semi_monthly") fullPeriodGross = Math.round(emp.salary / 2);
                     else if (freq === "bi_weekly") fullPeriodGross = Math.round((emp.salary * 12) / 26);
                     else if (freq === "weekly") fullPeriodGross = Math.round((emp.salary * 12) / 52);
                     else {
-                        // monthly: prorate against calendar days in month
-                        const daysInMo = getDaysInMonth(parseISO(naturalBounds.start));
+                        // monthly: compute based on daily rate × weekdays in period
                         fullPeriodGross = emp.salary;
-                        const monthFactor = Math.min(1, prorActual / daysInMo);
-                        fullPeriodGross = Math.round(emp.salary * monthFactor);
                     }
-                    const grossPay = freq === "monthly"
-                        ? fullPeriodGross // already factored above
-                        : Math.round(fullPeriodGross * prorFactor);
+                    // For all frequencies: use daily rate × weekdays in period for consistent, auditable computation
+                    let grossPay: number;
+                    const empDailyRate = Math.round(emp.salary / (paySchedule.workDaysPerMonth || 22));
+                    // Count weekdays in the period
+                    let weekdaysInPeriod = 0;
+                    for (let d = new Date(parseISO(cutoffDates.start)); d <= parseISO(cutoffDates.end); d.setDate(d.getDate() + 1)) {
+                        const dow = d.getDay();
+                        if (dow !== 0 && dow !== 6) weekdaysInPeriod++;
+                    }
+                    grossPay = empDailyRate * weekdaysInPeriod;
 
                     // ─── Admin per-employee gross override ────────────────────────────
                     const overrideStr = grossOverrides[empId];
@@ -492,12 +500,10 @@
                         : grossPay;
 
                     const phDeductions = computeAllPHDeductions(emp.salary);
-                    let govMultiplier = 1;
-                    if (freq === "semi_monthly") {
-                        if (paySchedule.deductGovFrom === "both") govMultiplier = 0.5;
-                        else if (paySchedule.deductGovFrom === "first" && cutoff !== "first") govMultiplier = 0;
-                        else if (paySchedule.deductGovFrom === "second" && cutoff !== "second") govMultiplier = 0;
-                    }
+                    // Gov deductions are always applied in full.
+                    // The deductGovFrom setting only splits the amount (50%) when set to "both",
+                    // otherwise full deductions apply on every cutoff.
+                    const govMultiplier = 1;
 
                     const empLoans = getActiveByEmployee(empId);
                     const rawLoanDeduction = empLoans.reduce((sum, l) => sum + Math.min(l.monthlyDeduction, l.remainingBalance), 0);
@@ -528,7 +534,8 @@
                     // Priority: per-employee override > global default > auto (standard PH calc)
                     const computeDeduction = (type: DeductionType, autoValue: number, basis: number = grossPay): number => {
                         const override = getDeductionOverride(empId, type);
-                        const globalDef = getGlobalDefault(type);
+                        // Read latest toggle state directly from store (not from closure)
+                        const globalDef = usePayrollStore.getState().globalDefaults.find((g) => g.deductionType === type);
 
                         // If the global default has this type disabled, return 0 (admin toggled it off)
                         if (globalDef && !globalDef.enabled) return 0;
@@ -611,8 +618,15 @@
                     });
 
                     const hourlyRate = Math.round(dailyRate / 8);
-                    const otPay = Math.round(effectiveOtHours * hourlyRate * 1.25); // PH Labor Code: OT at 125%
-                    const nightDiffPay = Math.round(nightDiffHours * hourlyRate * 0.10); // PH: +10% for 10PM-6AM
+                    // Full-precision hourly rate for OT/night diff — no intermediate rounding.
+                    // Only the final OT pay amount is rounded (at the last step).
+                    const libDailyRate = computeDailyRate(emp.salary, paySchedule.workDaysPerMonth);
+                    const activeRuleSet = ruleSets[0]; // RS-DEFAULT
+                    const stdHours = activeRuleSet?.standardHoursPerDay ?? 8;
+                    const libHourlyRate = computeHourlyRate(libDailyRate, stdHours);
+                    // Full precision: salary / workDays / stdHours (no rounding until final amount)
+                    const fullPrecisionHourlyRate = emp.salary / (paySchedule.workDaysPerMonth || 22) / stdHours;
+                    const nightDiffPay = Math.round(nightDiffHours * fullPrecisionHourlyRate * 0.10); // PH: +10% for 10PM-6AM
                     const periodHolidays = holidays.filter((h) => h.date >= cutoffDates.start && h.date <= cutoffDates.end);
                     let holidayPaySupp = 0;
                     periodHolidays.forEach((hol) => {
@@ -647,13 +661,9 @@
 
 
 
-                    const activeRuleSet = ruleSets[0]; // RS-DEFAULT
-                    const stdHours = activeRuleSet?.standardHoursPerDay ?? 8;
                     const presentLogs = periodLogs.filter((l) => l.status === "present");
                     const expectedHoursTotal = presentLogs.length * stdHours;
                     const actualHoursTotal = presentLogs.reduce((sum, l) => sum + (l.hours || 0), 0);
-                    const libDailyRate = computeDailyRate(emp.salary, paySchedule.workDaysPerMonth);
-                    const libHourlyRate = computeHourlyRate(libDailyRate, stdHours);
                     const autoBreakdown = buildPayslipDeductions({
                         autoDeductLate: paySchedule.autoDeductLate,
                         autoDeductAbsent: paySchedule.autoDeductAbsent,
@@ -676,9 +686,38 @@
                     });
                     const autoDedTotal = autoBreakdown.totalDeductions;
 
+                    // OT hours: ALWAYS derive from actual attendance DTR first (hours worked > 8).
+                    // Only fall back to approved OT requests / manual input if DTR shows no OT.
+                    let dtrOtHours = periodLogs
+                        .filter((l) => l.status === "present" && (l.hours ?? 0) > 8)
+                        .reduce((sum, l) => sum + ((l.hours ?? 0) - 8), 0);
+                    // Round to 1 decimal to match DTR display precision (avoids sub-cent discrepancies)
+                    dtrOtHours = Math.round(dtrOtHours * 10) / 10;
+                    // Use DTR-based OT if available, otherwise fall back to approved/manual
+                    const finalOtHours = dtrOtHours > 0 ? dtrOtHours : effectiveOtHours;
+                    // Use the precise hourly rate for OT/night diff — no intermediate rounding.
+                    const otPay = Math.round(finalOtHours * fullPrecisionHourlyRate * 1.25); // PH Labor Code: OT at 125%
+
                     const rawNetPay = effectiveGrossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - empLoanDeduction - customDedTotal - autoDedTotal;
                     const netPay = Math.max(0, rawNetPay);
                     if (rawNetPay <= 0) zeroNetPayCount++;
+
+                    // Build DTR snapshot to freeze attendance data at issuance time
+                    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+                    const dtrSnapshot: Array<{ date: string; day: string; timeIn: string; timeOut: string; totalHrs: number; otHrs: number; tardinessHr: number; tardinessMin: number; absences: number }> = [];
+                    for (let d = new Date(parseISO(cutoffDates.start)); d <= parseISO(cutoffDates.end); d.setDate(d.getDate() + 1)) {
+                        const dateStr = format(d, "yyyy-MM-dd");
+                        const dayName = dayNames[d.getDay()];
+                        const log = periodLogs.find((l) => l.date === dateStr);
+                        if (log) {
+                            const lateMin = log.lateMinutes ?? 0;
+                            const totalHrs = log.hours ?? 0;
+                            const otHrs = totalHrs > 8 ? Math.round((totalHrs - 8) * 100) / 100 : 0;
+                            dtrSnapshot.push({ date: dateStr, day: dayName, timeIn: log.checkIn || "", timeOut: log.checkOut || "", totalHrs, otHrs, tardinessHr: Math.floor(lateMin / 60), tardinessMin: lateMin % 60, absences: log.status === "absent" ? 1 : 0 });
+                        } else {
+                            dtrSnapshot.push({ date: dateStr, day: dayName, timeIn: "", timeOut: "", totalHrs: 0, otHrs: 0, tardinessHr: 0, tardinessMin: 0, absences: d.getDay() !== 0 && d.getDay() !== 6 ? 1 : 0 });
+                        }
+                    }
 
                     issuePayslip({
                         employeeId: empId, periodStart: cutoffDates.start, periodEnd: cutoffDates.end, payFrequency: freq,
@@ -697,7 +736,13 @@
                         hourlyRate: libHourlyRate,
                         // Custom template line items — read by export, payslip detail, and printable payslip
                         lineItemsJson: lineItemsJson.length > 0 ? lineItemsJson : undefined,
-                        notes: formNotes || [effectiveOtHours > 0 ? `OT: ${effectiveOtHours}hrs (\u20B1${otPay})` : "", nightDiffHours > 0 ? `ND: ${nightDiffHours}hrs (\u20B1${nightDiffPay})` : ""].filter(Boolean).join(", ") || undefined, issuedAt: formIssuedAt,
+                        // DTR snapshot — freezes attendance data at issuance time for export
+                        dtrPerDayJson: dtrSnapshot,
+                        dtrDaysPresent: presentLogs.length,
+                        dtrDaysAbsent: absentDaysAgg,
+                        dtrLateMinutes: lateMinutesAgg,
+                        dtrOtHours: finalOtHours,
+                        notes: formNotes || [finalOtHours > 0 ? `OT: ${finalOtHours}hrs (\u20B1${otPay})` : "", nightDiffHours > 0 ? `ND: ${nightDiffHours}hrs (\u20B1${nightDiffPay})` : ""].filter(Boolean).join(", ") || undefined, issuedAt: formIssuedAt,
                     });
 
                     const actualPayslipId = usePayrollStore.getState().payslips.filter((p) => p.employeeId === empId).sort((a, b) => b.id.localeCompare(a.id))[0]?.id ?? `PS-fallback-${Date.now()}`;
@@ -710,6 +755,24 @@
                 if (zeroNetPayCount > 0) toast.warning(`${zeroNetPayCount} employee${zeroNetPayCount > 1 ? "s" : ""} issued with ₱0 net pay — review deductions before locking.`);
                 if (successCount > 0) toast.success(`Issued ${successCount} payslip${successCount > 1 ? "s" : ""}${loanMsg}`);
                 else if (skippedDuplicates > 0) toast.info("No new payslips issued — all selected employees already have payslips for this period.");
+
+                // Persist to DB immediately (don't rely solely on write-through)
+                if (successCount > 0) {
+                    const currentState = usePayrollStore.getState();
+                    const runPayslips = currentState.payslips.filter(
+                        (p) => p.periodStart === cutoffDates.start && p.periodEnd === cutoffDates.end
+                    );
+                    const activeRuns = currentState.runs.filter(
+                        (r) => r.periodStart === cutoffDates.start && r.periodEnd === cutoffDates.end
+                    );
+                    // Fire-and-forget: persist payslips first, then runs (junction table FK)
+                    payrollDb.batchUpsertPayslips(runPayslips).then((psOk) => {
+                        if (psOk) {
+                            activeRuns.forEach((run) => payrollDb.upsertRun(run));
+                        }
+                    }).catch((err) => console.error("[payroll] DB persist after issue failed:", err));
+                }
+
                 setOpen(false); setSelectedEmployeeIds([]); setFormAllowances("0"); setFormOtherDeductions("0"); setFormOTHours("0"); setFormNightDiffHours("0"); setFormNotes(""); setFormIssuedAt(format(new Date(), "yyyy-MM-dd")); setFormPeriodEnd(computeSmartPeriodEnd(naturalBounds)); setEmpSearchTerm(""); setGrossOverrides({}); setExpandedOverrideEmpId(null);
             } catch (err) {
                 toast.error(`Payslip issuance failed: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -799,12 +862,13 @@
         // ─── Batch handlers ──────────────────────────────────────────
         // Use store-first pattern (matching single-action buttons).
         // The write-through subscriber in sync.service.ts persists to Supabase.
-        const handleBatchPublish = useCallback(() => {
+        const handleBatchPublish = useCallback(async () => {
             const draftSlips = filteredPayslips.filter((p) => p.status === "draft" && isPayslipRunLocked(p.id));
             if (draftSlips.length === 0) { toast.error("No draft payslips in a locked payroll run to publish"); return; }
             setBatchProcessing(true);
             try {
-                batchPublishPayslips(draftSlips.map((ps) => ps.id));
+                const ok = await batchPublishPayslipsDb(draftSlips.map((ps) => ps.id));
+                if (!ok) { toast.error("Failed to publish payslips to database"); return; }
                 draftSlips.forEach((ps) => {
                     useAuditStore.getState().log({ entityType: "payslip", entityId: ps.id, action: "payroll_published", performedBy: currentUser.id });
                 });
@@ -931,9 +995,11 @@
                     });
 
                     
-                    const empSemiMonthly = Math.round(emp.salary / 2);
+                    // Keep the original grossPay from issuance — do NOT overwrite it.
+                    // Only recalculate deductions and net pay.
+                    const originalGross = ps.grossPay;
                     const newNetPay = Math.max(0,
-                        empSemiMonthly
+                        originalGross
                         + (ps.overtimePay ?? 0)
                         + (ps.holidayPay ?? 0)
                         + newCustomAllowance
@@ -947,7 +1013,6 @@
                     );
                         updatePayslipFromServer({
                         id: ps.id,
-                        grossPay: empSemiMonthly,        
                         sssDeduction: sss,
                         philhealthDeduction: ph,
                         pagibigDeduction: pi,
@@ -1141,7 +1206,12 @@
                                                                     <span className="text-xs font-medium">{labels[type]}</span>
                                                                     <p className={`text-[9px] leading-tight ${modeColor}`}>{modeLabel}</p>
                                                                 </div>
-                                                                <button type="button" onClick={() => updateGlobalDefault({ deductionType: type, enabled: !gd?.enabled, mode: gd?.mode ?? "auto" })} className={`relative w-8 h-4 rounded-full transition-colors ${gd?.enabled && gd?.mode !== "exempt" ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`}>
+                                                                <button type="button" onClick={() => {
+                                                                    const newEnabled = !gd?.enabled;
+                                                                    updateGlobalDefault({ deductionType: type, enabled: newEnabled, mode: gd?.mode ?? "auto" });
+                                                                    // Persist to DB immediately so it survives refresh
+                                                                    payrollDb.upsertGlobalDefault({ deductionType: type, enabled: newEnabled, mode: gd?.mode ?? "auto" });
+                                                                }} className={`relative w-8 h-4 rounded-full transition-colors ${gd?.enabled && gd?.mode !== "exempt" ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`}>
                                                                     <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all duration-200 ${gd?.enabled && gd?.mode !== "exempt" ? "left-4" : "left-0.5"}`} />
                                                                 </button>
                                                             </div>
