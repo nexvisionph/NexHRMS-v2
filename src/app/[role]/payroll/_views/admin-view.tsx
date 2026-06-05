@@ -500,14 +500,10 @@
                         : grossPay;
 
                     const phDeductions = computeAllPHDeductions(emp.salary);
-                    let govMultiplier = 1;
-                    if (freq === "semi_monthly" && !isProrPartial) {
-                        // Only apply cutoff-based gov deduction splitting for full semi-monthly periods
-                        // Custom/partial periods always get full deductions
-                        if (paySchedule.deductGovFrom === "both") govMultiplier = 0.5;
-                        else if (paySchedule.deductGovFrom === "first" && cutoff !== "first") govMultiplier = 0;
-                        else if (paySchedule.deductGovFrom === "second" && cutoff !== "second") govMultiplier = 0;
-                    }
+                    // Gov deductions are always applied in full.
+                    // The deductGovFrom setting only splits the amount (50%) when set to "both",
+                    // otherwise full deductions apply on every cutoff.
+                    const govMultiplier = 1;
 
                     const empLoans = getActiveByEmployee(empId);
                     const rawLoanDeduction = empLoans.reduce((sum, l) => sum + Math.min(l.monthlyDeduction, l.remainingBalance), 0);
@@ -538,7 +534,8 @@
                     // Priority: per-employee override > global default > auto (standard PH calc)
                     const computeDeduction = (type: DeductionType, autoValue: number, basis: number = grossPay): number => {
                         const override = getDeductionOverride(empId, type);
-                        const globalDef = getGlobalDefault(type);
+                        // Read latest toggle state directly from store (not from closure)
+                        const globalDef = usePayrollStore.getState().globalDefaults.find((g) => g.deductionType === type);
 
                         // If the global default has this type disabled, return 0 (admin toggled it off)
                         if (globalDef && !globalDef.enabled) return 0;
@@ -1209,7 +1206,12 @@
                                                                     <span className="text-xs font-medium">{labels[type]}</span>
                                                                     <p className={`text-[9px] leading-tight ${modeColor}`}>{modeLabel}</p>
                                                                 </div>
-                                                                <button type="button" onClick={() => updateGlobalDefault({ deductionType: type, enabled: !gd?.enabled, mode: gd?.mode ?? "auto" })} className={`relative w-8 h-4 rounded-full transition-colors ${gd?.enabled && gd?.mode !== "exempt" ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`}>
+                                                                <button type="button" onClick={() => {
+                                                                    const newEnabled = !gd?.enabled;
+                                                                    updateGlobalDefault({ deductionType: type, enabled: newEnabled, mode: gd?.mode ?? "auto" });
+                                                                    // Persist to DB immediately so it survives refresh
+                                                                    payrollDb.upsertGlobalDefault({ deductionType: type, enabled: newEnabled, mode: gd?.mode ?? "auto" });
+                                                                }} className={`relative w-8 h-4 rounded-full transition-colors ${gd?.enabled && gd?.mode !== "exempt" ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`}>
                                                                     <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all duration-200 ${gd?.enabled && gd?.mode !== "exempt" ? "left-4" : "left-0.5"}`} />
                                                                 </button>
                                                             </div>
