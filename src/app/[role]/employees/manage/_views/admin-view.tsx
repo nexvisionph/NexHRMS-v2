@@ -492,6 +492,7 @@ const filteredAccounts = useMemo(() => {
     const [editWorkDays, setEditWorkDays] = useState<string[]>(["Mon", "Tue", "Wed", "Thu", "Fri"]);
     const [editProjectId, setEditProjectId] = useState<string>("");
     const [editPayFreq, setEditPayFreq] = useState<string>("company");
+    const [editOtExempt, setEditOtExempt] = useState(false);
     const [editBirthday, setEditBirthday] = useState("");
     const [editTeamLeader, setEditTeamLeader] = useState<string>("none");
     const [editShiftId, setEditShiftId] = useState<string>("none");
@@ -742,7 +743,7 @@ const filteredAccounts = useMemo(() => {
     const handleOpenEdit = (emp: Employee) => {
         setEditingEmp(emp); setEditName(emp.name); setEditEmail(emp.email); setEditRole(emp.role); setEditJobTitle(emp.jobTitle || ""); setEditDept(emp.department);
         setEditWorkType(emp.workType); setEditSalary(String(emp.salary)); setEditPhone(emp.phone || ""); setEditBiometricId(emp.biometricId || "");
-        setEditProductivity(String(emp.productivity)); setEditPayFreq(emp.payFrequency || "company");
+        setEditProductivity(String(emp.productivity)); setEditPayFreq(emp.payFrequency || "company"); setEditOtExempt(emp.otExempt || false);
         setEditWorkDays(emp.workDays || ["Mon", "Tue", "Wed", "Thu", "Fri"]);
         setEditBirthday(emp.birthday || ""); setEditTeamLeader(emp.teamLeader || "none"); setEditShiftId(emp.shiftId || "none");
         setEditEmergencyContact(emp.emergencyContact || ""); setEditAddress(emp.address || "");
@@ -802,6 +803,7 @@ const filteredAccounts = useMemo(() => {
             name: editName.trim(), email: editEmail.trim(), role: editRole, jobTitle: editJobTitle, department: editDept, workType: editWorkType,
             salary: editSalaryNum || 0, phone: formattedPhone, biometricId: editBiometricId.trim() || undefined,
             productivity: Number(editProductivity) || 80, payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
+            otExempt: editOtExempt || undefined,
             birthday: editBirthday || undefined,
             teamLeader: editTeamLeader !== "none" ? editTeamLeader : undefined,
             shiftId: editShiftId !== "none" ? editShiftId : undefined,
@@ -1260,6 +1262,10 @@ const filteredAccounts = useMemo(() => {
                                     <div><label className="text-sm font-medium">Pay Frequency</label>
                                         <Select value={editPayFreq} onValueChange={setEditPayFreq}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="company">Default ({paySchedule.defaultFrequency.replace("_", "-")})</SelectItem><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="semi_monthly">Semi-Monthly</SelectItem><SelectItem value="bi_weekly">Bi-Weekly</SelectItem><SelectItem value="weekly">Weekly</SelectItem></SelectContent></Select>
                                     </div>
+                                </div>
+                                <div className="flex items-center gap-3 py-1">
+                                    <input type="checkbox" id="editOtExempt" checked={editOtExempt} onChange={(e) => setEditOtExempt(e.target.checked)} className="h-4 w-4 rounded border-gray-300" />
+                                    <label htmlFor="editOtExempt" className="text-sm font-medium">OT Exempt (consultant/managerial — no overtime pay)</label>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-sm font-medium">Phone</label><Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} className="mt-1" /></div>

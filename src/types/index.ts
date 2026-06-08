@@ -97,7 +97,7 @@ export type AuditAction =
 
 // ─── Holiday Type ────────────────────────────────────────────
 
-export type HolidayType = "regular" | "special" | "special_non_working" | "special_working";
+export type HolidayType = "regular" | "special" | "special_non_working" | "special_working" | "declared_half_day";
 
 export interface Holiday {
   id: string;
@@ -354,6 +354,7 @@ export interface Employee {
   preferredChannel?: MessageChannel;
   deductionExempt?: boolean;       // true = skip ALL government deductions (contract-based employees)
   deductionExemptReason?: string;  // reason for exemption (e.g., "Contract-based", "Minimum wage earner")
+  otExempt?: boolean;              // true = skip OT computation (consultants/managerial — flat salary only)
   notificationPreferences?: Record<string, boolean>; // per-employee notification opt-outs (from DB jsonb column)
   // ─── BIR Compliance (migration 056) ──
   tin?: string;                                  // 12-digit BIR TIN (NNN-NNN-NNN-NNN)

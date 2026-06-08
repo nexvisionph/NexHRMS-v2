@@ -46,6 +46,7 @@ export function getDayType(dateStr: string, holidays: Holiday[]): ComputeDayType
   const holiday = holidays.find((h) => h.date === dateStr);
   if (holiday) {
     if (holiday.type === "regular") return "REG_HOL";
+    if (holiday.type === "declared_half_day") return "REG"; // Treat as regular day but OT threshold differs
     // special, special_non_working, special_working all treated as SPEC_HOL
     return "SPEC_HOL";
   }
@@ -53,6 +54,12 @@ export function getDayType(dateStr: string, holidays: Holiday[]): ComputeDayType
   if (dow === 6) return "SAT";
   if (dow === 0) return "SUN";
   return "REG";
+}
+
+/** Check if a date is a declared half-day */
+function isDeclaredHalfDay(dateStr: string, holidays: Holiday[]): boolean {
+  const holiday = holidays.find((h) => h.date === dateStr);
+  return holiday?.type === "declared_half_day";
 }
 
 // ─── Core: Parse Time String to Decimal Hours ────────────────────────────────
@@ -96,23 +103,28 @@ function computeDayHours(
   checkOutDecimal: number,
   dayType: ComputeDayType,
   ratePerHour: number,
-  isSaturday: boolean
+  isSaturday: boolean,
+  isHalfDay: boolean = false
 ): DayComputation {
   // Cap rules (matching client payslip behavior):
   // - ALL days: cap check_in at 08:00 (no credit for early arrival)
-  // - Always deduct 1 hour lunch break
-  // Client payslip confirms 8.00 effective IN even for Saturdays.
+  // - Lunch break: deducted from TOTAL HOURS display but NOT from OT computation
+  //   Client payslip formula: OT = (OUT - 8.00) - 8  (no lunch deducted from OT)
+  //   This means OT starts after 16:00 (4PM), not 17:00 (5PM)
   const effectiveIn = Math.max(checkInDecimal, SHIFT_START_HOUR);
 
-  // Total hours = out - effectiveIn - lunch break
-  let totalHours = checkOutDecimal - effectiveIn - LUNCH_BREAK_HOURS;
-  totalHours = Math.max(totalHours, 0);
+  // Total hours for display (with lunch deduction)
+  let totalHoursDisplay = checkOutDecimal - effectiveIn - LUNCH_BREAK_HOURS;
+  totalHoursDisplay = Math.max(totalHoursDisplay, 0);
 
-  // For Saturday/Sunday: cap total hours at 8.0 (client payslip uses flat 8hrs max for rest days)
+  // Total hours for OT computation (NO lunch deduction — matches client formula)
+  let totalHoursForOT = checkOutDecimal - effectiveIn;
+  totalHoursForOT = Math.max(totalHoursForOT, 0);
+
+  // For Saturday/Sunday: cap at 8.0 hours (client payslip uses flat 8hrs max for rest days)
   if (dayType === "SAT" || dayType === "SUN") {
-    const rawSatHours = totalHours;
-    totalHours = Math.min(totalHours, STANDARD_HOURS_PER_DAY);
-    console.log(`[SAT-CAP] dayType=${dayType} rawHours=${rawSatHours} → cappedHours=${totalHours} (cap=${STANDARD_HOURS_PER_DAY})`);
+    totalHoursDisplay = Math.min(totalHoursDisplay, STANDARD_HOURS_PER_DAY);
+    totalHoursForOT = Math.min(totalHoursForOT, STANDARD_HOURS_PER_DAY);
   }
 
   // Determine OT and undertime
@@ -120,25 +132,35 @@ function computeDayHours(
   let undertimeHours = 0;
 
   if (dayType === "REG") {
-    otHours = Math.max(0, totalHours - STANDARD_HOURS_PER_DAY);
-    undertimeHours = Math.max(0, STANDARD_HOURS_PER_DAY - totalHours);
+    if (isHalfDay) {
+      // Declared Half-Day: OT = total WITH lunch deducted - 4 (half-day threshold)
+      // Client formula: (OUT - 8 - 1) - 4, then floor the result
+      const totalWithLunch = checkOutDecimal - effectiveIn - LUNCH_BREAK_HOURS;
+      const halfDayOt = Math.max(0, totalWithLunch - 4);
+      otHours = Math.floor(halfDayOt); // Client floors half-day OT to whole hours
+    } else {
+      // OT = hours beyond 8 from the no-lunch total (effectively: OUT - 16:00)
+      otHours = Math.max(0, totalHoursForOT - STANDARD_HOURS_PER_DAY);
+    }
+    // Undertime based on display hours (with lunch)
+    undertimeHours = Math.max(0, (isHalfDay ? 4 : STANDARD_HOURS_PER_DAY) - totalHoursDisplay);
   } else if (dayType === "SAT" || dayType === "SUN") {
     // Saturday/Sunday: all hours are OT (already capped at 8.0 above)
-    otHours = totalHours;
+    otHours = totalHoursForOT;
   } else {
     // SPEC_HOL, REG_HOL — all hours count as OT (no cap)
-    otHours = totalHours;
+    otHours = totalHoursForOT;
   }
 
   // Night differential hours (hours worked after 10PM)
   const nightDiffHours = checkOutDecimal > NIGHT_DIFF_START
-    ? Math.min(totalHours, checkOutDecimal - NIGHT_DIFF_START)
+    ? Math.min(totalHoursForOT, checkOutDecimal - NIGHT_DIFF_START)
     : 0;
 
-  // Compute OT pay
-  const otPay = computeOTPayForDay(totalHours, otHours, dayType, ratePerHour, nightDiffHours, isSaturday);
+  // Compute OT pay (using the complex multiplier table for future use)
+  const otPay = computeOTPayForDay(totalHoursForOT, otHours, dayType, ratePerHour, nightDiffHours, isSaturday);
 
-  return { totalHours, effectiveIn, otHours, undertimeHours, otPay, nightDiffHours };
+  return { totalHours: totalHoursDisplay, effectiveIn, otHours, undertimeHours, otPay, nightDiffHours };
 }
 
 // ─── Core: Compute OT Pay for a Day ─────────────────────────────────────────
@@ -348,6 +370,50 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
   // Step 7 (partial): Semi-monthly basic
   const semiMonthlyBasic = round2(employee.salary / 2);
 
+  // ─── OT Exempt: Skip all OT computation (consultants/managerial) ───
+  if (employee.otExempt) {
+    const totalDeductions = round2(
+      deductions.tax + deductions.sss + deductions.philhealth +
+      deductions.pagibig + deductions.loans + deductions.other
+    );
+    const netPay = round2(semiMonthlyBasic - totalDeductions);
+
+    console.log(`[PAYROLL-ENGINE] ═══ OT EXEMPT: ${employee.name} (${periodStart} → ${periodEnd}) ═══`);
+    console.log(`[PAYROLL-ENGINE]   Basic=₱${semiMonthlyBasic} | Deductions=₱${totalDeductions} | NetPay=₱${netPay}`);
+
+    return {
+      employeeId: employee.id,
+      employeeName: employee.name,
+      position: employee.jobTitle || "",
+      department: employee.department,
+      periodStart,
+      periodEnd,
+      monthlySalary: employee.salary,
+      ratePerDay,
+      ratePerHour,
+      semiMonthlyBasic,
+      absentDays: 0,
+      absentDeduction: 0,
+      undertimeHours: 0,
+      undertimeDeduction: 0,
+      totalBasic: semiMonthlyBasic,
+      regOtHours: 0,
+      regOtMinutes: 0,
+      satOtHours: 0,
+      satOtMinutes: 0,
+      totalOtPay: 0,
+      withholdingTax: deductions.tax,
+      sss: deductions.sss,
+      philhealth: deductions.philhealth,
+      pagibig: deductions.pagibig,
+      otherDeductions: deductions.other + deductions.loans,
+      totalDeductions,
+      netPay,
+      dailyBreakdown: [],
+      daysPresent: 0,
+    };
+  }
+
   // Iterate each day in the period (inclusive of both start and end dates)
   const dailyBreakdown: PayslipDtrDay[] = [];
   let totalRegOtHours = 0;
@@ -415,7 +481,8 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
       const checkOutDecimal = parseTimeToDecimal(log.checkOut);
 
       if (checkInDecimal !== null && checkOutDecimal !== null) {
-        const comp = computeDayHours(checkInDecimal, checkOutDecimal, dayType, ratePerHour, isSaturday);
+        const halfDay = isDeclaredHalfDay(dateStr, holidays);
+        const comp = computeDayHours(checkInDecimal, checkOutDecimal, dayType, ratePerHour, isSaturday, halfDay);
 
         dayRecord.totalHrs = round2(comp.totalHours);
         dayRecord.otHrs = round2(comp.otHours);
@@ -429,8 +496,14 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
           // Saturday/Sunday: paid ONCE at 1.30x only. NOT added to regular OT pool.
           totalSatOtHours += comp.otHours;
         } else if (dayType === "REG") {
-          // Regular weekday OT (hours beyond 8, paid at 1.25x)
-          totalRegOtHours += comp.otHours;
+          // Regular weekday OT — apply minute truncation for accumulation
+          // Client truncates minutes < 30 to 0 when summing payable OT
+          const rawOt = comp.otHours;
+          const floorHrs = Math.floor(rawOt);
+          const mins = Math.round((rawOt - floorHrs) * 60);
+          const payableMins = mins >= 30 ? mins : 0;
+          const payableOt = floorHrs + payableMins / 60;
+          totalRegOtHours += payableOt;
         } else {
           // SPEC_HOL, REG_HOL — paid at 1.30x (same bucket as Saturday)
           totalSatOtHours += comp.otHours;
@@ -477,39 +550,47 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
   }
 
   // ═══ CLIENT OT PAY FORMULA ═══
-  // 1. Regular OT pay = ALL accumulated OT hours (including Saturday) × rate × 1.25
-  // 2. Saturday premium = Saturday hours × rate × 1.30 (additional, on top of regular)
-  // 3. Total OT = regular OT pay + Saturday premium
-  // This matches the client payslip where Saturday hours are double-counted:
-  //   once in the regular OT pool at 1.25x, and again as Saturday premium at 1.30x.
-  const regularOtPay = round2(totalRegOtHours * ratePerHour * 1.25);
-  const saturdayPremium = round2(totalSatOtHours * ratePerHour * 1.30);
-  totalOtPay = round2(regularOtPay + saturdayPremium);
+  // The client payslip computes payable OT per day using:
+  //   1. OT hours calculated WITHOUT lunch deduction (OUT - 8:00 - 8)
+  //   2. Minutes < 30 are TRUNCATED to 0 (only minutes ≥ 30 are kept)
+  //   3. Two separate pools: Regular at 1.25x, Saturday/Holiday at 1.30x
+  //   4. Each day rounded to 2 decimals, then summed
+  let sumRegOtPay = 0;
+  let sumSatOtPay = 0;
 
-  // Assign per-day otPay for display (proportional split)
+  // Assign per-day otPay and accumulate totals
   for (const day of dailyBreakdown) {
     if (day.otHrs && day.otHrs > 0) {
-      if (day.dayType === "SAT" || day.dayType === "SUN") {
-        // Saturday days get both regular (1.25) + premium (1.30)
-        day.otPay = round2(day.otHrs * ratePerHour * 1.25 + day.otHrs * ratePerHour * 1.30);
-      } else if (day.dayType === "REG") {
-        day.otPay = round2(day.otHrs * ratePerHour * 1.25);
-      } else {
-        // Holidays
+      if (day.dayType === "SAT" || day.dayType === "SUN" || day.dayType === "SPEC_HOL" || day.dayType === "REG_HOL") {
+        // Saturday/Sunday/Holiday: separate pool at 1.30x (no truncation — always 8 flat)
         day.otPay = round2(day.otHrs * ratePerHour * 1.30);
+        sumSatOtPay += day.otPay;
+      } else {
+        // Regular weekday OT: apply minute truncation rule
+        // Split OT into hours + minutes, truncate minutes < 30 to 0
+        const otFloorHrs = Math.floor(day.otHrs);
+        const otMinutes = Math.round((day.otHrs - otFloorHrs) * 60);
+        const payableMinutes = otMinutes >= 30 ? otMinutes : 0;
+        const payableOtHrs = otFloorHrs + payableMinutes / 60;
+        day.otPay = round2(payableOtHrs * ratePerHour * 1.25);
+        sumRegOtPay += day.otPay;
       }
     }
   }
+
+  // Round the accumulated sums
+  const regularOtPay = round2(sumRegOtPay);
+  const saturdayPremium = round2(sumSatOtPay);
+  totalOtPay = round2(regularOtPay + saturdayPremium);
 
   console.log(`[PAYROLL-ENGINE] ═══ OT BREAKDOWN TABLE ═══`);
   dailyBreakdown.filter(d => d.otHrs && d.otHrs > 0).forEach(d => {
     console.log(`[PAYROLL-ENGINE]   ${d.date} ${d.day} ${d.dayType} | OThrs=${d.otHrs} | OTpay=₱${d.otPay}`);
   });
   console.log(`[PAYROLL-ENGINE]   ─────────────────────────────────`);
-  console.log(`[PAYROLL-ENGINE]   RegOT pool: ${round2(totalRegOtHours)}hrs × ₱${ratePerHour} × 1.25 = ₱${regularOtPay}`);
-  console.log(`[PAYROLL-ENGINE]   Sat premium: ${round2(totalSatOtHours)}hrs × ₱${ratePerHour} × 1.30 = ₱${saturdayPremium}`);
+  console.log(`[PAYROLL-ENGINE]   RegOT pool: ${round2(totalRegOtHours)}hrs → sum of per-day pay = ₱${regularOtPay}`);
+  console.log(`[PAYROLL-ENGINE]   Sat/Hol pool: ${round2(totalSatOtHours)}hrs → sum of per-day pay = ₱${saturdayPremium}`);
   console.log(`[PAYROLL-ENGINE]   TOTAL OT PAY: ₱${totalOtPay}`);
-  console.log(`[PAYROLL-ENGINE]   Expected: ₱7063.55 | Diff: ₱${round2(7063.55 - totalOtPay)}`);
 
   // Step 7: Basic pay is FIXED at semi-monthly (salary / 2)
   // Absent deduction is a separate line item that reduces net pay.

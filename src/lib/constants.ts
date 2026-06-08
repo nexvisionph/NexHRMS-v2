@@ -104,6 +104,7 @@ export const DEFAULT_HOLIDAYS: { date: string; name: string; type: HolidayType }
     { date: "2026-04-02", name: "Maundy Thursday", type: "regular" },
     { date: "2026-04-03", name: "Good Friday", type: "regular" },
     { date: "2026-04-04", name: "Black Saturday", type: "special" },
+    { date: "2026-04-01", name: "Declared Half-Day", type: "declared_half_day" },
     { date: "2026-04-09", name: "Araw ng Kagitingan", type: "regular" },
     { date: "2026-05-01", name: "Labor Day", type: "regular" },
     { date: "2026-06-12", name: "Independence Day", type: "regular" },
