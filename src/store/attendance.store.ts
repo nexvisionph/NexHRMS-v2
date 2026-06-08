@@ -51,7 +51,7 @@ interface AttendanceState {
     getEmployeeLogs: (employeeId: string) => AttendanceLog[];
     getTodayLog: (employeeId: string) => AttendanceLog | undefined;
     getFlaggedLogs: () => AttendanceLog[];
-    updateLog: (id: string, patch: Partial<Pick<AttendanceLog, "checkIn" | "checkOut" | "hours" | "status" | "lateMinutes">>) => void;
+    updateLog: (id: string, patch: Partial<Pick<AttendanceLog, "checkIn" | "checkOut" | "hours" | "status" | "lateMinutes" | "otDescription">>) => void;
     bulkUpsertLogs: (rows: Array<Pick<AttendanceLog, "employeeId" | "date" | "status"> & Partial<Pick<AttendanceLog, "checkIn" | "checkOut" | "hours" | "lateMinutes">>>) => void;
 
     // ─── Overtime ─────────────────────────────────────
@@ -105,15 +105,18 @@ function timeToSeconds(time: string) {
     return hours * 3600 + minutes * 60 + seconds;
 }
 
-function calculateHours(checkIn: string, checkOut: string) {
-    const inTotal = timeToSeconds(checkIn);
-    const outTotal = timeToSeconds(checkOut);
-    const diffSeconds = outTotal >= inTotal
-        ? outTotal - inTotal
-        : 24 * 3600 - inTotal + outTotal;
+function calculateHours(checkIn: string, checkOut: string, date?: string) {
+    const inParts = checkIn.split(":");
+    const outParts = checkOut.split(":");
+    const inDecimal = Number(inParts[0]) + Number(inParts[1] || 0) / 60;
+    const outDecimal = Number(outParts[0]) + Number(outParts[1] || 0) / 60;
 
-    if (diffSeconds <= 0) return 0;
-    return Math.round((diffSeconds / 3600) * 100) / 100;
+    // Cap check-in at 8:00 for ALL days (matching client payslip formula)
+    const effectiveIn = Math.max(inDecimal, 8.0);
+
+    // Deduct 1hr lunch
+    const totalHours = outDecimal - effectiveIn - 1.0;
+    return totalHours > 0 ? Math.round(totalHours * 100) / 100 : 0;
 }
 
 export const useAttendanceStore = create<AttendanceState>()(
@@ -522,7 +525,7 @@ export const useAttendanceStore = create<AttendanceState>()(
                 set((s) => ({
                     logs: s.logs.map((l) => {
                         if (l.employeeId === employeeId && l.date === today && l.checkIn) {
-                            return { ...l, checkOut: timeStr, checkOutMethod, hours: calculateHours(l.checkIn, timeStr), updatedAt: now.toISOString() };
+                            return { ...l, checkOut: timeStr, checkOutMethod, hours: calculateHours(l.checkIn, timeStr, l.date), updatedAt: now.toISOString() };
                         }
                         return l;
                     }),
@@ -629,7 +632,7 @@ export const useAttendanceStore = create<AttendanceState>()(
                         const updated = { ...l, ...patch, updatedAt: new Date().toISOString() };
                         // Recalculate hours if both times are present; handle overnight shifts
                         if (updated.checkIn && updated.checkOut) {
-                            updated.hours = calculateHours(updated.checkIn, updated.checkOut);
+                            updated.hours = calculateHours(updated.checkIn, updated.checkOut, updated.date);
                         }
                         return updated;
                     }),
@@ -648,7 +651,7 @@ export const useAttendanceStore = create<AttendanceState>()(
                             : { id: `ATT-${row.date}-${row.employeeId}`, ...row, createdAt: nowISO, updatedAt: nowISO };
                         // recalc hours
                         if (entry.checkIn && entry.checkOut) {
-                            entry.hours = calculateHours(entry.checkIn, entry.checkOut);
+                            entry.hours = calculateHours(entry.checkIn, entry.checkOut, entry.date);
                         }
                         if (idx >= 0) logs[idx] = entry; else logs.push(entry);
                     }

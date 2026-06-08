@@ -471,6 +471,7 @@ export interface AttendanceLog {
   checkOutMethod?: AttendanceMethod;  // Method used for Time OUT
   shiftId?: string;
   flags?: AttendanceFlag[];
+  otDescription?: string;  // HR-filled OT description (e.g. "Extended site visit")
   createdAt?: string;  // ISO 8601
   updatedAt?: string;  // ISO 8601
 }
@@ -723,6 +724,13 @@ export interface Payslip {
   dtrOtHours?: number | null;
   dtrTardHours?: number | null;
   dtrPerDayJson?: PayslipDtrDay[] | null;  // per-day rows if available from the import file
+  // ─── Computation Engine Fields (payroll-computation-engine) ──
+  regOtHours?: number;            // regular day OT hours (integer part)
+  regOtMinutes?: number;          // regular day OT minutes (fractional → minutes)
+  satOtHours?: number;            // Saturday/Sunday/holiday OT hours
+  satOtMinutes?: number;          // Saturday/Sunday/holiday OT minutes
+  computeSource?: "attendance_engine" | "manual";  // how this payslip was generated
+  computeWorkDays?: number;       // rate divisor used (21.5 for computation engine)
 }
 
 // Per-day DTR row carried on imported payslips (receipt rendering only)
@@ -736,6 +744,49 @@ export interface PayslipDtrDay {
   tardinessHr?: number;
   tardinessMin?: number;
   absences?: number;
+  // ─── Computation engine fields (payroll-computation-engine) ──
+  dayType?: ComputeDayType;           // REG, SAT, SUN, SPEC_HOL, REG_HOL
+  effectiveIn?: string;               // after cap logic (HH:mm)
+  undertimeHours?: number;
+  otPay?: number;                     // OT pay for this specific day
+  otDescription?: string;             // HR-filled description (from attendance_logs.ot_description)
+  dayStatus?: string;                 // Present, Absent, Rest Day, Holiday
+}
+
+// ─── Payroll Computation Engine Types ────────────────────────
+
+export type ComputeDayType = "REG" | "SAT" | "SUN" | "SPEC_HOL" | "REG_HOL";
+
+export interface ComputedPayroll {
+  employeeId: string;
+  employeeName: string;
+  position: string;
+  department: string;
+  periodStart: string;
+  periodEnd: string;
+  monthlySalary: number;
+  ratePerDay: number;
+  ratePerHour: number;
+  semiMonthlyBasic: number;
+  absentDays: number;
+  absentDeduction: number;
+  undertimeHours: number;
+  undertimeDeduction: number;
+  totalBasic: number;
+  regOtHours: number;
+  regOtMinutes: number;
+  satOtHours: number;
+  satOtMinutes: number;
+  totalOtPay: number;
+  withholdingTax: number;
+  sss: number;
+  philhealth: number;
+  pagibig: number;
+  otherDeductions: number;
+  totalDeductions: number;
+  netPay: number;
+  dailyBreakdown: PayslipDtrDay[];
+  daysPresent: number;
 }
 
 export interface PolicySnapshot {

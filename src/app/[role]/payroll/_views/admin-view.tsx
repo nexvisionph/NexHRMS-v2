@@ -54,6 +54,7 @@
     import { ExportBackupDialog } from "@/components/export-backup-dialog";
     import { ImportDataDialog } from "@/components/import-data-dialog";
     import { PayrollExportDialog } from "@/components/payroll-export-dialog";
+    import { BackfillModal } from "@/components/payroll/backfill-modal";
     import { lockRunDbFirst, unlockRunDbFirst, endRunDbFirst, markRunPaidDbFirst, batchPublishPayslips as batchPublishPayslipsDb } from "@/services/payroll-actions.service";
     import PayrollPaymentWizard, { type WizardStep, usePayrollProgress } from "@/features/payroll-payment/payroll-payment-wizard";
     import Link from "next/link";
@@ -781,6 +782,8 @@
 
         // ─── 13th Month Modal State ─────────────────────────────────
         const [thirteenthMonthOpen, setThirteenthMonthOpen] = useState(false);
+        // ─── Backfill Modal State ────────────────────────────────────
+        const [backfillOpen, setBackfillOpen] = useState(false);
         const { departments } = useDepartmentsStore();
         const { projects } = useProjectsStore();
 
@@ -1071,6 +1074,9 @@
                             */}
                             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setThirteenthMonthOpen(true)}>
                                 <Gift className="h-4 w-4" /> <span className="hidden sm:inline">13th Month</span>
+                            </Button>
+                            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setBackfillOpen(true)}>
+                                <Calculator className="h-4 w-4" /> <span className="hidden sm:inline">Backfill from Attendance</span>
                             </Button>
                             <ExportBackupDialog module="payroll" />
                             <ImportDataDialog module="payroll" onImportComplete={() => toast.success("Payroll data imported — refresh to see changes")} />
@@ -3221,6 +3227,9 @@
                     projects={projects}
                     onGenerate={handle13thMonthGenerate}
                 />
+
+                {/* Backfill from Attendance Modal */}
+                <BackfillModal open={backfillOpen} onOpenChange={setBackfillOpen} />
             </div>
         );
     }
