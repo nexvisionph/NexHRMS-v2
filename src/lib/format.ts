@@ -191,7 +191,7 @@ export function validateEmailDomain(email: string): EmailValidationResult {
   }
 
   const trimmed = email.trim().toLowerCase();
-  
+
   // Basic format check
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
     return { valid: false, error: "Please enter a valid email address" };
@@ -202,9 +202,9 @@ export function validateEmailDomain(email: string): EmailValidationResult {
     return { valid: false, error: "Please enter a valid email address" };
   }
 
-  // Only allow company domain
-  if (domain !== "nexsdsi.com") {
-    return { valid: false, error: "Only @nexsdsi.com email addresses are allowed" };
+  // Block known disposable domains
+  if (BLOCKED_DOMAINS.has(domain)) {
+    return { valid: false, error: "Disposable email addresses are not allowed" };
   }
 
   return { valid: true };
