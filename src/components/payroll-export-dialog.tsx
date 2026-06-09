@@ -49,6 +49,25 @@ interface PayrollExportDialogProps {
 
 type ExportMode = "period" | "run";
 
+/** Convert "HH:mm" or "HH:mm:ss" or ISO timestamp to "h:mm AM/PM" format */
+function formatTo12hr(time: string): string {
+  if (!time) return "";
+  let hours: number, minutes: number;
+  if (time.includes("T")) {
+    const d = new Date(time);
+    hours = d.getHours();
+    minutes = d.getMinutes();
+  } else {
+    const parts = time.split(":");
+    hours = Number(parts[0]);
+    minutes = Number(parts[1] || 0);
+  }
+  if (isNaN(hours) || isNaN(minutes)) return time;
+  const ampm = hours >= 12 ? "PM" : "AM";
+  const h = hours % 12 || 12;
+  return `${h}:${String(minutes).padStart(2, "0")} ${ampm}`;
+}
+
 interface EmployeePayrollData {
   id: string;
   name: string;
@@ -687,8 +706,8 @@ function buildDtrFromPayslip(
       return {
         date: dateLabel,
         day: dayLabel,
-        timeIn: r.timeIn || "",
-        timeOut: r.timeOut || "",
+        timeIn: r.timeIn ? formatTo12hr(r.timeIn) : "",
+        timeOut: r.timeOut ? formatTo12hr(r.timeOut) : "",
         totalHrs: r.totalHrs ?? 0,
         otHrs: r.otHrs ?? 0,
         tardinessHr: r.tardinessHr ?? 0,
@@ -899,8 +918,8 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
         dtrEntries.push({
           date: format(d, "MMM dd"),
           day: dayName,
-          timeIn: log.checkIn ? (log.checkIn.includes("T") ? log.checkIn.split("T")[1]?.split(".")[0]?.slice(0, 5) || "" : log.checkIn.slice(0, 5)) : "",
-          timeOut: log.checkOut ? (log.checkOut.includes("T") ? log.checkOut.split("T")[1]?.split(".")[0]?.slice(0, 5) || "" : log.checkOut.slice(0, 5)) : "",
+          timeIn: log.checkIn ? formatTo12hr(log.checkIn) : "",
+          timeOut: log.checkOut ? formatTo12hr(log.checkOut) : "",
           totalHrs,
           otHrs: approvedOT > 0 ? approvedOT : computedOT,
           tardinessHr: Math.floor(lateMin / 60),

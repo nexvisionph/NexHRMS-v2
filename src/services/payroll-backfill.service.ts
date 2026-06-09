@@ -293,7 +293,7 @@ function computeDeductionsForEmployee(employee: Employee) {
       return Math.round(autoValues[type] || 0);
     }
     if (override.mode === "percentage" && override.percentage !== undefined) {
-      return Math.round(employee.salary * (override.percentage / 100));
+      return Math.round((employee.salary / 2) * (override.percentage / 100));
     }
     if (override.mode === "fixed" && override.fixedAmount !== undefined) {
       return Math.round(override.fixedAmount);
