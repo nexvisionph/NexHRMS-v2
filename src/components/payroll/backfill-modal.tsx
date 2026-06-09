@@ -20,6 +20,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -28,12 +31,53 @@ import { toast } from "sonner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+type CutoffType = "26-10_11-25" | "1-15_16-end" | "custom";
+
 interface BackfillModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 type Step = "select" | "preview" | "executing" | "done";
+
+/** Detect cycles using 1st-15th / 16th-end pattern */
+function detectCycles1to15(startDate: string, endDate: string) {
+  const cycles: { periodStart: string; periodEnd: string; label: string }[] = [];
+  const start = new Date(startDate + "T12:00:00");
+  const end = new Date(endDate + "T12:00:00");
+  const current = new Date(start);
+  current.setDate(1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    // Cycle A: 1st → 15th
+    const cycleAStart = new Date(year, month, 1);
+    const cycleAEnd = new Date(year, month, 15);
+    // Cycle B: 16th → end of month
+    const cycleBStart = new Date(year, month, 16);
+    const cycleBEnd = new Date(year, month, daysInMonth);
+
+    if (cycleAEnd >= start && cycleAStart <= end) {
+      const effectiveStart = cycleAStart < start ? start : cycleAStart;
+      const effectiveEnd = cycleAEnd > end ? end : cycleAEnd;
+      cycles.push({ periodStart: fmt(effectiveStart), periodEnd: fmt(effectiveEnd), label: `1st-15th (${fmt(cycleAStart)} → ${fmt(cycleAEnd)})` });
+    }
+    if (cycleBEnd >= start && cycleBStart <= end) {
+      const effectiveStart = cycleBStart < start ? start : cycleBStart;
+      const effectiveEnd = cycleBEnd > end ? end : cycleBEnd;
+      cycles.push({ periodStart: fmt(effectiveStart), periodEnd: fmt(effectiveEnd), label: `16th-${daysInMonth}th (${fmt(cycleBStart)} → ${fmt(cycleBEnd)})` });
+    }
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  const seen = new Set<string>();
+  return cycles.filter((c) => { const k = `${c.periodStart}/${c.periodEnd}`; if (seen.has(k)) return false; seen.add(k); return true; }).sort((a, b) => a.periodStart.localeCompare(b.periodStart));
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -46,6 +90,7 @@ export function BackfillModal({ open, onOpenChange }: BackfillModalProps) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [computeWorkDays, setComputeWorkDays] = useState("21.5");
+  const [cutoffType, setCutoffType] = useState<CutoffType>("26-10_11-25");
   const [searchTerm, setSearchTerm] = useState("");
   const [previewResults, setPreviewResults] = useState<BackfillResult[]>([]);
   const [finalResults, setFinalResults] = useState<BackfillResult[]>([]);
@@ -63,8 +108,10 @@ export function BackfillModal({ open, onOpenChange }: BackfillModalProps) {
   // Detected cycles preview
   const detectedCycles = useMemo(() => {
     if (!startDate || !endDate || startDate > endDate) return [];
+    if (cutoffType === "1-15_16-end") return detectCycles1to15(startDate, endDate);
+    if (cutoffType === "custom") return [{ periodStart: startDate, periodEnd: endDate, label: `Custom (${startDate} → ${endDate})` }];
     return detectCycles(startDate, endDate);
-  }, [startDate, endDate]);
+  }, [startDate, endDate, cutoffType]);
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
@@ -78,6 +125,7 @@ export function BackfillModal({ open, onOpenChange }: BackfillModalProps) {
       startDate,
       endDate,
       computeWorkDays: Number(computeWorkDays) || 21.5,
+      customCycles: detectedCycles,
     });
 
     setPreviewResults(results);
@@ -94,6 +142,7 @@ export function BackfillModal({ open, onOpenChange }: BackfillModalProps) {
         startDate,
         endDate,
         computeWorkDays: Number(computeWorkDays) || 21.5,
+        customCycles: detectedCycles,
       });
 
       setFinalResults(results);
@@ -167,7 +216,7 @@ export function BackfillModal({ open, onOpenChange }: BackfillModalProps) {
         {/* ─── Step 1: Select ─────────────────────────────────────────── */}
         {step === "select" && (
           <div className="flex-1 overflow-hidden flex flex-col gap-4">
-            {/* Date Range */}
+            {/* Date Range + Cutoff */}
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="text-sm font-medium">Start Date</label>
@@ -182,6 +231,19 @@ export function BackfillModal({ open, onOpenChange }: BackfillModalProps) {
                 <Input type="number" step="0.5" min="1" max="31" value={computeWorkDays} onChange={(e) => setComputeWorkDays(e.target.value)} className="mt-1" />
                 <p className="text-[10px] text-muted-foreground mt-0.5">For rate_per_day = salary / this</p>
               </div>
+            </div>
+
+            {/* Cutoff Type */}
+            <div>
+              <label className="text-sm font-medium">Cutoff Schedule</label>
+              <Select value={cutoffType} onValueChange={(v) => setCutoffType(v as CutoffType)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="26-10_11-25">26th–10th / 11th–25th (PB-15 & PB-30)</SelectItem>
+                  <SelectItem value="1-15_16-end">1st–15th / 16th–End of Month</SelectItem>
+                  <SelectItem value="custom">Custom (use exact date range as one cycle)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Detected Cycles */}

@@ -30,6 +30,7 @@ export interface BackfillRequest {
   startDate: string;
   endDate: string;
   computeWorkDays?: number; // defaults to 21.5
+  customCycles?: PayrollCycle[]; // override auto-detected cycles
 }
 
 export interface BackfillCycleResult {
@@ -51,7 +52,7 @@ export interface BackfillResult {
 // ─── Preview (dry-run without persisting) ────────────────────────────────────
 
 export function previewBackfill(request: BackfillRequest): BackfillResult[] {
-  const { employeeIds, startDate, endDate, computeWorkDays = 21.5 } = request;
+  const { employeeIds, startDate, endDate, computeWorkDays = 21.5, customCycles } = request;
   const employees = useEmployeesStore.getState().employees;
   const logs = useAttendanceStore.getState().logs;
   const storeHolidays = useAttendanceStore.getState().holidays;
@@ -63,7 +64,7 @@ export function previewBackfill(request: BackfillRequest): BackfillResult[] {
   const holidays = [...storeHolidays, ...fallbackHolidays] as Holiday[];
   const payslips = usePayrollStore.getState().payslips;
 
-  const cycles = detectCycles(startDate, endDate);
+  const cycles = customCycles && customCycles.length > 0 ? customCycles : detectCycles(startDate, endDate);
   const results: BackfillResult[] = [];
 
   for (const empId of employeeIds) {
@@ -124,7 +125,7 @@ export function previewBackfill(request: BackfillRequest): BackfillResult[] {
 // ─── Execute Backfill (persist to store + DB) ────────────────────────────────
 
 export async function executeBackfill(request: BackfillRequest): Promise<BackfillResult[]> {
-  const { employeeIds, startDate, endDate, computeWorkDays = 21.5 } = request;
+  const { employeeIds, startDate, endDate, computeWorkDays = 21.5, customCycles } = request;
   const employees = useEmployeesStore.getState().employees;
   const logs = useAttendanceStore.getState().logs;
   const storeHolidays = useAttendanceStore.getState().holidays;
@@ -137,7 +138,7 @@ export async function executeBackfill(request: BackfillRequest): Promise<Backfil
   const payslips = usePayrollStore.getState().payslips;
   const { issuePayslip } = usePayrollStore.getState();
 
-  const cycles = detectCycles(startDate, endDate);
+  const cycles = customCycles && customCycles.length > 0 ? customCycles : detectCycles(startDate, endDate);
   const results: BackfillResult[] = [];
 
   for (const empId of employeeIds) {
