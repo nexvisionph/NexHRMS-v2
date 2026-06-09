@@ -7,6 +7,7 @@ import { useEmployeesStore } from "@/store/employees.store";
 import { useLeaveStore } from "@/store/leave.store";
 import { usePayrollStore } from "@/store/payroll.store";
 import { useEventsStore } from "@/store/events.store";
+import { useDisciplinaryStore } from "@/store/disciplinary.store";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
 import { formatCurrency, getInitials } from "@/lib/format";
 import type { LeaveType } from "@/types";
@@ -22,7 +23,7 @@ import {
 import {
     LogIn, LogOut, Clock, CalendarDays, CalendarOff, Banknote,
     FileText, Plus, ChevronRight, Calendar, Cake,
-    ArrowRight, AlertCircle, PauseCircle,
+    ArrowRight, AlertCircle, PauseCircle, Gavel,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { parseISO, isAfter, startOfDay, isToday, format } from "date-fns";
@@ -60,7 +61,7 @@ export function EmployeeDashboard() {
             <PayslipOnHoldAlert />
 
             {/* Row 1: Attendance Status + Quick Stats */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
                 <AttendanceStatusCard />
                 <QuickStatCards />
             </div>
@@ -205,6 +206,7 @@ function QuickStatCards() {
     const currentUser = useAuthStore((s) => s.currentUser);
     const employees = useEmployeesStore((s) => s.employees);
     const leaveRequests = useLeaveStore((s) => s.requests);
+    const disciplinaryCases = useDisciplinaryStore((s) => s.cases);
     const rh = useRoleHref();
 
     const empRecord = useMemo(
@@ -222,6 +224,14 @@ function QuickStatCards() {
         [leaveRequests, empRecord]
     );
 
+    const myDisciplinaryCases = useMemo(
+        () => empRecord ? disciplinaryCases.filter((c) => c.employeeId === empRecord.id) : [],
+        [disciplinaryCases, empRecord]
+    );
+
+    const openDisciplinaryCases = myDisciplinaryCases.filter((c) => c.status !== "closed").length;
+    const disciplinaryNeedsAction = myDisciplinaryCases.filter((c) => ["nte_issued", "nte_acknowledged", "nod_issued"].includes(c.status)).length;
+
     const stats = [
         {
             label: "Pending Leaves",
@@ -238,6 +248,14 @@ function QuickStatCards() {
             href: rh("/leave"),
             color: "text-blue-600 dark:text-blue-400",
             bgColor: "bg-blue-500/10",
+        },
+        {
+            label: disciplinaryNeedsAction > 0 ? "Needs Action" : "My Cases",
+            value: openDisciplinaryCases,
+            icon: <Gavel className="h-4 w-4" />,
+            href: rh("/disciplinary"),
+            color: disciplinaryNeedsAction > 0 ? "text-red-600 dark:text-red-400" : "text-slate-600 dark:text-slate-400",
+            bgColor: disciplinaryNeedsAction > 0 ? "bg-red-500/10" : "bg-slate-500/10",
         },
     ];
 

@@ -1485,8 +1485,14 @@ export const disciplinaryDb = {
   async upsertNTE(n: NTERecord): Promise<boolean> {
     return upsertRow("nte_records", n as unknown as Record<string, unknown>);
   },
+  async updateNTE(id: string, patch: Partial<NTERecord>): Promise<boolean> {
+    return updateRow("nte_records", id, patch as unknown as Record<string, unknown>);
+  },
   async upsertNOD(n: NODRecord): Promise<boolean> {
     return upsertRow("nod_records", n as unknown as Record<string, unknown>);
+  },
+  async updateNOD(id: string, patch: Partial<NODRecord>): Promise<boolean> {
+    return updateRow("nod_records", id, patch as unknown as Record<string, unknown>);
   },
   async removeCase(id: string): Promise<boolean> {
     return deleteRow("disciplinary_cases", id);

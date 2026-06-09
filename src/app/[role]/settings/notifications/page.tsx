@@ -138,7 +138,7 @@ export default function NotificationSettingsPage() {
             <Section icon={Shield} title="Provider Configuration" description="Configure SMS and email providers (simulated in MVP)">
                 <Row label="SMS Provider" hint="Semaphore (PH) or Twilio">
                     <Select value={providerConfig.smsProvider} onValueChange={(v) => updateProviderConfig({ smsProvider: v as "semaphore" | "twilio" })}>
-                        <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-[140px]"><SelectValue placeholder="Select provider" /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="semaphore">Semaphore</SelectItem>
                             <SelectItem value="twilio">Twilio</SelectItem>
@@ -147,7 +147,7 @@ export default function NotificationSettingsPage() {
                 </Row>
                 <Row label="Email Provider" hint="Resend or SMTP gateway">
                     <Select value={providerConfig.emailProvider} onValueChange={(v) => updateProviderConfig({ emailProvider: v as "resend" | "smtp" })}>
-                        <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-[140px]"><SelectValue placeholder="Select provider" /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="resend">Resend</SelectItem>
                             <SelectItem value="smtp">SMTP</SelectItem>

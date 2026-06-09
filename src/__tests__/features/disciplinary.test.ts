@@ -7,9 +7,15 @@
 
 import { renderHook, act } from "@testing-library/react";
 import { useDisciplinaryStore } from "@/store/disciplinary.store";
+import { useEmployeesStore } from "@/store/employees.store";
+import { useNotificationsStore } from "@/store/notifications.store";
 
 const EMP = "EMP-001";
 const HR = "HR-001";
+
+beforeAll(() => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true }) as unknown as typeof fetch;
+});
 
 function makeBasicCase() {
     const { result } = renderHook(() => useDisciplinaryStore());
@@ -33,6 +39,10 @@ describe("Disciplinary Store", () => {
     beforeEach(() => {
         const { result } = renderHook(() => useDisciplinaryStore());
         act(() => result.current.resetToSeed());
+        act(() => {
+            useEmployeesStore.getState().resetToSeed();
+            useNotificationsStore.getState().resetToSeed();
+        });
     });
 
     describe("Case creation", () => {
@@ -115,6 +125,54 @@ describe("Disciplinary Store", () => {
             // Close case
             act(() => result.current.closeCase(caseId, HR));
             expect(result.current.getCase(caseId)?.status).toBe("closed");
+        });
+
+        it("notifies admin and HR when an explanation is submitted", () => {
+            act(() => {
+                useEmployeesStore.setState({
+                    employees: [
+                        createMockEmployee({
+                            id: "EMP-ADMIN",
+                            name: "Alice Admin",
+                            email: "alice.admin@test.com",
+                            role: "admin",
+                            status: "active",
+                        }),
+                        createMockEmployee({
+                            id: "EMP-HR",
+                            name: "Carla HR",
+                            email: "carla.hr@test.com",
+                            role: "hr",
+                            status: "active",
+                        }),
+                        createMockEmployee({
+                            id: EMP,
+                            name: "Bob Employee",
+                            email: "bob.employee@test.com",
+                            role: "employee",
+                            status: "active",
+                        }),
+                    ],
+                });
+            });
+
+            const { result, caseId } = makeBasicCase();
+            let nteId = "";
+
+            act(() => {
+                nteId = result.current.issueNTE(caseId, { responseDeadline: "2025-01-25", issuedBy: HR })!.id;
+            });
+            act(() => result.current.acknowledgeNTE(nteId));
+            act(() => result.current.submitExplanation(nteId, "I had a family emergency.", EMP));
+
+            const explanationLogs = useNotificationsStore
+                .getState()
+                .logs.filter((log) => log.type === "disciplinary_explanation_submitted");
+
+            expect(explanationLogs).toHaveLength(2);
+            expect(explanationLogs.map((log) => log.employeeId).sort()).toEqual(["EMP-ADMIN", "EMP-HR"]);
+            expect(explanationLogs.every((log) => log.link === `/disciplinary/${caseId}`)).toBe(true);
+            expect(result.current.getCase(caseId)?.status).toBe("explanation_submitted");
         });
 
         it("written warning ack moves case to nod_acknowledged (not sanction_active)", () => {

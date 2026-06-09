@@ -900,7 +900,13 @@ export type NotificationType =
     | "leave_submitted" | "leave_approved" | "leave_rejected"
     | "attendance_missing" | "geofence_violation" | "location_disabled" | "cheat_detected"
     | "loan_reminder" | "overtime_submitted"
-    | "birthday" | "contract_expiry" | "daily_summary";
+    | "disciplinary_explanation_submitted"
+    | "birthday" | "contract_expiry" | "daily_summary"
+    // ─── Admin/HR → Employee notifications ──────────────────────
+    | "employee_added" | "status_changed" | "resignation"
+    | "loan_created" | "loan_settled" | "loan_frozen" | "loan_unfrozen"
+    | "disciplinary_case_created" | "nte_issued" | "nod_issued"
+    | "salary_approved" | "salary_rejected";
 
 export type NotificationChannel = "email" | "sms" | "both" | "in_app";
 
