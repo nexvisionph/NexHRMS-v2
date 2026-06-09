@@ -363,12 +363,13 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
     computeWorkDays = DEFAULT_COMPUTE_WORK_DAYS,
   } = params;
 
-  // Step 1: Derive rates
-  const ratePerDay = round2(employee.salary / computeWorkDays);
+  // Step 1: Derive rates (round salary first to avoid float precision issues like 28499.9)
+  const monthlySalary = Math.round(employee.salary * 100) / 100;
+  const ratePerDay = round2(monthlySalary / computeWorkDays);
   const ratePerHour = round2(ratePerDay / STANDARD_HOURS_PER_DAY);
 
   // Step 7 (partial): Semi-monthly basic
-  const semiMonthlyBasic = round2(employee.salary / 2);
+  const semiMonthlyBasic = round2(monthlySalary / 2);
 
   // ─── OT Exempt: Skip all OT computation (consultants/managerial) ───
   if (employee.otExempt) {
@@ -388,7 +389,7 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
       department: employee.department,
       periodStart,
       periodEnd,
-      monthlySalary: employee.salary,
+      monthlySalary: monthlySalary,
       ratePerDay,
       ratePerHour,
       semiMonthlyBasic,
@@ -485,7 +486,11 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
         const comp = computeDayHours(checkInDecimal, checkOutDecimal, dayType, ratePerHour, isSaturday, halfDay);
 
         dayRecord.totalHrs = round2(comp.totalHours);
-        dayRecord.otHrs = round2(comp.otHours);
+        // Display OT uses with-lunch formula for readability (matching client DTR column)
+        const displayOt = dayType === "REG" ? Math.max(0, comp.totalHours - STANDARD_HOURS_PER_DAY) : comp.totalHours;
+        dayRecord.otHrs = round2(displayOt);
+        // Store no-lunch OT in otPay field temporarily (overwritten in pay loop below)
+        dayRecord.otPay = comp.otHours; // no-lunch OT for pay computation
         dayRecord.effectiveIn = decimalToTimeStr(comp.effectiveIn);
         dayRecord.undertimeHours = round2(comp.undertimeHours);
 
@@ -560,16 +565,19 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
 
   // Assign per-day otPay and accumulate totals
   for (const day of dailyBreakdown) {
-    if (day.otHrs && day.otHrs > 0) {
+    // day.otPay temporarily holds the no-lunch OT hours (set during daily loop)
+    const payableOtRaw = day.otPay ?? 0;
+    day.otPay = 0; // Reset — will be set to actual pay amount below
+    if (payableOtRaw > 0) {
       if (day.dayType === "SAT" || day.dayType === "SUN" || day.dayType === "SPEC_HOL" || day.dayType === "REG_HOL") {
         // Saturday/Sunday/Holiday: separate pool at 1.30x (no truncation — always 8 flat)
-        day.otPay = round2(day.otHrs * ratePerHour * 1.30);
+        day.otPay = round2(payableOtRaw * ratePerHour * 1.30);
         sumSatOtPay += day.otPay;
       } else {
         // Regular weekday OT: apply minute truncation rule
         // Split OT into hours + minutes, truncate minutes < 30 to 0
-        const otFloorHrs = Math.floor(day.otHrs);
-        const otMinutes = Math.round((day.otHrs - otFloorHrs) * 60);
+        const otFloorHrs = Math.floor(payableOtRaw);
+        const otMinutes = Math.round((payableOtRaw - otFloorHrs) * 60);
         const payableMinutes = otMinutes >= 30 ? otMinutes : 0;
         const payableOtHrs = otFloorHrs + payableMinutes / 60;
         day.otPay = round2(payableOtHrs * ratePerHour * 1.25);
@@ -627,7 +635,7 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
     department: employee.department,
     periodStart,
     periodEnd,
-    monthlySalary: employee.salary,
+    monthlySalary,
     ratePerDay,
     ratePerHour,
     semiMonthlyBasic,

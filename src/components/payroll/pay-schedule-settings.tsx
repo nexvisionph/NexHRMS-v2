@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import type { PayScheduleConfig } from "@/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,19 @@ import { toast } from "sonner";interface PayScheduleSettingsProps {
 }
 
 export function PayScheduleSettings({ schedule, onUpdate }: PayScheduleSettingsProps) {
+    const [localCutoff, setLocalCutoff] = useState(String(schedule.semiMonthlyFirstCutoff));
+    const [localPayDay1, setLocalPayDay1] = useState(String(schedule.semiMonthlyFirstPayDay));
+    const [localPayDay2, setLocalPayDay2] = useState(String(schedule.semiMonthlySecondPayDay));
+
+    // Sync from store when schedule changes externally
+    useEffect(() => { setLocalCutoff(String(schedule.semiMonthlyFirstCutoff)); }, [schedule.semiMonthlyFirstCutoff]);
+    useEffect(() => { setLocalPayDay1(String(schedule.semiMonthlyFirstPayDay)); }, [schedule.semiMonthlyFirstPayDay]);
+    useEffect(() => { setLocalPayDay2(String(schedule.semiMonthlySecondPayDay)); }, [schedule.semiMonthlySecondPayDay]);
+
+    const commitCutoff = (val: string) => { const n = parseInt(val); if (!isNaN(n) && n >= 1 && n <= 28) onUpdate({ semiMonthlyFirstCutoff: n }); };
+    const commitPayDay1 = (val: string) => { const n = parseInt(val); if (!isNaN(n) && n >= 1 && n <= 31) onUpdate({ semiMonthlyFirstPayDay: n }); };
+    const commitPayDay2 = (val: string) => { const n = parseInt(val); if (!isNaN(n) && n >= 1 && n <= 31) onUpdate({ semiMonthlySecondPayDay: n }); };
+
     return (
         <div className="space-y-6">
             <div className="flex items-center gap-2">
@@ -78,11 +92,11 @@ export function PayScheduleSettings({ schedule, onUpdate }: PayScheduleSettingsP
                                 <div>
                                     <label className="text-xs font-medium">1st Cutoff Day</label>
                                     <Input
-                                        type="number"
-                                        min={1}
-                                        max={28}
-                                        value={schedule.semiMonthlyFirstCutoff}
-                                        onChange={(e) => onUpdate({ semiMonthlyFirstCutoff: parseInt(e.target.value) || 15 })}
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={localCutoff}
+                                        onChange={(e) => setLocalCutoff(e.target.value)}
+                                        onBlur={() => commitCutoff(localCutoff)}
                                         className="mt-1"
                                     />
                                     <p className="text-[10px] text-muted-foreground mt-0.5">End of 1st pay period</p>
@@ -90,11 +104,11 @@ export function PayScheduleSettings({ schedule, onUpdate }: PayScheduleSettingsP
                                 <div>
                                     <label className="text-xs font-medium">1st Pay Day</label>
                                     <Input
-                                        type="number"
-                                        min={1}
-                                        max={31}
-                                        value={schedule.semiMonthlyFirstPayDay}
-                                        onChange={(e) => onUpdate({ semiMonthlyFirstPayDay: parseInt(e.target.value) || 20 })}
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={localPayDay1}
+                                        onChange={(e) => setLocalPayDay1(e.target.value)}
+                                        onBlur={() => commitPayDay1(localPayDay1)}
                                         className="mt-1"
                                     />
                                     <p className="text-[10px] text-muted-foreground mt-0.5">Pay day for 1st cutoff</p>
@@ -102,14 +116,14 @@ export function PayScheduleSettings({ schedule, onUpdate }: PayScheduleSettingsP
                                 <div>
                                     <label className="text-xs font-medium">2nd Pay Day</label>
                                     <Input
-                                        type="number"
-                                        min={1}
-                                        max={15}
-                                        value={schedule.semiMonthlySecondPayDay}
-                                        onChange={(e) => onUpdate({ semiMonthlySecondPayDay: parseInt(e.target.value) || 5 })}
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={localPayDay2}
+                                        onChange={(e) => setLocalPayDay2(e.target.value)}
+                                        onBlur={() => commitPayDay2(localPayDay2)}
                                         className="mt-1"
                                     />
-                                    <p className="text-[10px] text-muted-foreground mt-0.5">Pay day for 2nd cutoff (next month)</p>
+                                    <p className="text-[10px] text-muted-foreground mt-0.5">Pay day for 2nd cutoff</p>
                                 </div>
                             </div>
                             <div className="p-3 bg-muted/50 rounded-lg">

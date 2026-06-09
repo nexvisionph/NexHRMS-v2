@@ -11,7 +11,7 @@
     import { useDeductionsStore } from "@/store/deductions.store";
     import { useTimesheetStore } from "@/store/timesheet.store";
     import { buildPayslipDeductions, computeDailyRate, computeHourlyRate } from "@/lib/payroll-deductions";
-    import { PH_HOLIDAY_MULTIPLIERS } from "@/lib/constants";
+    import { PH_HOLIDAY_MULTIPLIERS, DEFAULT_HOLIDAYS } from "@/lib/constants";
     import { Card, CardContent } from "@/components/ui/card";
     import { Button } from "@/components/ui/button";
     import { Badge } from "@/components/ui/badge";
@@ -55,6 +55,7 @@
     import { ImportDataDialog } from "@/components/import-data-dialog";
     import { PayrollExportDialog } from "@/components/payroll-export-dialog";
     import { BackfillModal } from "@/components/payroll/backfill-modal";
+    import { computePayroll as computePayrollEngine } from "@/lib/payroll-computation-engine";
     import { lockRunDbFirst, unlockRunDbFirst, endRunDbFirst, markRunPaidDbFirst, batchPublishPayslips as batchPublishPayslipsDb } from "@/services/payroll-actions.service";
     import PayrollPaymentWizard, { type WizardStep, usePayrollProgress } from "@/features/payroll-payment/payroll-payment-wizard";
     import Link from "next/link";
@@ -173,6 +174,20 @@
             const yr = getYear(base);
             const mo = getMonth(base);
             if (freq === "semi_monthly") {
+                if (cutDay >= 25) {
+                    // Client pattern: 26th prev month → 10th / 11th → 25th
+                    // "first" cutoff = 26th of PREVIOUS month → 10th of this month
+                    // "second" cutoff = 11th → 25th of this month
+                    if (cut === "first") {
+                        const prevMonth = mo === 0 ? 11 : mo - 1;
+                        const prevYear = mo === 0 ? yr - 1 : yr;
+                        const startStr = `${prevYear}-${String(prevMonth + 1).padStart(2, "0")}-26`;
+                        const endStr = `${month}-10`;
+                        return { start: startStr, end: endStr };
+                    } else {
+                        return { start: `${month}-11`, end: `${month}-25` };
+                    }
+                }
                 if (cut === "first") {
                     return { start: `${month}-01`, end: `${month}-${String(cutDay).padStart(2, "0")}` };
                 } else {
@@ -475,24 +490,18 @@
                     // ─── Proration: compute per-employee factor based on freq ──────────
                     // For all frequencies with a partial period, use daily rate × weekdays worked.
                     const { factor: prorFactor, isPartial: isProrPartial, actualDays: prorActual, nominalDays: prorNominal } = prorationInfo;
-                    let fullPeriodGross: number;
-                    if (freq === "semi_monthly") fullPeriodGross = Math.round(emp.salary / 2);
-                    else if (freq === "bi_weekly") fullPeriodGross = Math.round((emp.salary * 12) / 26);
-                    else if (freq === "weekly") fullPeriodGross = Math.round((emp.salary * 12) / 52);
-                    else {
-                        // monthly: compute based on daily rate × weekdays in period
-                        fullPeriodGross = emp.salary;
-                    }
-                    // For all frequencies: use daily rate × weekdays in period for consistent, auditable computation
+                    // Round salary to avoid floating-point precision issues (e.g., 28499.9 → 28500)
+                    const salary = Math.round(emp.salary * 100) / 100;
+
+                    // Gross pay: FIXED at salary/2 for semi-monthly (matching client formula and backfill engine)
+                    // Never prorated by weekdays — basic pay is always the same regardless of how many weekdays in the period
                     let grossPay: number;
-                    const empDailyRate = Math.round(emp.salary / (paySchedule.workDaysPerMonth || 22));
-                    // Count weekdays in the period
-                    let weekdaysInPeriod = 0;
-                    for (let d = new Date(parseISO(cutoffDates.start)); d <= parseISO(cutoffDates.end); d.setDate(d.getDate() + 1)) {
-                        const dow = d.getDay();
-                        if (dow !== 0 && dow !== 6) weekdaysInPeriod++;
-                    }
-                    grossPay = empDailyRate * weekdaysInPeriod;
+                    if (freq === "semi_monthly") grossPay = Math.round(salary / 2);
+                    else if (freq === "bi_weekly") grossPay = Math.round((salary * 12) / 26);
+                    else if (freq === "weekly") grossPay = Math.round((salary * 12) / 52);
+                    else grossPay = salary;
+
+                    const empDailyRate = Math.round((salary / 21.5) * 100) / 100;
 
                     // ─── Admin per-employee gross override ────────────────────────────
                     const overrideStr = grossOverrides[empId];
@@ -587,7 +596,7 @@
 
                     const totalGovDed = sss + ph + pi + tax;
 
-                    const dailyRate = Math.round(emp.salary / 22);
+                    const dailyRate = Math.round((emp.salary / 21.5) * 100) / 100;
 
                     // ─── Custom deduction templates ───────────────────────────────────
                     // Skipped entirely if employee is deduction-exempt (contract-based, etc.)
@@ -621,12 +630,14 @@
                     const hourlyRate = Math.round(dailyRate / 8);
                     // Full-precision hourly rate for OT/night diff — no intermediate rounding.
                     // Only the final OT pay amount is rounded (at the last step).
-                    const libDailyRate = computeDailyRate(emp.salary, paySchedule.workDaysPerMonth);
+                    // Use 21.5 work days (matching client formula) instead of paySchedule.workDaysPerMonth (22)
+                    const COMPUTE_WORK_DAYS = 21.5;
+                    const libDailyRate = Math.round((emp.salary / COMPUTE_WORK_DAYS) * 100) / 100;
                     const activeRuleSet = ruleSets[0]; // RS-DEFAULT
                     const stdHours = activeRuleSet?.standardHoursPerDay ?? 8;
-                    const libHourlyRate = computeHourlyRate(libDailyRate, stdHours);
-                    // Full precision: salary / workDays / stdHours (no rounding until final amount)
-                    const fullPrecisionHourlyRate = emp.salary / (paySchedule.workDaysPerMonth || 22) / stdHours;
+                    const libHourlyRate = Math.round((libDailyRate / stdHours) * 100) / 100;
+                    // Full precision: salary / 21.5 / stdHours (no rounding until final amount)
+                    const fullPrecisionHourlyRate = emp.salary / COMPUTE_WORK_DAYS / stdHours;
                     const nightDiffPay = Math.round(nightDiffHours * fullPrecisionHourlyRate * 0.10); // PH: +10% for 10PM-6AM
                     const periodHolidays = holidays.filter((h) => h.date >= cutoffDates.start && h.date <= cutoffDates.end);
                     let holidayPaySupp = 0;
@@ -666,10 +677,10 @@
                     const expectedHoursTotal = presentLogs.length * stdHours;
                     const actualHoursTotal = presentLogs.reduce((sum, l) => sum + (l.hours || 0), 0);
                     const autoBreakdown = buildPayslipDeductions({
-                        autoDeductLate: paySchedule.autoDeductLate,
-                        autoDeductAbsent: paySchedule.autoDeductAbsent,
-                        autoDeductUndertime: paySchedule.autoDeductUndertime,
-                        autoAddOvertime: false, // OT comes from form here, not auto
+                        autoDeductLate: false, // Client formula: late NOT deducted
+                        autoDeductAbsent: false, // Client formula: basic is always salary/2, no absent deduction
+                        autoDeductUndertime: false, // Client formula: undertime NOT deducted
+                        autoAddOvertime: false, // OT comes from engine, not auto
                         dailyRate: libDailyRate,
                         hourlyRate: libHourlyRate,
                         lateMinutes: lateMinutesAgg,
@@ -687,38 +698,43 @@
                     });
                     const autoDedTotal = autoBreakdown.totalDeductions;
 
-                    // OT hours: ALWAYS derive from actual attendance DTR first (hours worked > 8).
-                    // Only fall back to approved OT requests / manual input if DTR shows no OT.
-                    let dtrOtHours = periodLogs
-                        .filter((l) => l.status === "present" && (l.hours ?? 0) > 8)
-                        .reduce((sum, l) => sum + ((l.hours ?? 0) - 8), 0);
-                    // Round to 1 decimal to match DTR display precision (avoids sub-cent discrepancies)
-                    dtrOtHours = Math.round(dtrOtHours * 10) / 10;
+                    // OT hours: Use the computation engine for accurate OT matching client formula.
+                    // The engine handles: no-lunch deduction for OT, minute truncation (<30→0),
+                    // Saturday cap at 8hrs, declared half-day threshold, and per-day rounding.
+                    // Merge DEFAULT_HOLIDAYS with store holidays to ensure all declared half-days are recognized
+                    const holDates = new Set(holidays.map(h => h.date));
+                    const mergedHolidays = [...holidays, ...DEFAULT_HOLIDAYS.filter(h => !holDates.has(h.date)).map((h, i) => ({ ...h, id: `CONST-${i}` }))] as typeof holidays;
+                    const engineResult = computePayrollEngine({
+                        employee: emp,
+                        periodStart: cutoffDates.start,
+                        periodEnd: cutoffDates.end,
+                        attendanceLogs: periodLogs,
+                        holidays: mergedHolidays,
+                        deductions: { tax: 0, sss: 0, philhealth: 0, pagibig: 0, loans: 0, other: 0 },
+                        computeWorkDays: 21.5,
+                    });
+                    const dtrOtHours = engineResult.regOtHours + engineResult.satOtHours + (engineResult.regOtMinutes + engineResult.satOtMinutes) / 60;
                     // Use DTR-based OT if available, otherwise fall back to approved/manual
                     const finalOtHours = dtrOtHours > 0 ? dtrOtHours : effectiveOtHours;
-                    // Use the precise hourly rate for OT/night diff — no intermediate rounding.
-                    const otPay = Math.round(finalOtHours * fullPrecisionHourlyRate * 1.25); // PH Labor Code: OT at 125%
+                    // OT pay from engine (matches client payslip formula exactly)
+                    const otPay = engineResult.totalOtPay > 0 ? engineResult.totalOtPay : Math.round(finalOtHours * fullPrecisionHourlyRate * 1.25);
 
                     const rawNetPay = effectiveGrossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - empLoanDeduction - customDedTotal - autoDedTotal;
                     const netPay = Math.max(0, rawNetPay);
                     if (rawNetPay <= 0) zeroNetPayCount++;
 
-                    // Build DTR snapshot to freeze attendance data at issuance time
-                    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-                    const dtrSnapshot: Array<{ date: string; day: string; timeIn: string; timeOut: string; totalHrs: number; otHrs: number; tardinessHr: number; tardinessMin: number; absences: number }> = [];
-                    for (let d = new Date(parseISO(cutoffDates.start)); d <= parseISO(cutoffDates.end); d.setDate(d.getDate() + 1)) {
-                        const dateStr = format(d, "yyyy-MM-dd");
-                        const dayName = dayNames[d.getDay()];
-                        const log = periodLogs.find((l) => l.date === dateStr);
-                        if (log) {
-                            const lateMin = log.lateMinutes ?? 0;
-                            const totalHrs = log.hours ?? 0;
-                            const otHrs = totalHrs > 8 ? Math.round((totalHrs - 8) * 100) / 100 : 0;
-                            dtrSnapshot.push({ date: dateStr, day: dayName, timeIn: log.checkIn || "", timeOut: log.checkOut || "", totalHrs, otHrs, tardinessHr: Math.floor(lateMin / 60), tardinessMin: lateMin % 60, absences: log.status === "absent" ? 1 : 0 });
-                        } else {
-                            dtrSnapshot.push({ date: dateStr, day: dayName, timeIn: "", timeOut: "", totalHrs: 0, otHrs: 0, tardinessHr: 0, tardinessMin: 0, absences: d.getDay() !== 0 && d.getDay() !== 6 ? 1 : 0 });
-                        }
-                    }
+                    // Build DTR snapshot from engine's daily breakdown (applies 8AM cap + lunch deduction)
+                    const dtrSnapshot = engineResult.dailyBreakdown.map((d) => ({
+                        date: d.date,
+                        day: d.day || "",
+                        timeIn: d.timeIn || "",
+                        timeOut: d.timeOut || "",
+                        totalHrs: d.totalHrs ?? 0,
+                        otHrs: d.otHrs ?? 0,
+                        tardinessHr: d.tardinessHr ?? 0,
+                        tardinessMin: d.tardinessMin ?? 0,
+                        absences: d.absences ?? 0,
+                    }));
 
                     issuePayslip({
                         employeeId: empId, periodStart: cutoffDates.start, periodEnd: cutoffDates.end, payFrequency: freq,
@@ -1117,10 +1133,10 @@
                                                 {paySchedule.defaultFrequency === "semi_monthly" && (
                                                     <div className="grid grid-cols-2 gap-2 mt-2">
                                                         <Button type="button" size="sm" variant={cutoff === "first" ? "default" : "outline"} className="gap-1.5 justify-start" onClick={() => setCutoff("first")}>
-                                                            <CalendarDays className="h-3.5 w-3.5" /> 1st – {paySchedule.semiMonthlyFirstCutoff}th
+                                                            <CalendarDays className="h-3.5 w-3.5" /> {paySchedule.semiMonthlyFirstCutoff >= 25 ? "26th prev – 10th" : `1st – ${paySchedule.semiMonthlyFirstCutoff}th`}
                                                         </Button>
                                                         <Button type="button" size="sm" variant={cutoff === "second" ? "default" : "outline"} className="gap-1.5 justify-start" onClick={() => setCutoff("second")}>
-                                                            <CalendarDays className="h-3.5 w-3.5" /> {paySchedule.semiMonthlyFirstCutoff + 1}th – EOM
+                                                            <CalendarDays className="h-3.5 w-3.5" /> {paySchedule.semiMonthlyFirstCutoff >= 25 ? "11th – 25th" : `${paySchedule.semiMonthlyFirstCutoff + 1}th – EOM`}
                                                         </Button>
                                                     </div>
                                                 )}

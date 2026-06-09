@@ -1007,7 +1007,7 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
       }
 
       const monthlySalary = (payslip?.dailyRate && payslip.dailyRate > 0)
-        ? (importedMonthlySalary > 0 ? importedMonthlySalary : Math.round(payslip.dailyRate * 22 * 100) / 100)
+        ? (importedMonthlySalary > 0 ? importedMonthlySalary : Math.round(baseSalary * 100) / 100)
         : baseSalary;
       const dailyRate = (payslip?.dailyRate && payslip.dailyRate > 0)
         ? payslip.dailyRate
@@ -1156,7 +1156,7 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
       if (monthlyMatch) importedMonthlySalary = Number(monthlyMatch[1].replace(/,/g, "")) || 0;
     }
     const monthlySalary = (payslip.dailyRate && payslip.dailyRate > 0)
-      ? (importedMonthlySalary > 0 ? importedMonthlySalary : Math.round(payslip.dailyRate * 22 * 100) / 100)
+      ? (importedMonthlySalary > 0 ? importedMonthlySalary : Math.round(baseSalary * 100) / 100)
       : baseSalary;
     const dailyRate = (payslip.dailyRate && payslip.dailyRate > 0)
       ? payslip.dailyRate
