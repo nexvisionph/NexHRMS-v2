@@ -10,6 +10,7 @@ import { employeesDb, salaryDb } from "./db.service";
 import { useEmployeesStore } from "@/store/employees.store";
 import type { Employee, SalaryChangeRequest, SalaryHistoryEntry } from "@/types";
 import { nanoid } from "nanoid";
+import { dispatchNotification } from "@/lib/notifications";
 
 /**
  * Add an employee — DB-first.
@@ -33,6 +34,16 @@ export async function addEmployee(emp: Employee): Promise<{ ok: boolean; error?:
         employees: [...s.employees, emp],
         deletedEmployeeIds: s.deletedEmployeeIds.filter((id) => id !== emp.id),
     }));
+
+    // 3. Notify the new employee about their account creation
+    try {
+        dispatchNotification("employee_added", {
+            name: emp.name,
+            role: emp.role,
+            department: emp.department,
+        }, emp.id, emp.email, emp.phone);
+    } catch { /* notification is best-effort */ }
+
     return { ok: true };
 }
 
@@ -80,6 +91,15 @@ export async function toggleStatus(id: string): Promise<boolean> {
             e.id === id ? { ...e, status: newStatus as "active" | "inactive" } : e
         ),
     }));
+
+    // Notify the employee about status change
+    try {
+        dispatchNotification("status_changed", {
+            name: emp.name,
+            status: newStatus,
+        }, emp.id, emp.email, emp.phone);
+    } catch { /* notification is best-effort */ }
+
     return true;
 }
 
@@ -87,17 +107,32 @@ export async function toggleStatus(id: string): Promise<boolean> {
  * Resign an employee — DB-first.
  */
 export async function resignEmployee(id: string): Promise<boolean> {
+    const store = useEmployeesStore.getState();
+    const emp = store.employees.find((e) => e.id === id);
+    const resignedAt = new Date().toISOString();
+
     const ok = await employeesDb.update(id, {
         status: "resigned",
-        resignedAt: new Date().toISOString(),
+        resignedAt,
     });
     if (!ok) return false;
 
     useEmployeesStore.setState((s) => ({
         employees: s.employees.map((e) =>
-            e.id === id ? { ...e, status: "resigned" as const, resignedAt: new Date().toISOString() } : e
+            e.id === id ? { ...e, status: "resigned" as const, resignedAt } : e
         ),
     }));
+
+    // Notify the employee about their resignation
+    if (emp) {
+        try {
+            dispatchNotification("resignation", {
+                name: emp.name,
+                date: new Date(resignedAt).toLocaleDateString(),
+            }, emp.id, emp.email, emp.phone);
+        } catch { /* notification is best-effort */ }
+    }
+
     return true;
 }
 
@@ -171,6 +206,19 @@ export async function approveSalaryChange(requestId: string, reviewerId: string)
 
     // Update local state
     useEmployeesStore.getState().approveSalaryChange(requestId, reviewerId);
+
+    // Notify the employee about salary approval
+    const emp = store.employees.find((e) => e.id === req.employeeId);
+    if (emp) {
+        try {
+            dispatchNotification("salary_approved", {
+                name: emp.name,
+                newSalary: `₱${req.proposedSalary.toLocaleString()}`,
+                effectiveDate: req.effectiveDate,
+            }, emp.id, emp.email, emp.phone);
+        } catch { /* notification is best-effort */ }
+    }
+
     return true;
 }
 
@@ -197,5 +245,16 @@ export async function rejectSalaryChange(requestId: string, reviewerId: string):
             r.id === requestId ? updatedReq : r
         ),
     }));
+
+    // Notify the employee about salary rejection
+    const emp = store.employees.find((e) => e.id === req.employeeId);
+    if (emp) {
+        try {
+            dispatchNotification("salary_rejected", {
+                name: emp.name,
+            }, emp.id, emp.email, emp.phone);
+        } catch { /* notification is best-effort */ }
+    }
+
     return true;
 }

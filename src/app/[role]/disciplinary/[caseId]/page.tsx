@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDisciplinaryStore } from "@/store/disciplinary.store";
@@ -47,6 +47,15 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
 
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
+    const currentEmployee = useMemo(
+        () => employees.find(
+            (e) =>
+                e.profileId === currentUser.id ||
+                e.email?.trim().toLowerCase() === currentUser.email?.trim().toLowerCase() ||
+                e.name?.trim().toLowerCase() === currentUser.name?.trim().toLowerCase(),
+        ),
+        [employees, currentUser],
+    );
 
     const [nteOpen, setNteOpen] = useState(false);
     const [nteDeadline, setNteDeadline] = useState(() => {
@@ -80,7 +89,23 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
     }
 
     const emp = employees.find((e) => e.id === c.employeeId);
+    const isStaff = currentUser.role === "admin" || currentUser.role === "hr";
+    const isCaseEmployee = currentEmployee?.id === c.employeeId;
     void role;
+
+    if (!isStaff && !isCaseEmployee) {
+        return (
+            <div className="p-6">
+                <Card><CardContent className="p-8 text-center space-y-3">
+                    <ShieldAlert className="h-8 w-8 text-muted-foreground/40 mx-auto" />
+                    <p className="text-muted-foreground">You can only view disciplinary cases linked to your employee record.</p>
+                    <Link href={rh("/disciplinary")}>
+                        <Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4 mr-2" /> Back to my cases</Button>
+                    </Link>
+                </CardContent></Card>
+            </div>
+        );
+    }
 
     const handleIssueNTE = () => {
         const r = issueNTE(c.id, { responseDeadline: nteDeadline, issuedBy: currentUser.id });
@@ -92,7 +117,7 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
     const handleSubmitExplanation = () => {
         if (!nte) return;
         if (!explanationText.trim()) { toast.error("Explanation cannot be empty"); return; }
-        submitExplanation(nte.id, explanationText.trim());
+        submitExplanation(nte.id, explanationText.trim(), currentEmployee?.id ?? currentUser.id);
         toast.success("Explanation recorded");
         setExplanationOpen(false);
         setExplanationText("");
@@ -163,8 +188,10 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                                     <div>Issued: <span className="text-muted-foreground">{new Date(nte.issuedAt).toLocaleString()}</span></div>
                                     {nte.acknowledgedAt && <div>Acknowledged: <span className="text-muted-foreground">{new Date(nte.acknowledgedAt).toLocaleString()}</span></div>}
                                 </div>
-                            ) : (
+                            ) : isStaff ? (
                                 <Button size="sm" onClick={() => setNteOpen(true)}>Issue NTE</Button>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">Waiting for HR to issue the notice.</p>
                             )
                         }
                     />
@@ -179,10 +206,12 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                             body={
                                 nte.acknowledgedAt ? (
                                     <p className="text-sm text-muted-foreground">Acknowledged on {new Date(nte.acknowledgedAt).toLocaleString()}</p>
-                                ) : (
-                                    <Button size="sm" variant="outline" onClick={() => { acknowledgeNTE(nte.id); toast.success("Marked as acknowledged"); }}>
-                                        Mark Acknowledged
+                                ) : isStaff || isCaseEmployee ? (
+                                    <Button size="sm" variant="outline" onClick={() => { acknowledgeNTE(nte.id); toast.success(isStaff ? "Marked as acknowledged" : "NTE acknowledged"); }}>
+                                        {isStaff ? "Mark Acknowledged" : "Acknowledge NTE"}
                                     </Button>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">Waiting for employee acknowledgment.</p>
                                 )
                             }
                         />
@@ -203,27 +232,31 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                                     </div>
                                 ) : nte.status === "no_response" ? (
                                     <p className="text-sm text-orange-700">Marked as no-response.</p>
-                                ) : (
+                                ) : isStaff || isCaseEmployee ? (
                                     <div className="flex gap-2">
-                                        <Button size="sm" onClick={() => setExplanationOpen(true)}>Record Explanation</Button>
-                                        <Button size="sm" variant="outline" onClick={() => { markNoResponse(nte.id); toast.success("Marked as no-response"); }}>
-                                            Mark No-Response
-                                        </Button>
+                                        <Button size="sm" onClick={() => setExplanationOpen(true)}>{isStaff ? "Record Explanation" : "Submit Explanation"}</Button>
+                                        {isStaff && (
+                                            <Button size="sm" variant="outline" onClick={() => { markNoResponse(nte.id); toast.success("Marked as no-response"); }}>
+                                                Mark No-Response
+                                            </Button>
+                                        )}
                                     </div>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">Waiting for employee explanation.</p>
                                 )
                             }
                         />
                     )}
 
                     {/* Step: Move to Review */}
-                    {(c.status === "explanation_submitted" || c.status === "no_response") && (
+                    {isStaff && (c.status === "explanation_submitted" || c.status === "no_response") && (
                         <Step active done={false} title="4. Review by HR" icon={FileText}
                             body={<Button size="sm" variant="outline" onClick={() => { moveToReview(c.id); toast.success("Moved to under review"); }}>Move to Under Review</Button>}
                         />
                     )}
 
                     {/* Step: Issue NOD */}
-                    {!nod && (c.status === "under_review" || c.status === "explanation_submitted" || c.status === "no_response") && (
+                    {isStaff && !nod && (c.status === "under_review" || c.status === "explanation_submitted" || c.status === "no_response") && (
                         <Step active done={false} title="5. Issue Notice of Decision (NOD)" icon={ShieldAlert}
                             body={<Button size="sm" onClick={() => setNodOpen(true)}>Issue NOD</Button>}
                         />
@@ -238,9 +271,9 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                                     <div>Decision: <Badge variant="secondary" className="capitalize">{nod.decision.replace(/_/g, " ")}</Badge></div>
                                     <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3">{nod.decisionDetails}</p>
                                     {nod.sanctionStartDate && <div>Sanction: {nod.sanctionStartDate} → {nod.sanctionEndDate ?? "—"}</div>}
-                                    {!nod.acknowledgedAt && nod.decision !== "no_violation" && (
-                                        <Button size="sm" variant="outline" onClick={() => { acknowledgeNOD(nod.id); toast.success("Marked as acknowledged"); }}>
-                                            Mark Acknowledged
+                                    {!nod.acknowledgedAt && nod.decision !== "no_violation" && (isStaff || isCaseEmployee) && (
+                                        <Button size="sm" variant="outline" onClick={() => { acknowledgeNOD(nod.id); toast.success(isStaff ? "Marked as acknowledged" : "NOD acknowledged"); }}>
+                                            {isStaff ? "Mark Acknowledged" : "Acknowledge NOD"}
                                         </Button>
                                     )}
                                     {nod.acknowledgedAt && <p className="text-xs text-muted-foreground">Acknowledged {new Date(nod.acknowledgedAt).toLocaleString()}</p>}
@@ -250,7 +283,7 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                     )}
 
                     {/* Close case */}
-                    {c.status !== "closed" && (
+                    {isStaff && c.status !== "closed" && (
                         <div className="pt-4 border-t">
                             <AlertDialog>
                                 <AlertDialogTrigger asChild>

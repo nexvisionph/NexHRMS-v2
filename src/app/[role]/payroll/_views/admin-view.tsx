@@ -32,7 +32,7 @@
     } from "@/components/ui/alert-dialog";
     import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
     import { Label } from "@/components/ui/label";
-    import { Plus, CheckCircle, Eye, Lock, LockOpen, Gift, Download, CalendarDays, RotateCcw, Send, CreditCard, FileText, Sparkles, Shield, PenTool, Search, Settings, Building2, Printer, Clock, Percent, Trash2, AlertCircle, Info, Save, Pencil, X, Loader2, FileSignature, Calculator, Edit, Users, Bell, XCircle, Upload, Flag } from "lucide-react";
+    import { Plus, CheckCircle, Eye, Lock, LockOpen, Gift, Download, CalendarDays, RotateCcw, Send, CreditCard, FileText, Sparkles, Shield, PenTool, Search, Settings, Building2, Printer, Clock, Percent, Trash2, AlertCircle, Info, Save, Pencil, X, Loader2, FileSignature, Calculator, Edit, Users, Bell, XCircle, Upload, Flag, ChevronDown, ChevronUp, Wallet } from "lucide-react";
     import { toast } from "sonner";
     import { formatCurrency } from "@/lib/format";
     import { computeAllPHDeductions } from "@/lib/ph-deductions";
@@ -75,8 +75,9 @@
         const role = params.role as string;
         const { payslips, runs, adjustments, finalPayComputations, issuePayslip, confirmPayslip, publishPayslip, recordPayment, confirmPaidByFinance, holdPayment, releasePaymentHold, rejectHoldSignature, lockRun, unlockRun, publishRun, endRun, reactivateRun, markRunPaid, approveAdjustment, applyAdjustment, createAdjustment, computeFinalPay, generate13thMonth, exportBankFile, createDraftRun, validateRun, resetToSeed, paySchedule, updatePaySchedule, signatureConfig, updateSignatureConfig, deductionOverrides, setDeductionOverride, removeDeductionOverride, clearEmployeeOverrides, getDeductionOverride, getEmployeeOverrides, globalDefaults, updateGlobalDefault, getGlobalDefault, updatePayslipFromServer, isPayslipRunLocked, batchReleasePaymentHold, batchPublishPayslips, batchRecordPayment } = usePayrollStore();
         const employees = useEmployeesStore((s) => s.employees);
+        const salaryHistory = useEmployeesStore((s) => s.salaryHistory);
         const currentUser = useAuthStore((s) => s.currentUser);
-        const { getActiveByEmployee, recordDeduction } = useLoansStore();
+        const { getActiveByEmployee, getByEmployee, recordDeduction, loans: allLoans } = useLoansStore();
         const { getEmployeeBalances } = useLeaveStore();
         const holidays = useAttendanceStore((s) => s.holidays);
         const attendanceLogs = useAttendanceStore((s) => s.logs);
@@ -305,12 +306,43 @@
         const last6Months = useMemo(() => Array.from({ length: 6 }, (_, i) => format(subMonths(new Date(), i), "yyyy-MM")), []);
         const last12Months = useMemo(() => Array.from({ length: 12 }, (_, i) => format(subMonths(new Date(), i), "yyyy-MM")), []);
         const activeEmployees = useMemo(() => employees.filter((e) => e.status === "active"), [employees]);
+        const selectedEmployeeIdSet = useMemo(() => new Set(selectedEmployeeIds), [selectedEmployeeIds]);
+        const settledSalaryByEmployeeId = useMemo(() => {
+            const byEmployee = new Map<string, number | null>();
+            [...salaryHistory]
+                .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom) || b.id.localeCompare(a.id))
+                .forEach((entry) => {
+                    if (byEmployee.has(entry.employeeId)) return;
+                    byEmployee.set(entry.employeeId, entry.monthlySalary > 0 ? entry.monthlySalary : null);
+                });
+            return byEmployee;
+        }, [salaryHistory]);
+        const getSettledSalary = useCallback((employeeId: string, fallbackSalary: number): number | null => {
+            const settled = settledSalaryByEmployeeId.get(employeeId);
+            if (settled !== undefined) return settled;
+            return fallbackSalary > 0 ? fallbackSalary : null;
+        }, [settledSalaryByEmployeeId]);
         const [empSearchTerm, setEmpSearchTerm] = useState("");
         const filteredActiveEmployees = useMemo(() => {
-            if (!empSearchTerm.trim()) return activeEmployees;
-            const q = empSearchTerm.toLowerCase();
-            return activeEmployees.filter((e) => e.name.toLowerCase().includes(q) || e.department.toLowerCase().includes(q) || e.role.toLowerCase().includes(q));
-        }, [activeEmployees, empSearchTerm]);
+            const q = empSearchTerm.trim().toLowerCase();
+            const list = q
+                ? activeEmployees.filter((e) => e.name.toLowerCase().includes(q) || e.department.toLowerCase().includes(q) || e.role.toLowerCase().includes(q))
+                : activeEmployees;
+
+            return [...list].sort((a, b) => {
+                const aSelected = selectedEmployeeIdSet.has(a.id);
+                const bSelected = selectedEmployeeIdSet.has(b.id);
+                if (aSelected !== bSelected) return aSelected ? -1 : 1;
+
+                const aSalary = getSettledSalary(a.id, a.salary);
+                const bSalary = getSettledSalary(b.id, b.salary);
+                const aMissingSalary = aSalary === null;
+                const bMissingSalary = bSalary === null;
+                if (aMissingSalary !== bMissingSalary) return aMissingSalary ? 1 : -1;
+
+                return a.name.localeCompare(b.name);
+            });
+        }, [activeEmployees, empSearchTerm, getSettledSalary, selectedEmployeeIdSet]);
 
         const activeRun = useMemo(() => runs
             .filter((r) => r.status !== "completed")
@@ -382,9 +414,10 @@
         // periodStart and payFrequency means this employee already received pay for this cutoff,
         // regardless of whether the period end differed (e.g. partial-period proration).
         const eligibleFilteredEmployees = useMemo(() => filteredActiveEmployees.filter((e) => {
+            if (getSettledSalary(e.id, e.salary) === null) return false;
             const empFreq = e.payFrequency || paySchedule.defaultFrequency;
             return !payslips.some((p) => p.employeeId === e.id && p.periodStart === cutoffDates.start && (p.payFrequency === empFreq || !p.payFrequency));
-        }), [filteredActiveEmployees, payslips, cutoffDates, paySchedule.defaultFrequency]);
+        }), [filteredActiveEmployees, getSettledSalary, payslips, cutoffDates, paySchedule.defaultFrequency]);
         const allSelected = eligibleFilteredEmployees.length > 0 && eligibleFilteredEmployees.every((e) => selectedEmployeeIds.includes(e.id));
         const toggleSelectAll = () => {
             if (allSelected) {
@@ -414,6 +447,87 @@
             if (paySchedule.deductGovFrom === "both") return false;
             return paySchedule.deductGovFrom !== cutoff;
         }, [paySchedule.defaultFrequency, paySchedule.deductGovFrom, cutoff]);
+
+        // ─── Active loans in selected employees (pre-flight warning) ──────
+        // Aggregates every active loan (status=active, remainingBalance>0) across the
+        // currently-selected employees. Used to render the warning banner above the
+        // "Issue N Payslips" button and the "View Employees" details popover.
+        type SelectedEmployeeLoanRow = {
+            employeeId: string;
+            employeeName: string;
+            loanId: string;
+            loanType: string;
+            remainingBalance: number;
+            monthlyDeduction: number;
+            capPercent: number;
+        };
+        const selectedActiveLoanRows = useMemo<SelectedEmployeeLoanRow[]>(() => {
+            if (selectedEmployeeIds.length === 0) return [];
+            return selectedEmployeeIds.flatMap((empId) => {
+                const empName = getEmpName(empId);
+                return getActiveByEmployee(empId)
+                    .filter((l) => l.status === "active" && l.remainingBalance > 0)
+                    .map((l) => ({
+                        employeeId: empId,
+                        employeeName: empName,
+                        loanId: l.id,
+                        loanType: l.type,
+                        remainingBalance: l.remainingBalance,
+                        monthlyDeduction: l.monthlyDeduction,
+                        capPercent: l.deductionCapPercent ?? 30,
+                    }));
+            });
+        }, [selectedEmployeeIds, allLoans, employees]);
+        const employeesWithActiveLoansCount = useMemo(
+            () => new Set(selectedActiveLoanRows.map((r) => r.employeeId)).size,
+            [selectedActiveLoanRows]
+        );
+        const totalProjectedLoanDeduction = useMemo(
+            () => selectedActiveLoanRows.reduce((sum, r) => sum + Math.min(r.monthlyDeduction, r.remainingBalance), 0),
+            [selectedActiveLoanRows]
+        );
+        const [viewLoansDialogOpen, setViewLoansDialogOpen] = useState(false);
+
+        // ─── Per-employee loan info (visible BEFORE selection) ─────────
+        // Maps every active employee in the filtered list to their active
+        // loan snapshot (status=active, remainingBalance>0). Used to render
+        // an inline loan badge on each employee card in the right column so
+        // the payroll admin can see at a glance which employees have loans
+        // BEFORE selecting them.
+        type EmployeeLoanInfo = {
+            totalRemaining: number;
+            totalScheduledDeduction: number;
+            loanCount: number;
+            summary: string;
+        };
+        const employeesWithLoanInfo = useMemo<Map<string, EmployeeLoanInfo>>(() => {
+            const map = new Map<string, EmployeeLoanInfo>();
+            filteredActiveEmployees.forEach((emp) => {
+                const activeLoans = getActiveByEmployee(emp.id).filter(
+                    (l) => l.status === "active" && l.remainingBalance > 0
+                );
+                if (activeLoans.length === 0) return;
+                const totalRemaining = activeLoans.reduce((sum, l) => sum + l.remainingBalance, 0);
+                const totalScheduledDeduction = activeLoans.reduce(
+                    (sum, l) => sum + Math.min(l.monthlyDeduction, l.remainingBalance),
+                    0
+                );
+                const summary = activeLoans
+                    .map((l) => {
+                        const scheduled = Math.min(l.monthlyDeduction, l.remainingBalance);
+                        const typeLabel = l.type.replace(/_/g, " ");
+                        return `${typeLabel}: ₱${l.remainingBalance.toLocaleString()} remaining · ₱${scheduled.toLocaleString()}/cutoff`;
+                    })
+                    .join("\n");
+                map.set(emp.id, {
+                    totalRemaining,
+                    totalScheduledDeduction,
+                    loanCount: activeLoans.length,
+                    summary,
+                });
+            });
+            return map;
+        }, [filteredActiveEmployees, allLoans]);
 
         // ─── Issue handler ────────────────────────────────────────────
         const handleIssue = () => {
@@ -456,6 +570,7 @@
                 let successCount = 0;
                 let totalLoanDeductions = 0;
                 let skippedDuplicates = 0;
+                let skippedUnsettledSalary = 0;
                 let zeroNetPayCount = 0;
 
                 selectedEmployeeIds.forEach((empId) => {
@@ -463,6 +578,11 @@
                     if (!emp) return;
 
                     const freq = emp.payFrequency || paySchedule.defaultFrequency;
+                    const settledSalary = getSettledSalary(emp.id, emp.salary);
+                    if (settledSalary === null) {
+                        skippedUnsettledSalary++;
+                        return;
+                    }
 
                     // Smart cutoff duplicate guard: same periodStart + payFrequency = same cutoff,
                     // even if the end date differs due to partial-period proration
@@ -475,16 +595,16 @@
                     // For all frequencies with a partial period, use daily rate × weekdays worked.
                     const { factor: prorFactor, isPartial: isProrPartial, actualDays: prorActual, nominalDays: prorNominal } = prorationInfo;
                     let fullPeriodGross: number;
-                    if (freq === "semi_monthly") fullPeriodGross = Math.round(emp.salary / 2);
-                    else if (freq === "bi_weekly") fullPeriodGross = Math.round((emp.salary * 12) / 26);
-                    else if (freq === "weekly") fullPeriodGross = Math.round((emp.salary * 12) / 52);
+                    if (freq === "semi_monthly") fullPeriodGross = Math.round(settledSalary / 2);
+                    else if (freq === "bi_weekly") fullPeriodGross = Math.round((settledSalary * 12) / 26);
+                    else if (freq === "weekly") fullPeriodGross = Math.round((settledSalary * 12) / 52);
                     else {
                         // monthly: compute based on daily rate × weekdays in period
-                        fullPeriodGross = emp.salary;
+                        fullPeriodGross = settledSalary;
                     }
                     // For all frequencies: use daily rate × weekdays in period for consistent, auditable computation
                     let grossPay: number;
-                    const empDailyRate = Math.round(emp.salary / (paySchedule.workDaysPerMonth || 22));
+                    const empDailyRate = Math.round(settledSalary / (paySchedule.workDaysPerMonth || 22));
                     // Count weekdays in the period
                     let weekdaysInPeriod = 0;
                     for (let d = new Date(parseISO(cutoffDates.start)); d <= parseISO(cutoffDates.end); d.setDate(d.getDate() + 1)) {
@@ -499,7 +619,11 @@
                         ? Math.round(Number(overrideStr))
                         : grossPay;
 
+<<<<<<< Updated upstream
                     const phDeductions = computeAllPHDeductions(emp.salary);
+=======
+                    const phDeductions = computeAllPHDeductions(settledSalary);
+>>>>>>> Stashed changes
                     // Gov deductions are always applied in full.
                     // The deductGovFrom setting only splits the amount (50%) when set to "both",
                     // otherwise full deductions apply on every cutoff.
@@ -586,7 +710,7 @@
 
                     const totalGovDed = sss + ph + pi + tax;
 
-                    const dailyRate = Math.round(emp.salary / 22);
+                    const dailyRate = Math.round(settledSalary / 22);
 
                     // ─── Custom deduction templates ───────────────────────────────────
                     // Skipped entirely if employee is deduction-exempt (contract-based, etc.)
@@ -595,7 +719,7 @@
                         : 22;
                     const customItems = emp.deductionExempt
                         ? []
-                        : computeDeductionsForEmployee(empId, emp.salary, workDaysPerPeriod);
+                        : computeDeductionsForEmployee(empId, settledSalary, workDaysPerPeriod);
                     const customDedTotal = customItems
                         .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "deduction")
                         .reduce((sum, item) => sum + item.amount, 0);
@@ -620,12 +744,12 @@
                     const hourlyRate = Math.round(dailyRate / 8);
                     // Full-precision hourly rate for OT/night diff — no intermediate rounding.
                     // Only the final OT pay amount is rounded (at the last step).
-                    const libDailyRate = computeDailyRate(emp.salary, paySchedule.workDaysPerMonth);
+                    const libDailyRate = computeDailyRate(settledSalary, paySchedule.workDaysPerMonth);
                     const activeRuleSet = ruleSets[0]; // RS-DEFAULT
                     const stdHours = activeRuleSet?.standardHoursPerDay ?? 8;
                     const libHourlyRate = computeHourlyRate(libDailyRate, stdHours);
                     // Full precision: salary / workDays / stdHours (no rounding until final amount)
-                    const fullPrecisionHourlyRate = emp.salary / (paySchedule.workDaysPerMonth || 22) / stdHours;
+                    const fullPrecisionHourlyRate = settledSalary / (paySchedule.workDaysPerMonth || 22) / stdHours;
                     const nightDiffPay = Math.round(nightDiffHours * fullPrecisionHourlyRate * 0.10); // PH: +10% for 10PM-6AM
                     const periodHolidays = holidays.filter((h) => h.date >= cutoffDates.start && h.date <= cutoffDates.end);
                     let holidayPaySupp = 0;
@@ -751,6 +875,7 @@
                 });
 
                 const loanMsg = totalLoanDeductions > 0 ? ` (incl. ${formatCurrency(totalLoanDeductions)} total loan deductions)` : "";
+                if (skippedUnsettledSalary > 0) toast.warning(`${skippedUnsettledSalary} employee${skippedUnsettledSalary > 1 ? "s" : ""} do not have a settled salary yet — skipped.`);
                 if (skippedDuplicates > 0) toast.warning(`${skippedDuplicates} employee${skippedDuplicates > 1 ? "s" : ""} already had payslips for this period — skipped.`);
                 if (zeroNetPayCount > 0) toast.warning(`${zeroNetPayCount} employee${zeroNetPayCount > 1 ? "s" : ""} issued with ₱0 net pay — review deductions before locking.`);
                 if (successCount > 0) toast.success(`Issued ${successCount} payslip${successCount > 1 ? "s" : ""}${loanMsg}`);
@@ -1172,6 +1297,126 @@
                                             </div>
                                             {/* Issue Date */}
                                             <div><label className="text-sm font-medium">Issue Date</label><Input type="date" value={formIssuedAt} onChange={(e) => setFormIssuedAt(e.target.value)} className="mt-1" /></div>
+                                            {/* ═══ Active-loan pre-flight warning ═══ */}
+                                            {/* Surfaced BEFORE Generate Payroll so the payroll admin can:
+                                                1. See how many of the selected employees have active loans.
+                                                2. Drill into per-loan details (type, balance, this-cutoff deduction).
+                                                3. Confirm the deduction will be applied automatically.
+                                            */}
+                                            {selectedEmployeeIds.length > 0 && employeesWithActiveLoansCount > 0 && (
+                                                <Card className="border-2 border-amber-400/60 bg-amber-50 dark:bg-amber-950/30 shadow-sm">
+                                                    <CardContent className="p-3 space-y-2">
+                                                        <div className="flex items-start gap-2">
+                                                            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                                                                    ⚠ {employeesWithActiveLoansCount} employee{employeesWithActiveLoansCount !== 1 ? "s have" : " has"} active loan{employeesWithActiveLoansCount !== 1 ? "s" : ""}
+                                                                </p>
+                                                                <p className="text-[11px] text-amber-700 dark:text-amber-300/90 mt-0.5 leading-relaxed">
+                                                                    A loan deduction of <strong>{formatCurrency(totalProjectedLoanDeduction)}</strong> will be automatically applied to this cutoff.
+                                                                    Deduction follows each loan's schedule and will never exceed the remaining balance.
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <Dialog open={viewLoansDialogOpen} onOpenChange={setViewLoansDialogOpen}>
+                                                            <DialogTrigger asChild>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="w-full h-8 text-xs gap-1.5 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/50"
+                                                                >
+                                                                    <Users className="h-3.5 w-3.5" />
+                                                                    View Employees ({selectedActiveLoanRows.length})
+                                                                    <ChevronDown className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            </DialogTrigger>
+                                                            <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+                                                                <DialogHeader>
+                                                                    <DialogTitle className="flex items-center gap-2">
+                                                                        <Wallet className="h-5 w-5 text-amber-600" />
+                                                                        Employees with Active Loans
+                                                                        <Badge variant="secondary" className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 ml-1">
+                                                                            {selectedActiveLoanRows.length} loan{selectedActiveLoanRows.length !== 1 ? "s" : ""}
+                                                                        </Badge>
+                                                                    </DialogTitle>
+                                                                </DialogHeader>
+                                                                <div className="space-y-3">
+                                                                    <div className="flex items-center justify-between p-3 rounded-lg bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30">
+                                                                        <div>
+                                                                            <p className="text-xs text-muted-foreground">Total projected loan deduction this cutoff</p>
+                                                                            <p className="text-xl font-bold text-amber-700 dark:text-amber-400 tabular-nums">{formatCurrency(totalProjectedLoanDeduction)}</p>
+                                                                        </div>
+                                                                        <p className="text-xs text-muted-foreground text-right">
+                                                                            {employeesWithActiveLoansCount} employee{employeesWithActiveLoansCount !== 1 ? "s" : ""}<br />
+                                                                            from {selectedEmployeeIds.length} selected
+                                                                        </p>
+                                                                    </div>
+                                                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                                                        Net Pay = Gross − Government Deductions − Tax − Loan Deduction. The loan amount follows the schedule and is capped at the remaining balance. After issuance, each loan's balance is automatically updated.
+                                                                    </p>
+                                                                    {(() => {
+                                                                        // Group rows by employee
+                                                                        const byEmp = new Map<string, SelectedEmployeeLoanRow[]>();
+                                                                        selectedActiveLoanRows.forEach((r) => {
+                                                                            const list = byEmp.get(r.employeeId) ?? [];
+                                                                            list.push(r);
+                                                                            byEmp.set(r.employeeId, list);
+                                                                        });
+                                                                        return (
+                                                                            <div className="space-y-2">
+                                                                                {Array.from(byEmp.entries()).map(([empId, rows]) => (
+                                                                                    <div key={empId} className="rounded-lg border border-amber-200/60 dark:border-amber-800/40 p-3 space-y-2 bg-background">
+                                                                                        <div className="flex items-center justify-between">
+                                                                                            <p className="text-sm font-semibold">{rows[0].employeeName}</p>
+                                                                                            <span className="text-[10px] text-muted-foreground font-mono">{empId}</span>
+                                                                                        </div>
+                                                                                        <div className="divide-y divide-border/50 rounded border border-border/50">
+                                                                                            {rows.map((r) => {
+                                                                                                const scheduled = Math.min(r.monthlyDeduction, r.remainingBalance);
+                                                                                                const newBalance = Math.max(0, r.remainingBalance - scheduled);
+                                                                                                return (
+                                                                                                    <div key={r.loanId} className="p-2 space-y-1">
+                                                                                                        <div className="flex items-center justify-between text-xs">
+                                                                                                            <div className="flex items-center gap-1.5">
+                                                                                                                <Wallet className="h-3 w-3 text-amber-600" />
+                                                                                                                <span className="font-medium capitalize">{r.loanType.replace(/_/g, " ")}</span>
+                                                                                                                <code className="text-[9px] text-muted-foreground bg-muted px-1 rounded">{r.loanId}</code>
+                                                                                                            </div>
+                                                                                                            <Badge variant="outline" className="text-[9px]">{r.capPercent}% cap</Badge>
+                                                                                                        </div>
+                                                                                                        <div className="grid grid-cols-3 gap-2 text-[10px] text-muted-foreground">
+                                                                                                            <div>
+                                                                                                                <p className="uppercase tracking-wide">Remaining</p>
+                                                                                                                <p className="text-foreground font-semibold text-xs">{formatCurrency(r.remainingBalance)}</p>
+                                                                                                            </div>
+                                                                                                            <div>
+                                                                                                                <p className="uppercase tracking-wide">Cutoff Ded.</p>
+                                                                                                                <p className="text-red-600 dark:text-red-400 font-semibold text-xs">−{formatCurrency(scheduled)}</p>
+                                                                                                            </div>
+                                                                                                            <div>
+                                                                                                                <p className="uppercase tracking-wide">After</p>
+                                                                                                                <p className="text-emerald-600 dark:text-emerald-400 font-semibold text-xs">{formatCurrency(newBalance)}</p>
+                                                                                                            </div>
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                );
+                                                                                            })}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        );
+                                                                    })()}
+                                                                    <div className="flex justify-end pt-2">
+                                                                        <Button variant="outline" size="sm" onClick={() => setViewLoansDialogOpen(false)}>Close</Button>
+                                                                    </div>
+                                                                </div>
+                                                            </DialogContent>
+                                                        </Dialog>
+                                                    </CardContent>
+                                                </Card>
+                                            )}
                                             {/* Allowances & Deductions */}
                                             <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
                                                 <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">Applied to ALL selected</p>
@@ -1248,6 +1493,7 @@
                                                     </CardContent>
                                                 </Card>
                                             )}
+                                            
                                             <Button onClick={handleIssue} className="w-full" disabled={selectedEmployeeIds.length === 0}>
                                                 Issue {selectedEmployeeIds.length} Payslip{selectedEmployeeIds.length !== 1 ? "s" : ""}
                                             </Button>
@@ -1274,23 +1520,28 @@
                                                                 (p) => p.employeeId === emp.id && p.periodStart === cutoffDates.start && (p.payFrequency === empFreq || !p.payFrequency)
                                                             ) : undefined;
                                                             const alreadyIssued = !!alreadyIssuedSlip;
+                                                            const settledSalary = getSettledSalary(emp.id, emp.salary);
                                                             const overrideActive = !!(grossOverrides[emp.id] && Number(grossOverrides[emp.id]) > 0);
                                                             const isExpanded = expandedOverrideEmpId === emp.id;
+                                                            const salaryLabel = settledSalary !== null ? formatCurrency(settledSalary) : "Unset";
+                                                            // ─── Per-employee loan indicator (visible BEFORE selection) ───
+                                                            const loanInfo = employeesWithLoanInfo.get(emp.id);
                                                             return (
-                                                                <div key={emp.id} className={`rounded-lg border transition-colors ${alreadyIssued ? "opacity-50 cursor-not-allowed bg-muted/30 border-transparent" : overrideActive ? "border-amber-400/60 bg-amber-50/40 dark:bg-amber-950/20" : "border-transparent hover:bg-muted/50 hover:border-border/50"}`}>
-                                                                    <div onClick={() => !alreadyIssued && toggleEmployee(emp.id)} className={`flex items-center gap-3 p-2 ${alreadyIssued ? "cursor-not-allowed" : "cursor-pointer"}`}>
-                                                                        <Checkbox checked={selectedEmployeeIds.includes(emp.id)} onCheckedChange={() => !alreadyIssued && toggleEmployee(emp.id)} disabled={alreadyIssued} />
+                                                                <div key={emp.id} className={`rounded-lg border transition-colors ${alreadyIssued ? "opacity-50 cursor-not-allowed bg-muted/30 border-transparent" : settledSalary === null ? "border-dashed border-amber-400/40 bg-amber-50/30 dark:bg-amber-950/10" : loanInfo ? "border-amber-400/50 bg-amber-50/40 dark:bg-amber-950/20" : overrideActive ? "border-amber-400/60 bg-amber-50/40 dark:bg-amber-950/20" : "border-transparent hover:bg-muted/50 hover:border-border/50"}`}>
+                                                                    <div onClick={() => !alreadyIssued && settledSalary !== null && toggleEmployee(emp.id)} className={`flex items-center gap-3 p-2 ${alreadyIssued || settledSalary === null ? "cursor-not-allowed" : "cursor-pointer"}`}>
+                                                                        <Checkbox checked={selectedEmployeeIds.includes(emp.id)} onCheckedChange={() => !alreadyIssued && settledSalary !== null && toggleEmployee(emp.id)} disabled={alreadyIssued || settledSalary === null} />
                                                                         <div className="flex-1 min-w-0">
-                                                                            <p className="text-sm font-medium">{emp.name}{alreadyIssuedSlip && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 font-normal">✓ Issued ({alreadyIssuedSlip.status})</span>}{overrideActive && <span className="ml-2 text-xs text-amber-700 dark:text-amber-400 font-semibold">⚡ Gross override</span>}</p>
-                                                                            <p className="text-xs text-muted-foreground">{emp.role} • {emp.department} • {formatCurrency(emp.salary)}/mo</p>
+                                                                             <p className="text-sm font-medium">{emp.name}{alreadyIssuedSlip && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 font-normal">✓ Issued ({alreadyIssuedSlip.status})</span>}{overrideActive && <span className="ml-2 text-xs text-amber-700 dark:text-amber-400 font-semibold">⚡ Gross override</span>}{loanInfo && <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-100/60 dark:bg-amber-900/30 border border-amber-300/50 dark:border-amber-600/50 rounded-full px-2 py-0.5" title={`Active loan${loanInfo.loanCount > 1 ? "s" : ""} for ${emp.name}:\n${loanInfo.summary}`}><span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block animate-pulse" />Active Loan</span>}</p>
+                                                                            <p className="text-xs text-muted-foreground">{emp.role} • {emp.department} • {salaryLabel}{settledSalary !== null ? "/mo" : ""}{loanInfo && <span className="ml-1.5 text-amber-700 dark:text-amber-400 font-medium">• Loan −{formatCurrency(loanInfo.totalScheduledDeduction)}/cutoff</span>}</p>
                                                                         </div>
                                                                         <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded whitespace-nowrap">
                                                                             {overrideActive ? formatCurrency(Number(grossOverrides[emp.id])) : (() => {
                                                                                 const f = emp.payFrequency || paySchedule.defaultFrequency;
-                                                                                if (f === "semi_monthly") return `≈${formatCurrency(Math.round(emp.salary / 2))}/cutoff`;
-                                                                                if (f === "bi_weekly") return `≈${formatCurrency(Math.round((emp.salary * 12) / 26))}/period`;
-                                                                                if (f === "weekly") return `≈${formatCurrency(Math.round((emp.salary * 12) / 52))}/wk`;
-                                                                                return `${formatCurrency(emp.salary)}/mo`;
+                                                                                if (settledSalary === null) return "Unset";
+                                                                                if (f === "semi_monthly") return `≈${formatCurrency(Math.round(settledSalary / 2))}/cutoff`;
+                                                                                if (f === "bi_weekly") return `≈${formatCurrency(Math.round((settledSalary * 12) / 26))}/period`;
+                                                                                if (f === "weekly") return `≈${formatCurrency(Math.round((settledSalary * 12) / 52))}/wk`;
+                                                                                return `${formatCurrency(settledSalary)}/mo`;
                                                                             })()}
                                                                         </span>
                                                                         {!alreadyIssued && (
@@ -3221,6 +3472,121 @@
                     projects={projects}
                     onGenerate={handle13thMonthGenerate}
                 />
+            </div>
+        );
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+    ACCORDION LOAN DETAILS — Inline expandable component
+    Renders employee-level loan details inside the Loan Deduction Summary
+    section of the Run Payroll modal. Replaces the previous Dialog-based
+    drill-down with an inline accordion pattern.
+    ═══════════════════════════════════════════════════════════════ */
+
+    function AccordionLoanDetails({
+        selectedActiveLoanRows,
+        employeesWithActiveLoansCount,
+        totalProjectedLoanDeduction,
+        selectedEmployeeIdsLength,
+    }: {
+        selectedActiveLoanRows: Array<{
+            employeeId: string;
+            employeeName: string;
+            loanId: string;
+            loanType: string;
+            remainingBalance: number;
+            monthlyDeduction: number;
+            capPercent: number;
+        }>;
+        employeesWithActiveLoansCount: number;
+        totalProjectedLoanDeduction: number;
+        selectedEmployeeIdsLength: number;
+    }) {
+        const [expanded, setExpanded] = useState(false);
+
+        // Group rows by employee
+        const byEmp = useMemo(() => {
+            const map = new Map<string, Array<{
+                employeeId: string;
+                employeeName: string;
+                loanId: string;
+                loanType: string;
+                remainingBalance: number;
+                monthlyDeduction: number;
+                capPercent: number;
+            }>>();
+            selectedActiveLoanRows.forEach((r) => {
+                const list = map.get(r.employeeId) ?? [];
+                list.push(r);
+                map.set(r.employeeId, list);
+            });
+            return map;
+        }, [selectedActiveLoanRows]);
+
+        return (
+            <div className="space-y-1">
+                <button
+                    type="button"
+                    onClick={() => setExpanded((prev) => !prev)}
+                    className="flex items-center justify-between w-full text-xs font-medium text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 transition-colors"
+                >
+                    <span className="flex items-center gap-1">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        {expanded ? "Hide Details" : "View Details"}
+                    </span>
+                    {expanded ? (
+                        <ChevronUp className="h-3.5 w-3.5" />
+                    ) : (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                    )}
+                </button>
+                {expanded && (
+                    <div className="space-y-2 pt-1">
+                        <div className="text-[11px] text-amber-700 dark:text-amber-300/90 font-medium">
+                            ⚠ Loan Deductions Summary
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                            {employeesWithActiveLoansCount} selected employee{employeesWithActiveLoansCount !== 1 ? "s" : ""} ha{employeesWithActiveLoansCount === 1 ? "s" : "ve"} active loan{employeesWithActiveLoansCount !== 1 ? "s" : ""}.
+                        </div>
+                        <div className="divide-y divide-amber-200/50 dark:divide-amber-800/30 border border-amber-200/50 dark:border-amber-800/30 rounded-md overflow-hidden">
+                            {Array.from(byEmp.entries()).map(([empId, rows]) => (
+                                <div key={empId} className="p-2.5 bg-background/80">
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <p className="text-xs font-semibold">{rows[0].employeeName}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        {rows.map((r) => {
+                                            const scheduled = Math.min(r.monthlyDeduction, r.remainingBalance);
+                                            return (
+                                                <div key={r.loanId} className="grid grid-cols-3 gap-1 text-[10px]">
+                                                    <div className="col-span-3">
+                                                        <span className="font-medium capitalize text-amber-700 dark:text-amber-400">{r.loanType.replace(/_/g, " ")}</span>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-muted-foreground uppercase tracking-wide text-[9px]">Deduction Per Cutoff</p>
+                                                        <p className="font-semibold text-red-600 dark:text-red-400">−{formatCurrency(scheduled)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-muted-foreground uppercase tracking-wide text-[9px]">Remaining Balance</p>
+                                                        <p className="font-semibold text-foreground">{formatCurrency(r.remainingBalance)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-muted-foreground uppercase tracking-wide text-[9px]">Cap</p>
+                                                        <p className="font-semibold">{r.capPercent}%</p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-0.5">
+                            <span>Total projected deduction</span>
+                            <span className="font-bold text-amber-700 dark:text-amber-400">{formatCurrency(totalProjectedLoanDeduction)}</span>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }

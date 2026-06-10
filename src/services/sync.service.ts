@@ -493,6 +493,14 @@ export function startWriteThrough(): void {
   // Determine write scope — only admin/hr manage HR data (employees meta, leave balances, attendance logs)
   const role = useAuthStore.getState().currentUser?.role ?? "";
   const isAdminOrHr = ["admin", "hr"].includes(role);
+  const currentUser = useAuthStore.getState().currentUser;
+  const currentEmployee = useEmployeesStore.getState().employees.find(
+    (e) =>
+      e.profileId === currentUser?.id ||
+      e.email?.trim().toLowerCase() === currentUser?.email?.trim().toLowerCase() ||
+      e.name?.trim().toLowerCase() === currentUser?.name?.trim().toLowerCase()
+  );
+  const currentEmployeeId = currentEmployee?.id ?? null;
   // Kiosk mode syncs all attendance data (used by all employees without individual login)
   const isKioskMode = typeof window !== "undefined" && window.location.pathname.startsWith("/kiosk");
 
@@ -1092,22 +1100,34 @@ export function startWriteThrough(): void {
         // Cases
         for (const c of state.cases) {
           const prev = prevState.cases.find((p) => p.id === c.id);
-          if (!prev || prev.updatedAt !== c.updatedAt) {
+          if (isAdminOrHr && (!prev || prev.updatedAt !== c.updatedAt)) {
             disciplinaryDb.upsertCase(c);
           }
         }
         // NTEs
         for (const n of state.ntes) {
           const prev = prevState.ntes.find((p) => p.id === n.id);
-          if (!prev || prev.updatedAt !== n.updatedAt) {
-            disciplinaryDb.upsertNTE(n);
+          const canWriteNte = isAdminOrHr || (currentEmployeeId !== null && currentEmployeeId === n.employeeId);
+          if (canWriteNte && (!prev || prev.updatedAt !== n.updatedAt)) {
+            if (isAdminOrHr) {
+              disciplinaryDb.upsertNTE(n);
+            } else {
+              const { id: _id, ...patch } = n;
+              disciplinaryDb.updateNTE(n.id, patch);
+            }
           }
         }
         // NODs
         for (const n of state.nods) {
           const prev = prevState.nods.find((p) => p.id === n.id);
-          if (!prev || prev.updatedAt !== n.updatedAt) {
-            disciplinaryDb.upsertNOD(n);
+          const canWriteNod = isAdminOrHr || (currentEmployeeId !== null && currentEmployeeId === n.employeeId);
+          if (canWriteNod && (!prev || prev.updatedAt !== n.updatedAt)) {
+            if (isAdminOrHr) {
+              disciplinaryDb.upsertNOD(n);
+            } else {
+              const { id: _id, ...patch } = n;
+              disciplinaryDb.updateNOD(n.id, patch);
+            }
           }
         }
       }
@@ -2006,6 +2026,116 @@ export function startRealtime(): void {
         }));
       })
     )
+    // ── disciplinary_cases ───────────────────────────────────
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "disciplinary_cases" },
+      safe(({ new: row }: { new: Record<string, unknown> }) => {
+        const disciplinaryCase = keysToCamel(row) as Record<string, unknown>;
+        useDisciplinaryStore.setState((s) => {
+          const existing = s.cases.find((c) => c.id === disciplinaryCase.id);
+          if (!existing) return { cases: [disciplinaryCase as unknown as typeof s.cases[0], ...s.cases] };
+          if (JSON.stringify(existing) === JSON.stringify(disciplinaryCase)) return s;
+          return {
+            cases: s.cases.map((c) =>
+              c.id === disciplinaryCase.id ? { ...c, ...disciplinaryCase } as typeof c : c
+            ),
+          };
+        });
+      })
+    )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "disciplinary_cases" },
+      safe(({ new: row }: { new: Record<string, unknown> }) => {
+        const disciplinaryCase = keysToCamel(row) as Record<string, unknown>;
+        useDisciplinaryStore.setState((s) => {
+          const existing = s.cases.find((c) => c.id === disciplinaryCase.id);
+          if (!existing) return { cases: [disciplinaryCase as unknown as typeof s.cases[0], ...s.cases] };
+          if (JSON.stringify(existing) === JSON.stringify(disciplinaryCase)) return s;
+          return {
+            cases: s.cases.map((c) =>
+              c.id === disciplinaryCase.id ? { ...c, ...disciplinaryCase } as typeof c : c
+            ),
+          };
+        });
+      })
+    )
+    .on(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "disciplinary_cases" },
+      safe(({ old: row }: { old: Record<string, unknown> }) => {
+        const id = row?.id as string;
+        if (!id) return;
+        useDisciplinaryStore.setState((s) => ({
+          cases: s.cases.filter((c) => c.id !== id),
+          ntes: s.ntes.filter((n) => n.caseId !== id),
+          nods: s.nods.filter((n) => n.caseId !== id),
+        }));
+      })
+    )
+    // ── nte_records ──────────────────────────────────────────
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "nte_records" },
+      safe(({ new: row }: { new: Record<string, unknown> }) => {
+        const nte = keysToCamel(row) as Record<string, unknown>;
+        useDisciplinaryStore.setState((s) => {
+          const existing = s.ntes.find((n) => n.id === nte.id);
+          if (!existing) return { ntes: [nte as unknown as typeof s.ntes[0], ...s.ntes] };
+          if (JSON.stringify(existing) === JSON.stringify(nte)) return s;
+          return {
+            ntes: s.ntes.map((n) => n.id === nte.id ? { ...n, ...nte } as typeof n : n),
+          };
+        });
+      })
+    )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "nte_records" },
+      safe(({ new: row }: { new: Record<string, unknown> }) => {
+        const nte = keysToCamel(row) as Record<string, unknown>;
+        useDisciplinaryStore.setState((s) => {
+          const existing = s.ntes.find((n) => n.id === nte.id);
+          if (!existing) return { ntes: [nte as unknown as typeof s.ntes[0], ...s.ntes] };
+          if (JSON.stringify(existing) === JSON.stringify(nte)) return s;
+          return {
+            ntes: s.ntes.map((n) => n.id === nte.id ? { ...n, ...nte } as typeof n : n),
+          };
+        });
+      })
+    )
+    // ── nod_records ──────────────────────────────────────────
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "nod_records" },
+      safe(({ new: row }: { new: Record<string, unknown> }) => {
+        const nod = keysToCamel(row) as Record<string, unknown>;
+        useDisciplinaryStore.setState((s) => {
+          const existing = s.nods.find((n) => n.id === nod.id);
+          if (!existing) return { nods: [nod as unknown as typeof s.nods[0], ...s.nods] };
+          if (JSON.stringify(existing) === JSON.stringify(nod)) return s;
+          return {
+            nods: s.nods.map((n) => n.id === nod.id ? { ...n, ...nod } as typeof n : n),
+          };
+        });
+      })
+    )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "nod_records" },
+      safe(({ new: row }: { new: Record<string, unknown> }) => {
+        const nod = keysToCamel(row) as Record<string, unknown>;
+        useDisciplinaryStore.setState((s) => {
+          const existing = s.nods.find((n) => n.id === nod.id);
+          if (!existing) return { nods: [nod as unknown as typeof s.nods[0], ...s.nods] };
+          if (JSON.stringify(existing) === JSON.stringify(nod)) return s;
+          return {
+            nods: s.nods.map((n) => n.id === nod.id ? { ...n, ...nod } as typeof n : n),
+          };
+        });
+      })
+    )
     // ── notification_logs (realtime) ────────────────────────
     // When another user's write-through inserts a log destined for us,
     // this listener ensures our in-app notification tab updates immediately
@@ -2038,7 +2168,7 @@ export function startRealtime(): void {
     .subscribe((status: string, err?: unknown) => {
       if (status === "SUBSCRIBED") {
         _realtimeRetries = 0;
-        console.log("[realtime] Connected — watching 26 tables");
+        console.log("[realtime] Connected — watching 29 tables");
       }
       if (status === "CHANNEL_ERROR") {
         const errMsg = err instanceof Error ? err.message : (typeof err === "string" ? err : JSON.stringify(err) ?? "");

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import { useLoansStore } from "@/store/loans.store";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
@@ -11,9 +13,10 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Snowflake, CheckCircle, MinusCircle, Play, History, Calendar, Percent, Pencil, Trash2 } from "lucide-react";
+import { Plus, Snowflake, CheckCircle, MinusCircle, Play, History, Calendar, Percent, Pencil, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
+import { dispatchNotification } from "@/lib/notifications";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -23,6 +26,8 @@ export default function AdminLoansView() {
     const { loans, createLoan, deductFromLoan, settleLoan, freezeLoan, unfreezeLoan, getAllDeductions, getSchedule, updateLoan, cancelLoan } = useLoansStore();
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
+    const params = useParams();
+    const role = params.role as string;
 
     const [open, setOpen] = useState(false);
     const [formEmpId, setFormEmpId] = useState("");
@@ -69,6 +74,18 @@ export default function AdminLoansView() {
         createLoan({ employeeId: formEmpId, type: formType, amount: Number(formAmount), monthlyDeduction: Number(formMonthly), deductionCapPercent: Number(formCapPercent) || 30, status: "active", approvedBy: currentUser.id, remarks: formRemarks || undefined });
         useAuditStore.getState().log({ entityType: "loan", entityId: formEmpId, action: "loan_created", performedBy: currentUser.id });
         toast.success(`Loan created for ${getEmpName(formEmpId)}`);
+        // Notify the employee about the new loan
+        try {
+            const emp = employees.find((e) => e.id === formEmpId);
+            if (emp) {
+                dispatchNotification("loan_created", {
+                    name: emp.name,
+                    type: formType.replace(/_/g, " "),
+                    amount: Number(formAmount).toLocaleString(),
+                    monthlyDeduction: Number(formMonthly).toLocaleString(),
+                }, emp.id, emp.email ?? undefined, emp.phone, undefined, { suppressToast: true });
+            }
+        } catch { /* notification is best-effort */ }
         setOpen(false); setFormEmpId(""); setFormAmount(""); setFormMonthly(""); setFormRemarks("");
     };
 
@@ -149,10 +166,39 @@ export default function AdminLoansView() {
                                                             {(loan.status === "active" || loan.status === "frozen") && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditLoan(loan)} title="Edit terms"><Pencil className="h-3.5 w-3.5" /></Button>}
                                                             {loan.status === "active" && (<>
                                                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" onClick={() => { deductFromLoan(loan.id, loan.monthlyDeduction); toast.success(`₱${loan.monthlyDeduction.toLocaleString()} deducted`); }} title="Deduct monthly"><MinusCircle className="h-3.5 w-3.5" /></Button>
-                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => { settleLoan(loan.id); useAuditStore.getState().log({ entityType: "loan", entityId: loan.id, action: "loan_settled", performedBy: currentUser.id }); toast.success("Loan settled"); }} title="Settle fully"><CheckCircle className="h-3.5 w-3.5" /></Button>
-                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600" onClick={() => { freezeLoan(loan.id); useAuditStore.getState().log({ entityType: "loan", entityId: loan.id, action: "loan_frozen", performedBy: currentUser.id }); toast.success("Loan frozen"); }} title="Freeze"><Snowflake className="h-3.5 w-3.5" /></Button>
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => {
+                                                                    settleLoan(loan.id);
+                                                                    useAuditStore.getState().log({ entityType: "loan", entityId: loan.id, action: "loan_settled", performedBy: currentUser.id });
+                                                                    toast.success("Loan settled");
+                                                                    try {
+                                                                        const emp = employees.find((e) => e.id === loan.employeeId);
+                                                                        if (emp) dispatchNotification("loan_settled", { name: emp.name, type: loan.type.replace(/_/g, " ") }, emp.id, emp.email ?? undefined, emp.phone, undefined, { suppressToast: true });
+                                                                    } catch { /* best-effort */ }
+                                                                }} title="Settle fully"><CheckCircle className="h-3.5 w-3.5" /></Button>
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600" onClick={() => {
+                                                                    freezeLoan(loan.id);
+                                                                    useAuditStore.getState().log({ entityType: "loan", entityId: loan.id, action: "loan_frozen", performedBy: currentUser.id });
+                                                                    toast.success("Loan frozen");
+                                                                    try {
+                                                                        const emp = employees.find((e) => e.id === loan.employeeId);
+                                                                        if (emp) dispatchNotification("loan_frozen", { name: emp.name, type: loan.type.replace(/_/g, " ") }, emp.id, emp.email ?? undefined, emp.phone, undefined, { suppressToast: true });
+                                                                    } catch { /* best-effort */ }
+                                                                }} title="Freeze"><Snowflake className="h-3.5 w-3.5" /></Button>
+                                                                <Link href={`/${role}/payroll?runLoanFor=${loan.employeeId}`}>
+                                                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-700" title="Run Payroll for this employee">
+                                                                        <Wallet className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                </Link>
                                                             </>)}
-                                                            {loan.status === "frozen" && <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" onClick={() => { unfreezeLoan(loan.id); useAuditStore.getState().log({ entityType: "loan", entityId: loan.id, action: "loan_unfrozen", performedBy: currentUser.id }); toast.success("Loan unfrozen"); }} title="Unfreeze"><Play className="h-3.5 w-3.5" /></Button>}
+                                                            {loan.status === "frozen" && <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" onClick={() => {
+                                                                unfreezeLoan(loan.id);
+                                                                useAuditStore.getState().log({ entityType: "loan", entityId: loan.id, action: "loan_unfrozen", performedBy: currentUser.id });
+                                                                toast.success("Loan unfrozen");
+                                                                try {
+                                                                    const emp = employees.find((e) => e.id === loan.employeeId);
+                                                                    if (emp) dispatchNotification("loan_unfrozen", { name: emp.name, type: loan.type.replace(/_/g, " ") }, emp.id, emp.email ?? undefined, emp.phone, undefined, { suppressToast: true });
+                                                                } catch { /* best-effort */ }
+                                                            }} title="Unfreeze"><Play className="h-3.5 w-3.5" /></Button>}
                                                             {loan.status === "settled" && <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => setCancelId(loan.id)} title="Remove record"><Trash2 className="h-3.5 w-3.5" /></Button>}
                                                         </div>
                                                     </TableCell>
