@@ -321,8 +321,8 @@ function SidebarComponent() {
         return (
         <>
             {/* Logo */}
-            <div className={cn("flex h-16 items-center px-4", showLabel || isMobile ? "justify-between" : "justify-center")}>
-                <Link href={`${rolePrefix}/dashboard`} className="flex items-center gap-2.5">
+           <div className={cn("flex h-16 items-center px-4 pt-8", showLabel || isMobile ? "justify-between" : "justify-center")}>
+                <Link href={`${rolePrefix}/dashboard`} className="flex items-center gap-2.5 w-full">
                     {logoUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -332,24 +332,22 @@ function SidebarComponent() {
                         />
                     ) : (
                         <>
-                            <Image
-                                src="/logo.png"
-                                alt={companyName}
-                                width={showLabel ? 140 : 36}
-                                height={36}
-                                className="sidebar-logo transition-all duration-300 dark:hidden"
-                                style={{ width: "auto", height: "auto", maxHeight: 36 }}
-                                priority
-                            />
-                            <Image
-                                src="/darklogo.png"
-                                alt={companyName}
-                                width={showLabel ? 140 : 36}
-                                height={36}
-                                className="sidebar-logo transition-all duration-300 hidden dark:block"
-                                style={{ width: "auto", height: "auto", maxHeight: 36 }}
-                                priority
-                            />
+                          <Image
+                            src="/blacklogo.png"
+                            alt={companyName}
+                            width={showLabel ? 220 : 40}
+                            height={56}
+                            className="sidebar-logo transition-all duration-300 dark:hidden"
+                            priority
+                        />
+                        <Image
+                            src="/finalwhitelogo.png"
+                            alt={companyName}
+                            width={showLabel ? 220 : 40}
+                            height={56}
+                            className="sidebar-logo transition-all duration-300 hidden dark:block"
+                            priority
+                        />
                         </>
                     )}
                     {showLabel && logoTextVisible && logoUrl && (
