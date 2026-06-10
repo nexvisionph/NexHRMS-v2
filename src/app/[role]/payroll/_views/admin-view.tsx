@@ -1,4 +1,4 @@
-    "use client";
+"use client";
 
     import { useState, useMemo, useCallback, useEffect } from "react";
     import { usePayrollStore } from "@/store/payroll.store";
@@ -619,11 +619,7 @@
                         ? Math.round(Number(overrideStr))
                         : grossPay;
 
-<<<<<<< Updated upstream
-                    const phDeductions = computeAllPHDeductions(emp.salary);
-=======
                     const phDeductions = computeAllPHDeductions(settledSalary);
->>>>>>> Stashed changes
                     // Gov deductions are always applied in full.
                     // The deductGovFrom setting only splits the amount (50%) when set to "both",
                     // otherwise full deductions apply on every cutoff.
