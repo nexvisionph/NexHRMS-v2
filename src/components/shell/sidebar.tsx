@@ -322,7 +322,7 @@ function SidebarComponent() {
         <>
             {/* Logo */}
            <div className={cn("flex h-16 items-center px-4 pt-8", showLabel || isMobile ? "justify-between" : "justify-center")}>
-                <Link href={`${rolePrefix}/dashboard`} className="flex items-center gap-2.5 w-full">
+               <Link href={`${rolePrefix}/dashboard`} className="flex items-center gap-2.5 w-full min-h-[56px]">
                     {logoUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -337,7 +337,7 @@ function SidebarComponent() {
                             alt={companyName}
                             width={showLabel ? 220 : 40}
                             height={56}
-                            className="sidebar-logo transition-all duration-300 dark:hidden"
+                            className="sidebar-logo transition-all duration-300 dark:hidden object-contain object-left"
                             priority
                         />
                         <Image
@@ -345,7 +345,7 @@ function SidebarComponent() {
                             alt={companyName}
                             width={showLabel ? 220 : 40}
                             height={56}
-                            className="sidebar-logo transition-all duration-300 hidden dark:block"
+                            className="sidebar-logo transition-all duration-300 hidden dark:block object-contain object-left"
                             priority
                         />
                         </>
