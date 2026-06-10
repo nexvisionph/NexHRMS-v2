@@ -10,6 +10,7 @@
 import { useState, useMemo } from "react";
 import { useEmployeesStore } from "@/store/employees.store";
 import { usePayrollStore } from "@/store/payroll.store";
+import { useAttendanceStore } from "@/store/attendance.store";
 import { previewBackfill, executeBackfill, type BackfillResult } from "@/services/payroll-backfill.service";
 import { detectCycles } from "@/lib/payroll-computation-engine";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,7 @@ function detectCycles1to15(startDate: string, endDate: string) {
 
 export function BackfillModal({ open, onOpenChange }: BackfillModalProps) {
   const employees = useEmployeesStore((s) => s.employees).filter((e) => e.status === "active");
+  const attendanceLogs = useAttendanceStore((s) => s.logs);
 
   // State
   const [step, setStep] = useState<Step>("select");
@@ -105,13 +107,25 @@ export function BackfillModal({ open, onOpenChange }: BackfillModalProps) {
     );
   }, [employees, searchTerm]);
 
-  // Detected cycles preview
+  // Detected cycles preview — only show cycles where selected employees have attendance data
   const detectedCycles = useMemo(() => {
     if (!startDate || !endDate || startDate > endDate) return [];
-    if (cutoffType === "1-15_16-end") return detectCycles1to15(startDate, endDate);
-    if (cutoffType === "custom") return [{ periodStart: startDate, periodEnd: endDate, label: `Custom (${startDate} → ${endDate})` }];
-    return detectCycles(startDate, endDate);
-  }, [startDate, endDate, cutoffType]);
+    let allCycles: { periodStart: string; periodEnd: string; label: string }[];
+    if (cutoffType === "1-15_16-end") allCycles = detectCycles1to15(startDate, endDate);
+    else if (cutoffType === "custom") allCycles = [{ periodStart: startDate, periodEnd: endDate, label: `Custom (${startDate} → ${endDate})` }];
+    else allCycles = detectCycles(startDate, endDate);
+
+    // Filter: only keep cycles where at least one selected employee has attendance logs
+    if (selectedEmpIds.size === 0) return allCycles;
+    const empIds = Array.from(selectedEmpIds);
+    return allCycles.filter((cycle) =>
+      empIds.some((empId) =>
+        attendanceLogs.some(
+          (l) => l.employeeId === empId && l.date >= cycle.periodStart && l.date <= cycle.periodEnd && l.status === "present"
+        )
+      )
+    );
+  }, [startDate, endDate, cutoffType, selectedEmpIds, attendanceLogs]);
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
