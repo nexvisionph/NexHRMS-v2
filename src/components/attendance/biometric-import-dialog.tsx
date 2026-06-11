@@ -235,6 +235,7 @@ export function BiometricImportDialog({
                 // ─── Compute earliest IN / latest OUT ──────────
                 const ins: string[] = [];
                 const outs: string[] = [];
+                const allTimes: string[] = []; // All valid timestamps regardless of log type
                 let badTime: string | null = null;
 
                 for (const r of rows) {
@@ -243,13 +244,14 @@ export function BiometricImportDialog({
                         badTime = r.rawTime;
                         continue;
                     }
+                    allTimes.push(t);
                     const lt = (r.logType ?? "").toString().trim().toUpperCase();
                     if (lt === "IN" || lt === "I" || lt === "CHECK IN" || lt === "CHECK-IN") ins.push(t);
                     else if (lt === "OUT" || lt === "O" || lt === "CHECK OUT" || lt === "CHECK-OUT") outs.push(t);
                     // Unknown log types are ignored.
                 }
 
-                if (badTime && ins.length === 0 && outs.length === 0) {
+                if (badTime && allTimes.length === 0) {
                     out.push({
                         employeeId: employee.id,
                         employeeName: employee.name,
@@ -263,8 +265,18 @@ export function BiometricImportDialog({
 
                 ins.sort();
                 outs.sort();
-                const checkIn = ins[0];
-                const checkOut = outs[outs.length - 1];
+                allTimes.sort();
+
+                // Use first IN as check-in (fall back to earliest timestamp)
+                const checkIn = ins[0] || allTimes[0];
+                // Use last OUT as check-out. If no OUT logs exist or the last
+                // timestamp of the day is later than the last OUT, use the last
+                // timestamp — biometric devices often tag the final punch as "IN".
+                const lastOut = outs[outs.length - 1];
+                const lastTimestamp = allTimes[allTimes.length - 1];
+                const checkOut = (lastOut && lastTimestamp && lastOut >= lastTimestamp)
+                    ? lastOut
+                    : (lastTimestamp && lastTimestamp !== checkIn ? lastTimestamp : lastOut);
 
                 let hours: number | undefined;
                 if (checkIn && checkOut) hours = diffHours(checkIn, checkOut);

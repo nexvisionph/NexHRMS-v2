@@ -227,7 +227,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const [holEditing, setHolEditing] = useState<Holiday | null>(null);
     const [holDate, setHolDate] = useState("");
     const [holName, setHolName] = useState("");
-    const [holType, setHolType] = useState<"regular" | "special" | "special_non_working" | "special_working">("regular");
+    const [holType, setHolType] = useState<"regular" | "special" | "special_non_working" | "special_working" | "declared_half_day">("regular");
     const [holDeleteId, setHolDeleteId] = useState<string | null>(null);
 
     // CSV import ref
@@ -269,6 +269,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const [ovCheckOut, setOvCheckOut] = useState("");
     const [ovStatus, setOvStatus] = useState<"present" | "absent" | "on_leave">("present");
     const [ovLate, setOvLate] = useState("");
+    const [ovOtDescription, setOvOtDescription] = useState("");
 
     // Exception edit dialog state
     const [excEditOpen, setExcEditOpen] = useState(false);
@@ -372,20 +373,25 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     // ─── Handlers ─────────────────────────────────────────────────
     const openOverride = (log: typeof logs[0]) => {
         setEditingLog(log); setOvCheckIn(log.checkIn || ""); setOvCheckOut(log.checkOut || "");
-        setOvStatus(log.status as "present" | "absent" | "on_leave"); setOvLate(log.lateMinutes != null ? String(log.lateMinutes) : ""); setOverrideOpen(true);
+        setOvStatus(log.status as "present" | "absent" | "on_leave"); setOvLate(log.lateMinutes != null ? String(log.lateMinutes) : ""); setOvOtDescription(log.otDescription || ""); setOverrideOpen(true);
     };
     const handleSaveOverride = async () => {
         if (!editingLog) return;
         const prevStatus = editingLog.status;
         const prevCheckIn = editingLog.checkIn;
         const prevCheckOut = editingLog.checkOut;
-        const patch: Record<string, unknown> = { checkIn: ovCheckIn || undefined, checkOut: ovCheckOut || undefined, status: ovStatus, lateMinutes: ovLate !== "" ? Number(ovLate) : undefined };
-        // Calculate hours if both times are present
+        const patch: Record<string, unknown> = { checkIn: ovCheckIn || undefined, checkOut: ovCheckOut || undefined, status: ovStatus, lateMinutes: ovLate !== "" ? Number(ovLate) : undefined, otDescription: ovOtDescription || undefined };
+        // Calculate hours if both times are present — apply cap + lunch deduction
         if (ovCheckIn && ovCheckOut) {
-            const toSec = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 3600 + m * 60; };
-            const inSec = toSec(ovCheckIn); const outSec = toSec(ovCheckOut);
-            const diff = outSec >= inSec ? outSec - inSec : 24 * 3600 - inSec + outSec;
-            patch.hours = diff > 0 ? Math.round((diff / 3600) * 100) / 100 : 0;
+            const [inH, inM] = ovCheckIn.split(":").map(Number);
+            const [outH, outM] = ovCheckOut.split(":").map(Number);
+            const inDecimal = inH + inM / 60;
+            const outDecimal = outH + outM / 60;
+            // Cap check-in at 8:00 for ALL days (matching client payslip formula)
+            const effectiveIn = Math.max(inDecimal, 8.0);
+            // Deduct 1hr lunch
+            const hours = outDecimal - effectiveIn - 1.0;
+            patch.hours = hours > 0 ? Math.round(hours * 100) / 100 : 0;
         }
         // Update local state immediately for responsiveness
         updateLog(editingLog.id, patch as Parameters<typeof updateLog>[1]);
@@ -869,13 +875,14 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                         canEdit={canEdit}
                         shiftTemplates={shiftTemplates}
                         employeeShifts={employeeShifts}
-                        onStatusChange={async (empId, date, newStatus, checkIn, checkOut, lateMinutes) => {
+                        onStatusChange={async (empId, date, newStatus, checkIn, checkOut, lateMinutes, otDescription) => {
                             const existingLog = logs.find((l) => l.employeeId === empId && l.date === date);
                             const patch = {
                                 status: newStatus as "present" | "absent" | "on_leave",
                                 checkIn: checkIn,
                                 checkOut: checkOut,
                                 lateMinutes: lateMinutes,
+                                otDescription: otDescription,
                             };
                             // Update local state immediately
                             if (existingLog) {
@@ -888,10 +895,14 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                             isSavingRef.current = true;
                             try {
                                 const hours = checkIn && checkOut ? (() => {
-                                    const toSec = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 3600 + m * 60; };
-                                    const inSec = toSec(checkIn); const outSec = toSec(checkOut);
-                                    const diff = outSec >= inSec ? outSec - inSec : 24 * 3600 - inSec + outSec;
-                                    return diff > 0 ? Math.round((diff / 3600) * 100) / 100 : 0;
+                                    const [inH, inM] = checkIn.split(":").map(Number);
+                                    const [outH, outM] = checkOut.split(":").map(Number);
+                                    const inDecimal = inH + inM / 60;
+                                    const outDecimal = outH + outM / 60;
+                                    // Cap check-in at 8:00 for ALL days
+                                    const effectiveIn = Math.max(inDecimal, 8.0);
+                                    const total = outDecimal - effectiveIn - 1.0;
+                                    return total > 0 ? Math.round(total * 100) / 100 : 0;
                                 })() : undefined;
                                 const res = await fetch("/api/attendance/logs", {
                                     method: "PATCH",
@@ -1435,6 +1446,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                     </Select>
                                 </div>
                                 <div><label className="text-sm font-medium">Late Minutes</label><Input type="number" min="0" max="480" value={ovLate} onChange={(e) => setOvLate(e.target.value)} placeholder="0" className="mt-1" /></div>
+                                <div><label className="text-sm font-medium">OT Description</label><Input value={ovOtDescription} onChange={(e) => setOvOtDescription(e.target.value)} placeholder="e.g. Extended site visit, Emergency overtime" className="mt-1" /><p className="text-[10px] text-muted-foreground mt-0.5">Optional — displayed on payslip daily breakdown</p></div>
                                 <p className="text-[11px] text-amber-600 dark:text-amber-400">⚠️ Admin override — logged for audit.</p>
                                 <div className="flex gap-2 pt-1"><Button variant="outline" className="flex-1" onClick={() => setOverrideOpen(false)}>Cancel</Button><Button className="flex-1" onClick={handleSaveOverride}>Save</Button></div>
                             </div>
@@ -1452,9 +1464,9 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                             <div><label className="text-sm font-medium">Date</label><Input type="date" value={holDate} onChange={(e) => setHolDate(e.target.value)} className="mt-1" /></div>
                             <div><label className="text-sm font-medium">Holiday Name</label><Input value={holName} onChange={(e) => setHolName(e.target.value)} placeholder="e.g. National Election Day" className="mt-1" /></div>
                             <div><label className="text-sm font-medium">Type</label>
-                                <Select value={holType} onValueChange={(v) => setHolType(v as "regular" | "special" | "special_non_working" | "special_working")}>
+                                <Select value={holType} onValueChange={(v) => setHolType(v as "regular" | "special" | "special_non_working" | "special_working" | "declared_half_day")}>
                                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                                    <SelectContent><SelectItem value="regular">Regular Holiday (200%)</SelectItem><SelectItem value="special">Special Non-Working (130%)</SelectItem><SelectItem value="special_non_working">Special Non-Working (130%)</SelectItem><SelectItem value="special_working">Special Working (130%)</SelectItem></SelectContent>
+                                    <SelectContent><SelectItem value="regular">Regular Holiday (200%)</SelectItem><SelectItem value="special">Special Non-Working (130%)</SelectItem><SelectItem value="special_non_working">Special Non-Working (130%)</SelectItem><SelectItem value="special_working">Special Working (130%)</SelectItem><SelectItem value="declared_half_day">Declared Half-Day (OT after 4hrs)</SelectItem></SelectContent>
                                 </Select>
                             </div>
                             <div className="flex gap-2 pt-1"><Button variant="outline" className="flex-1" onClick={() => setHolDialogOpen(false)}>Cancel</Button>

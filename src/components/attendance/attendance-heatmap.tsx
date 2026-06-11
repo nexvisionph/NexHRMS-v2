@@ -62,7 +62,7 @@ export interface AttendanceHeatmapProps {
     canEdit: boolean;
     shiftTemplates?: ShiftTemplate[];
     employeeShifts?: Record<string, string>; // employeeId -> shiftId
-    onStatusChange: (employeeId: string, date: string, newStatus: string, checkIn?: string, checkOut?: string, lateMinutes?: number) => void;
+    onStatusChange: (employeeId: string, date: string, newStatus: string, checkIn?: string, checkOut?: string, lateMinutes?: number, otDescription?: string) => void;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -169,6 +169,7 @@ export function AttendanceHeatmap({
     const [modalCheckIn, setModalCheckIn] = useState("");
     const [modalCheckOut, setModalCheckOut] = useState("");
     const [modalLate, setModalLate] = useState("0");
+    const [modalOtDescription, setModalOtDescription] = useState("");
 
     // Get employee's assigned shift
     const getEmployeeShift = useCallback((empId: string): ShiftTemplate | undefined => {
@@ -197,10 +198,13 @@ export function AttendanceHeatmap({
         if (!checkIn || !checkOut) return 0;
         const [inH, inM] = checkIn.split(":").map(Number);
         const [outH, outM] = checkOut.split(":").map(Number);
-        const inTotal = inH * 60 + inM;
-        const outTotal = outH * 60 + outM;
-        const diffMin = outTotal >= inTotal ? outTotal - inTotal : 24 * 60 - inTotal + outTotal;
-        return Math.round((diffMin / 60) * 10) / 10;
+        const inDecimal = inH + inM / 60;
+        const outDecimal = outH + outM / 60;
+        // Cap check-in at 8:00 for ALL days (matching client payslip formula)
+        const effectiveIn = Math.max(inDecimal, 8.0);
+        // Deduct 1hr lunch
+        const total = outDecimal - effectiveIn - 1.0;
+        return total > 0 ? Math.round(total * 10) / 10 : 0;
     }, []);
 
     // Auto-update late minutes when check-in changes
@@ -231,6 +235,7 @@ export function AttendanceHeatmap({
             setModalCheckIn(log.checkIn || "");
             setModalCheckOut(log.checkOut || "");
             setModalLate(log.lateMinutes != null ? String(log.lateMinutes) : "0");
+            setModalOtDescription(log.otDescription || "");
         } else {
             // No existing log - determine if should default to absent (past date) or present
             const today = new Date();
@@ -240,6 +245,7 @@ export function AttendanceHeatmap({
             setModalCheckIn("");
             setModalCheckOut("");
             setModalLate("0");
+            setModalOtDescription("");
         }
         setModalOpen(true);
     }, [canEdit, logMap]);
@@ -252,6 +258,7 @@ export function AttendanceHeatmap({
             modalCheckIn || undefined,
             modalCheckOut || undefined,
             modalLate ? Number(modalLate) : undefined,
+            modalOtDescription || undefined,
         );
         setModalOpen(false);
     };
@@ -731,6 +738,18 @@ export function AttendanceHeatmap({
                                                     : "—"
                                                 }
                                             </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-sm font-medium">OT Description</label>
+                                            <Input
+                                                value={modalOtDescription}
+                                                onChange={(e) => setModalOtDescription(e.target.value)}
+                                                placeholder="e.g. Extended site visit, Emergency overtime"
+                                                className="mt-1"
+                                            />
+                                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                Optional — displayed on payslip daily breakdown
+                                            </p>
                                         </div>
                                     </div>
                                 </>

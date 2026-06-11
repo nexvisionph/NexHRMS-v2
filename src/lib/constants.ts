@@ -73,14 +73,38 @@ export const PH_HOLIDAY_MULTIPLIERS = {
     },
 } as const;
 
+// ─── Philippine National & Special Holidays 2025 (for backfill) ──────────────
+export const HOLIDAYS_2025: { date: string; name: string; type: HolidayType }[] = [
+    { date: "2025-01-01", name: "New Year's Day", type: "regular" },
+    { date: "2025-01-29", name: "Chinese New Year", type: "special" },
+    { date: "2025-02-25", name: "EDSA People Power Revolution", type: "special" },
+    { date: "2025-03-28", name: "Maundy Thursday (Estimated)", type: "regular" },
+    { date: "2025-03-29", name: "Good Friday (Estimated)", type: "regular" },
+    { date: "2025-04-09", name: "Araw ng Kagitingan", type: "regular" },
+    { date: "2025-05-01", name: "Labor Day", type: "regular" },
+    { date: "2025-06-12", name: "Independence Day", type: "regular" },
+    { date: "2025-08-21", name: "Ninoy Aquino Day", type: "special" },
+    { date: "2025-08-25", name: "National Heroes Day", type: "regular" },
+    { date: "2025-11-01", name: "All Saints Day", type: "special" },
+    { date: "2025-11-30", name: "Bonifacio Day", type: "regular" },
+    { date: "2025-12-08", name: "Immaculate Conception", type: "special" },
+    { date: "2025-12-24", name: "Christmas Eve", type: "special" },
+    { date: "2025-12-25", name: "Christmas Day", type: "regular" },
+    { date: "2025-12-30", name: "Rizal Day", type: "regular" },
+    { date: "2025-12-31", name: "New Year's Eve", type: "special" },
+];
+
 // ─── Philippine National & Special Holidays 2026 ─────────────────────────────
 export const DEFAULT_HOLIDAYS: { date: string; name: string; type: HolidayType }[] = [
+    // Include 2025 holidays for backfill support
+    ...HOLIDAYS_2025,
     { date: "2026-01-01", name: "New Year's Day", type: "regular" },
     { date: "2026-01-28", name: "Chinese New Year", type: "special" },
     { date: "2026-02-25", name: "EDSA People Power Revolution", type: "special" },
     { date: "2026-04-02", name: "Maundy Thursday", type: "regular" },
     { date: "2026-04-03", name: "Good Friday", type: "regular" },
     { date: "2026-04-04", name: "Black Saturday", type: "special" },
+    { date: "2026-04-01", name: "Declared Half-Day", type: "declared_half_day" },
     { date: "2026-04-09", name: "Araw ng Kagitingan", type: "regular" },
     { date: "2026-05-01", name: "Labor Day", type: "regular" },
     { date: "2026-06-12", name: "Independence Day", type: "regular" },

@@ -34,6 +34,25 @@ const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
   { value: "custom", label: "Custom Date Range" },
 ];
 
+/** Convert "HH:mm" or "HH:mm:ss" or ISO timestamp to "h:mm AM/PM" format */
+function formatTimeTo12hr(time: string): string {
+  if (!time) return "";
+  let hours: number, minutes: number;
+  if (time.includes("T")) {
+    const d = new Date(time);
+    hours = d.getHours();
+    minutes = d.getMinutes();
+  } else {
+    const parts = time.split(":");
+    hours = Number(parts[0]);
+    minutes = Number(parts[1] || 0);
+  }
+  if (isNaN(hours) || isNaN(minutes)) return time;
+  const ampm = hours >= 12 ? "PM" : "AM";
+  const h = hours % 12 || 12;
+  return `${h}:${String(minutes).padStart(2, "0")} ${ampm}`;
+}
+
 interface SelectedEmployee {
   id: string;
   name: string;
@@ -216,8 +235,8 @@ export function AttendanceExportDialog({ trigger }: AttendanceExportDialogProps)
             "Department": emp.department || "",
             "Date": format(day, "MMM dd, yyyy"),
             "Day": dayName,
-            "Time In": log?.checkIn ? (log.checkIn.includes("T") ? log.checkIn.split("T")[1]?.split(".")[0] || "" : log.checkIn) : "",
-            "Time Out": log?.checkOut ? (log.checkOut.includes("T") ? log.checkOut.split("T")[1]?.split(".")[0] || "" : log.checkOut) : "",
+            "Time In": log?.checkIn ? formatTimeTo12hr(log.checkIn) : "",
+            "Time Out": log?.checkOut ? formatTimeTo12hr(log.checkOut) : "",
             "Total Hours": log?.hours ?? 0,
             "OT Hours": log?.approvedOTHours ?? 0,
             "Late (min)": log?.lateMinutes ?? 0,
