@@ -1494,18 +1494,18 @@ const filteredAccounts = useMemo(() => {
                                         <Button variant="outline" size="sm" className="gap-1.5 relative">
                                             <SlidersHorizontal className="h-4 w-4" />
                                             Advanced
-                                            {(() => {
-                                                const count = [
-                                                    departmentFilter !== "all",
-                                                    salaryRange[0] > 0 || salaryRange[1] < 200000,
-                                                    Object.values(visibleCols).some((v) => !v),
-                                                ].filter(Boolean).length;
-                                                return count > 0 ? (
-                                                    <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
-                                                        {count}
-                                                    </span>
-                                                ) : null;
-                                            })()}
+{(() => {
+    const DEFAULT_OFF = ["project", "teamLeader", "productivity", "joinDate"];
+    const count = [
+        salaryRange[0] > 0 || salaryRange[1] < 200000,
+        ...DEFAULT_OFF.map((k) => visibleCols[k] === true),
+    ].filter(Boolean).length;
+    return count > 0 ? (
+        <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
+            {count}
+        </span>
+    ) : null;
+})()}
                                         </Button>
                                     </SheetTrigger>
                                     <SheetContent className="w-[320px] sm:w-[360px] flex flex-col gap-0 p-0">
