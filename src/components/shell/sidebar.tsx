@@ -333,19 +333,25 @@ function SidebarComponent() {
                     ) : (
                         <>
                           <Image
-                            src="/blacklogo.png"
+                            src={collapsed ? "/smalldarklogo.png" : "/blacklogo.png"}
                             alt={companyName}
                             width={showLabel ? 220 : 40}
                             height={56}
-                            className="sidebar-logo transition-all duration-300 dark:hidden object-contain object-left pb-3"
+                            className={cn(
+                                "sidebar-logo transition-all duration-300 dark:hidden object-contain object-left",
+                                collapsed ? "pb-6" : "pb-3"
+                            )}
                             priority
                         />
                         <Image
-                            src="/finalwhitelogo.png"
+                            src={collapsed ? "/smallwhitelogo.png" : "/finalwhitelogo.png"}
                             alt={companyName}
                             width={showLabel ? 220 : 40}
                             height={56}
-                            className="sidebar-logo transition-all duration-300 hidden dark:block object-contain object-left "
+                            className={cn(
+                                "sidebar-logo transition-all duration-300 hidden dark:block object-contain object-left",
+                                collapsed ? "pb-6" : ""
+                            )}
                             priority
                         />
                         </>
