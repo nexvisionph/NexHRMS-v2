@@ -337,7 +337,7 @@ function SidebarComponent() {
                             alt={companyName}
                             width={showLabel ? 220 : 40}
                             height={56}
-                            className="sidebar-logo transition-all duration-300 dark:hidden object-contain object-left"
+                            className="sidebar-logo transition-all duration-300 dark:hidden object-contain object-left pb-3"
                             priority
                         />
                         <Image
@@ -345,7 +345,7 @@ function SidebarComponent() {
                             alt={companyName}
                             width={showLabel ? 220 : 40}
                             height={56}
-                            className="sidebar-logo transition-all duration-300 hidden dark:block object-contain object-left"
+                            className="sidebar-logo transition-all duration-300 hidden dark:block object-contain object-left "
                             priority
                         />
                         </>
