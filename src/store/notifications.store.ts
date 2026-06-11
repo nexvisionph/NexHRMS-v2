@@ -10,6 +10,7 @@ import { notificationsDb } from "@/services/db.service";
 const DEFAULT_RULES: NotificationRule[] = [
     { id: "NR-01", trigger: "payslip_published", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Payslip Ready: {period}", bodyTemplate: "Hi {name}, your payslip for {period} is ready. Net pay: {amount}. Please sign in NexHRIS.", smsTemplate: "Your payslip for {period} is ready. Net: {amount}." },
     { id: "NR-02", trigger: "leave_submitted", enabled: true, channel: "email", recipientRoles: ["admin", "hr"], timing: "immediate", subjectTemplate: "Leave Request: {name}", bodyTemplate: "{name} submitted a {leaveType} leave request ({dates})." },
+    { id: "NR-23", trigger: "disciplinary_explanation_submitted", enabled: true, channel: "email", recipientRoles: ["admin", "hr"], timing: "immediate", subjectTemplate: "Explanation Submitted: {caseNumber}", bodyTemplate: "{name} submitted an explanation for {caseNumber} regarding {violationType}. Review it in Disciplinary." },
     { id: "NR-03", trigger: "leave_approved", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Leave {status}: {dates}", bodyTemplate: "Hi {name}, your {leaveType} leave ({dates}) has been {status}.", smsTemplate: "Your {leaveType} leave ({dates}) has been {status}." },
     { id: "NR-04", trigger: "leave_rejected", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Leave Rejected: {dates}", bodyTemplate: "Hi {name}, your {leaveType} leave ({dates}) has been rejected." },
     { id: "NR-05", trigger: "attendance_missing", enabled: true, channel: "sms", recipientRoles: ["employee"], timing: "scheduled", scheduleTime: "10:00", subjectTemplate: "Check-In Reminder", bodyTemplate: "Reminder: You have not checked in today. Please check in.", smsTemplate: "Reminder: You have not checked in today." },
@@ -30,21 +31,34 @@ const DEFAULT_RULES: NotificationRule[] = [
     { id: "NR-19", trigger: "task_verified", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Task Approved: {title}", bodyTemplate: "Your task \"{title}\" has been verified and approved." },
     { id: "NR-20", trigger: "task_rejected", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Task Rejected: {title}", bodyTemplate: "Your task \"{title}\" was rejected: {reason}." },
     { id: "NR-22", trigger: "payslip_on_hold", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Payslip On Hold: {period}", bodyTemplate: "Hi {name}, your payslip for {period} has been placed on hold. Reason: {reason}. Please coordinate with the payroll team to resolve this issue.", smsTemplate: "Your payslip for {period} is on hold. Contact payroll team." },
+    // ─── Admin/HR → Employee notifications ────────────────────────────────
+    { id: "NR-24", trigger: "employee_added", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Welcome to NexHRIS!", bodyTemplate: "Hi {name}, your account has been created. You are assigned as {role} in the {department} department. Please complete your profile.", smsTemplate: "Welcome to NexHRIS, {name}! Your {role} account is ready." },
+    { id: "NR-25", trigger: "status_changed", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Account Status: {status}", bodyTemplate: "Hi {name}, your account status has been changed to {status}. If you believe this is an error, please contact HR.", smsTemplate: "Your account status is now: {status}." },
+    { id: "NR-26", trigger: "resignation", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Resignation Processed", bodyTemplate: "Hi {name}, your resignation has been processed. Effective date: {date}. Please coordinate with HR for final pay and clearance.", smsTemplate: "Your resignation has been processed effective {date}. Contact HR for clearance." },
+    { id: "NR-27", trigger: "loan_created", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "New Loan: {type}", bodyTemplate: "Hi {name}, a new {type} loan of ₱{amount} has been created for you. Monthly deduction: ₱{monthlyDeduction}. Please review the details.", smsTemplate: "New {type} loan: ₱{amount}. Monthly deduction: ₱{monthlyDeduction}." },
+    { id: "NR-28", trigger: "loan_settled", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Loan Settled", bodyTemplate: "Hi {name}, your {type} loan has been fully settled. Thank you.", smsTemplate: "Your {type} loan has been settled." },
+    { id: "NR-29", trigger: "loan_frozen", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Loan Frozen: {type}", bodyTemplate: "Hi {name}, your {type} loan has been frozen. Deductions have been temporarily stopped. Please coordinate with HR for details.", smsTemplate: "Your {type} loan has been frozen." },
+    { id: "NR-30", trigger: "loan_unfrozen", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Loan Reinstated: {type}", bodyTemplate: "Hi {name}, your {type} loan has been reinstated. Monthly deductions will resume.", smsTemplate: "Your {type} loan has been reinstated." },
+    { id: "NR-31", trigger: "disciplinary_case_created", enabled: true, channel: "email", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Disciplinary Case: {caseNumber}", bodyTemplate: "Hi {name}, a disciplinary case ({caseNumber}) has been filed against you for {violationType}. You will receive further instructions shortly.", smsTemplate: "Disciplinary case {caseNumber} filed for {violationType}. Check your email for details." },
+    { id: "NR-32", trigger: "nte_issued", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "NTE Issued: {caseNumber}", bodyTemplate: "Hi {name}, a Notice to Explain (NTE) has been issued for case {caseNumber}. Please submit your explanation before {deadline}.", smsTemplate: "NTE issued for case {caseNumber}. Submit explanation before {deadline}." },
+    { id: "NR-33", trigger: "nod_issued", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Decision Issued: {caseNumber}", bodyTemplate: "Hi {name}, a Notice of Decision (NOD) has been issued for case {caseNumber}. Decision: {decision}. Please review and acknowledge.", smsTemplate: "NOD for case {caseNumber}: {decision}. Check your email." },
+    { id: "NR-34", trigger: "salary_approved", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Salary Adjustment Approved", bodyTemplate: "Hi {name}, your salary adjustment has been approved. New salary: ₱{newSalary} effective {effectiveDate}.", smsTemplate: "Salary adjustment approved. New salary: ₱{newSalary} effective {effectiveDate}." },
+    { id: "NR-35", trigger: "salary_rejected", enabled: true, channel: "both", recipientRoles: ["employee"], timing: "immediate", subjectTemplate: "Salary Adjustment Not Approved", bodyTemplate: "Hi {name}, your salary adjustment request has not been approved. Please contact HR for details.", smsTemplate: "Salary adjustment request was not approved. Contact HR for details." },
 ];
 
 // ─── Provider config (MVP — simulated) ───────────────────────
 
 export interface NotificationProviderConfig {
-    smsProvider: "simulated" | "twilio" | "semaphore";
-    emailProvider: "simulated" | "resend" | "smtp";
+    smsProvider: "" | "simulated" | "twilio" | "semaphore";
+    emailProvider: "" | "simulated" | "resend" | "smtp";
     smsEnabled: boolean;
     emailEnabled: boolean;
     defaultSenderName: string;
 }
 
 const DEFAULT_PROVIDER: NotificationProviderConfig = {
-    smsProvider: "simulated",
-    emailProvider: "simulated",
+    smsProvider: "",
+    emailProvider: "",
     smsEnabled: true,
     emailEnabled: true,
     defaultSenderName: "NexHRIS",
@@ -176,6 +190,20 @@ function getDefaultLinkForTrigger(trigger: NotificationTrigger): string {
         task_rejected: "/tasks",
         cheat_detected: "/attendance",
         payslip_on_hold: "/payroll",
+        disciplinary_explanation_submitted: "/disciplinary",
+        // ─── Admin/HR → Employee notifications ──
+        employee_added: "/employees/manage",
+        status_changed: "/employees/manage",
+        resignation: "/employees/manage",
+        loan_created: "/loans",
+        loan_settled: "/loans",
+        loan_frozen: "/loans",
+        loan_unfrozen: "/loans",
+        disciplinary_case_created: "/disciplinary",
+        nte_issued: "/disciplinary",
+        nod_issued: "/disciplinary",
+        salary_approved: "/employees/manage",
+        salary_rejected: "/employees/manage",
     };
     return linkMap[trigger] || "/notifications";
 }
@@ -450,19 +478,24 @@ export const useNotificationsStore = create<NotificationsState>()(
                         }
                     } catch { /* best-effort */ }
 
-                    fetch("/api/push/send", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            employeeId: recipientEmployeeId,
-                            title: subject,
-                            body,
-                            url: pushUrl,
-                            tag: notificationId,
-                        }),
-                    }).catch((err) => {
-                        console.debug("[notifications] Push send failed (non-critical):", err);
-                    });
+                    try {
+                        const pushRequest = fetch("/api/push/send", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                employeeId: recipientEmployeeId,
+                                title: subject,
+                                body,
+                                url: pushUrl,
+                                tag: notificationId,
+                            }),
+                        });
+                        void pushRequest?.catch((err) => {
+                            console.debug("[notifications] Push send failed (non-critical):", err);
+                        });
+                    } catch {
+                        console.debug("[notifications] Push send failed (non-critical)");
+                    }
                 }
             },
 
@@ -550,16 +583,22 @@ export const useNotificationsStore = create<NotificationsState>()(
             resetToSeed: () => {
                 set({ logs: [], rules: [...DEFAULT_RULES], providerConfig: { ...DEFAULT_PROVIDER }, employeePrefs: {} });
                 // Sync defaults back to DB
-                void fetch("/api/settings/notifications", {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ rules: DEFAULT_RULES }),
-                }).catch(() => {});
-                void fetch("/api/settings/notifications", {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ providerConfig: DEFAULT_PROVIDER }),
-                }).catch(() => {});
+                try {
+                    const rulesRequest = fetch("/api/settings/notifications", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ rules: DEFAULT_RULES }),
+                    });
+                    void rulesRequest?.catch(() => {});
+                } catch { /* best-effort */ }
+                try {
+                    const providerRequest = fetch("/api/settings/notifications", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ providerConfig: DEFAULT_PROVIDER }),
+                    });
+                    void providerRequest?.catch(() => {});
+                } catch { /* best-effort */ }
             },
         })
 );

@@ -9,6 +9,8 @@ import type {
     NODDecision,
 } from "@/types";
 import { useAuditStore } from "./audit.store";
+import { useEmployeesStore } from "./employees.store";
+import { notifyDisciplinaryExplanationSubmitted, dispatchNotification } from "@/lib/notifications";
 
 interface DisciplinaryState {
     cases: DisciplinaryCase[];
@@ -24,7 +26,7 @@ interface DisciplinaryState {
     // NTE
     issueNTE: (caseId: string, data: { responseDeadline: string; issuedBy: string; documentId?: string }) => NTERecord | undefined;
     acknowledgeNTE: (nteId: string) => void;
-    submitExplanation: (nteId: string, explanation: string) => void;
+    submitExplanation: (nteId: string, explanation: string, submittedBy?: string) => void;
     markNoResponse: (nteId: string) => void;
 
     // NOD
@@ -111,6 +113,17 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     performedBy: data.createdBy,
                     afterSnapshot: { caseNumber: c.caseNumber, employeeId: c.employeeId, violationType: c.violationType },
                 });
+                // Notify the employee about the new disciplinary case
+                try {
+                    const emp = useEmployeesStore.getState().employees.find((e) => e.id === data.employeeId);
+                    if (emp) {
+                        dispatchNotification("disciplinary_case_created", {
+                            name: emp.name,
+                            caseNumber: c.caseNumber,
+                            violationType: c.violationType,
+                        }, emp.id, emp.email ?? undefined, emp.phone, undefined, { suppressToast: true });
+                    }
+                } catch { /* notification is best-effort */ }
                 return c;
             },
 
@@ -160,6 +173,17 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     performedBy: data.issuedBy,
                     afterSnapshot: { nteId: nte.id, deadline: nte.responseDeadline },
                 });
+                // Notify the employee about the NTE
+                try {
+                    const emp = useEmployeesStore.getState().employees.find((e) => e.id === c.employeeId);
+                    if (emp) {
+                        dispatchNotification("nte_issued", {
+                            name: emp.name,
+                            caseNumber: c.caseNumber,
+                            deadline: data.responseDeadline,
+                        }, emp.id, emp.email ?? undefined, emp.phone, undefined, { suppressToast: true });
+                    }
+                } catch { /* notification is best-effort */ }
                 return nte;
             },
 
@@ -178,15 +202,28 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     };
                 }),
 
-            submitExplanation: (nteId, explanation) =>
+            submitExplanation: (nteId, explanation, submittedBy) =>
                 set((s) => {
                     const nte = s.ntes.find((n) => n.id === nteId);
                     if (!nte) return s;
+                    const caseRecord = s.cases.find((c) => c.id === nte.caseId);
                     const ts = nowIso();
+                    const shouldNotify = nte.status !== "explanation_submitted";
                     useAuditStore.getState().log({
                         entityType: "disciplinary_case", entityId: nte.caseId, action: "nte_explained", performedBy: nte.employeeId,
                         afterSnapshot: { length: explanation.length },
                     });
+                    if (shouldNotify && caseRecord) {
+                        const employeeName = useEmployeesStore.getState().employees.find((e) => e.id === nte.employeeId)?.name ?? nte.employeeId;
+                        notifyDisciplinaryExplanationSubmitted({
+                            caseId: caseRecord.id,
+                            caseNumber: caseRecord.caseNumber,
+                            employeeId: nte.employeeId,
+                            employeeName,
+                            violationType: caseRecord.violationType,
+                            submittedByEmployeeId: submittedBy,
+                        });
+                    }
                     return {
                         ...s,
                         ntes: s.ntes.map((n) =>
@@ -259,6 +296,18 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                         entityType: "disciplinary_case", entityId: caseId, action: "case_closed", performedBy: data.issuedBy, reason: "no_violation",
                     });
                 }
+                // Notify the employee about the NOD
+                try {
+                    const emp = useEmployeesStore.getState().employees.find((e) => e.id === c.employeeId);
+                    if (emp) {
+                        const decisionLabel = data.decision.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                        dispatchNotification("nod_issued", {
+                            name: emp.name,
+                            caseNumber: c.caseNumber,
+                            decision: decisionLabel,
+                        }, emp.id, emp.email ?? undefined, emp.phone, undefined, { suppressToast: true });
+                    }
+                } catch { /* notification is best-effort */ }
                 return nod;
             },
 

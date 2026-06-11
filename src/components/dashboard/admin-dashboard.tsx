@@ -10,6 +10,7 @@ import { usePayrollStore } from "@/store/payroll.store";
 import { useLoansStore } from "@/store/loans.store";
 import { useEventsStore } from "@/store/events.store";
 import { useAuditStore } from "@/store/audit.store";
+import { useDisciplinaryStore } from "@/store/disciplinary.store";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
 import { formatCurrency, getInitials, formatDate } from "@/lib/format";
 import { forceRehydrate } from "@/services/sync.service";
@@ -22,6 +23,7 @@ import {
     Users, UserCheck, UserX, CalendarOff, ArrowUpRight,
     Clock, Banknote, FileText, ChevronRight, Cake,
     AlertCircle, CreditCard, Activity, UserPlus, ArrowDownRight,
+    Gavel,
 } from "lucide-react";
 import {
     ResponsiveContainer, XAxis, YAxis, CartesianGrid,
@@ -117,7 +119,8 @@ function KpiStatsRow() {
     const employees = useEmployeesStore((s) => s.employees);
     const logs = useAttendanceStore((s) => s.logs);
     const leaveRequests = useLeaveStore((s) => s.requests);
-    const overtimeRequests = useAttendanceStore((s) => s.overtimeRequests);
+    const disciplinaryCases = useDisciplinaryStore((s) => s.cases);
+    const rh = useRoleHref();
 
     useEffect(() => {
         forceRehydrate().catch(() => { /* keep current dashboard state if refresh fails */ });
@@ -168,7 +171,8 @@ function KpiStatsRow() {
     const absentCount = dayLogs.filter((l) => l.status === "absent").length;
 
     const pendingLeaves = leaveRequests.filter((r) => r.status === "pending").length;
-    const pendingOT = overtimeRequests.filter((r) => r.status === "pending").length;
+    const openDisciplinaryCases = disciplinaryCases.filter((c) => c.status !== "closed").length;
+    const awaitingDisciplinaryResponse = disciplinaryCases.filter((c) => c.status === "nte_issued" || c.status === "nte_acknowledged").length;
 
     const newThisMonth = useMemo(() => {
         return employees.filter((e) => {
@@ -215,6 +219,15 @@ function KpiStatsRow() {
             icon: CalendarOff,
             iconBg: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
         },
+        {
+            label: "Disciplinary Cases",
+            value: openDisciplinaryCases,
+            change: `${awaitingDisciplinaryResponse} awaiting employee response`,
+            changeType: openDisciplinaryCases > 0 ? "warning" as const : "neutral" as const,
+            icon: Gavel,
+            iconBg: "bg-red-500/10 text-red-600 dark:text-red-400",
+            href: rh("/disciplinary"),
+        },
     ];
 
     return (
@@ -222,7 +235,7 @@ function KpiStatsRow() {
             <p className="text-sm text-muted-foreground">
                 Attendance data as of: <span className="font-medium text-foreground">{(() => { try { return format(parseISO(reportingDate), "MMMM d, yyyy"); } catch { return reportingDate; } })()}</span>
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 {stats.map((stat) => {
                     const cardContent = (
                         <Card
@@ -285,9 +298,15 @@ function KpiStatsRow() {
                     );
 
                     return (
-                        <div key={stat.label}>
-                            {cardContent}
-                        </div>
+                        stat.href ? (
+                            <Link key={stat.label} href={stat.href} className="block">
+                                {cardContent}
+                            </Link>
+                        ) : (
+                            <div key={stat.label}>
+                                {cardContent}
+                            </div>
+                        )
                     );
                 })}
             </div>
@@ -760,7 +779,6 @@ function PayrollSummaryCard() {
 
     const totalGross = payslips.reduce((sum, p) => sum + (p.grossPay || 0), 0);
     const totalNet = payslips.reduce((sum, p) => sum + (p.netPay || 0), 0);
-    const totalDeductions = totalGross - totalNet;
 
     const statusCounts = {
         draft: payslips.filter((p) => p.status === "draft").length,
@@ -970,7 +988,6 @@ function BirthdaysCard() {
     }, [employees]);
 
     const today = new Date().getDate();
-    const currentMonth = new Date().getMonth() + 1;
 
     return (
         <Card className="border border-border/50 rounded-2xl shadow-sm">
@@ -1041,7 +1058,7 @@ function RecentActivityCard() {
     const loans = useLoansStore((s) => s.loans);
     const rh = useRoleHref();
 
-    const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
+    const getEmpName = React.useCallback((id: string) => employees.find((e) => e.id === id)?.name || id, [employees]);
 
     // Build a unified activity feed from multiple data sources
     const activityItems = useMemo(() => {
@@ -1123,7 +1140,7 @@ function RecentActivityCard() {
         return items
             .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""))
             .slice(0, 10);
-    }, [auditLogs, leaveRequests, attendanceLogs, payslips, loans, employees, getEmpName]);
+    }, [auditLogs, leaveRequests, attendanceLogs, payslips, loans, getEmpName]);
 
     return (
         <Card className="border border-border/50 rounded-2xl shadow-sm">

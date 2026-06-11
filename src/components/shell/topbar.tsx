@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { getInitials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/types";
+import { getNotificationBadgeClass, getNotificationIconClass, getNotificationLabel } from "@/lib/notification-styles";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import {
@@ -254,8 +255,23 @@ export function Topbar() {
                                                 handleNotificationItemClick(notif.id, notif.link);
                                             }}
                                         >
-                                            <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                                            <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
+                                                // Color the unread dot using the notification tone
+                                                // (falls back to primary for unknown types)
+                                                getNotificationIconClass(notif.type).includes("red")
+                                                    ? "bg-red-500"
+                                                    : getNotificationIconClass(notif.type).includes("emerald")
+                                                        ? "bg-emerald-500"
+                                                        : getNotificationIconClass(notif.type).includes("blue")
+                                                            ? "bg-blue-500"
+                                                            : "bg-slate-500"
+                                            }`} />
                                             <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-1.5 mb-0.5">
+                                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium border ${getNotificationBadgeClass(notif.type)}`}>
+                                                        {getNotificationLabel(notif.type)}
+                                                    </span>
+                                                </div>
                                                 <div className="font-medium text-sm line-clamp-1">{notif.subject}</div>
                                                 <div className="text-xs text-muted-foreground line-clamp-2 break-all">{notif.body}</div>
                                                 <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70 mt-0.5">

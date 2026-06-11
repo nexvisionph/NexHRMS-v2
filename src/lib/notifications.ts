@@ -17,6 +17,7 @@ const TYPE_LINK_MAP: Record<string, string> = {
     location_disabled: "/attendance",
     loan_reminder: "/loans",
     overtime_submitted: "/attendance",
+    disciplinary_explanation_submitted: "/disciplinary",
     birthday: "/dashboard",
     contract_expiry: "/employees/manage",
     daily_summary: "/dashboard",
@@ -28,6 +29,19 @@ const TYPE_LINK_MAP: Record<string, string> = {
     task_verified: "/tasks",
     task_rejected: "/tasks",
     payslip_on_hold: "/payroll",
+    // ─── Admin/HR → Employee notifications ──
+    employee_added: "/employees/manage",
+    status_changed: "/employees/manage",
+    resignation: "/employees/manage",
+    loan_created: "/loans",
+    loan_settled: "/loans",
+    loan_frozen: "/loans",
+    loan_unfrozen: "/loans",
+    disciplinary_case_created: "/disciplinary",
+    nte_issued: "/disciplinary",
+    nod_issued: "/disciplinary",
+    salary_approved: "/employees/manage",
+    salary_rejected: "/employees/manage",
 };
 
 interface SendNotificationParams {
@@ -279,6 +293,41 @@ export function notifyLocationDisabled(params: {
     const vars = { name: params.employeeName, time: params.time };
     admins.forEach((admin) => {
         dispatchNotification("location_disabled", vars, admin.id, admin.email ?? undefined);
+    });
+}
+
+export function notifyDisciplinaryExplanationSubmitted(params: {
+    caseId: string;
+    caseNumber: string;
+    employeeId: string;
+    employeeName: string;
+    violationType: string;
+    submittedByEmployeeId?: string;
+}): void {
+    const employees = useEmployeesStore.getState().employees;
+    const recipients = employees.filter(
+        (e) =>
+            (e.role === "admin" || e.role === "hr") &&
+            e.status === "active" &&
+            e.id !== params.submittedByEmployeeId
+    );
+    if (recipients.length === 0) return;
+
+    const vars = {
+        name: params.employeeName,
+        caseNumber: params.caseNumber,
+        violationType: params.violationType,
+    };
+
+    recipients.forEach((recipient) => {
+        dispatchNotification(
+            "disciplinary_explanation_submitted",
+            vars,
+            recipient.id,
+            recipient.email ?? undefined,
+            undefined,
+            `/disciplinary/${params.caseId}`
+        );
     });
 }
 
