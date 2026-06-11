@@ -213,7 +213,7 @@ export function BackfillModal({ open, onOpenChange }: BackfillModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Calculator className="h-5 w-5" />
@@ -229,9 +229,9 @@ export function BackfillModal({ open, onOpenChange }: BackfillModalProps) {
 
         {/* ─── Step 1: Select ─────────────────────────────────────────── */}
         {step === "select" && (
-          <div className="flex-1 overflow-hidden flex flex-col gap-4">
+          <div className="flex-1 overflow-y-auto flex flex-col gap-4">
             {/* Date Range + Cutoff */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
                 <label className="text-sm font-medium">Start Date</label>
                 <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="mt-1" />
@@ -262,9 +262,9 @@ export function BackfillModal({ open, onOpenChange }: BackfillModalProps) {
 
             {/* Detected Cycles */}
             {detectedCycles.length > 0 && (
-              <div className="bg-muted/30 rounded-lg p-3">
+              <div className="bg-muted/30 rounded-lg p-2">
                 <p className="text-xs font-medium mb-1">Detected Cycles ({detectedCycles.length}):</p>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1 max-h-[80px] overflow-y-auto">
                   {detectedCycles.map((c, i) => (
                     <Badge key={i} variant="secondary" className="text-[10px]">
                       {c.periodStart} → {c.periodEnd}
