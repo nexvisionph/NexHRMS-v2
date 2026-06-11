@@ -17,13 +17,20 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Gavel, Plus, Search, AlertTriangle, FileText, ShieldAlert, Clock, CheckCircle2, Hourglass, TrendingUp, Users, X } from "lucide-react";
+import {
+    Gavel, Plus, Search, Eye, Pencil, Trash2,
+    AlertTriangle, FileText, ShieldAlert, Clock, CheckCircle2, Hourglass, TrendingUp, Users, X,
+} from "lucide-react";
 import { toast } from "sonner";
-import type { DisciplinaryCaseStatus } from "@/types";
+import type { DisciplinaryCase, DisciplinaryCaseStatus } from "@/types";
 
 const STATUS_LABELS: Record<DisciplinaryCaseStatus, string> = {
     open: "Open",
@@ -54,14 +61,19 @@ const STATUS_TONE: Record<DisciplinaryCaseStatus, string> = {
 export default function DisciplinaryAdminView() {
     const cases = useDisciplinaryStore((s) => s.cases);
     const createCase = useDisciplinaryStore((s) => s.createCase);
+    const updateCase = useDisciplinaryStore((s) => s.updateCase);
+    const deleteCase = useDisciplinaryStore((s) => s.deleteCase);
     const getDashboardStats = useDisciplinaryStore((s) => s.getDashboardStats);
     const stats = useMemo(() => getDashboardStats(), [cases, getDashboardStats]);
     const { employees } = useEmployeesStore();
     const currentUser = useAuthStore((s) => s.currentUser);
     const rh = useRoleHref();
 
+    // ── Search / filter ────────────────────────────────────────
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState<"all" | DisciplinaryCaseStatus>("all");
+
+    // ── Create form ────────────────────────────────────────────
     const [createOpen, setCreateOpen] = useState(false);
     const [form, setForm] = useState({
         employeeId: "",
@@ -74,6 +86,22 @@ export default function DisciplinaryAdminView() {
     const [employeeSearch, setEmployeeSearch] = useState("");
     const [showEmpDropdown, setShowEmpDropdown] = useState(false);
 
+    // ── Edit state ─────────────────────────────────────────────
+    const [editOpen, setEditOpen] = useState(false);
+    const [editingCase, setEditingCase] = useState<DisciplinaryCase | null>(null);
+    const [editForm, setEditForm] = useState({
+        violationType: "",
+        policyReference: "",
+        incidentDate: "",
+        incidentLocation: "",
+        description: "",
+        status: "open" as DisciplinaryCaseStatus,
+    });
+
+    // ── Delete state ───────────────────────────────────────────
+    const [deleteTarget, setDeleteTarget] = useState<DisciplinaryCase | null>(null);
+
+    // ── Derived ────────────────────────────────────────────────
     const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
 
     const filteredEmpOptions = useMemo(() => {
@@ -100,6 +128,7 @@ export default function DisciplinaryAdminView() {
             .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     }, [cases, search, statusFilter, empMap]);
 
+    // ── Handlers ───────────────────────────────────────────────
     const handleCreate = () => {
         if (!form.employeeId) { toast.error("Select an employee"); return; }
         if (!form.violationType.trim()) { toast.error("Violation type is required"); return; }
@@ -127,6 +156,43 @@ export default function DisciplinaryAdminView() {
         setEmployeeSearch("");
     };
 
+    const handleOpenEdit = (c: DisciplinaryCase) => {
+        setEditingCase(c);
+        setEditForm({
+            violationType: c.violationType,
+            policyReference: c.policyReference ?? "",
+            incidentDate: c.incidentDate,
+            incidentLocation: c.incidentLocation ?? "",
+            description: c.description,
+            status: c.status,
+        });
+        setEditOpen(true);
+    };
+
+    const handleSaveEdit = () => {
+        if (!editingCase) return;
+        if (!editForm.violationType.trim()) { toast.error("Violation type is required"); return; }
+        if (!editForm.description.trim()) { toast.error("Description is required"); return; }
+        updateCase(editingCase.id, {
+            violationType: editForm.violationType.trim(),
+            policyReference: editForm.policyReference.trim() || undefined,
+            incidentDate: editForm.incidentDate,
+            incidentLocation: editForm.incidentLocation.trim() || undefined,
+            description: editForm.description.trim(),
+            status: editForm.status,
+        }, currentUser.id);
+        toast.success(`Case ${editingCase.caseNumber} updated`);
+        setEditOpen(false);
+        setEditingCase(null);
+    };
+
+    const handleDelete = () => {
+        if (!deleteTarget) return;
+        deleteCase(deleteTarget.id, currentUser.id);
+        toast.success(`Case ${deleteTarget.caseNumber} deleted`);
+        setDeleteTarget(null);
+    };
+
     return (
         <div className="space-y-6 p-4 md:p-6">
             {/* Header */}
@@ -151,43 +217,12 @@ export default function DisciplinaryAdminView() {
                         <span className="ml-auto text-xs text-muted-foreground">{stats.total} case{stats.total !== 1 ? "s" : ""} total</span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y sm:divide-y-0 divide-x-0 sm:divide-x">
-                        <SummaryTile
-                            label="Open"
-                            value={stats.open}
-                            icon={AlertTriangle}
-                            accent={stats.open > 0 ? "amber" : "muted"}
-                        />
-                        <SummaryTile
-                            label="Awaiting NTE Response"
-                            value={stats.awaitingExplanation}
-                            icon={Hourglass}
-                            accent={stats.awaitingExplanation > 0 ? "orange" : "muted"}
-                        />
-                        <SummaryTile
-                            label="Under Review"
-                            value={stats.forReview}
-                            icon={Clock}
-                            accent={stats.forReview > 0 ? "blue" : "muted"}
-                        />
-                        <SummaryTile
-                            label="NOD Pending"
-                            value={stats.nodPending}
-                            icon={FileText}
-                            accent={stats.nodPending > 0 ? "orange" : "muted"}
-                        />
-                        <SummaryTile
-                            label="Sanction Active"
-                            value={stats.suspensionsActive}
-                            icon={ShieldAlert}
-                            accent={stats.suspensionsActive > 0 ? "red" : "muted"}
-                        />
-                        <SummaryTile
-                            label="Closed"
-                            value={stats.closed}
-                            icon={CheckCircle2}
-                            accent="emerald"
-                            isLast
-                        />
+                        <SummaryTile label="Open" value={stats.open} icon={AlertTriangle} accent={stats.open > 0 ? "amber" : "muted"} />
+                        <SummaryTile label="Awaiting NTE Response" value={stats.awaitingExplanation} icon={Hourglass} accent={stats.awaitingExplanation > 0 ? "orange" : "muted"} />
+                        <SummaryTile label="Under Review" value={stats.forReview} icon={Clock} accent={stats.forReview > 0 ? "blue" : "muted"} />
+                        <SummaryTile label="NOD Pending" value={stats.nodPending} icon={FileText} accent={stats.nodPending > 0 ? "orange" : "muted"} />
+                        <SummaryTile label="Sanction Active" value={stats.suspensionsActive} icon={ShieldAlert} accent={stats.suspensionsActive > 0 ? "red" : "muted"} />
+                        <SummaryTile label="Closed" value={stats.closed} icon={CheckCircle2} accent="emerald" isLast />
                     </div>
                 </CardContent>
             </Card>
@@ -222,7 +257,7 @@ export default function DisciplinaryAdminView() {
                                     <TableHead>Violation</TableHead>
                                     <TableHead>Incident</TableHead>
                                     <TableHead>Status</TableHead>
-                                    <TableHead className="text-right text-center">Actions</TableHead>
+                                    <TableHead className="text-center">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -236,7 +271,7 @@ export default function DisciplinaryAdminView() {
                                     rows.map((c) => {
                                         const emp = empMap.get(c.employeeId);
                                         return (
-                                            <TableRow key={c.id}>
+                                            <TableRow key={c.id} className="group">
                                                 <TableCell className="font-mono text-sm font-medium">{c.caseNumber}</TableCell>
                                                 <TableCell>{emp?.name ?? c.employeeId}</TableCell>
                                                 <TableCell className="text-sm">{c.violationType}</TableCell>
@@ -246,10 +281,20 @@ export default function DisciplinaryAdminView() {
                                                         {STATUS_LABELS[c.status]}
                                                     </Badge>
                                                 </TableCell>
-                                                <TableCell className="text-right">
-                                                    <Link href={rh(`/disciplinary/${c.id}`)}>
-                                                        <Button size="sm" variant="outline">Open</Button>
-                                                    </Link>
+                                                <TableCell>
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <Link href={rh(`/disciplinary/${c.id}`)}>
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7" title="View">
+                                                                <Eye className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </Link>
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit" onClick={() => handleOpenEdit(c)}>
+                                                            <Pencil className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-500/10" title="Delete" onClick={() => setDeleteTarget(c)}>
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         );
@@ -261,7 +306,7 @@ export default function DisciplinaryAdminView() {
                 </CardContent>
             </Card>
 
-            {/* Create Case Dialog */}
+            {/* ── Create Case Dialog ─────────────────────────────── */}
             <Dialog open={createOpen} onOpenChange={(v) => { setCreateOpen(v); if (!v) { setEmployeeSearch(""); setShowEmpDropdown(false); } }}>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
@@ -368,9 +413,91 @@ export default function DisciplinaryAdminView() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* ── Edit Case Dialog ───────────────────────────────── */}
+            <Dialog open={editOpen} onOpenChange={(v) => { setEditOpen(v); if (!v) setEditingCase(null); }}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>
+                            Edit Case - {" "}
+                            <span className="font-mono text-sm text-muted-foreground">{editingCase?.caseNumber}</span>
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <Label>Violation Type</Label>
+                                <Input value={editForm.violationType} placeholder="e.g. Tardiness, Insubordination"
+                                    onChange={(e) => setEditForm((f) => ({ ...f, violationType: e.target.value }))} />
+                            </div>
+                            <div>
+                                <Label>Policy Reference (optional)</Label>
+                                <Input value={editForm.policyReference} placeholder="e.g. Code of Conduct §4.2"
+                                    onChange={(e) => setEditForm((f) => ({ ...f, policyReference: e.target.value }))} />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <Label>Incident Date</Label>
+                                <Input type="date" value={editForm.incidentDate}
+                                    max={new Date().toISOString().slice(0, 10)}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, incidentDate: e.target.value }))} />
+                            </div>
+                            <div>
+                                <Label>Location (optional)</Label>
+                                <Input value={editForm.incidentLocation}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, incidentLocation: e.target.value }))} />
+                            </div>
+                        </div>
+                        <div>
+                            <Label>Status</Label>
+                            <Select value={editForm.status} onValueChange={(v) => setEditForm((f) => ({ ...f, status: v as DisciplinaryCaseStatus }))}>
+                                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    {(Object.keys(STATUS_LABELS) as DisciplinaryCaseStatus[]).map((s) => (
+                                        <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label className="text-sm font-medium">Description</Label>
+                            <Textarea rows={6} value={editForm.description}
+                                onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                                placeholder="Detailed description of the incident…"
+                                className="resize-none max-h-[9rem] overflow-y-auto" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSaveEdit}>Save Changes</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── Delete Confirmation ────────────────────────────── */}
+            <AlertDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Case</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to permanently delete case{" "}
+                            <strong>{deleteTarget?.caseNumber}</strong>? This will also remove all associated NTE and NOD records and cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={handleDelete}>
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
+
+// ── Summary tile ───────────────────────────────────────────────────────────────
 
 type SummaryAccent = "amber" | "orange" | "red" | "blue" | "emerald" | "muted";
 const ACCENT_STYLES: Record<SummaryAccent, { value: string; icon: string; dot: string }> = {

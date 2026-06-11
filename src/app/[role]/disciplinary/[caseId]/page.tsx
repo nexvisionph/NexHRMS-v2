@@ -1,7 +1,6 @@
 "use client";
 
 import { use, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDisciplinaryStore } from "@/store/disciplinary.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -24,9 +23,10 @@ import {
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Gavel, Mail, MessageSquare, ShieldAlert, CheckCircle2, FileText, X } from "lucide-react";
+import { Gavel, Mail, MessageSquare, ShieldAlert, CheckCircle2, FileText, X, Pencil, Trash2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import type { NODDecision } from "@/types";
+import Link from "next/link";
 
 export default function DisciplinaryCasePage({ params }: { params: Promise<{ role: string; caseId: string }> }) {
     const { role, caseId } = use(params);
@@ -44,6 +44,7 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
     const issueNOD = useDisciplinaryStore((s) => s.issueNOD);
     const acknowledgeNOD = useDisciplinaryStore((s) => s.acknowledgeNOD);
     const closeCase = useDisciplinaryStore((s) => s.closeCase);
+    const deleteCase = useDisciplinaryStore((s) => s.deleteCase);
 
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
@@ -78,12 +79,14 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
     if (!c) {
         return (
             <div className="p-6">
-                <Card><CardContent className="p-8 text-center space-y-3">
-                    <p className="text-muted-foreground">Case not found.</p>
-                    <Link href={rh("/disciplinary")}>
-                        <Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4 mr-2" /> Back to cases</Button>
-                    </Link>
-                </CardContent></Card>
+                <Card className="border border-border/50">
+                    <CardContent className="p-8 text-center space-y-3">
+                        <p className="text-muted-foreground">Case not found.</p>
+                        <Link href={rh("/disciplinary")}>
+                            <Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4 mr-2" /> Back to cases</Button>
+                        </Link>
+                    </CardContent>
+                </Card>
             </div>
         );
     }
@@ -96,13 +99,15 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
     if (!isStaff && !isCaseEmployee) {
         return (
             <div className="p-6">
-                <Card><CardContent className="p-8 text-center space-y-3">
-                    <ShieldAlert className="h-8 w-8 text-muted-foreground/40 mx-auto" />
-                    <p className="text-muted-foreground">You can only view disciplinary cases linked to your employee record.</p>
-                    <Link href={rh("/disciplinary")}>
-                        <Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4 mr-2" /> Back to my cases</Button>
-                    </Link>
-                </CardContent></Card>
+                <Card className="border border-border/50">
+                    <CardContent className="p-8 text-center space-y-3">
+                        <ShieldAlert className="h-8 w-8 text-muted-foreground/40 mx-auto" />
+                        <p className="text-muted-foreground">You can only view disciplinary cases linked to your employee record.</p>
+                        <Link href={rh("/disciplinary")}>
+                            <Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4 mr-2" /> Back to my cases</Button>
+                        </Link>
+                    </CardContent>
+                </Card>
             </div>
         );
     }
@@ -138,178 +143,255 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
         setNodOpen(false);
     };
 
-    return (
-        <div className="space-y-6 p-4 md:p-6 max-w-5xl mx-auto">
-            {/* Header */}
-            <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                    <Button variant="ghost" size="sm" onClick={() => router.push(rh("/disciplinary"))}>
-                        <ArrowLeft className="h-4 w-4 mr-2" /> Back
-                    </Button>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <Gavel className="h-6 w-6 text-primary" /> {c.caseNumber}
-                    </h1>
-                    <p className="text-sm text-muted-foreground">{emp?.name ?? c.employeeId} · {c.violationType}</p>
-                </div>
-                <Badge className="capitalize">{c.status.replace(/_/g, " ")}</Badge>
-            </div>
+    const statusVariantMap: Record<string, string> = {
+        open: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+        closed: "bg-muted text-muted-foreground",
+        nte_issued: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+        nod_issued: "bg-violet-500/15 text-violet-700 dark:text-violet-400",
+    };
+    const statusClass = statusVariantMap[c.status] ?? "bg-muted text-muted-foreground";
 
-            {/* Case details */}
-            <Card>
-                <CardHeader><CardTitle className="text-base">Case Details</CardTitle></CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                    <Row label="Employee" value={emp?.name ?? c.employeeId} />
-                    <Row label="Department" value={emp?.department ?? "—"} />
-                    <Row label="Violation" value={c.violationType} />
-                    <Row label="Policy Reference" value={c.policyReference ?? "—"} />
-                    <Row label="Incident Date" value={new Date(c.incidentDate).toLocaleDateString()} />
-                    <Row label="Location" value={c.incidentLocation ?? "—"} />
-                    <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Description</div>
-                        <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3">{c.description}</p>
+    return (
+        <div className="space-y-6">
+            {/* ── Hero / header card ─────────────────────────────── */}
+            <Card className="border border-border/50">
+                <CardContent className="p-6">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        {/* Icon blob */}
+                        <div className="h-14 w-14 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                            <Gavel className="h-7 w-7 text-primary" />
+                        </div>
+
+                        {/* Title block */}
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 flex-wrap">
+                                <h1 className="text-2xl font-bold">{c.caseNumber}</h1>
+                                <Badge variant="secondary" className={`${statusClass}`}>
+                                    {c.status === "nte_issued" ? "NTE Issued"
+                                        : c.status === "nod_issued" ? "NOD Issued"
+                                        : c.status.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                                </Badge>
+                            </div>
+                            <p className="text-muted-foreground mt-1 text-sm">
+                                {emp?.name ?? c.employeeId} · {c.violationType}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                Incident: {new Date(c.incidentDate).toLocaleDateString()}
+                            </p>
+                        </div>
+
+                        {/* Action buttons */}
+                        {isStaff && (
+                            <div className="flex items-center gap-2 shrink-0">
+                                {/* Edit */}
+                                <Button variant="outline" size="sm" className="gap-1.5">
+                                    <Pencil className="h-3.5 w-3.5" /> Edit
+                                </Button>
+
+                                {/* Delete */}
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="outline" size="sm" className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30">
+                                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Delete this case?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                This will permanently delete {c.caseNumber} and all associated records. This action cannot be undone.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction
+                                                className="bg-red-600 hover:bg-red-700"
+                                                onClick={() => {
+                                                    deleteCase(c.id, currentUser.id);
+                                                    toast.success("Case deleted");
+                                                    router.push(rh("/disciplinary"));
+                                                }}
+                                            >
+                                                Delete Case
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+
+                                {/* Close Case */}
+                                {c.status !== "closed" && (
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                            <Button size="sm" className="gap-1.5 bg-black hover:bg-black/80 text-white dark:bg-white dark:text-black dark:hover:bg-white/80">
+                                                <X className="h-3.5 w-3.5" /> Close Case
+                                            </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                                <AlertDialogTitle>Close this case?</AlertDialogTitle>
+                                                <AlertDialogDescription>
+                                                    This marks {c.caseNumber} as closed. You can still view it in audit logs.
+                                                </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                <AlertDialogAction onClick={() => { closeCase(c.id, currentUser.id); toast.success("Case closed"); }}>
+                                                    Close Case
+                                                </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </CardContent>
             </Card>
 
-            {/* Timeline / actions */}
-            <Card>
-                <CardHeader><CardTitle className="text-base">Timeline & Actions</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                    {/* Step: Issue NTE */}
-                    <Step
-                        active={c.status === "open"}
-                        done={!!nte}
-                        title="1. Issue Notice to Explain (NTE)"
-                        icon={Mail}
-                        body={
-                            nte ? (
-                                <div className="text-sm space-y-1">
-                                    <div>Deadline: <span className="font-medium">{new Date(nte.responseDeadline).toLocaleDateString()}</span></div>
-                                    <div>Issued: <span className="text-muted-foreground">{new Date(nte.issuedAt).toLocaleString()}</span></div>
-                                    {nte.acknowledgedAt && <div>Acknowledged: <span className="text-muted-foreground">{new Date(nte.acknowledgedAt).toLocaleString()}</span></div>}
-                                </div>
-                            ) : isStaff ? (
-                                <Button size="sm" onClick={() => setNteOpen(true)}>Issue NTE</Button>
-                            ) : (
-                                <p className="text-sm text-muted-foreground">Waiting for HR to issue the notice.</p>
-                            )
-                        }
-                    />
+            {/* ── Two-column body ────────────────────────────────── */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left — Case Details */}
+                <Card className="border border-border/50">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                            <FileText className="h-4 w-4" /> Case Details
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-0 text-sm">
+                        <Row label="Employee" value={emp?.name ?? c.employeeId} />
+                        <Row label="Department" value={emp?.department ?? "—"} />
+                        <Row label="Violation" value={c.violationType} />
+                        <Row label="Policy Reference" value={c.policyReference ?? "—"} />
+                        <Row label="Incident Date" value={new Date(c.incidentDate).toLocaleDateString()} />
+                        <Row label="Location" value={c.incidentLocation ?? "—"} />
+                        <div className="py-2 border-b last:border-0">
+                            <span className="text-xs uppercase tracking-wide text-muted-foreground block mb-1.5">Description</span>
+                            <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-sm leading-relaxed">{c.description}</p>
+                        </div>
+                    </CardContent>
+                </Card>
 
-                    {/* Step: Acknowledge NTE */}
-                    {nte && (
+                {/* Right — Timeline & Actions */}
+                <Card className="border border-border/50">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                            <Gavel className="h-4 w-4" /> Timeline &amp; Actions
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        {/* Step 1: Issue NTE */}
                         <Step
-                            active={c.status === "nte_issued"}
-                            done={c.status !== "nte_issued" && c.status !== "open"}
-                            title="2. Employee Acknowledges NTE"
-                            icon={CheckCircle2}
+                            active={c.status === "open"}
+                            done={!!nte}
+                            title="1. Issue Notice to Explain (NTE)"
+                            icon={Mail}
                             body={
-                                nte.acknowledgedAt ? (
-                                    <p className="text-sm text-muted-foreground">Acknowledged on {new Date(nte.acknowledgedAt).toLocaleString()}</p>
-                                ) : isStaff || isCaseEmployee ? (
-                                    <Button size="sm" variant="outline" onClick={() => { acknowledgeNTE(nte.id); toast.success(isStaff ? "Marked as acknowledged" : "NTE acknowledged"); }}>
-                                        {isStaff ? "Mark Acknowledged" : "Acknowledge NTE"}
-                                    </Button>
+                                nte ? (
+                                    <div className="text-sm space-y-1">
+                                        <div>Deadline: <span className="font-medium">{new Date(nte.responseDeadline).toLocaleDateString()}</span></div>
+                                        <div>Issued: <span className="text-muted-foreground">{new Date(nte.issuedAt).toLocaleString()}</span></div>
+                                        {nte.acknowledgedAt && <div>Acknowledged: <span className="text-muted-foreground">{new Date(nte.acknowledgedAt).toLocaleString()}</span></div>}
+                                    </div>
+                                ) : isStaff ? (
+                                    <Button size="sm" onClick={() => setNteOpen(true)}>Issue NTE</Button>
                                 ) : (
-                                    <p className="text-sm text-muted-foreground">Waiting for employee acknowledgment.</p>
+                                    <p className="text-sm text-muted-foreground">Waiting for HR to issue the notice.</p>
                                 )
                             }
                         />
-                    )}
 
-                    {/* Step: Submit Explanation */}
-                    {nte && nte.acknowledgedAt && (
-                        <Step
-                            active={c.status === "nte_acknowledged"}
-                            done={["explanation_submitted", "no_response", "under_review", "nod_issued", "nod_acknowledged", "sanction_active", "closed"].includes(c.status)}
-                            title="3. Employee Submits Explanation"
-                            icon={MessageSquare}
-                            body={
-                                nte.employeeExplanation ? (
-                                    <div className="text-sm">
-                                        <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3 mb-1">{nte.employeeExplanation}</p>
-                                        <p className="text-xs text-muted-foreground">Submitted {new Date(nte.explanationSubmittedAt!).toLocaleString()}</p>
-                                    </div>
-                                ) : nte.status === "no_response" ? (
-                                    <p className="text-sm text-orange-700">Marked as no-response.</p>
-                                ) : isStaff || isCaseEmployee ? (
-                                    <div className="flex gap-2">
-                                        <Button size="sm" onClick={() => setExplanationOpen(true)}>{isStaff ? "Record Explanation" : "Submit Explanation"}</Button>
-                                        {isStaff && (
-                                            <Button size="sm" variant="outline" onClick={() => { markNoResponse(nte.id); toast.success("Marked as no-response"); }}>
-                                                Mark No-Response
+                        {/* Step 2: Acknowledge NTE */}
+                        {nte && (
+                            <Step
+                                active={c.status === "nte_issued"}
+                                done={c.status !== "nte_issued" && c.status !== "open"}
+                                title="2. Employee Acknowledges NTE"
+                                icon={CheckCircle2}
+                                body={
+                                    nte.acknowledgedAt ? (
+                                        <p className="text-sm text-muted-foreground">Acknowledged on {new Date(nte.acknowledgedAt).toLocaleString()}</p>
+                                    ) : isStaff || isCaseEmployee ? (
+                                        <Button size="sm" variant="outline" onClick={() => { acknowledgeNTE(nte.id); toast.success(isStaff ? "Marked as acknowledged" : "NTE acknowledged"); }}>
+                                            {isStaff ? "Mark Acknowledged" : "Acknowledge NTE"}
+                                        </Button>
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground">Waiting for employee acknowledgment.</p>
+                                    )
+                                }
+                            />
+                        )}
+
+                        {/* Step 3: Submit Explanation */}
+                        {nte && nte.acknowledgedAt && (
+                            <Step
+                                active={c.status === "nte_acknowledged"}
+                                done={["explanation_submitted", "no_response", "under_review", "nod_issued", "nod_acknowledged", "sanction_active", "closed"].includes(c.status)}
+                                title="3. Employee Submits Explanation"
+                                icon={MessageSquare}
+                                body={
+                                    nte.employeeExplanation ? (
+                                        <div className="text-sm">
+                                            <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3 mb-1">{nte.employeeExplanation}</p>
+                                            <p className="text-xs text-muted-foreground">Submitted {new Date(nte.explanationSubmittedAt!).toLocaleString()}</p>
+                                        </div>
+                                    ) : nte.status === "no_response" ? (
+                                        <p className="text-sm text-orange-700">Marked as no-response.</p>
+                                    ) : isStaff || isCaseEmployee ? (
+                                        <div className="flex gap-2">
+                                            <Button size="sm" onClick={() => setExplanationOpen(true)}>{isStaff ? "Record Explanation" : "Submit Explanation"}</Button>
+                                            {isStaff && (
+                                                <Button size="sm" variant="outline" onClick={() => { markNoResponse(nte.id); toast.success("Marked as no-response"); }}>
+                                                    Mark No-Response
+                                                </Button>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground">Waiting for employee explanation.</p>
+                                    )
+                                }
+                            />
+                        )}
+
+                        {/* Step 4: Move to Review */}
+                        {isStaff && (c.status === "explanation_submitted" || c.status === "no_response") && (
+                            <Step active done={false} title="4. Review by HR" icon={FileText}
+                                body={<Button size="sm" variant="outline" onClick={() => { moveToReview(c.id); toast.success("Moved to under review"); }}>Move to Under Review</Button>}
+                            />
+                        )}
+
+                        {/* Step 5: Issue NOD */}
+                        {isStaff && !nod && (c.status === "under_review" || c.status === "explanation_submitted" || c.status === "no_response") && (
+                            <Step active done={false} title="5. Issue Notice of Decision (NOD)" icon={ShieldAlert}
+                                body={<Button size="sm" onClick={() => setNodOpen(true)}>Issue NOD</Button>}
+                            />
+                        )}
+
+                        {/* Step 5: NOD details */}
+                        {nod && (
+                            <Step active={c.status === "nod_issued"} done={c.status !== "nod_issued"}
+                                title="5. Notice of Decision Issued" icon={ShieldAlert}
+                                body={
+                                    <div className="text-sm space-y-1">
+                                        <div>Decision: <Badge variant="secondary" className="capitalize">{nod.decision.replace(/_/g, " ")}</Badge></div>
+                                        <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3">{nod.decisionDetails}</p>
+                                        {nod.sanctionStartDate && <div>Sanction: {nod.sanctionStartDate} → {nod.sanctionEndDate ?? "—"}</div>}
+                                        {!nod.acknowledgedAt && nod.decision !== "no_violation" && (isStaff || isCaseEmployee) && (
+                                            <Button size="sm" variant="outline" onClick={() => { acknowledgeNOD(nod.id); toast.success(isStaff ? "Marked as acknowledged" : "NOD acknowledged"); }}>
+                                                {isStaff ? "Mark Acknowledged" : "Acknowledge NOD"}
                                             </Button>
                                         )}
+                                        {nod.acknowledgedAt && <p className="text-xs text-muted-foreground">Acknowledged {new Date(nod.acknowledgedAt).toLocaleString()}</p>}
                                     </div>
-                                ) : (
-                                    <p className="text-sm text-muted-foreground">Waiting for employee explanation.</p>
-                                )
-                            }
-                        />
-                    )}
+                                }
+                            />
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
 
-                    {/* Step: Move to Review */}
-                    {isStaff && (c.status === "explanation_submitted" || c.status === "no_response") && (
-                        <Step active done={false} title="4. Review by HR" icon={FileText}
-                            body={<Button size="sm" variant="outline" onClick={() => { moveToReview(c.id); toast.success("Moved to under review"); }}>Move to Under Review</Button>}
-                        />
-                    )}
+            {/* ── Dialogs ────────────────────────────────────────── */}
 
-                    {/* Step: Issue NOD */}
-                    {isStaff && !nod && (c.status === "under_review" || c.status === "explanation_submitted" || c.status === "no_response") && (
-                        <Step active done={false} title="5. Issue Notice of Decision (NOD)" icon={ShieldAlert}
-                            body={<Button size="sm" onClick={() => setNodOpen(true)}>Issue NOD</Button>}
-                        />
-                    )}
-
-                    {/* Step: NOD details */}
-                    {nod && (
-                        <Step active={c.status === "nod_issued"} done={c.status !== "nod_issued"}
-                            title="5. Notice of Decision Issued" icon={ShieldAlert}
-                            body={
-                                <div className="text-sm space-y-1">
-                                    <div>Decision: <Badge variant="secondary" className="capitalize">{nod.decision.replace(/_/g, " ")}</Badge></div>
-                                    <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3">{nod.decisionDetails}</p>
-                                    {nod.sanctionStartDate && <div>Sanction: {nod.sanctionStartDate} → {nod.sanctionEndDate ?? "—"}</div>}
-                                    {!nod.acknowledgedAt && nod.decision !== "no_violation" && (isStaff || isCaseEmployee) && (
-                                        <Button size="sm" variant="outline" onClick={() => { acknowledgeNOD(nod.id); toast.success(isStaff ? "Marked as acknowledged" : "NOD acknowledged"); }}>
-                                            {isStaff ? "Mark Acknowledged" : "Acknowledge NOD"}
-                                        </Button>
-                                    )}
-                                    {nod.acknowledgedAt && <p className="text-xs text-muted-foreground">Acknowledged {new Date(nod.acknowledgedAt).toLocaleString()}</p>}
-                                </div>
-                            }
-                        />
-                    )}
-
-                    {/* Close case */}
-                    {isStaff && c.status !== "closed" && (
-                        <div className="pt-4 border-t">
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="outline" size="sm"><X className="h-4 w-4 mr-2" /> Close Case</Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>Close this case?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This marks {c.caseNumber} as closed. You can still view it in audit logs.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => { closeCase(c.id, currentUser.id); toast.success("Case closed"); }}>
-                                            Close Case
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
-            {/* Issue NTE dialog */}
+            {/* Issue NTE */}
             <Dialog open={nteOpen} onOpenChange={setNteOpen}>
                 <DialogContent>
                     <DialogHeader><DialogTitle>Issue NTE</DialogTitle></DialogHeader>
@@ -325,7 +407,7 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                 </DialogContent>
             </Dialog>
 
-            {/* Explanation dialog */}
+            {/* Explanation */}
             <Dialog open={explanationOpen} onOpenChange={setExplanationOpen}>
                 <DialogContent>
                     <DialogHeader><DialogTitle>Record Employee Explanation</DialogTitle></DialogHeader>
@@ -338,7 +420,7 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                 </DialogContent>
             </Dialog>
 
-            {/* Issue NOD dialog */}
+            {/* Issue NOD */}
             <Dialog open={nodOpen} onOpenChange={setNodOpen}>
                 <DialogContent className="max-w-xl">
                     <DialogHeader><DialogTitle>Issue Notice of Decision</DialogTitle></DialogHeader>
@@ -384,19 +466,23 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
 
 function Row({ label, value }: { label: string; value: string }) {
     return (
-        <div className="flex justify-between gap-4 py-1 border-b last:border-0">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
-            <span className="text-sm font-medium">{value}</span>
+        <div className="flex items-center justify-between py-2 border-b last:border-0">
+            <span className="flex items-center gap-2 text-sm text-muted-foreground">{label}</span>
+            <span className="text-sm font-medium text-right max-w-[60%] break-words">{value}</span>
         </div>
     );
 }
 
 function Step({ active, done, title, icon: Icon, body }: { active: boolean; done: boolean; title: string; icon: typeof Mail; body: React.ReactNode }) {
-    const tone = done ? "border-emerald-300 bg-emerald-50/40" : active ? "border-primary/40 bg-primary/5" : "border-muted bg-muted/30 opacity-70";
+    const tone = done
+        ? "border-emerald-300 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/20"
+        : active
+            ? "border-amber-400 bg-amber-50/40 dark:border-amber-600 dark:bg-amber-950/20"
+            : "border-muted bg-muted/30 opacity-70";
     return (
         <div className={`rounded-md border ${tone} p-3`}>
             <div className="flex items-center gap-2 mb-2">
-                <Icon className={`h-4 w-4 ${done ? "text-emerald-600" : active ? "text-primary" : "text-muted-foreground"}`} />
+                <Icon className={`h-4 w-4 ${done ? "text-emerald-600" : active ? "text-amber-500" : "text-muted-foreground"}`} />
                 <h3 className="font-medium text-sm">{title}</h3>
             </div>
             <div className="pl-6">{body}</div>

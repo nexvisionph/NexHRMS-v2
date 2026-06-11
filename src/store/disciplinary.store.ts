@@ -19,6 +19,8 @@ interface DisciplinaryState {
 
     // Case lifecycle
     createCase: (data: Omit<DisciplinaryCase, "id" | "caseNumber" | "createdAt" | "updatedAt" | "status">) => DisciplinaryCase;
+    updateCase: (caseId: string, data: Partial<Pick<DisciplinaryCase, "violationType" | "policyReference" | "incidentDate" | "incidentLocation" | "description" | "status">>, by: string) => void;
+    deleteCase: (caseId: string, by: string) => void;
     closeCase: (caseId: string, by: string) => void;
     reopenCase: (caseId: string, by: string) => void;
     moveToReview: (caseId: string) => void;
@@ -127,6 +129,36 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 return c;
             },
 
+            updateCase: (caseId, data, by) => {
+                set((s) => ({
+                    cases: s.cases.map((c) =>
+                        c.id === caseId ? { ...c, ...data, updatedAt: nowIso() } : c
+                    ),
+                }));
+                useAuditStore.getState().log({
+                    entityType: "disciplinary_case",
+                    entityId: caseId,
+                    action: "case_created",
+                    performedBy: by,
+                    afterSnapshot: data,
+                });
+            },
+
+            deleteCase: (caseId, by) => {
+                set((s) => ({
+                    cases: s.cases.filter((c) => c.id !== caseId),
+                    ntes: s.ntes.filter((n) => n.caseId !== caseId),
+                    nods: s.nods.filter((n) => n.caseId !== caseId),
+                }));
+                useAuditStore.getState().log({
+                    entityType: "disciplinary_case",
+                    entityId: caseId,
+                    action: "case_closed",
+                    performedBy: by,
+                    reason: "deleted",
+                });
+            },
+
             closeCase: (caseId, by) => {
                 set((s) => ({ cases: setCaseStatus(s.cases, caseId, "closed") }));
                 useAuditStore.getState().log({
@@ -171,19 +203,8 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     entityId: caseId,
                     action: "nte_issued",
                     performedBy: data.issuedBy,
-                    afterSnapshot: { nteId: nte.id, deadline: nte.responseDeadline },
+                    afterSnapshot: { nteId: nte.id, deadline: data.responseDeadline },
                 });
-                // Notify the employee about the NTE
-                try {
-                    const emp = useEmployeesStore.getState().employees.find((e) => e.id === c.employeeId);
-                    if (emp) {
-                        dispatchNotification("nte_issued", {
-                            name: emp.name,
-                            caseNumber: c.caseNumber,
-                            deadline: data.responseDeadline,
-                        }, emp.id, emp.email ?? undefined, emp.phone, undefined, { suppressToast: true });
-                    }
-                } catch { /* notification is best-effort */ }
                 return nte;
             },
 
