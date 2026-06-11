@@ -347,11 +347,11 @@ export function AttendanceHeatmap({
                             <Button variant="outline" size="icon" className="h-7 w-7" onClick={goForward}>
                                 <ChevronRight className="h-4 w-4" />
                             </Button>
-                            <span className="text-xs text-muted-foreground hidden sm:inline ml-1">
-                                {viewMode === "month"
-                                    ? format(anchorDate, "MMMM yyyy")
-                                    : `${format(dateRange[0], "MMM d")} — ${format(dateRange[dateRange.length - 1], "MMM d, yyyy")}`}
-                            </span>
+                           <span className="text-sm text-muted-foreground hidden sm:inline ml-1 w-[180px] text-center inline-block">
+                    {viewMode === "month"
+                        ? format(anchorDate, "MMMM yyyy")
+                        : `${format(dateRange[0], "MMM d")} — ${format(dateRange[dateRange.length - 1], "MMM d, yyyy")}`}
+                </span>
                         </div>
                     </div>
                     {/* Row 2: Filters */}
@@ -397,7 +397,7 @@ export function AttendanceHeatmap({
                                 <SelectItem value="on_leave">On Leave</SelectItem>
                             </SelectContent>
                         </Select>
-                        <span className="text-xs text-muted-foreground ml-auto">
+                        <span className="text-sm text-muted-foreground ml-auto pr-3">
                             {displayEmployees.length} employee{displayEmployees.length !== 1 ? "s" : ""}
                         </span>
                     </div>
@@ -707,32 +707,22 @@ export function AttendanceHeatmap({
                                         </div>
                                     </div>
                                     
-                                    {/* Late Minutes (auto-computed) */}
-                                    <div className="grid grid-cols-2 gap-3">
+                                    {/* Stats row: Late | Hours | OT */}
+                                    <div className="grid grid-cols-3 gap-2">
                                         <div>
-                                            <label className="text-sm font-medium">Late Minutes</label>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <Input 
-                                                    type="number" 
-                                                    min="0" 
-                                                    max="480" 
-                                                    value={modalLate} 
-                                                    onChange={(e) => setModalLate(e.target.value)} 
-                                                    className="flex-1"
-                                                />
-                                                {Number(modalLate) > 0 && (
-                                                    <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-600 border-orange-500/30">
-                                                        +{modalLate}m late
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                                                Auto-computed from shift start + grace period
-                                            </p>
+                                            <label className="text-xs font-medium text-muted-foreground">Late Min</label>
+                                            <Input 
+                                                type="number" 
+                                                min="0" 
+                                                max="480" 
+                                                value={modalLate} 
+                                                onChange={(e) => setModalLate(e.target.value)} 
+                                                className="mt-1 h-9"
+                                            />
                                         </div>
                                         <div>
-                                            <label className="text-sm font-medium">Hours Worked</label>
-                                            <div className="mt-1 h-9 flex items-center px-3 bg-muted/50 rounded-md text-sm">
+                                            <label className="text-xs font-medium text-muted-foreground">Hours</label>
+                                            <div className="mt-1 h-9 flex items-center justify-center rounded-md border bg-muted/30 text-sm font-mono">
                                                 {modalCheckIn && modalCheckOut 
                                                     ? `${computeHoursWorked(modalCheckIn, modalCheckOut)}h`
                                                     : "—"
@@ -740,17 +730,27 @@ export function AttendanceHeatmap({
                                             </div>
                                         </div>
                                         <div>
-                                            <label className="text-sm font-medium">OT Description</label>
-                                            <Input
-                                                value={modalOtDescription}
-                                                onChange={(e) => setModalOtDescription(e.target.value)}
-                                                placeholder="e.g. Extended site visit, Emergency overtime"
-                                                className="mt-1"
-                                            />
-                                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                                                Optional — displayed on payslip daily breakdown
-                                            </p>
+                                            <label className="text-xs font-medium text-amber-600 dark:text-amber-400">OT</label>
+                                            <div className="mt-1 h-9 flex items-center justify-center rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 text-sm font-mono font-semibold text-amber-700 dark:text-amber-400">
+                                                {(() => {
+                                                    if (!modalCheckIn || !modalCheckOut) return "—";
+                                                    const hrs = computeHoursWorked(modalCheckIn, modalCheckOut);
+                                                    const ot = Math.max(0, hrs - 8);
+                                                    return ot > 0 ? `+${Math.round(ot * 100) / 100}h` : "0h";
+                                                })()}
+                                            </div>
                                         </div>
+                                    </div>
+                                    
+                                    {/* OT Description */}
+                                    <div>
+                                        <label className="text-sm font-medium">OT Description</label>
+                                        <Input
+                                            value={modalOtDescription}
+                                            onChange={(e) => setModalOtDescription(e.target.value)}
+                                            placeholder="e.g. Extended site visit, Emergency overtime"
+                                            className="mt-1"
+                                        />
                                     </div>
                                 </>
                             )}
