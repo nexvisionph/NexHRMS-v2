@@ -3,6 +3,7 @@
 import { ThemeProvider } from "@/components/shell/theme-provider";
 import { AppShell } from "@/components/shell/app-shell";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryProvider } from "@/components/query-provider";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -274,12 +275,14 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated && !isLoginPage && !isDeactivated) return <AppLoadingScreen />;
 
     return (
-        <TooltipProvider>
-            <ThemeProvider>
-                {skipShell ? children : <AppShell>{children}</AppShell>}
-                {/* Force password change modal - blocks UI until password is changed */}
-                {isAuthenticated && !isKiosk && <ForcePasswordChangeModal />}
-            </ThemeProvider>
-        </TooltipProvider>
+        <QueryProvider>
+            <TooltipProvider>
+                <ThemeProvider>
+                    {skipShell ? children : <AppShell>{children}</AppShell>}
+                    {/* Force password change modal - blocks UI until password is changed */}
+                    {isAuthenticated && !isKiosk && <ForcePasswordChangeModal />}
+                </ThemeProvider>
+            </TooltipProvider>
+        </QueryProvider>
     );
 }

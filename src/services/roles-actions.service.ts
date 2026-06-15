@@ -2,16 +2,22 @@
 /**
  * Roles Actions Service — DB-first mutations.
  *
- * Writes to Supabase via the /api/roles route, then updates local Zustand cache on success.
- * Migration target: Store 8 of ZUSTAND_MIGRATION_CHECKLIST.md
- *
- * Note: The roles store already had partial DB sync (fire-and-forget).
- * This service makes it truly DB-first: we only update local state after DB confirms success.
+ * Writes to Supabase via the /api/roles route, then updates TanStack Query cache on success.
+ * Migrated from Zustand setState/getState to query client cache operations.
  */
 
-import { useRolesStore } from "@/store/roles.store";
+import { getQueryClient } from "@/lib/query-client";
+import { ROLES_QUERY_KEY } from "@/hooks/use-roles";
 import type { CustomRole, Permission, WidgetConfig } from "@/types";
 import { nanoid } from "nanoid";
+
+function getRoles(): CustomRole[] {
+    return getQueryClient().getQueryData<CustomRole[]>(ROLES_QUERY_KEY) ?? [];
+}
+
+function setRoles(updater: (prev: CustomRole[]) => CustomRole[]) {
+    getQueryClient().setQueryData<CustomRole[]>(ROLES_QUERY_KEY, (prev) => updater(prev ?? []));
+}
 
 /**
  * Create a custom role — DB-first via /api/roles POST.
@@ -44,11 +50,7 @@ export async function createRole(
         }
 
         const dbRole: CustomRole = await res.json();
-
-        // Update local cache
-        useRolesStore.setState((s) => ({
-            roles: [...s.roles, dbRole],
-        }));
+        setRoles((prev) => [...prev, dbRole]);
         return { ok: true, id: dbRole.id };
     } catch (e) {
         console.error("[roles-actions] createRole network error:", e);
@@ -79,11 +81,7 @@ export async function updateRole(
         }
 
         const dbRole: CustomRole = await res.json();
-
-        // Update local cache
-        useRolesStore.setState((s) => ({
-            roles: s.roles.map((r) => (r.id === id ? dbRole : r)),
-        }));
+        setRoles((prev) => prev.map((r) => (r.id === id ? dbRole : r)));
         return true;
     } catch (e) {
         console.error("[roles-actions] updateRole network error:", e);
@@ -95,8 +93,8 @@ export async function updateRole(
  * Delete a custom role — DB-first via /api/roles DELETE.
  */
 export async function deleteRole(id: string): Promise<boolean> {
-    const store = useRolesStore.getState();
-    const role = store.roles.find((r) => r.id === id);
+    const roles = getRoles();
+    const role = roles.find((r) => r.id === id);
     if (!role || role.isSystem) return false;
 
     try {
@@ -110,10 +108,7 @@ export async function deleteRole(id: string): Promise<boolean> {
             return false;
         }
 
-        // Update local cache
-        useRolesStore.setState((s) => ({
-            roles: s.roles.filter((r) => r.id !== id),
-        }));
+        setRoles((prev) => prev.filter((r) => r.id !== id));
         return true;
     } catch (e) {
         console.error("[roles-actions] deleteRole network error:", e);
@@ -125,8 +120,8 @@ export async function deleteRole(id: string): Promise<boolean> {
  * Duplicate a role — DB-first.
  */
 export async function duplicateRole(id: string): Promise<{ ok: boolean; id?: string }> {
-    const store = useRolesStore.getState();
-    const source = store.roles.find((r) => r.id === id);
+    const roles = getRoles();
+    const source = roles.find((r) => r.id === id);
     if (!source) return { ok: false };
 
     return createRole({
@@ -152,8 +147,8 @@ export async function setPermissions(roleId: string, perms: Permission[]): Promi
  * Add a single permission to a role — DB-first.
  */
 export async function addPermission(roleId: string, perm: Permission): Promise<boolean> {
-    const store = useRolesStore.getState();
-    const role = store.roles.find((r) => r.id === roleId);
+    const roles = getRoles();
+    const role = roles.find((r) => r.id === roleId);
     if (!role || role.permissions.includes(perm)) return true;
 
     return updateRole(roleId, { permissions: [...role.permissions, perm] });
@@ -163,8 +158,8 @@ export async function addPermission(roleId: string, perm: Permission): Promise<b
  * Remove a single permission from a role — DB-first.
  */
 export async function removePermission(roleId: string, perm: Permission): Promise<boolean> {
-    const store = useRolesStore.getState();
-    const role = store.roles.find((r) => r.id === roleId);
+    const roles = getRoles();
+    const role = roles.find((r) => r.id === roleId);
     if (!role) return false;
 
     return updateRole(roleId, {

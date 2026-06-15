@@ -2,15 +2,12 @@
 /**
  * Jobs Actions Service — DB-first mutations.
  *
- * Writes to API routes first, then updates local Zustand cache on success.
- * Migration target: Store 15 of ZUSTAND_MIGRATION_CHECKLIST.md
- *
- * Note: Jobs module already used API routes from the store directly. This
- * service makes the await/await-then-update pattern explicit and removes the
- * fire-and-forget catch-and-discard behaviour that hid backend failures.
+ * Writes to API routes first, then updates TanStack Query cache on success.
+ * Migrated from Zustand useJobsStore.setState() pattern to queryClient cache updates.
  */
 
-import { useJobsStore } from "@/store/jobs.store";
+import { getQueryClient } from "@/lib/query-client";
+import { JOBS_QUERY_KEY, APPLICATIONS_QUERY_KEY } from "@/hooks/use-jobs";
 import type {
     JobPosting,
     JobApplication,
@@ -21,6 +18,22 @@ import { nanoid } from "nanoid";
 
 function nowIso() {
     return new Date().toISOString();
+}
+
+function getJobs(): JobPosting[] {
+    return getQueryClient().getQueryData<JobPosting[]>(JOBS_QUERY_KEY) ?? [];
+}
+
+function getApplications(): JobApplication[] {
+    return getQueryClient().getQueryData<JobApplication[]>(APPLICATIONS_QUERY_KEY) ?? [];
+}
+
+function setJobs(updater: (prev: JobPosting[]) => JobPosting[]) {
+    getQueryClient().setQueryData<JobPosting[]>(JOBS_QUERY_KEY, (prev) => updater(prev ?? []));
+}
+
+function setApplications(updater: (prev: JobApplication[]) => JobApplication[]) {
+    getQueryClient().setQueryData<JobApplication[]>(APPLICATIONS_QUERY_KEY, (prev) => updater(prev ?? []));
 }
 
 // ─── Job CRUD ────────────────────────────────────────────────────
@@ -55,7 +68,7 @@ export async function addJob(
         };
     }
 
-    useJobsStore.setState((s) => ({ jobs: [job, ...s.jobs] }));
+    setJobs((prev) => [job, ...prev]);
     return { ok: true, job };
 }
 
@@ -78,11 +91,7 @@ export async function updateJob(
         return false;
     }
 
-    useJobsStore.setState((s) => ({
-        jobs: s.jobs.map((j) =>
-            j.id === id ? { ...j, ...patch, updatedAt } : j
-        ),
-    }));
+    setJobs((prev) => prev.map((j) => j.id === id ? { ...j, ...patch, updatedAt } : j));
     return true;
 }
 
@@ -109,10 +118,8 @@ export async function deleteJob(id: string): Promise<boolean> {
         return false;
     }
 
-    useJobsStore.setState((s) => ({
-        jobs: s.jobs.filter((j) => j.id !== id),
-        applications: s.applications.filter((a) => a.jobId !== id),
-    }));
+    setJobs((prev) => prev.filter((j) => j.id !== id));
+    setApplications((prev) => prev.filter((a) => a.jobId !== id));
     return true;
 }
 
@@ -151,9 +158,7 @@ export async function addApplication(
         };
     }
 
-    useJobsStore.setState((s) => ({
-        applications: [app, ...s.applications],
-    }));
+    setApplications((prev) => [app, ...prev]);
     return { ok: true, application: app };
 }
 
@@ -164,7 +169,7 @@ export async function updateApplication(
     id: string,
     patch: Partial<Omit<JobApplication, "id" | "createdAt">>
 ): Promise<boolean> {
-    const app = useJobsStore.getState().applications.find((a) => a.id === id);
+    const app = getApplications().find((a) => a.id === id);
     if (!app) return false;
 
     const updatedAt = nowIso();
@@ -182,11 +187,7 @@ export async function updateApplication(
         return false;
     }
 
-    useJobsStore.setState((s) => ({
-        applications: s.applications.map((a) =>
-            a.id === id ? { ...a, ...patch, updatedAt } : a
-        ),
-    }));
+    setApplications((prev) => prev.map((a) => a.id === id ? { ...a, ...patch, updatedAt } : a));
     return true;
 }
 
@@ -198,7 +199,7 @@ export async function setApplicationStatus(
     status: ApplicationStatus,
     reviewedBy?: string
 ): Promise<boolean> {
-    const app = useJobsStore.getState().applications.find((a) => a.id === id);
+    const app = getApplications().find((a) => a.id === id);
     if (!app) return false;
 
     const reviewedAt = nowIso();
@@ -216,19 +217,11 @@ export async function setApplicationStatus(
         return false;
     }
 
-    useJobsStore.setState((s) => ({
-        applications: s.applications.map((a) =>
-            a.id === id
-                ? {
-                      ...a,
-                      status,
-                      reviewedBy: reviewedBy ?? a.reviewedBy,
-                      reviewedAt,
-                      updatedAt: reviewedAt,
-                  }
-                : a
-        ),
-    }));
+    setApplications((prev) => prev.map((a) =>
+        a.id === id
+            ? { ...a, status, reviewedBy: reviewedBy ?? a.reviewedBy, reviewedAt, updatedAt: reviewedAt }
+            : a
+    ));
     return true;
 }
 
@@ -236,7 +229,7 @@ export async function setApplicationStatus(
  * Delete an application — DB-first.
  */
 export async function deleteApplication(id: string): Promise<boolean> {
-    const app = useJobsStore.getState().applications.find((a) => a.id === id);
+    const app = getApplications().find((a) => a.id === id);
     if (!app) return false;
 
     try {
@@ -249,8 +242,6 @@ export async function deleteApplication(id: string): Promise<boolean> {
         return false;
     }
 
-    useJobsStore.setState((s) => ({
-        applications: s.applications.filter((a) => a.id !== id),
-    }));
+    setApplications((prev) => prev.filter((a) => a.id !== id));
     return true;
 }
