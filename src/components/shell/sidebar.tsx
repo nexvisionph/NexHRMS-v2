@@ -338,7 +338,7 @@ function SidebarComponent() {
                             width={showLabel ? 220 : 40}
                             height={56}
                             className={cn(
-                                "sidebar-logo transition-all duration-300 dark:hidden object-contain object-left",
+                                "sidebar-logo transition-all duration-250 dark:hidden object-contain object-left",
                                 collapsed ? "pb-6" : "pb-3"
                             )}
                             priority
@@ -349,7 +349,7 @@ function SidebarComponent() {
                             width={showLabel ? 220 : 40}
                             height={56}
                             className={cn(
-                                "sidebar-logo transition-all duration-300 hidden dark:block object-contain object-left",
+                                "sidebar-logo transition-all duration-250 hidden dark:block object-contain object-left",
                                 collapsed ? "pb-6" : ""
                             )}
                             priority
