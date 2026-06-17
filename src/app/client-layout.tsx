@@ -8,6 +8,8 @@ import { StoreQueryBridge } from "@/hooks/use-store-query-bridge";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
+import { useAttendanceStore } from "@/store/attendance.store";
+import { usePayrollStore } from "@/store/payroll.store";
 import { useEffect, useState } from "react";
 import { createClient, clearAuthStorage, resetClient, safeGetSession, installAuthErrorSuppression } from "@/services/supabase-browser";
 import { hydrateAllStores, startWriteThrough, startRealtime, stopRealtime, stopWriteThrough } from "@/services/sync.service";
@@ -254,6 +256,10 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             hydrateAllStores({ skipSessionCheck: true }).then(() => {
                 startWriteThrough();
                 startRealtime();  // non-blocking — both fire immediately after hydration
+                // Self-hydrate the 3 migrated stores (no-op if sync.service already filled them)
+                useEmployeesStore.getState().hydrateFromDb();
+                useAttendanceStore.getState().hydrateFromDb();
+                usePayrollStore.getState().hydrateFromDb();
             });
         });
 

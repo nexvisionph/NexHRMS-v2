@@ -13,6 +13,7 @@ import { DEFAULT_HOLIDAYS } from "@/lib/constants";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { getEmployees, getAdminHrEmployees } from "@/lib/employee-data";
 import { useAuditStore } from "@/store/audit.store";
+import { attendanceDb, shouldSync, hasValidSession } from "@/services/db.service";
 
 interface AttendanceState {
     // ─── Append-only event ledger (§2A) ───────────────
@@ -81,6 +82,10 @@ interface AttendanceState {
     resetTodayLog: (employeeId: string) => void;
 
     resetToSeed: () => void;
+    // ─── Self-hydration ───────────────────────────────────────
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 const DEFAULT_SHIFTS: ShiftTemplate[] = [
@@ -947,6 +952,51 @@ export const useAttendanceStore = create<AttendanceState>()(
                     employeeShifts: {},
                     holidays: DEFAULT_HOLIDAYS.map((h, i) => ({ ...h, id: `HOL-${i + 1}` })),
                     penalties: [],
+                    _hydrated: false,
+                    _hydrating: false,
                 })),
+            // ─── Self-hydration ───────────────────────────────────────
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+
+                set({ _hydrating: true });
+                try {
+                    const [logs, events, holidays, shifts, overtimeRequests, evidence, exceptions, penalties, employeeShiftsMap] = await Promise.all([
+                        attendanceDb.fetchLogs(),
+                        attendanceDb.fetchEvents(),
+                        attendanceDb.fetchHolidays(),
+                        attendanceDb.fetchShifts(),
+                        attendanceDb.fetchOvertimeRequests(),
+                        attendanceDb.fetchEvidence(),
+                        attendanceDb.fetchExceptions(),
+                        attendanceDb.fetchPenalties(),
+                        attendanceDb.fetchEmployeeShifts(),
+                    ]);
+                    const currentState = get();
+                    if (currentState.logs.length === 0 && logs.length > 0) {
+                        set({
+                            logs, events, overtimeRequests,
+                            ...(holidays.length > 0 ? { holidays } : {}),
+                            ...(shifts.length > 0 ? { shiftTemplates: shifts } : {}),
+                            ...(evidence.length > 0 ? { evidence } : {}),
+                            ...(exceptions.length > 0 ? { exceptions } : {}),
+                            ...(penalties.length > 0 ? { penalties } : {}),
+                            ...(Object.keys(employeeShiftsMap).length > 0 ? { employeeShifts: employeeShiftsMap } : {}),
+                            _hydrated: true, _hydrating: false,
+                        });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[attendance] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
         })
 );

@@ -135,54 +135,16 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
     // or ~100 HTTP/2 streams). Firing all 40+ at once can cause the browser to
     // drop some requests, producing CORS-style "Failed to fetch" errors.
 
-    // ── Batch 1: HR + Attendance + Payroll ───────────────────────
+    // ── Batch 1: Leave + Loans (employees/attendance/payroll now self-hydrate via hydrateFromDb) ──
     const [
-      employees,
-      salaryRequests,
-      salaryHistory,
       leaveRequests,
       leaveBalances,
       leavePolicies,
-      attendanceLogs,
-      attendanceEvents,
-      holidays,
-      shifts,
-      overtimeRequests,
-      attendanceEvidence,
-      attendanceExceptions,
-      penalties,
-      payslips,
-      payrollRuns,
-      payrollAdjustments,
-      finalPayComputations,
-      payScheduleRows,
-      deductionOverridesRows,
-      globalDefaultsRows,
-      signatureConfigRow,
       loans,
     ] = await Promise.all([
-      employeesDb.fetchAll(),
-      salaryDb.fetchRequests(),
-      salaryDb.fetchHistory(),
       leaveDb.fetchRequests(),
       leaveDb.fetchBalances(),
       leaveDb.fetchPolicies(),
-      attendanceDb.fetchLogs(),
-      attendanceDb.fetchEvents(),
-      attendanceDb.fetchHolidays(),
-      attendanceDb.fetchShifts(),
-      attendanceDb.fetchOvertimeRequests(),
-      attendanceDb.fetchEvidence(),
-      attendanceDb.fetchExceptions(),
-      attendanceDb.fetchPenalties(),
-      payrollDb.fetchPayslips(),
-      payrollDb.fetchRuns(),
-      payrollDb.fetchAdjustments(),
-      payrollDb.fetchFinalPay(),
-      payrollDb.fetchPaySchedule(),
-      payrollDb.fetchDeductionOverrides(),
-      payrollDb.fetchGlobalDefaults(),
-      payrollDb.fetchSignatureConfig(),
       loansDb.fetchAll(),
     ]);
 
@@ -237,25 +199,8 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
       jobTitlesDb.fetchAll(),
     ]);
 
-    // Fetch employee-shift assignments separately (returns a mapping, not an array)
-    const employeeShiftsMap = await attendanceDb.fetchEmployeeShifts();
-
-    // Hydrate employees store. Always replace from Supabase so DB-side deletes
-    // clear local state instead of leaving stale rows around.
-    const deletedEmployeeIds = useEmployeesStore.getState().deletedEmployeeIds ?? [];
-    const deletedEmployeeIdSet = new Set(deletedEmployeeIds);
-    for (const employee of employees) {
-      if (deletedEmployeeIdSet.has(employee.id)) {
-        employeesDb.remove(employee.id).catch((error) => {
-          console.warn("[sync] Failed to purge tombstoned employee:", employee.id, error);
-        });
-      }
-    }
-    useEmployeesStore.setState({
-      employees: employees.filter((employee) => !deletedEmployeeIdSet.has(employee.id)),
-      salaryRequests,
-      salaryHistory,
-    });
+    // ── Employees, Attendance, Payroll: now self-hydrate via store.hydrateFromDb() ──
+    // (called from client-layout.tsx after this function completes)
 
     // Hydrate leave store
     if (leavePolicies.length > 0 || leaveRequests.length > 0 || leaveBalances.length > 0) {
@@ -265,38 +210,6 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
         ...(leaveBalances.length > 0 ? { balances: leaveBalances } : {}),
       });
     }
-
-    // Hydrate attendance store.
-    // logs and events are always set (even when empty) so a DB-side reset clears local state on refresh.
-    useAttendanceStore.setState({
-      logs: attendanceLogs,
-      events: attendanceEvents,
-      overtimeRequests,
-      ...(holidays.length > 0 ? { holidays } : {}),
-      ...(shifts.length > 0 ? { shiftTemplates: shifts } : {}),
-      ...(attendanceEvidence.length > 0 ? { evidence: attendanceEvidence } : {}),
-      ...(attendanceExceptions.length > 0 ? { exceptions: attendanceExceptions } : {}),
-      ...(penalties.length > 0 ? { penalties } : {}),
-      ...(Object.keys(employeeShiftsMap).length > 0 ? { employeeShifts: employeeShiftsMap } : {}),
-    });
-
-    // Hydrate payroll store — always set from Supabase to ensure resets propagate
-    // across sessions (e.g., admin resets, employee reloads → sees empty).
-    usePayrollStore.setState({
-      payslips: payslips.length > 0 ? payslips : [],
-      runs: payrollRuns.length > 0 ? payrollRuns : [],
-      adjustments: payrollAdjustments.length > 0 ? payrollAdjustments : [],
-      finalPayComputations: finalPayComputations.length > 0 ? finalPayComputations : [],
-      ...(payScheduleRows.length > 0 ? { paySchedule: payScheduleRows[0] } : {}),
-      deductionOverrides: deductionOverridesRows.length > 0 ? deductionOverridesRows : [],
-      globalDefaults: globalDefaultsRows.length > 0 ? globalDefaultsRows : [
-        { deductionType: "sss", enabled: true, mode: "auto" },
-        { deductionType: "philhealth", enabled: true, mode: "auto" },
-        { deductionType: "pagibig", enabled: true, mode: "auto" },
-        { deductionType: "bir", enabled: true, mode: "auto" },
-      ],
-      ...(signatureConfigRow ? { signatureConfig: signatureConfigRow } : {}),
-    });
 
     // Hydrate loans store — attach deductions & repayment schedules
     if (loans.length > 0) {
@@ -361,9 +274,11 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
 
     // Hydrate per-employee notification preferences from DB employee records.
     // Each employee row may have a notification_preferences jsonb column.
-    if (employees.length > 0) {
+    // Note: employees now self-hydrate, so we fetch separately for notif prefs.
+    const employeesForPrefs = await employeesDb.fetchAll();
+    if (employeesForPrefs.length > 0) {
       const dbPrefs: Record<string, EmployeeNotifPrefs> = {};
-      for (const emp of employees) {
+      for (const emp of employeesForPrefs) {
         if (emp.notificationPreferences && typeof emp.notificationPreferences === "object" && Object.keys(emp.notificationPreferences).length > 0) {
           dbPrefs[emp.id] = { ...DEFAULT_EMPLOYEE_PREFS, ...emp.notificationPreferences } as EmployeeNotifPrefs;
         }

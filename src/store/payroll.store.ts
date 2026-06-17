@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import type { Payslip, PayrollRun, PayrollAdjustment, PayScheduleConfig, FinalPayComputation, PayrollSignatureConfig, DeductionOverride, DeductionGlobalDefault, DeductionType } from "@/types";
 import { POLICY_VERSIONS } from "@/lib/constants";
 import { computeAllPHDeductions } from "@/lib/ph-deductions";
+import { payrollDb, shouldSync, hasValidSession } from "@/services/db.service";
 
 export const DEFAULT_PAY_SCHEDULE: PayScheduleConfig = {
     defaultFrequency: "semi_monthly",
@@ -99,6 +100,10 @@ interface PayrollState {
     exportBankFile: (runDate: string, employees: { id: string; name: string; salary: number }[]) => void;
     resetToSeed: () => void;
     clearAllPayroll: () => void;
+    // ─── Self-hydration ───────────────────────────────────────
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 export const usePayrollStore = create<PayrollState>()(
@@ -820,5 +825,53 @@ export const usePayrollStore = create<PayrollState>()(
                     adjustments: [],
                     finalPayComputations: [],
                 })),
+            // ─── Self-hydration ───────────────────────────────────────
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+
+                set({ _hydrating: true });
+                try {
+                    const [payslips, runs, adjustments, finalPay, payScheduleRows, deductionOverrides, globalDefaults, signatureConfig] = await Promise.all([
+                        payrollDb.fetchPayslips(),
+                        payrollDb.fetchRuns(),
+                        payrollDb.fetchAdjustments(),
+                        payrollDb.fetchFinalPay(),
+                        payrollDb.fetchPaySchedule(),
+                        payrollDb.fetchDeductionOverrides(),
+                        payrollDb.fetchGlobalDefaults(),
+                        payrollDb.fetchSignatureConfig(),
+                    ]);
+                    const currentState = get();
+                    if (currentState.payslips.length === 0 && payslips.length > 0) {
+                        set({
+                            payslips,
+                            runs,
+                            adjustments,
+                            finalPayComputations: finalPay,
+                            ...(payScheduleRows.length > 0 ? { paySchedule: payScheduleRows[0] } : {}),
+                            deductionOverrides,
+                            globalDefaults: globalDefaults.length > 0 ? globalDefaults : [
+                                { deductionType: "sss" as DeductionType, enabled: true, mode: "auto" as const },
+                                { deductionType: "philhealth" as DeductionType, enabled: true, mode: "auto" as const },
+                                { deductionType: "pagibig" as DeductionType, enabled: true, mode: "auto" as const },
+                                { deductionType: "bir" as DeductionType, enabled: true, mode: "auto" as const },
+                            ],
+                            ...(signatureConfig ? { signatureConfig } : {}),
+                            _hydrated: true, _hydrating: false,
+                        });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[payroll] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
         })
 );

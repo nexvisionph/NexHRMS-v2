@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { nanoid } from "nanoid";
 import type { Employee, EmployeeStatus, WorkType, SalaryChangeRequest, SalaryHistoryEntry, EmployeeDocument } from "@/types";
 import { SEED_EMPLOYEES } from "@/data/seed";
+import { employeesDb, salaryDb, shouldSync, hasValidSession } from "@/services/db.service";
 
 const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 
@@ -39,6 +40,10 @@ interface EmployeesState {
     removeDocument: (employeeId: string, docId: string) => void;
     getDocuments: (employeeId: string) => EmployeeDocument[];
     resetToSeed: () => void;
+    // ─── Self-hydration ───────────────────────────────────────
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 // Helper to deduplicate employees array by ID (keeps first occurrence)
@@ -267,6 +272,40 @@ export const useEmployeesStore = create<EmployeesState>()(
                     workTypeFilter: "all",
                     roleFilter: "all",
                     departmentFilter: "all",
+                    _hydrated: false,
+                    _hydrating: false,
                 }),
+            // ─── Self-hydration ───────────────────────────────────────
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                // Skip if already hydrated or currently hydrating
+                if (state._hydrated || state._hydrating) return;
+                // Skip if sync is disabled (e.g. demo mode with no Supabase)
+                if (!shouldSync()) return;
+                // Check for valid session before fetching
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+
+                set({ _hydrating: true });
+                try {
+                    const [employees, salaryRequests, salaryHistory] = await Promise.all([
+                        employeesDb.fetchAll(),
+                        salaryDb.fetchRequests(),
+                        salaryDb.fetchHistory(),
+                    ]);
+                    // Only set if current state is still empty (sync.service may have filled it first)
+                    const currentState = get();
+                    if (currentState.employees.length === 0 && employees.length > 0) {
+                        set({ employees, salaryRequests, salaryHistory, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[employees] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
         }),
 );
