@@ -36,6 +36,7 @@ const SEED_JOB_TITLES: JobTitle[] = ROLES.map((role, idx) => {
     };
 });
 
+import { jobTitlesDb, shouldSync, hasValidSession } from "@/services/db.service";
 const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 
 interface JobTitlesState {
@@ -55,6 +56,10 @@ interface JobTitlesState {
 
     // ── Reset ─────────────────────────────────────────────────
     resetToSeed: () => void;
+    // Self-hydration
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 export const useJobTitlesStore = create<JobTitlesState>()(
@@ -108,5 +113,29 @@ export const useJobTitlesStore = create<JobTitlesState>()(
 
         // ── Reset ─────────────────────────────────────────
         resetToSeed: () => set({ jobTitles: SEED_JOB_TITLES }),
-    })
+    
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const jobTitles = await jobTitlesDb.fetchAll();
+                    const currentState = get();
+                    if (currentState.jobTitles.length === 0 && jobTitles.length > 0) {
+                        set({ jobTitles, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[job-titles] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+})
 );

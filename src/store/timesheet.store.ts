@@ -1,5 +1,6 @@
 "use client";
 import { create } from "zustand";
+import { timesheetsDb, shouldSync, hasValidSession } from "@/services/db.service";
 import { nanoid } from "nanoid";
 import type { Timesheet, TimesheetSegment, AttendanceRuleSet, TimesheetStatus } from "@/types";
 
@@ -37,6 +38,10 @@ interface TimesheetState {
     getApproved: (employeeId: string, periodStart: string, periodEnd: string) => Timesheet[];
     getPendingApproval: () => Timesheet[];
     resetToSeed: () => void;
+    // Self-hydration
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 const DEFAULT_RULE_SET: AttendanceRuleSet = {
@@ -239,5 +244,32 @@ export const useTimesheetStore = create<TimesheetState>()(
             getPendingApproval: () =>
                 get().timesheets.filter((t) => t.status === "submitted"),
             resetToSeed: () => set({ timesheets: [] }),
-        })
+        
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const [timesheets, ruleSets] = await Promise.all([
+                        timesheetsDb.fetchTimesheets(),
+                        timesheetsDb.fetchRuleSets(),
+                    ]);
+                    const currentState = get();
+                    if (currentState.timesheets.length === 0 && timesheets.length > 0) {
+                        set({ timesheets, ruleSets, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[timesheet] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+})
 );

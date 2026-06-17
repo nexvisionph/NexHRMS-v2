@@ -29,6 +29,7 @@ const SEED_DEPARTMENTS: Department[] = DEPARTMENTS.map((name, idx) => {
     };
 });
 
+import { departmentsDb, shouldSync, hasValidSession } from "@/services/db.service";
 const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 
 interface DepartmentsState {
@@ -47,6 +48,10 @@ interface DepartmentsState {
 
     // ── Reset ─────────────────────────────────────────────────
     resetToSeed: () => void;
+    // Self-hydration
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 export const useDepartmentsStore = create<DepartmentsState>()(
@@ -99,5 +104,29 @@ export const useDepartmentsStore = create<DepartmentsState>()(
 
         // ── Reset ─────────────────────────────────────────
         resetToSeed: () => set({ departments: SEED_DEPARTMENTS }),
-    })
+    
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const departments = await departmentsDb.fetchAll();
+                    const currentState = get();
+                    if (currentState.departments.length === 0 && departments.length > 0) {
+                        set({ departments, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[departments] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+})
 );

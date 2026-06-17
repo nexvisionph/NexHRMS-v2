@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
 import type { Loan, LoanDeduction, LoanRepaymentSchedule, LoanBalanceHistory } from "@/types";
+import { loansDb, shouldSync, hasValidSession } from "@/services/db.service";
 import { SEED_LOANS } from "@/data/seed";
 
 const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
@@ -31,6 +32,10 @@ interface LoansState {
     computeCappedDeduction: (loanId: string, employeeNetPay: number) => number;
     recordCappedDeduction: (loanId: string, payslipId: string, employeeNetPay: number) => { deducted: number; skipped: boolean; reason?: string };
     resetToSeed: () => void;
+    // Self-hydration
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 export const useLoansStore = create<LoansState>()(
@@ -224,5 +229,29 @@ export const useLoansStore = create<LoansState>()(
                 return { deducted: maxDeduction, skipped: false };
             },
             resetToSeed: () => set({ loans: SEED_LOANS }),
-        })
+        
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const loans = await loansDb.fetchAll();
+                    const currentState = get();
+                    if (currentState.loans.length === 0 && loans.length > 0) {
+                        set({ loans, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[loans] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+})
 );

@@ -5,6 +5,7 @@ import type { LeaveRequest, LeaveStatus, LeavePolicy, LeaveBalance, LeaveType, L
 import { SEED_LEAVES } from "@/data/seed";
 
 const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
+import { leaveDb, shouldSync, hasValidSession } from "@/services/db.service";
 import { getEmployees } from "@/lib/employee-data";
 import { useNotificationsStore } from "@/store/notifications.store";
 
@@ -124,6 +125,10 @@ interface LeaveState {
     // â”€â”€â”€ Conflict detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     hasLeaveConflict: (employeeId: string, date: string) => boolean;
     resetToSeed: () => void;
+    // Self-hydration
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 export const useLeaveStore = create<LeaveState>()(
@@ -345,5 +350,33 @@ export const useLeaveStore = create<LeaveState>()(
                 });
             },
             resetToSeed: () => set({ requests: SEED_LEAVES, balances: [] }),
-        })
+        
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const [requests, balances, policies] = await Promise.all([
+                        leaveDb.fetchRequests(),
+                        leaveDb.fetchBalances(),
+                        leaveDb.fetchPolicies(),
+                    ]);
+                    const currentState = get();
+                    if (currentState.requests.length === 0 && requests.length > 0) {
+                        set({ requests, balances, policies, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[leave] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+})
 );
