@@ -249,7 +249,7 @@ export function PayslipTable({ payslips, runs = [], getEmpName, getEmpDetails, g
                                             <TableRow key={ps.id}>
                                                 <TableCell className="text-sm font-medium">{getEmpName(ps.employeeId)}</TableCell>
                                                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                                                    {ps.periodStart} \u2013 {ps.periodEnd}
+                                                    {ps.periodStart} -- {ps.periodEnd}
                                                 </TableCell>
                                                 <TableCell className="text-sm text-right font-mono">
                                                     {formatCurrency(ps.netPay)}
@@ -358,7 +358,7 @@ export function PayslipTable({ payslips, runs = [], getEmpName, getEmpDetails, g
                     open={!!sigViewId}
                     onClose={() => setSigViewId(null)}
                     employeeName={getEmpName(sigViewPayslip.employeeId)}
-                    period={`${sigViewPayslip.periodStart} \u2013 ${sigViewPayslip.periodEnd}`}
+                    period={`${sigViewPayslip.periodStart} -- ${sigViewPayslip.periodEnd}`}
                     netPay={formatCurrency(sigViewPayslip.netPay)}
                     signatureDataUrl={sigViewPayslip.signatureDataUrl}
                     signedAt={sigViewPayslip.signedAt}

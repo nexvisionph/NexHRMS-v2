@@ -403,7 +403,7 @@ export default function AdminSettingsView() {
                     <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
                         <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Current Schedule Summary</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                            {paySchedule.defaultFrequency === "semi_monthly" && `Semi-monthly: 1st\u2013${paySchedule.semiMonthlyFirstCutoff} (pay day ${paySchedule.semiMonthlyFirstPayDay}) & ${paySchedule.semiMonthlyFirstCutoff + 1}\u2013end of month (pay day ${paySchedule.semiMonthlySecondPayDay} next month). Gov deductions from ${paySchedule.deductGovFrom === "both" ? "both cutoffs" : paySchedule.deductGovFrom === "first" ? "1st cutoff" : "2nd cutoff"}.`}
+                            {paySchedule.defaultFrequency === "semi_monthly" && `Semi-monthly: 1st --${paySchedule.semiMonthlyFirstCutoff} (pay day ${paySchedule.semiMonthlyFirstPayDay}) & ${paySchedule.semiMonthlyFirstCutoff + 1}\u2013end of month (pay day ${paySchedule.semiMonthlySecondPayDay} next month). Gov deductions from ${paySchedule.deductGovFrom === "both" ? "both cutoffs" : paySchedule.deductGovFrom === "first" ? "1st cutoff" : "2nd cutoff"}.`}
                             {paySchedule.defaultFrequency === "monthly" && `Monthly payroll released on the ${paySchedule.monthlyPayDay}th of each month.`}
                             {paySchedule.defaultFrequency === "bi_weekly" && `Bi-weekly starting ${paySchedule.biWeeklyStartDate}, every 14 days.`}
                             {paySchedule.defaultFrequency === "weekly" && `Weekly payroll every ${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][paySchedule.weeklyPayDay]}.`}
