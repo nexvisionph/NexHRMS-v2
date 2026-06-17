@@ -39,7 +39,7 @@ import { useAppearanceStore } from "@/store/appearance.store";
 import { useLocationStore } from "@/store/location.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useMessagingStore } from "@/store/messaging.store";
-import { pauseWriteThrough, resumeWriteThrough, forceRehydrate } from "@/services/sync.service";
+import { forceRehydrate } from "@/services/sync.service";
 import { clearStaleStorage, clearAllZustandStorage } from "@/lib/clear-stale-storage";
 import type { AttendanceRuleSet, PayFrequency } from "@/types";
 import Link from "next/link";
@@ -103,7 +103,6 @@ export default function AdminSettingsView() {
         // Pause write-through BEFORE resetting stores so seed data is never
         // pushed to Supabase. Stores are reset to seed state locally, then
         // force-rehydrated from the DB to restore real data.
-        pauseWriteThrough();
         try {
             useAuthStore.getState().resetToSeed();
             useEmployeesStore.getState().resetToSeed();
@@ -127,7 +126,7 @@ export default function AdminSettingsView() {
                 await forceRehydrate();
             }
         } finally {
-            resumeWriteThrough();
+            /* write-through removed */
         }
         setResetAllOpen(false);
         toast.success("All data has been refreshed from the database.");
@@ -705,8 +704,7 @@ export default function AdminSettingsView() {
                             <Button variant="outline" size="sm" className="ml-4 shrink-0" onClick={async () => {
                                 const cleared = clearAllZustandStorage();
                                 if (!USE_DEMO_MODE) {
-                                    pauseWriteThrough();
-                                    try { await forceRehydrate(); } finally { resumeWriteThrough(); }
+                                    try { await forceRehydrate(); } finally { /* write-through removed */ }
                                 }
                                 toast.success(cleared > 0 ? `Cleared ${cleared} stale cache key(s) and re-synced.` : "Cache is clean — re-synced from server.");
                             }}><RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Clear Cache</Button>

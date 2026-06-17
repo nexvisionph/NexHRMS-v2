@@ -35,7 +35,6 @@ import {
   jobTitlesDb,
   createClient,
 } from "./db.service";
-import { disciplinaryDb, documentsDb, performanceDb, birComplianceDb } from "./db.service";
 import { getEmployees } from "@/lib/employee-data";
 import { clearStaleStorage } from "@/lib/clear-stale-storage";
 import { keysToCamel } from "@/lib/db-utils";
@@ -45,19 +44,14 @@ import { useAttendanceStore } from "@/store/attendance.store";
 import { usePayrollStore } from "@/store/payroll.store";
 import { useLoansStore } from "@/store/loans.store";
 import { useProjectsStore } from "@/store/projects.store";
-import { useAuditStore } from "@/store/audit.store";
 import { useEventsStore } from "@/store/events.store";
 import { useMessagingStore } from "@/store/messaging.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useTimesheetStore } from "@/store/timesheet.store";
 import { useNotificationsStore, DEFAULT_EMPLOYEE_PREFS } from "@/store/notifications.store";
 import type { EmployeeNotifPrefs } from "@/store/notifications.store";
-import { useLocationStore } from "@/store/location.store";
-import { useDocumentsStore } from "@/store/documents.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useDisciplinaryStore } from "@/store/disciplinary.store";
-import { usePerformanceStore } from "@/store/performance.store";
-import { useBIRComplianceStore } from "@/store/bir-compliance.store";
 
 let _hydrated = false;
 let _subscriptions: (() => void)[] = [];
@@ -68,22 +62,15 @@ let _realtimeChannel: ReturnType<ReturnType<typeof createClient>["channel"]> | n
  * Used by `handleResetAll` to prevent seed data from being pushed to Supabase
  * during a bulk store reset. Subscribers re-enable after force-rehydration.
  */
-let _writePaused = false;
 
 /**
  * Pause all write-through subscriptions. Call before bulk store resets to
  * prevent seed/local data from overwriting real Supabase rows.
  */
-export function pauseWriteThrough(): void {
-  _writePaused = true;
-}
 
 /**
  * Resume write-through subscriptions after a bulk reset + rehydration.
  */
-export function resumeWriteThrough(): void {
-  _writePaused = false;
-}
 
 /**
  * Pull all data from Supabase and replace Zustand store state.
@@ -111,8 +98,6 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
   // Without this, setState() calls below trigger write-through subscribers
   // that try to re-upsert every fetched row — causing RLS errors for
   // non-admin roles and unnecessary DB round-trips for all roles.
-  const wasWritePaused = _writePaused;
-  _writePaused = true;
 
   // Wipe stale localStorage keys from old persist() stores before pulling
   // fresh data from Supabase. This prevents zombie data from rehydrating.
@@ -129,194 +114,13 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
   }
 
   try {
-    // Fetch all core data in two sequential batches of ~20 to stay well under
-    // Supabase's per-origin concurrent-request limit (~6 HTTP/1.1 connections
-    // or ~100 HTTP/2 streams). Firing all 40+ at once can cause the browser to
-    // drop some requests, producing CORS-style "Failed to fetch" errors.
-
-    // ── Batch 1: REMOVED — leave/loans now self-hydrate ──
-    // ── Batch 2: Comms + Tasks + Misc (projects/events/timesheets/depts/jobTitles now self-hydrate) ──
-    const [
-      auditLogs,
-      announcements,
-      textChannels,
-      channelMessages,
-      taskGroups,
-      tasks,
-      completionReports,
-      taskComments,
-      taskTagsList,
-      notificationLogs,
-      notificationRules,
-      locationPings,
-      sitePhotos,
-      breakRecords,
-      fetchedDocuments,
-    ] = await Promise.all([
-      auditDb.fetchAll(),
-      messagingDb.fetchAnnouncements(),
-      messagingDb.fetchChannels(),
-      messagingDb.fetchMessages(),
-      tasksDb.fetchGroups(),
-      tasksDb.fetchTasks(),
-      tasksDb.fetchCompletionReports(),
-      tasksDb.fetchComments(),
-      tasksDb.fetchTags(),
-      notificationsDb.fetchLogs(),
-      notificationsDb.fetchRules(),
-      locationDb.fetchPings(),
-      locationDb.fetchPhotos(),
-      locationDb.fetchBreaks(),
-      documents201Db.fetchAll(),
-    ]);
-
-    // ── Employees, Attendance, Payroll: now self-hydrate via store.hydrateFromDb() ──
-    // (called from client-layout.tsx after this function completes)
-
-    // Hydrate audit store
-    if (auditLogs.length > 0) {
-      useAuditStore.setState({ logs: auditLogs });
-    }
-
-    // Hydrate messaging store
-    if (announcements.length > 0 || textChannels.length > 0 || channelMessages.length > 0) {
-      useMessagingStore.setState({
-        ...(announcements.length > 0 ? { announcements } : {}),
-        ...(textChannels.length > 0 ? { channels: textChannels } : {}),
-        ...(channelMessages.length > 0 ? { messages: channelMessages } : {}),
-      });
-    }
-
-    // Hydrate tasks store — always set groups and tasks from DB so stale
-    // seed/localStorage data never hides real assignments.  Completion
-    // reports, comments, and tags are only replaced when DB has rows.
-    useTasksStore.setState({
-      groups: taskGroups,
-      tasks,
-      ...(completionReports.length > 0 ? { completionReports } : {}),
-      ...(taskComments.length > 0 ? { comments: taskComments } : {}),
-      ...(taskTagsList.length > 0 ? { taskTags: taskTagsList } : {}),
-    });
-
-    // Hydrate notifications store — always set logs from DB so stale
-    // localStorage data from a previous user session is cleared on login.
-    useNotificationsStore.setState({
-      logs: notificationLogs,
-      ...(notificationRules.length > 0 ? { rules: notificationRules } : {}),
-    });
-
-    // Hydrate per-employee notification preferences from DB employee records.
-    // Each employee row may have a notification_preferences jsonb column.
-    // Note: employees now self-hydrate, so we fetch separately for notif prefs.
-    const employeesForPrefs = await employeesDb.fetchAll();
-    if (employeesForPrefs.length > 0) {
-      const dbPrefs: Record<string, EmployeeNotifPrefs> = {};
-      for (const emp of employeesForPrefs) {
-        if (emp.notificationPreferences && typeof emp.notificationPreferences === "object" && Object.keys(emp.notificationPreferences).length > 0) {
-          dbPrefs[emp.id] = { ...DEFAULT_EMPLOYEE_PREFS, ...emp.notificationPreferences } as EmployeeNotifPrefs;
-        }
-      }
-      if (Object.keys(dbPrefs).length > 0) {
-        const currentPrefs = useNotificationsStore.getState().employeePrefs;
-        useNotificationsStore.setState({
-          employeePrefs: { ...currentPrefs, ...dbPrefs },
-        });
-      }
-    }
-
-    // Hydrate location store
-    if (locationPings.length > 0 || sitePhotos.length > 0 || breakRecords.length > 0) {
-      useLocationStore.setState({
-        ...(locationPings.length > 0 ? { pings: locationPings } : {}),
-        ...(sitePhotos.length > 0 ? { photos: sitePhotos } : {}),
-        ...(breakRecords.length > 0 ? { breaks: breakRecords } : {}),
-      });
-    }
-
-    // Hydrate documents 201 store — always set from DB so DB-side changes
-    // (uploads, approvals, deletions) propagate on next login/refresh.
-    useDocumentsStore.setState({ documents: fetchedDocuments });
-
-    // ── Batch 3: Disciplinary + Documents + Performance + BIR ────
-    // Use allSettled so missing tables (migration not yet applied) don't
-    // break the rest of hydration.
-    const batch3 = await Promise.allSettled([
-      disciplinaryDb.fetchCases(),
-      disciplinaryDb.fetchNTEs(),
-      disciplinaryDb.fetchNODs(),
-      documentsDb.fetchAll(),
-      performanceDb.fetchCycles(),
-      performanceDb.fetchCriteria(),
-      performanceDb.fetchSalaryBands(),
-      performanceDb.fetchReviews(),
-      performanceDb.fetchAdjustments(),
-      performanceDb.fetchAuditLogs(),
-      birComplianceDb.fetchTaxProfiles(),
-      birComplianceDb.fetchAnnualSummaries(),
-      birComplianceDb.fetchPreviousEmployerRecords(),
-      birComplianceDb.fetchForm2316Records(),
-      birComplianceDb.fetchAlphalistExports(),
-    ]);
-
-    const settled = <T,>(r: PromiseSettledResult<T[]>): T[] =>
-      r.status === "fulfilled" ? r.value : [];
-
-    // Hydrate disciplinary
-    const discCases = settled(batch3[0]);
-    const discNTEs = settled(batch3[1]);
-    const discNODs = settled(batch3[2]);
-    if (discCases.length > 0 || discNTEs.length > 0 || discNODs.length > 0) {
-      const st = useDisciplinaryStore.getState();
-      st.setCases(discCases);
-      st.setNTEs(discNTEs);
-      st.setNODs(discNODs);
-    }
-
-    // Hydrate documents
-    const docs201 = settled(batch3[3]);
-    if (docs201.length > 0) {
-      useDocumentsStore.getState().setDocuments(docs201);
-    }
-
-    // Hydrate performance
-    const perfCycles = settled(batch3[4]);
-    const perfCriteria = settled(batch3[5]);
-    const perfBands = settled(batch3[6]);
-    const perfReviews = settled(batch3[7]);
-    const perfAdjs = settled(batch3[8]);
-    const perfLogs = settled(batch3[9]);
-    if (perfCycles.length > 0 || perfReviews.length > 0) {
-      const st = usePerformanceStore.getState();
-      st.setCycles(perfCycles);
-      st.setCriteria(perfCriteria);
-      st.setSalaryBands(perfBands);
-      st.setReviews(perfReviews);
-      st.setAdjustments(perfAdjs);
-      st.setAuditLogs(perfLogs);
-    }
-
-    // Hydrate BIR compliance
-    const birProfiles = settled(batch3[10]);
-    const birSummaries = settled(batch3[11]);
-    const birPrevRecords = settled(batch3[12]);
-    const birForm2316 = settled(batch3[13]);
-    const birExports = settled(batch3[14]);
-    if (birProfiles.length > 0 || birSummaries.length > 0) {
-      const st = useBIRComplianceStore.getState();
-      st.setTaxProfiles(birProfiles);
-      st.setAnnualSummaries(birSummaries);
-      st.setPreviousEmployerRecords(birPrevRecords);
-      st.setForm2316Records(birForm2316);
-      st.setAlphalistExports(birExports);
-    }
-
+    // All stores now self-hydrate via hydrateFromDb() — nothing to fetch here.
     _hydrated = true;
-    console.log("[sync] Stores hydrated from Supabase");
+    console.log("[sync] Hydration delegated to self-hydrating stores");
   } catch (err) {
     console.error("[sync] Failed to hydrate stores:", err);
   } finally {
     // Restore write-through state so mutations after hydration sync normally
-    _writePaused = wasWritePaused;
   }
 }
 
@@ -325,382 +129,15 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
  * Uses a debounced approach to avoid flooding the DB.
  */
 export function startWriteThrough(): void {
-  if (!shouldSync()) return;
-
-  // Clean up previous subscriptions
-  stopWriteThrough();
-
-  // Determine write scope — only admin/hr manage HR data (employees meta, leave balances, attendance logs)
-  const role = useAuthStore.getState().currentUser?.role ?? "";
-  const isAdminOrHr = ["admin", "hr"].includes(role);
-  const currentUser = useAuthStore.getState().currentUser;
-  const currentEmployee = getEmployees().find(
-    (e) =>
-      e.profileId === currentUser?.id ||
-      e.email?.trim().toLowerCase() === currentUser?.email?.trim().toLowerCase() ||
-      e.name?.trim().toLowerCase() === currentUser?.name?.trim().toLowerCase()
-  );
-  const currentEmployeeId = currentEmployee?.id ?? null;
-  // Kiosk mode syncs all attendance data (used by all employees without individual login)
-  const isKioskMode = typeof window !== "undefined" && window.location.pathname.startsWith("/kiosk");
-
-  // ─── Employees write-through — REMOVED (mutations now persist via db.service directly) ──
-
-  // Leave write-through — REMOVED
-  // ─── Attendance write-through — REMOVED (mutations now persist via db.service directly) ──
-
-  // ─── Payroll write-through — REMOVED (mutations now persist via db.service directly) ──
-
-  // Loans write-through — REMOVED
-  // Projects write-through — REMOVED
-  // ─── Audit write-through ──────────────────────────────────
-  _subscriptions.push(
-    useAuditStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        for (const entry of state.logs) {
-          if (!prevState.logs.find((l) => l.id === entry.id)) {
-            auditDb.insert(entry);
-          }
-        }
-      }
-    )
-  );
-
-  // Events write-through — REMOVED
-  // ─── Messaging write-through ──────────────────────────────
-  _subscriptions.push(
-    useMessagingStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        // Use an async IIFE so channels are fully committed to Supabase before
-        // any message insert runs. This prevents the FK constraint violation
-        // (channel_messages_channel_id_fkey) that occurs when a seed-only channel
-        // has never been persisted to Supabase and a user sends their first message.
-        (async () => {
-          // Announcements (no FK dependency, can run in parallel)
-          const announcementOps = state.announcements
-            .filter((ann) => {
-              const prev = prevState.announcements.find((a) => a.id === ann.id);
-              return !prev || JSON.stringify(prev) !== JSON.stringify(ann);
-            })
-            .map((ann) => messagingDb.upsertAnnouncement(ann));
-
-          // Channels — await all upserts before touching messages
-          for (const ch of state.channels) {
-            const prev = prevState.channels.find((c) => c.id === ch.id);
-            if (!prev || JSON.stringify(prev) !== JSON.stringify(ch)) {
-              await messagingDb.upsertChannel(ch);
-            }
-          }
-          for (const prev of prevState.channels) {
-            if (!state.channels.find((c) => c.id === prev.id)) {
-              messagingDb.deleteChannel(prev.id);
-            }
-          }
-
-          // Messages — for each new message, guarantee its parent channel exists
-          // in Supabase first (handles seed-only channels that were never synced)
-          for (const msg of state.messages) {
-            const prev = prevState.messages.find((m) => m.id === msg.id);
-            if (!prev) {
-              // Ensure the parent channel is persisted before the message
-              const parentChannel = state.channels.find((c) => c.id === msg.channelId);
-              if (parentChannel) {
-                await messagingDb.upsertChannel(parentChannel);
-              }
-              await messagingDb.insertMessage(msg);
-            } else if (JSON.stringify(prev) !== JSON.stringify(msg)) {
-              await messagingDb.upsertMessage(msg);
-            }
-          }
-
-          await Promise.all(announcementOps);
-        })();
-      }
-    )
-  );
-
-  // ─── Tasks write-through ──────────────────────────────────
-  // Groups MUST be persisted before tasks because tasks have a FK on group_id.
-  // We use an async IIFE to await all group upserts before touching tasks,
-  // preventing FK-violation silent failures when both are created together.
-  _subscriptions.push(
-    useTasksStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        void (async () => {
-          // Task groups — await all upserts/deletes before tasks
-          for (const g of state.groups) {
-            const prev = prevState.groups.find((pg) => pg.id === g.id);
-            if (!prev || JSON.stringify(prev) !== JSON.stringify(g)) {
-              await tasksDb.upsertGroup(g);
-            }
-          }
-          for (const prev of prevState.groups) {
-            if (!state.groups.find((g) => g.id === prev.id)) {
-              await tasksDb.deleteGroup(prev.id);
-            }
-          }
-          // Tasks — safe to run now that groups are committed
-          for (const t of state.tasks) {
-            const prev = prevState.tasks.find((pt) => pt.id === t.id);
-            if (!prev || JSON.stringify(prev) !== JSON.stringify(t)) {
-              tasksDb.upsertTask(t);
-            }
-          }
-          for (const prev of prevState.tasks) {
-            if (!state.tasks.find((t) => t.id === prev.id)) {
-              tasksDb.deleteTask(prev.id);
-            }
-          }
-          // Completion reports
-          for (const r of state.completionReports) {
-            const prev = prevState.completionReports.find((pr) => pr.id === r.id);
-            if (!prev || JSON.stringify(prev) !== JSON.stringify(r)) {
-              tasksDb.upsertCompletionReport(r);
-            }
-          }
-          // Comments (append-only)
-          for (const c of state.comments) {
-            if (!prevState.comments.find((pc) => pc.id === c.id)) {
-              tasksDb.insertComment(c);
-            }
-          }
-          // Task tags
-          for (const tag of state.taskTags) {
-            const prev = prevState.taskTags.find((pt) => pt.id === tag.id);
-            if (!prev || JSON.stringify(prev) !== JSON.stringify(tag)) {
-              tasksDb.upsertTag(tag);
-            }
-          }
-          for (const prev of prevState.taskTags) {
-            if (!state.taskTags.find((t) => t.id === prev.id)) {
-              tasksDb.deleteTag(prev.id);
-            }
-          }
-        })();
-      }
-    )
-  );
-
-  // Timesheets write-through — REMOVED
-  // ─── Notifications write-through ──────────────────────────
-  _subscriptions.push(
-    useNotificationsStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        // Logs: insert new logs OR upsert changed logs (e.g. read status)
-        for (const log of state.logs) {
-          const prev = prevState.logs.find((pl) => pl.id === log.id);
-          if (!prev) {
-            notificationsDb.insertLog(log);
-          } else if (JSON.stringify(prev) !== JSON.stringify(log)) {
-            // Log changed (e.g. read: false → true) — sync to DB
-            notificationsDb.upsertLog(log);
-          }
-        }
-        // Rules
-        for (const rule of state.rules) {
-          const prev = prevState.rules.find((pr) => pr.id === rule.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(rule)) {
-            notificationsDb.upsertRule(rule);
-          }
-        }
-      }
-    )
-  );
-
-  // ─── Location write-through ───────────────────────────────
-  _subscriptions.push(
-    useLocationStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        // Pings (append-only)
-        for (const ping of state.pings) {
-          if (!prevState.pings.find((pp) => pp.id === ping.id)) {
-            locationDb.insertPing(ping);
-          }
-        }
-        // Photos
-        for (const photo of state.photos) {
-          if (!prevState.photos.find((pp) => pp.id === photo.id)) {
-            locationDb.upsertPhoto(photo);
-          }
-        }
-        // Breaks
-        for (const br of state.breaks) {
-          const prev = prevState.breaks.find((pb) => pb.id === br.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(br)) {
-            locationDb.upsertBreak(br);
-          }
-        }
-      }
-    )
-  );
-
-  // ─── Documents 201 write-through ──────────────────────
-  _subscriptions.push(
-    useDocumentsStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-
-        // Detect new or changed documents
-        for (const doc of state.documents) {
-          const prev = prevState.documents.find((d) => d.id === doc.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(doc)) {
-            documents201Db.upsert(doc);
-          }
-        }
-        // Detect deletions
-        for (const prev of prevState.documents) {
-          if (!state.documents.find((d) => d.id === prev.id)) {
-            documents201Db.remove(prev.id);
-          }
-        }
-      }
-    )
-  );
-
-  // ─── Disciplinary write-through ────────────────────────────
-  _subscriptions.push(
-    useDisciplinaryStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        // Cases
-        for (const c of state.cases) {
-          const prev = prevState.cases.find((p) => p.id === c.id);
-          if (isAdminOrHr && (!prev || prev.updatedAt !== c.updatedAt)) {
-            disciplinaryDb.upsertCase(c);
-          }
-        }
-        // NTEs
-        for (const n of state.ntes) {
-          const prev = prevState.ntes.find((p) => p.id === n.id);
-          const canWriteNte = isAdminOrHr || (currentEmployeeId !== null && currentEmployeeId === n.employeeId);
-          if (canWriteNte && (!prev || prev.updatedAt !== n.updatedAt)) {
-            if (isAdminOrHr) {
-              disciplinaryDb.upsertNTE(n);
-            } else {
-              const { id: _id, ...patch } = n;
-              disciplinaryDb.updateNTE(n.id, patch);
-            }
-          }
-        }
-        // NODs
-        for (const n of state.nods) {
-          const prev = prevState.nods.find((p) => p.id === n.id);
-          const canWriteNod = isAdminOrHr || (currentEmployeeId !== null && currentEmployeeId === n.employeeId);
-          if (canWriteNod && (!prev || prev.updatedAt !== n.updatedAt)) {
-            if (isAdminOrHr) {
-              disciplinaryDb.upsertNOD(n);
-            } else {
-              const { id: _id, ...patch } = n;
-              disciplinaryDb.updateNOD(n.id, patch);
-            }
-          }
-        }
-      }
-    )
-  );
-
-  // ─── Performance write-through ────────────────────────────
-  _subscriptions.push(
-    usePerformanceStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        // Cycles
-        for (const c of state.cycles) {
-          const prev = prevState.cycles.find((p) => p.id === c.id);
-          if (!prev || prev.updated_at !== c.updated_at) {
-            performanceDb.upsertCycle(c);
-          }
-        }
-        // Reviews
-        for (const r of state.reviews) {
-          const prev = prevState.reviews.find((p) => p.id === r.id);
-          if (!prev || prev.updated_at !== r.updated_at) {
-            performanceDb.upsertReview(r);
-          }
-        }
-        // Criteria
-        if (state.criteria !== prevState.criteria) {
-          for (const c of state.criteria) {
-            if (!prevState.criteria.some((p) => p.id === c.id)) {
-              performanceDb.upsertCriterion(c);
-            }
-          }
-        }
-        // Salary bands
-        if (state.salaryBands !== prevState.salaryBands) {
-          for (const b of state.salaryBands) {
-            if (!prevState.salaryBands.some((p) => p.id === b.id)) {
-              performanceDb.upsertSalaryBand(b);
-            }
-          }
-        }
-        // Adjustments
-        for (const a of state.adjustments) {
-          const prev = prevState.adjustments.find((p) => p.id === a.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(a)) {
-            performanceDb.upsertAdjustment(a);
-          }
-        }
-      }
-    )
-  );
-
-  // ─── BIR Compliance write-through ─────────────────────────
-  _subscriptions.push(
-    useBIRComplianceStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        // Tax profiles
-        if (state.taxProfiles !== prevState.taxProfiles) {
-          for (const p of state.taxProfiles) {
-            if (!prevState.taxProfiles.some((pp) => pp.id === p.id)) {
-              birComplianceDb.upsertTaxProfile(p);
-            }
-          }
-        }
-        // Annual summaries
-        for (const s of state.annualSummaries) {
-          const prev = prevState.annualSummaries.find((p) => p.id === s.id);
-          if (!prev || prev.updatedAt !== s.updatedAt) {
-            birComplianceDb.upsertAnnualSummary(s);
-          }
-        }
-        // Form 2316
-        if (state.form2316Records !== prevState.form2316Records) {
-          for (const r of state.form2316Records) {
-            if (!prevState.form2316Records.some((p) => p.id === r.id)) {
-              birComplianceDb.upsertForm2316(r);
-            }
-          }
-        }
-        // Alphalist exports (insert-only)
-        for (const e of state.alphalistExports) {
-          if (!prevState.alphalistExports.some((p) => p.id === e.id)) {
-            birComplianceDb.addAlphalistExport(e);
-          }
-        }
-      }
-    )
-  );
-
-  // Departments write-through — REMOVED
-  // Job Titles write-through — REMOVED
-  console.log("[sync] Write-through subscriptions active");
+  // All write-through subscriptions removed — stores now self-persist via db.service.
+  console.log("[sync] Write-through disabled (stores self-persist)");
 }
 
-/** Teardown all write-through subscriptions */
 export function stopWriteThrough(): void {
-  for (const unsub of _subscriptions) {
-    unsub();
-  }
   _subscriptions = [];
   _hydrated = false;
 }
+
 
 /**
  * Subscribe to Supabase Realtime postgres_changes for critical tables.
