@@ -69,33 +69,44 @@ export const useDepartmentsStore = create<DepartmentsState>()(
                 ],
             }));
             return id;
-        },
+        
+                const dept = get().departments[get().departments.length - 1];
+                if (dept) departmentsDb.upsert(dept).catch(() => {});
+            },
 
         // ── Update ────────────────────────────────────────
-        updateDepartment: (id, patch) =>
+        updateDepartment: (id, patch) => {
             set((s) => ({
                 departments: s.departments.map((d) =>
                     d.id === id
                         ? { ...d, ...patch, updatedAt: new Date().toISOString() }
                         : d
                 ),
-            })),
+            }));
+                const dept = get().departments.find((d) => d.id === id);
+                if (dept) departmentsDb.upsert(dept).catch(() => {});
+            },
 
         // ── Delete ────────────────────────────────────────
-        deleteDepartment: (id) =>
+        deleteDepartment: (id) => {
             set((s) => ({
                 departments: s.departments.filter((d) => d.id !== id),
-            })),
+            }));
+                departmentsDb.remove(id).catch(() => {});
+            },
 
         // ── Toggle Active ─────────────────────────────────
-        toggleActive: (id) =>
+        toggleActive: (id) => {
             set((s) => ({
                 departments: s.departments.map((d) =>
                     d.id === id
                         ? { ...d, isActive: !d.isActive, updatedAt: new Date().toISOString() }
                         : d
                 ),
-            })),
+            }));
+                const dept = get().departments.find((d) => d.id === id);
+                if (dept) departmentsDb.upsert(dept).catch(() => {});
+            },
 
         // ── Selectors ─────────────────────────────────────
         getById: (id) => get().departments.find((d) => d.id === id),

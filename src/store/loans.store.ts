@@ -2,7 +2,8 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
 import type { Loan, LoanDeduction, LoanRepaymentSchedule, LoanBalanceHistory } from "@/types";
-import { loansDb, shouldSync, hasValidSession } from "@/services/db.service";
+import { loansDb, payrollDb, shouldSync, hasValidSession } from "@/services/db.service";
+import { usePayrollStore } from "@/store/payroll.store";
 import { SEED_LOANS } from "@/data/seed";
 
 const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
@@ -42,7 +43,7 @@ export const useLoansStore = create<LoansState>()(
     (set, get) => ({
             loans: USE_DEMO_MODE ? SEED_LOANS : [],
 
-            createLoan: (data) =>
+            createLoan: (data) => {
                 set((s) => {
                     const newLoan: Loan = {
                         ...data,
@@ -53,9 +54,12 @@ export const useLoansStore = create<LoansState>()(
                         createdAt: new Date().toISOString().split("T")[0],
                     };
                     return { loans: [...s.loans, newLoan] };
-                }),
+                });
+                const newLoan = get().loans[get().loans.length - 1];
+                if (newLoan) loansDb.upsert(newLoan).catch(() => {});
+            },
 
-            deductFromLoan: (id, amount) =>
+            deductFromLoan: (id, amount) => {
                 set((s) => ({
                     loans: s.loans.map((l) => {
                         if (l.id !== id) return l;
@@ -66,41 +70,59 @@ export const useLoansStore = create<LoansState>()(
                             status: newBalance === 0 ? "settled" as const : l.status,
                         };
                     }),
-                })),
+                }));
+                const loan = get().loans.find((l) => l.id === id);
+                if (loan) loansDb.upsert(loan).catch(() => {});
+            },
 
-            settleLoan: (id) =>
+            settleLoan: (id) => {
                 set((s) => ({
                     loans: s.loans.map((l) =>
                         l.id === id ? { ...l, remainingBalance: 0, status: "settled" as const } : l
                     ),
-                })),
+                }));
+                const loan = get().loans.find((l) => l.id === id);
+                if (loan) loansDb.upsert(loan).catch(() => {});
+            },
 
-            freezeLoan: (id) =>
+            freezeLoan: (id) => {
                 set((s) => ({
                     loans: s.loans.map((l) =>
                         l.id === id ? { ...l, status: "frozen" as const } : l
                     ),
-                })),
+                }));
+                const loan = get().loans.find((l) => l.id === id);
+                if (loan) loansDb.upsert(loan).catch(() => {});
+            },
 
-            unfreezeLoan: (id: string) =>
+            unfreezeLoan: (id: string) => {
                 set((s) => ({
                     loans: s.loans.map((l) =>
                         l.id === id && l.status === "frozen" ? { ...l, status: "active" as const } : l
                     ),
-                })),
+                }));
+                const loan = get().loans.find((l) => l.id === id);
+                if (loan) loansDb.upsert(loan).catch(() => {});
+            },
 
-            updateLoan: (id, patch) =>
+            updateLoan: (id, patch) => {
                 set((s) => ({
                     loans: s.loans.map((l) => (l.id === id ? { ...l, ...patch } : l)),
-                })),
+                }));
+                const loan = get().loans.find((l) => l.id === id);
+                if (loan) loansDb.upsert(loan).catch(() => {});
+            },
 
-            cancelLoan: (id) =>
+            cancelLoan: (id) => {
                 set((s) => ({
                     // Soft-cancel: preserve history, just mark status
                     loans: s.loans.map((l) =>
                         l.id === id ? { ...l, status: "cancelled" as const } : l
                     ),
-                })),
+                }));
+                const loan = get().loans.find((l) => l.id === id);
+                if (loan) loansDb.upsert(loan).catch(() => {});
+            },
 
             getByEmployee: (employeeId) =>
                 get().loans.filter((l) => l.employeeId === employeeId),
@@ -108,7 +130,7 @@ export const useLoansStore = create<LoansState>()(
             getActiveByEmployee: (employeeId) =>
                 get().loans.filter((l) => l.employeeId === employeeId && l.status === "active"),
 
-            recordDeduction: (loanId, payslipId, amount) =>
+            recordDeduction: (loanId, payslipId, amount) => {
                 set((s) => ({
                     loans: s.loans.map((l) => {
                         if (l.id !== loanId) return l;
@@ -139,7 +161,23 @@ export const useLoansStore = create<LoansState>()(
                             balanceHistory: [...(l.balanceHistory || []), historyEntry],
                         };
                     }),
-                })),
+                }));
+                // FK guard: only persist if payslip exists in DB (prevents FK violation)
+                const ded = get().loans.find((l) => l.id === loanId)?.deductions?.slice(-1)[0];
+                if (ded) {
+                    if (!ded.payslipId) {
+                        loansDb.insertDeduction(ded).catch(() => {});
+                    } else {
+                        // Check payslip exists before inserting (FK constraint)
+                        const payslipExists = usePayrollStore.getState().payslips.find((p) => p.id === ded.payslipId);
+                        if (payslipExists) {
+                            payrollDb.upsertPayslip(payslipExists).then((ok) => {
+                                if (ok) loansDb.insertDeduction(ded).catch(() => {});
+                            });
+                        }
+                    }
+                }
+            },
 
             getAllDeductions: () => {
                 const loans = get().loans;

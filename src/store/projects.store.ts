@@ -34,15 +34,24 @@ export const useProjectsStore = create<ProjectsState>()(
                 qrEnabled: data.qrEnabled ?? true,
             };
             set((s) => ({ projects: [...s.projects, newProject] }));
-        },
+        
+                // Persist to DB
+                const proj = get().projects[get().projects.length - 1];
+                if (proj) projectsDb.upsert(proj).catch(() => {});
+            },
         updateProject: (id, data) => {
             set((s) => ({
                 projects: s.projects.map((p) => (p.id === id ? { ...p, ...data } : p)),
             }));
-        },
+        
+                const proj = get().projects.find((p) => p.id === id);
+                if (proj) projectsDb.upsert(proj).catch(() => {});
+            },
         deleteProject: (id) => {
             set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }));
-        },
+        
+                projectsDb.remove(id).catch(() => {});
+            },
         assignEmployee: (projectId, employeeId) => {
             set((s) => ({
                 // Remove the employee from any other project first (1 project per employee)
@@ -55,7 +64,10 @@ export const useProjectsStore = create<ProjectsState>()(
                     return { ...p, assignedEmployeeIds: p.assignedEmployeeIds.filter((id) => id !== employeeId) };
                 }),
             }));
-        },
+        
+                const proj = get().projects.find((p) => p.id === projectId);
+                if (proj) projectsDb.upsert(proj).catch(() => {});
+            },
         removeEmployee: (projectId, employeeId) => {
             set((s) => ({
                 projects: s.projects.map((p) =>
@@ -64,7 +76,10 @@ export const useProjectsStore = create<ProjectsState>()(
                         : p
                 ),
             }));
-        },
+        
+                const proj = get().projects.find((p) => p.id === projectId);
+                if (proj) projectsDb.upsert(proj).catch(() => {});
+            },
         getProjectForEmployee: (employeeId) => {
             return get().projects.find((p) => p.assignedEmployeeIds.includes(employeeId));
         },

@@ -187,6 +187,9 @@ export const useLeaveStore = create<LeaveState>()(
                         );
                     });
                 } catch { /* best-effort */ }
+            
+                // Persist to DB
+                leaveDb.upsertRequest(get().requests[get().requests.length - 1]).catch(() => {});
             },
 
             updateStatus: (id, status, reviewedBy) => {
@@ -268,6 +271,10 @@ export const useLeaveStore = create<LeaveState>()(
                         );
                     }
                 } catch { /* best-effort */ }
+            
+                // Persist to DB
+                const updatedReq = get().requests.find((r) => r.id === id);
+                if (updatedReq) leaveDb.upsertRequest(updatedReq).catch(() => {});
             },
 
             getByEmployee: (employeeId) =>
@@ -275,24 +282,32 @@ export const useLeaveStore = create<LeaveState>()(
             getPending: () => get().requests.filter((r) => r.status === "pending"),
 
             // â”€â”€â”€ Policies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            addPolicy: (policy) =>
+            addPolicy: (policy) => {
                 set((s) => ({
                     policies: [...s.policies, { ...policy, id: `LP-${nanoid(6)}` }],
-                })),
+                }));
+                const newPol = get().policies[get().policies.length - 1];
+                if (newPol) leaveDb.upsertPolicy(newPol).catch(() => {});
+            },
 
-            updatePolicy: (id, data) =>
+            updatePolicy: (id, data) => {
                 set((s) => ({
                     policies: s.policies.map((p) => (p.id === id ? { ...p, ...data } : p)),
-                })),
+                }));
+                const updatedPol = get().policies.find((p) => p.id === id);
+                if (updatedPol) leaveDb.upsertPolicy(updatedPol).catch(() => {});
+            },
 
-            deletePolicy: (id) =>
-                set((s) => ({ policies: s.policies.filter((p) => p.id !== id) })),
+            deletePolicy: (id) => {
+                set((s) => ({ policies: s.policies.filter((p) => p.id !== id) }));
+                leaveDb.deletePolicy(id).catch(() => {});
+            },
 
             getPolicy: (leaveType) =>
                 get().policies.find((p) => p.leaveType === leaveType),
 
             // â”€â”€â”€ Balances â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            initBalances: (employeeId, year) =>
+            initBalances: (employeeId, year) => {
                 set((s) => {
                     const existing = s.balances.filter(
                         (b) => b.employeeId === employeeId && b.year === year
@@ -318,7 +333,11 @@ export const useLeaveStore = create<LeaveState>()(
                         };
                     });
                     return { balances: [...s.balances, ...newBalances] };
-                }),
+                });
+                for (const bal of get().balances.filter((b) => b.employeeId === employeeId)) {
+                    leaveDb.upsertBalance(bal).catch(() => {});
+                }
+            },
 
             getBalance: (employeeId, leaveType, year) =>
                 get().balances.find(
@@ -328,7 +347,7 @@ export const useLeaveStore = create<LeaveState>()(
             getEmployeeBalances: (employeeId, year) =>
                 get().balances.filter((b) => b.employeeId === employeeId && b.year === year),
 
-            accrueLeave: (employeeId, leaveType, year, days) =>
+            accrueLeave: (employeeId, leaveType, year, days) => {
                 set((s) => ({
                     balances: s.balances.map((b) =>
                         b.employeeId === employeeId && b.leaveType === leaveType && b.year === year
@@ -340,7 +359,10 @@ export const useLeaveStore = create<LeaveState>()(
                             }
                             : b
                     ),
-                })),
+                }));
+                const bal = get().balances.find((b) => b.employeeId === employeeId && b.leaveType === leaveType && b.year === year);
+                if (bal) leaveDb.upsertBalance(bal).catch(() => {});
+            },
 
             // â”€â”€â”€ Conflict detection (Â§9 â€” clock-in on approved leave day) â”€
             hasLeaveConflict: (employeeId, date) => {

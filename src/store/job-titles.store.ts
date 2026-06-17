@@ -77,33 +77,44 @@ export const useJobTitlesStore = create<JobTitlesState>()(
                 ],
             }));
             return id;
-        },
+        
+                const jt = get().jobTitles[get().jobTitles.length - 1];
+                if (jt) jobTitlesDb.upsert(jt).catch(() => {});
+            },
 
         // ── Update ────────────────────────────────────────
-        updateJobTitle: (id, patch) =>
+        updateJobTitle: (id, patch) => {
             set((s) => ({
                 jobTitles: s.jobTitles.map((jt) =>
                     jt.id === id
                         ? { ...jt, ...patch, updatedAt: new Date().toISOString() }
                         : jt
                 ),
-            })),
+            }));
+                const jt = get().jobTitles.find((j) => j.id === id);
+                if (jt) jobTitlesDb.upsert(jt).catch(() => {});
+            },
 
         // ── Delete ────────────────────────────────────────
-        deleteJobTitle: (id) =>
+        deleteJobTitle: (id) => {
             set((s) => ({
                 jobTitles: s.jobTitles.filter((jt) => jt.id !== id),
-            })),
+            }));
+                jobTitlesDb.remove(id).catch(() => {});
+            },
 
         // ── Toggle Active ─────────────────────────────────
-        toggleActive: (id) =>
+        toggleActive: (id) => {
             set((s) => ({
                 jobTitles: s.jobTitles.map((jt) =>
                     jt.id === id
                         ? { ...jt, isActive: !jt.isActive, updatedAt: new Date().toISOString() }
                         : jt
                 ),
-            })),
+            }));
+                const jt = get().jobTitles.find((j) => j.id === id);
+                if (jt) jobTitlesDb.upsert(jt).catch(() => {});
+            },
 
         // ── Selectors ─────────────────────────────────────
         getById: (id) => get().jobTitles.find((jt) => jt.id === id),

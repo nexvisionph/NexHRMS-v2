@@ -99,17 +99,25 @@ export const useTimesheetStore = create<TimesheetState>()(
         addRuleSet: (data) => {
             const rs = { ...data, id: `RS-${nanoid(8)}` };
             set((s) => ({ ruleSets: [...s.ruleSets, rs] }));
-        },
+        
+                const newRs = get().ruleSets[get().ruleSets.length - 1];
+                if (newRs) timesheetsDb.upsertRuleSet(newRs).catch(() => {});
+            },
 
         updateRuleSet: (id, data) => {
             set((s) => ({
                 ruleSets: s.ruleSets.map((r) => (r.id === id ? { ...r, ...data } : r)),
             }));
-        },
+        
+                const rs = get().ruleSets.find((r) => r.id === id);
+                if (rs) timesheetsDb.upsertRuleSet(rs).catch(() => {});
+            },
 
         deleteRuleSet: (id) => {
             set((s) => ({ ruleSets: s.ruleSets.filter((r) => r.id !== id) }));
-        },
+        
+                timesheetsDb.deleteRuleSet(id).catch(() => {});
+            },
 
             getRuleSet: (id) => get().ruleSets.find((r) => r.id === id),
 
@@ -196,6 +204,10 @@ export const useTimesheetStore = create<TimesheetState>()(
                     }
                     return { timesheets: [...s.timesheets, ts] };
                 });
+            
+                // Persist to DB
+                const newTs = get().timesheets[get().timesheets.length - 1];
+                if (newTs) timesheetsDb.upsertTimesheet(newTs).catch(() => {});
             },
 
             submitTimesheet: (id) => {
@@ -206,6 +218,9 @@ export const useTimesheetStore = create<TimesheetState>()(
                             : t
                     ),
                 }));
+            
+                const updated = get().timesheets.find((t) => t.id === id);
+                if (updated) timesheetsDb.upsertTimesheet(updated).catch(() => {});
             },
 
             approveTimesheet: (id, approverId) => {
@@ -217,6 +232,9 @@ export const useTimesheetStore = create<TimesheetState>()(
                             : t
                     ),
                 }));
+            
+                const updated = get().timesheets.find((t) => t.id === id);
+                if (updated) timesheetsDb.upsertTimesheet(updated).catch(() => {});
             },
 
             rejectTimesheet: (id, approverId) => {
@@ -228,6 +246,9 @@ export const useTimesheetStore = create<TimesheetState>()(
                             : t
                     ),
                 }));
+            
+                const updated = get().timesheets.find((t) => t.id === id);
+                if (updated) timesheetsDb.upsertTimesheet(updated).catch(() => {});
             },
 
             getByEmployee: (employeeId) =>
