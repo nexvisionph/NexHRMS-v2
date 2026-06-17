@@ -1,5 +1,6 @@
 "use client";
 import { create } from "zustand";
+import { locationDb, shouldSync, hasValidSession } from "@/services/db.service";
 import { nanoid } from "nanoid";
 import type {
     SiteSurveyPhoto,
@@ -68,6 +69,9 @@ interface LocationState {
     purgeOldPings: () => void;
 
     resetToSeed: () => void;
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 export const useLocationStore = create<LocationState>()(
@@ -204,5 +208,33 @@ export const useLocationStore = create<LocationState>()(
                     pings: [],
                 });
             },
-        })
+        
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const [pings, photos, breaks] = await Promise.all([
+                        locationDb.fetchPings(),
+                        locationDb.fetchPhotos(),
+                        locationDb.fetchBreaks(),
+                    ]);
+                    const currentState = get();
+                    if (currentState.pings.length === 0 && (pings.length > 0 || photos.length > 0)) {
+                        set({ pings, photos, breaks, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[location] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+})
 );

@@ -7,6 +7,7 @@ import type {
     Document201Status,
     Document201Visibility,
 } from "@/types";
+import { documents201Db, shouldSync, hasValidSession } from "@/services/db.service";
 import { useAuditStore } from "./audit.store";
 
 /** Required document types every employee should have on file. */
@@ -49,6 +50,9 @@ interface DocumentsState {
     };
 
     resetToSeed: () => void;
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 
     // Hydration setter (called by sync.service.ts)
     setDocuments: (d: Employee201Document[]) => void;
@@ -220,5 +224,29 @@ export const useDocumentsStore = create<DocumentsState>()(
         resetToSeed: () => set({ documents: [] }),
 
         setDocuments: (d) => set({ documents: d }),
-    }),
+    
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const documents = await documents201Db.fetchAll();
+                    const currentState = get();
+                    if (currentState.documents.length === 0 && documents.length > 0) {
+                        set({ documents, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[documents] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+}),
 );

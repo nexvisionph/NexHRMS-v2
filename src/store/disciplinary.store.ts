@@ -8,6 +8,7 @@ import type {
     NODRecord,
     NODDecision,
 } from "@/types";
+import { disciplinaryDb, shouldSync, hasValidSession } from "@/services/db.service";
 import { useAuditStore } from "./audit.store";
 import { getEmployee, getEmployees } from "@/lib/employee-data";
 import { notifyDisciplinaryExplanationSubmitted, dispatchNotification } from "@/lib/notifications";
@@ -63,6 +64,9 @@ interface DisciplinaryState {
     };
 
     resetToSeed: () => void;
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 
     // Hydration setters (called by sync.service.ts)
     setCases: (c: DisciplinaryCase[]) => void;
@@ -382,5 +386,33 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
         setCases: (c) => set({ cases: c }),
         setNTEs: (n) => set({ ntes: n }),
         setNODs: (n) => set({ nods: n }),
-    }),
+    
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const [cases, ntes, nods] = await Promise.all([
+                        disciplinaryDb.fetchCases(),
+                        disciplinaryDb.fetchNTEs(),
+                        disciplinaryDb.fetchNODs(),
+                    ]);
+                    const currentState = get();
+                    if (currentState.cases.length === 0 && cases.length > 0) {
+                        set({ cases, ntes, nods, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[disciplinary] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+}),
 );

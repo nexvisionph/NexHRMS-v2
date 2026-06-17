@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { nanoid } from "nanoid";
 import type { NotificationLog, NotificationType, NotificationRule, NotificationTrigger } from "@/types";
 import { getEmployee } from "@/lib/employee-data";
-import { notificationsDb } from "@/services/db.service";
+import { notificationsDb , shouldSync, hasValidSession } from "@/services/db.service";
 
 // â”€â”€â”€ Default Rules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -107,6 +107,9 @@ interface NotificationsState {
     batchDispatch: (entries: Array<{ trigger: NotificationTrigger; vars: Record<string, string>; recipientEmployeeId: string; recipientEmail?: string; recipientPhone?: string; link?: string }>) => void;
 
     resetToSeed: () => void;
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 // Per-employee notification opt-out preferences.
@@ -600,5 +603,32 @@ export const useNotificationsStore = create<NotificationsState>()(
                     void providerRequest?.catch(() => {});
                 } catch { /* best-effort */ }
             },
-        })
+        
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const [logs, rules] = await Promise.all([
+                        notificationsDb.fetchLogs(),
+                        notificationsDb.fetchRules(),
+                    ]);
+                    const currentState = get();
+                    if (currentState.logs.length === 0 && logs.length > 0) {
+                        set({ logs, ...(rules.length > 0 ? { rules } : {}), _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[notifications] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+})
 );

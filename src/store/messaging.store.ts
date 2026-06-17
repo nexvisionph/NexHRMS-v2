@@ -15,6 +15,7 @@ import {
 } from "@/data/seed";
 
 const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
+import { messagingDb, shouldSync, hasValidSession } from "@/services/db.service";
 import { useAuditStore } from "@/store/audit.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useNotificationsStore } from "@/store/notifications.store";
@@ -73,6 +74,9 @@ interface MessagingState {
 
     // ── Reset ─────────────────────────────────────────────────
     resetToSeed: () => void;
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 export const useMessagingStore = create<MessagingState>()(
@@ -301,5 +305,33 @@ export const useMessagingStore = create<MessagingState>()(
                     messages: SEED_CHANNEL_MESSAGES,
                     config: DEFAULT_CONFIG,
                 }),
-        })
+        
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const [announcements, channels, messages] = await Promise.all([
+                        messagingDb.fetchAnnouncements(),
+                        messagingDb.fetchChannels(),
+                        messagingDb.fetchMessages(),
+                    ]);
+                    const currentState = get();
+                    if (currentState.announcements.length === 0 && (announcements.length > 0 || channels.length > 0)) {
+                        set({ announcements, channels, messages, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[messaging] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+})
 );

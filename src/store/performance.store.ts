@@ -13,6 +13,7 @@ import type {
   SalaryAdjustmentStatus,
 } from "@/types";
 
+import { performanceDb, shouldSync, hasValidSession } from "@/services/db.service";
 interface PerformanceState {
   // Data
   cycles: PerformanceCycle[];
@@ -68,6 +69,9 @@ interface PerformanceState {
   setError: (error?: string) => void;
   setFilterStatus: (status?: ReviewStatus | "all") => void;
   reset: () => void;
+  _hydrated: boolean;
+  _hydrating: boolean;
+  hydrateFromDb: () => Promise<void>;
 }
 
 const initialState = {
@@ -81,7 +85,7 @@ const initialState = {
 };
 
 export const usePerformanceStore = create<PerformanceState>()(
-    (set) => ({
+    (set, get) => ({
       ...initialState,
 
       // Cycles
@@ -161,5 +165,36 @@ export const usePerformanceStore = create<PerformanceState>()(
 
       // Reset
       reset: () => set(initialState),
-    }),
+    
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const [cycles, criteria, salaryBands, reviews, adjustments, auditLogs] = await Promise.all([
+                        performanceDb.fetchCycles(),
+                        performanceDb.fetchCriteria(),
+                        performanceDb.fetchSalaryBands(),
+                        performanceDb.fetchReviews(),
+                        performanceDb.fetchAdjustments(),
+                        performanceDb.fetchAuditLogs(),
+                    ]);
+                    const currentState = get();
+                    if (currentState.cycles.length === 0 && cycles.length > 0) {
+                        set({ cycles, criteria, salaryBands, reviews, adjustments, auditLogs, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[performance] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+}),
 );

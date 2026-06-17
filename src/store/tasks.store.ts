@@ -18,6 +18,7 @@ import {
 } from "@/data/seed";
 
 const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
+import { tasksDb, shouldSync, hasValidSession } from "@/services/db.service";
 import { useAuditStore } from "@/store/audit.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { getEmployees } from "@/lib/employee-data";
@@ -64,6 +65,9 @@ interface TasksState {
 
     // â”€â”€ Reset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     resetToSeed: () => void;
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 export const useTasksStore = create<TasksState>()(
@@ -343,5 +347,35 @@ export const useTasksStore = create<TasksState>()(
                     comments: SEED_TASK_COMMENTS,
                     taskTags: SEED_TASK_TAGS,
                 }),
-        })
+        
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const [groups, tasks, completionReports, comments, taskTags] = await Promise.all([
+                        tasksDb.fetchGroups(),
+                        tasksDb.fetchTasks(),
+                        tasksDb.fetchCompletionReports(),
+                        tasksDb.fetchComments(),
+                        tasksDb.fetchTags(),
+                    ]);
+                    const currentState = get();
+                    if (currentState.tasks.length === 0 && tasks.length > 0) {
+                        set({ groups, tasks, completionReports, comments, taskTags, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[tasks] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+})
 );

@@ -16,6 +16,15 @@ import { useEventsStore } from "@/store/events.store";
 import { useDepartmentsStore } from "@/store/departments.store";
 import { useJobTitlesStore } from "@/store/job-titles.store";
 import { useTimesheetStore } from "@/store/timesheet.store";
+import { useTasksStore } from "@/store/tasks.store";
+import { useMessagingStore } from "@/store/messaging.store";
+import { useNotificationsStore } from "@/store/notifications.store";
+import { useAuditStore } from "@/store/audit.store";
+import { useLocationStore } from "@/store/location.store";
+import { useDocumentsStore } from "@/store/documents.store";
+import { useDisciplinaryStore } from "@/store/disciplinary.store";
+import { usePerformanceStore } from "@/store/performance.store";
+import { useBIRComplianceStore } from "@/store/bir-compliance.store";
 import { useEffect, useState } from "react";
 import { createClient, clearAuthStorage, resetClient, safeGetSession, installAuthErrorSuppression } from "@/services/supabase-browser";
 import { hydrateAllStores, startWriteThrough, startRealtime, stopRealtime, stopWriteThrough } from "@/services/sync.service";
@@ -274,6 +283,16 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                 useDepartmentsStore.getState().hydrateFromDb();
                 useJobTitlesStore.getState().hydrateFromDb();
                 useTimesheetStore.getState().hydrateFromDb();
+                // Phase 4: self-hydrate remaining stores
+                useTasksStore.getState().hydrateFromDb();
+                useMessagingStore.getState().hydrateFromDb();
+                useNotificationsStore.getState().hydrateFromDb();
+                useAuditStore.getState().hydrateFromDb();
+                useLocationStore.getState().hydrateFromDb();
+                useDocumentsStore.getState().hydrateFromDb();
+                useDisciplinaryStore.getState().hydrateFromDb();
+                usePerformanceStore.getState().hydrateFromDb();
+                useBIRComplianceStore.getState().hydrateFromDb();
             });
         });
 

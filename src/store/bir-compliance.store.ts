@@ -20,6 +20,7 @@ import type {
     Form2316Status,
 } from "@/types";
 
+import { birComplianceDb, shouldSync, hasValidSession } from "@/services/db.service";
 interface BIRComplianceState {
     // ── Cached data (server is source of truth) ──────────────
     taxProfiles: EmployeeTaxProfile[];
@@ -66,6 +67,9 @@ interface BIRComplianceState {
 
     // ── Reset ────────────────────────────────────────────────
     clearAll: () => void;
+  _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
 }
 
 export const useBIRComplianceStore = create<BIRComplianceState>()(
@@ -244,5 +248,35 @@ export const useBIRComplianceStore = create<BIRComplianceState>()(
                     alphalistExports: [],
                     lastValidationIssues: [],
                 }),
-    }),
+    
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const [taxProfiles, annualSummaries, previousEmployerRecords, form2316Records, alphalistExports] = await Promise.all([
+                        birComplianceDb.fetchTaxProfiles(),
+                        birComplianceDb.fetchAnnualSummaries(),
+                        birComplianceDb.fetchPreviousEmployerRecords(),
+                        birComplianceDb.fetchForm2316Records(),
+                        birComplianceDb.fetchAlphalistExports(),
+                    ]);
+                    const currentState = get();
+                    if (currentState.taxProfiles.length === 0 && taxProfiles.length > 0) {
+                        set({ taxProfiles, annualSummaries, previousEmployerRecords, form2316Records, alphalistExports, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[bir-compliance] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+}),
 );

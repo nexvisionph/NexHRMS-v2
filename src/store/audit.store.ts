@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
 import type { AuditLogEntry, AuditAction } from "@/types";
-import { auditDb } from "@/services/db.service";
+import { auditDb , shouldSync, hasValidSession } from "@/services/db.service";
 
 type AuditLogData = {
     entityType: string;
@@ -17,6 +17,9 @@ type AuditLogData = {
 interface AuditState {
     logs: AuditLogEntry[];
     resetToSeed: () => void;
+    _hydrated: boolean;
+    _hydrating: boolean;
+    hydrateFromDb: () => Promise<void>;
     log: (data: AuditLogData) => void;
     /** Batch log — single setState for all entries + single batch DB write */
     batchLog: (entries: AuditLogData[]) => void;
@@ -68,5 +71,29 @@ export const useAuditStore = create<AuditState>()(
             get().logs.slice(0, limit),
         clearLogs: () => set({ logs: [] }),
         resetToSeed: () => set({ logs: [] }),
-    })
+    
+            // Self-hydration
+            _hydrated: false,
+            _hydrating: false,
+            hydrateFromDb: async () => {
+                const state = get();
+                if (state._hydrated || state._hydrating) return;
+                if (!shouldSync()) return;
+                const validSession = await hasValidSession();
+                if (!validSession) return;
+                set({ _hydrating: true });
+                try {
+                    const logs = await auditDb.fetchAll();
+                    const currentState = get();
+                    if (currentState.logs.length === 0 && logs.length > 0) {
+                        set({ logs, _hydrated: true, _hydrating: false });
+                    } else {
+                        set({ _hydrated: true, _hydrating: false });
+                    }
+                } catch (err) {
+                    console.warn("[audit] hydrateFromDb failed:", err);
+                    set({ _hydrating: false });
+                }
+            },
+})
 );
