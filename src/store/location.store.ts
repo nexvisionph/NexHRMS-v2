@@ -116,6 +116,9 @@ export const useLocationStore = create<LocationState>()(
                     return { photos: photos.slice(0, MAX_PHOTOS) };
                 });
                 return id;
+            
+                const newPhoto = get().photos[get().photos.length - 1];
+                if (newPhoto) locationDb.upsertPhoto(newPhoto).catch(() => {});
             },
 
             getPhotos: (employeeId) => {
@@ -141,6 +144,9 @@ export const useLocationStore = create<LocationState>()(
                 };
                 set((s) => ({ breaks: [...s.breaks, br] }));
                 return id;
+            
+                const newBr = get().breaks[get().breaks.length - 1];
+                if (newBr) locationDb.upsertBreak(newBr).catch(() => {});
             },
 
             endBreak: (breakId, data) => {
@@ -165,6 +171,9 @@ export const useLocationStore = create<LocationState>()(
                         };
                     }),
                 }));
+            
+                const updBr = get().breaks.find((b) => b.id === breakId);
+                if (updBr) locationDb.upsertBreak(updBr).catch(() => {});
             },
 
             getActiveBreak: (employeeId) =>
@@ -184,6 +193,9 @@ export const useLocationStore = create<LocationState>()(
             addPing: (data) => {
                 const ping = { ...data, id: `PING-${nanoid(8)}` };
                 set((s) => ({ pings: [...s.pings, ping] }));
+            
+                const newPing = get().pings[get().pings.length - 1];
+                if (newPing) locationDb.insertPing(newPing).catch(() => {});
             },
 
             getPings: (employeeId, date) => {

@@ -83,16 +83,22 @@ export const useDocumentsStore = create<DocumentsState>()(
                     afterSnapshot: { type: doc.documentType, title: doc.documentTitle, employeeId: doc.employeeId },
                 });
                 return doc;
+            
+                const uploadedDoc = get().documents[get().documents.length - 1];
+                if (uploadedDoc) documents201Db.upsert(uploadedDoc).catch(() => {});
             },
 
-            updateDocument: (id, patch) =>
+            updateDocument: (id, patch) => {
                 set((s) => ({
                     documents: s.documents.map((d) =>
                         d.id === id ? { ...d, ...patch, updatedAt: nowIso() } : d
                     ),
-                })),
+                }));
+                const _dbDoc = get().documents.find((d) => d.id === id);
+                if (_dbDoc) documents201Db.upsert(_dbDoc).catch(() => {});
+            },
 
-            fulfillRequest: (id, filePath, fileType, fileSize, uploadedBy) =>
+            fulfillRequest: (id, filePath, fileType, fileSize, uploadedBy) => {
                 set((s) => ({
                     documents: s.documents.map((d) => {
                         if (d.id !== id) return d;
@@ -106,9 +112,12 @@ export const useDocumentsStore = create<DocumentsState>()(
                         });
                         return { ...d, filePath, fileType, fileSize, uploadedBy, status: "for_review", updatedAt: nowIso() };
                     }),
-                })),
+                }));
+                const _dbDoc = get().documents.find((d) => d.id === id);
+                if (_dbDoc) documents201Db.upsert(_dbDoc).catch(() => {});
+            },
 
-            approve: (id, reviewerId, remarks) =>
+            approve: (id, reviewerId, remarks) => {
                 set((s) => ({
                     documents: s.documents.map((d) => {
                         if (d.id !== id) return d;
@@ -122,9 +131,12 @@ export const useDocumentsStore = create<DocumentsState>()(
                         });
                         return { ...d, status: "approved", reviewedBy: reviewerId, reviewedAt: nowIso(), remarks: remarks ?? d.remarks, updatedAt: nowIso() };
                     }),
-                })),
+                }));
+                const _dbDoc = get().documents.find((d) => d.id === id);
+                if (_dbDoc) documents201Db.upsert(_dbDoc).catch(() => {});
+            },
 
-            reject: (id, reviewerId, remarks) =>
+            reject: (id, reviewerId, remarks) => {
                 set((s) => ({
                     documents: s.documents.map((d) => {
                         if (d.id !== id) return d;
@@ -138,9 +150,12 @@ export const useDocumentsStore = create<DocumentsState>()(
                         });
                         return { ...d, status: "rejected", reviewedBy: reviewerId, reviewedAt: nowIso(), remarks, updatedAt: nowIso() };
                     }),
-                })),
+                }));
+                const _dbDoc = get().documents.find((d) => d.id === id);
+                if (_dbDoc) documents201Db.upsert(_dbDoc).catch(() => {});
+            },
 
-            archive: (id, by) =>
+            archive: (id, by) => {
                 set((s) => ({
                     documents: s.documents.map((d) => {
                         if (d.id !== id) return d;
@@ -149,31 +164,45 @@ export const useDocumentsStore = create<DocumentsState>()(
                         });
                         return { ...d, status: "archived", updatedAt: nowIso() };
                     }),
-                })),
+                }));
+                const _dbDoc = get().documents.find((d) => d.id === id);
+                if (_dbDoc) documents201Db.upsert(_dbDoc).catch(() => {});
+            },
 
-            remove: (id) =>
-                set((s) => ({ documents: s.documents.filter((d) => d.id !== id) })),
+            remove: (id) => {
+                set((s) => ({ documents: s.documents.filter((d) => d.id !== id) }));
+                documents201Db.remove(id).catch(() => {});
+            },
 
-            setVisibility: (id, visibility) =>
+            setVisibility: (id, visibility) => {
                 set((s) => ({
                     documents: s.documents.map((d) =>
                         d.id === id ? { ...d, visibility, updatedAt: nowIso() } : d
                     ),
-                })),
+                }));
+                const _dbDoc = get().documents.find((d) => d.id === id);
+                if (_dbDoc) documents201Db.upsert(_dbDoc).catch(() => {});
+            },
 
-            setExpiry: (id, date) =>
+            setExpiry: (id, date) => {
                 set((s) => ({
                     documents: s.documents.map((d) =>
                         d.id === id ? { ...d, expiryDate: date, updatedAt: nowIso() } : d
                     ),
-                })),
+                }));
+                const _dbDoc = get().documents.find((d) => d.id === id);
+                if (_dbDoc) documents201Db.upsert(_dbDoc).catch(() => {});
+            },
 
-            attachToCase: (docId, caseId) =>
+            attachToCase: (docId, caseId) => {
                 set((s) => ({
                     documents: s.documents.map((d) =>
                         d.id === docId ? { ...d, caseId, updatedAt: nowIso() } : d
                     ),
-                })),
+                }));
+                const _dbDoc = get().documents.find((d) => d.id === docId);
+                if (_dbDoc) documents201Db.upsert(_dbDoc).catch(() => {});
+            },
 
             getById: (id) => get().documents.find((d) => d.id === id),
 

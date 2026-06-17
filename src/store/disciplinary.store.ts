@@ -131,6 +131,9 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     }
                 } catch { /* notification is best-effort */ }
                 return c;
+            
+                const newCase = get().cases[get().cases.length - 1];
+                if (newCase) disciplinaryDb.upsertCase(newCase).catch(() => {});
             },
 
             updateCase: (caseId, data, by) => {
@@ -146,6 +149,9 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     performedBy: by,
                     afterSnapshot: data,
                 });
+            
+                const updated = get().cases.find((c) => c.id === caseId);
+                if (updated) disciplinaryDb.upsertCase(updated).catch(() => {});
             },
 
             deleteCase: (caseId, by) => {
@@ -161,6 +167,8 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     performedBy: by,
                     reason: "deleted",
                 });
+            
+                disciplinaryDb.removeCase(caseId).catch(() => {});
             },
 
             closeCase: (caseId, by) => {
@@ -168,6 +176,9 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 useAuditStore.getState().log({
                     entityType: "disciplinary_case", entityId: caseId, action: "case_closed", performedBy: by,
                 });
+            
+                const updated = get().cases.find((c) => c.id === caseId);
+                if (updated) disciplinaryDb.upsertCase(updated).catch(() => {});
             },
 
             reopenCase: (caseId, by) => {
@@ -175,10 +186,16 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 useAuditStore.getState().log({
                     entityType: "disciplinary_case", entityId: caseId, action: "case_created", performedBy: by, reason: "reopen",
                 });
+            
+                const updated = get().cases.find((c) => c.id === caseId);
+                if (updated) disciplinaryDb.upsertCase(updated).catch(() => {});
             },
 
             moveToReview: (caseId) => {
                 set((s) => ({ cases: setCaseStatus(s.cases, caseId, "under_review") }));
+            
+                const updated = get().cases.find((c) => c.id === caseId);
+                if (updated) disciplinaryDb.upsertCase(updated).catch(() => {});
             },
 
             // â”€â”€ NTE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -210,9 +227,12 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     afterSnapshot: { nteId: nte.id, deadline: data.responseDeadline },
                 });
                 return nte;
+            
+                const newNte = get().ntes[get().ntes.length - 1];
+                if (newNte) disciplinaryDb.upsertNTE(newNte).catch(() => {});
             },
 
-            acknowledgeNTE: (nteId) =>
+            acknowledgeNTE: (nteId) => {
                 set((s) => {
                     const nte = s.ntes.find((n) => n.id === nteId);
                     if (!nte) return s;
@@ -225,9 +245,12 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                         ntes: s.ntes.map((n) => (n.id === nteId ? { ...n, status: "acknowledged", acknowledgedAt: ack, updatedAt: ack } : n)),
                         cases: setCaseStatus(s.cases, nte.caseId, "nte_acknowledged"),
                     };
-                }),
+                });
+                const nte = get().ntes.find((n) => n.id === nteId);
+                if (nte) disciplinaryDb.upsertNTE(nte).catch(() => {});
+            },
 
-            submitExplanation: (nteId, explanation, submittedBy) =>
+            submitExplanation: (nteId, explanation, submittedBy) => {
                 set((s) => {
                     const nte = s.ntes.find((n) => n.id === nteId);
                     if (!nte) return s;
@@ -258,9 +281,12 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                         ),
                         cases: setCaseStatus(s.cases, nte.caseId, "explanation_submitted"),
                     };
-                }),
+                });
+                const nte = get().ntes.find((n) => n.id === nteId);
+                if (nte) disciplinaryDb.upsertNTE(nte).catch(() => {});
+            },
 
-            markNoResponse: (nteId) =>
+            markNoResponse: (nteId) => {
                 set((s) => {
                     const nte = s.ntes.find((n) => n.id === nteId);
                     if (!nte) return s;
@@ -269,7 +295,10 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                         ntes: s.ntes.map((n) => (n.id === nteId ? { ...n, status: "no_response", updatedAt: nowIso() } : n)),
                         cases: setCaseStatus(s.cases, nte.caseId, "no_response"),
                     };
-                }),
+                });
+                const nte = get().ntes.find((n) => n.id === nteId);
+                if (nte) disciplinaryDb.upsertNTE(nte).catch(() => {});
+            },
 
             // â”€â”€ NOD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             issueNOD: (caseId, data) => {
@@ -334,9 +363,12 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     }
                 } catch { /* notification is best-effort */ }
                 return nod;
+            
+                const newNod = get().nods[get().nods.length - 1];
+                if (newNod) disciplinaryDb.upsertNOD(newNod).catch(() => {});
             },
 
-            acknowledgeNOD: (nodId) =>
+            acknowledgeNOD: (nodId) => {
                 set((s) => {
                     const nod = s.nods.find((n) => n.id === nodId);
                     if (!nod) return s;
@@ -359,7 +391,10 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                         ),
                         cases: setCaseStatus(s.cases, nod.caseId, nextCaseStatus),
                     };
-                }),
+                });
+                const nod = get().nods.find((n) => n.id === nodId);
+                if (nod) disciplinaryDb.upsertNOD(nod).catch(() => {});
+            },
 
             // â”€â”€ Selectors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             getCase: (caseId) => get().cases.find((c) => c.id === caseId),

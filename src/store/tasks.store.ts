@@ -88,6 +88,9 @@ export const useTasksStore = create<TasksState>()(
                     ],
                 }));
                 return id;
+            
+                const grp = get().groups[get().groups.length - 1];
+                if (grp) tasksDb.upsertGroup(grp).catch(() => {});
             },
             updateGroup: (id, patch) =>
                 set((s) => ({
@@ -276,6 +279,9 @@ export const useTasksStore = create<TasksState>()(
                     ],
                 }));
                 return id;
+            
+                const comment = get().comments[get().comments.length - 1];
+                if (comment) tasksDb.insertComment(comment).catch(() => {});
             },
 
             // â”€â”€ Tags â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -295,6 +301,9 @@ export const useTasksStore = create<TasksState>()(
                     afterSnapshot: { name: data.name, color: data.color },
                 });
                 return id;
+            
+                const tag = get().taskTags[get().taskTags.length - 1];
+                if (tag) tasksDb.upsertTag(tag).catch(() => {});
             },
             updateTag: (id, patch) =>
                 set((s) => ({

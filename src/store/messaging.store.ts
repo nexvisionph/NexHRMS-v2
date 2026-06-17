@@ -146,6 +146,9 @@ export const useMessagingStore = create<MessagingState>()(
                 }
 
                 return id;
+            
+                const ann = get().announcements[get().announcements.length - 1];
+                if (ann) messagingDb.upsertAnnouncement(ann).catch(() => {});
             },
             markAnnouncementRead: (id, employeeId) =>
                 set((s) => ({
@@ -177,6 +180,9 @@ export const useMessagingStore = create<MessagingState>()(
                     afterSnapshot: { name: data.name },
                 });
                 return id;
+            
+                const ch = get().channels[get().channels.length - 1];
+                if (ch) messagingDb.upsertChannel(ch).catch(() => {});
             },
             updateChannel: (id, patch) =>
                 set((s) => ({
@@ -228,6 +234,9 @@ export const useMessagingStore = create<MessagingState>()(
                     ],
                 }));
                 return id;
+            
+                const lastMsg = get().messages[get().messages.length - 1];
+                if (lastMsg) messagingDb.insertMessage(lastMsg).catch(() => {});
             },
             markMessageRead: (messageId, employeeId) =>
                 set((s) => ({
