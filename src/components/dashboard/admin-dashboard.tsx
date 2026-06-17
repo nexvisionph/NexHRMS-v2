@@ -13,7 +13,7 @@ import { useAuditStore } from "@/store/audit.store";
 import { useDisciplinaryStore } from "@/store/disciplinary.store";
 import { useRoleHref } from "@/lib/hooks/use-role-href";
 import { formatCurrency, getInitials, formatDate } from "@/lib/format";
-import { forceRehydrate } from "@/services/sync.service";
+import { forceRehydrate } from "@/lib/rehydrate";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

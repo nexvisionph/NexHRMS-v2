@@ -53,7 +53,7 @@ import { useAuditStore } from "@/store/audit.store";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Employee, WorkType, PayFrequency, Role, JobTitle, Department, DeductionType, DeductionOverrideMode } from "@/types";
-import { forceRehydrate } from "@/services/sync.service";
+import { forceRehydrate } from "@/lib/rehydrate";
 
 const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 

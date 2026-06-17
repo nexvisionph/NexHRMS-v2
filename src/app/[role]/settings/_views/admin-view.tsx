@@ -39,7 +39,7 @@ import { useAppearanceStore } from "@/store/appearance.store";
 import { useLocationStore } from "@/store/location.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useMessagingStore } from "@/store/messaging.store";
-import { forceRehydrate } from "@/services/sync.service";
+import { forceRehydrate } from "@/lib/rehydrate";
 import { clearStaleStorage, clearAllZustandStorage } from "@/lib/clear-stale-storage";
 import type { AttendanceRuleSet, PayFrequency } from "@/types";
 import Link from "next/link";

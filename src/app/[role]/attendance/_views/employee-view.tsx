@@ -38,7 +38,7 @@ import { BreakTimer } from "@/components/attendance/break-timer";
 import { EmployeeQRDisplay } from "@/components/attendance/employee-qr-display";
 import { ProjectQrScanner } from "@/components/attendance/project-qr-scanner";
 import { EnrollmentReminder } from "@/components/attendance/enrollment-reminder";
-import { stopWriteThrough, startWriteThrough, forceRehydrate } from "@/services/sync.service";
+import { forceRehydrate } from "@/lib/rehydrate";
 import { findCurrentEmployee, getAttendanceEmployeeIds } from "@/lib/current-employee";
 
 type CheckInStep = "idle" | "locating" | "location_result" | "done" | "error" | "selfie" | "qr_scan";
@@ -773,7 +773,6 @@ export default function EmployeeView() {
                                         size="sm"
                                         className="gap-1 text-[11px] text-orange-500 hover:text-orange-600 hover:bg-orange-500/10 h-6 px-2"
                                         onClick={async () => {
-                                            stopWriteThrough();
                                             await new Promise((r) => setTimeout(r, 600));
                                             try {
                                                 const res = await fetch("/api/attendance/reset-today", {
@@ -790,7 +789,6 @@ export default function EmployeeView() {
                                                 toast.error("Network error — couldn't reset in database");
                                                 return;
                                             } finally {
-                                                startWriteThrough();
                                             }
                                             resetTodayLog(myEmployeeId);
                                             clearPenalty(myEmployeeId);

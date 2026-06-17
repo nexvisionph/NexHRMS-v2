@@ -27,7 +27,7 @@ import { usePerformanceStore } from "@/store/performance.store";
 import { useBIRComplianceStore } from "@/store/bir-compliance.store";
 import { useEffect, useState } from "react";
 import { createClient, clearAuthStorage, resetClient, safeGetSession, installAuthErrorSuppression } from "@/services/supabase-browser";
-import { hydrateAllStores, startWriteThrough, startRealtime, stopRealtime, stopWriteThrough } from "@/services/sync.service";
+import { startRealtime, stopRealtime } from "@/services/realtime.service";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -225,7 +225,6 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             clearAuthStorage();
             resetClient();
             stopRealtime();
-            stopWriteThrough();
             useAuthStore.getState().logout();
             window.location.href = "/deactivated";
         }
@@ -244,7 +243,6 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             clearAuthStorage();
             resetClient();
             stopRealtime();
-            stopWriteThrough();
             useAuthStore.getState().logout();
         };
 
@@ -267,33 +265,27 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                 handleInvalidSession();
                 return;
             }
-            // Session is valid, hydrate stores (skip redundant session check)
-            hydrateAllStores({ skipSessionCheck: true }).then(() => {
-                startWriteThrough();
-                startRealtime();  // non-blocking — both fire immediately after hydration
-                // Self-hydrate the 3 migrated stores (no-op if sync.service already filled them)
-                useEmployeesStore.getState().hydrateFromDb();
-                useAttendanceStore.getState().hydrateFromDb();
-                usePayrollStore.getState().hydrateFromDb();
-                // Phase 3: self-hydrate simple CRUD stores
-                useLeaveStore.getState().hydrateFromDb();
-                useLoansStore.getState().hydrateFromDb();
-                useProjectsStore.getState().hydrateFromDb();
-                useEventsStore.getState().hydrateFromDb();
-                useDepartmentsStore.getState().hydrateFromDb();
-                useJobTitlesStore.getState().hydrateFromDb();
-                useTimesheetStore.getState().hydrateFromDb();
-                // Phase 4: self-hydrate remaining stores
-                useTasksStore.getState().hydrateFromDb();
-                useMessagingStore.getState().hydrateFromDb();
-                useNotificationsStore.getState().hydrateFromDb();
-                useAuditStore.getState().hydrateFromDb();
-                useLocationStore.getState().hydrateFromDb();
-                useDocumentsStore.getState().hydrateFromDb();
-                useDisciplinaryStore.getState().hydrateFromDb();
-                usePerformanceStore.getState().hydrateFromDb();
-                useBIRComplianceStore.getState().hydrateFromDb();
-            });
+            // Session is valid — start realtime and self-hydrate all stores
+            startRealtime();
+            useEmployeesStore.getState().hydrateFromDb();
+            useAttendanceStore.getState().hydrateFromDb();
+            usePayrollStore.getState().hydrateFromDb();
+            useLeaveStore.getState().hydrateFromDb();
+            useLoansStore.getState().hydrateFromDb();
+            useProjectsStore.getState().hydrateFromDb();
+            useEventsStore.getState().hydrateFromDb();
+            useDepartmentsStore.getState().hydrateFromDb();
+            useJobTitlesStore.getState().hydrateFromDb();
+            useTimesheetStore.getState().hydrateFromDb();
+            useTasksStore.getState().hydrateFromDb();
+            useMessagingStore.getState().hydrateFromDb();
+            useNotificationsStore.getState().hydrateFromDb();
+            useAuditStore.getState().hydrateFromDb();
+            useLocationStore.getState().hydrateFromDb();
+            useDocumentsStore.getState().hydrateFromDb();
+            useDisciplinaryStore.getState().hydrateFromDb();
+            usePerformanceStore.getState().hydrateFromDb();
+            useBIRComplianceStore.getState().hydrateFromDb();
         });
 
         return () => {

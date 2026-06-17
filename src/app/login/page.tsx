@@ -6,7 +6,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { useAppearanceStore } from "@/store/appearance.store";
 import { useEmployeesStore } from "@/store/employees.store";
 import { signIn } from "@/services/auth.service";
-import { hydrateAllStores, startWriteThrough, startRealtime } from "@/services/sync.service";
+import { startRealtime } from "@/services/realtime.service";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -106,10 +106,7 @@ export default function LoginPage() {
                     emergencyContact: res.user.emergencyContact,
                 });
                 useAuthStore.setState({ isAuthenticated: true });
-                hydrateAllStores({ skipSessionCheck: true }).then(() => {
-                    startWriteThrough();
-                    startRealtime();
-                });
+                startRealtime();
                 toast.success("Welcome back!");
                 redirectAfterAuth(res.user.role);
             } else if (res.error === "deactivated") {

@@ -58,7 +58,7 @@ import { SiteSurveyGallery } from "@/components/attendance/site-survey-gallery";
 import { LocationTrail } from "@/components/attendance/location-trail";
 import { AttendanceHeatmap } from "@/components/attendance/attendance-heatmap";
 import type { Holiday, AttendanceFlag } from "@/types";
-import { forceRehydrate, stopWriteThrough, startWriteThrough } from "@/services/sync.service";
+import { forceRehydrate } from "@/lib/rehydrate";
 
 type CheckInStep = "idle" | "locating" | "location_result" | "done" | "error" | "selfie";
 
@@ -605,7 +605,6 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
 
     const handleAdminResetEmployee = async (employeeId: string) => {
         setResetingId(employeeId);
-        stopWriteThrough();
         await new Promise((r) => setTimeout(r, 600));
         try {
             const res = await fetch("/api/attendance/reset-today", {
@@ -626,7 +625,6 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
         } catch {
             toast.error("Network error — couldn't reset attendance");
         } finally {
-            startWriteThrough();
             setResetingId(null);
         }
     };

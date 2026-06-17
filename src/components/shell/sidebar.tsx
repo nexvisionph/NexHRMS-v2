@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
 import { signOut } from "@/services/auth.service";
-import { stopWriteThrough } from "@/services/sync.service";
 import { useUIStore } from "@/store/ui.store";
 import { useRolesStore } from "@/store/roles.store";
 import { useAppearanceStore } from "@/store/appearance.store";
@@ -407,7 +406,6 @@ function SidebarComponent() {
                         <button
                             onClick={async () => {
                                 useAuthStore.getState().logout();
-                                stopWriteThrough();
                                 await signOut().catch(() => {});
                                 window.location.href = "/login";
                             }}

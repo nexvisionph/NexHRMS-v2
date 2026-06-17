@@ -3,7 +3,6 @@
 import { useAuthStore } from "@/store/auth.store";
 import { useUIStore } from "@/store/ui.store";
 import { signOut } from "@/services/auth.service";
-import { stopWriteThrough } from "@/services/sync.service";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { DEMO_USERS } from "@/data/seed";
@@ -358,7 +357,6 @@ export function Topbar() {
                             <DropdownMenuItem
                                 onClick={async () => {
                                     logout();
-                                    stopWriteThrough();
                                     await signOut().catch(() => {});
                                     window.location.href = "/login";
                                 }}
