@@ -9,6 +9,13 @@ import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAttendanceStore } from "@/store/attendance.store";
 import { usePayrollStore } from "@/store/payroll.store";
+import { useLeaveStore } from "@/store/leave.store";
+import { useLoansStore } from "@/store/loans.store";
+import { useProjectsStore } from "@/store/projects.store";
+import { useEventsStore } from "@/store/events.store";
+import { useDepartmentsStore } from "@/store/departments.store";
+import { useJobTitlesStore } from "@/store/job-titles.store";
+import { useTimesheetStore } from "@/store/timesheet.store";
 import { useEffect, useState } from "react";
 import { createClient, clearAuthStorage, resetClient, safeGetSession, installAuthErrorSuppression } from "@/services/supabase-browser";
 import { hydrateAllStores, startWriteThrough, startRealtime, stopRealtime, stopWriteThrough } from "@/services/sync.service";
@@ -259,6 +266,14 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                 useEmployeesStore.getState().hydrateFromDb();
                 useAttendanceStore.getState().hydrateFromDb();
                 usePayrollStore.getState().hydrateFromDb();
+                // Phase 3: self-hydrate simple CRUD stores
+                useLeaveStore.getState().hydrateFromDb();
+                useLoansStore.getState().hydrateFromDb();
+                useProjectsStore.getState().hydrateFromDb();
+                useEventsStore.getState().hydrateFromDb();
+                useDepartmentsStore.getState().hydrateFromDb();
+                useJobTitlesStore.getState().hydrateFromDb();
+                useTimesheetStore.getState().hydrateFromDb();
             });
         });
 
