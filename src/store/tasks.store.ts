@@ -20,7 +20,7 @@ import {
 const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 import { useAuditStore } from "@/store/audit.store";
 import { useNotificationsStore } from "@/store/notifications.store";
-import { useEmployeesStore } from "@/store/employees.store";
+import { getEmployees } from "@/lib/employee-data";
 
 interface TasksState {
     groups: TaskGroup[];
@@ -29,31 +29,31 @@ interface TasksState {
     comments: TaskComment[];
     taskTags: TaskTag[];
 
-    // ── Groups ────────────────────────────────────────────────
+    // â”€â”€ Groups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     addGroup: (data: Omit<TaskGroup, "id" | "createdAt">) => string;
     updateGroup: (id: string, patch: Partial<Omit<TaskGroup, "id">>) => void;
     deleteGroup: (id: string) => void;
 
-    // ── Tasks ─────────────────────────────────────────────────
+    // â”€â”€ Tasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     addTask: (data: Omit<Task, "id" | "createdAt" | "updatedAt"> & { id?: string }) => string;
     updateTask: (id: string, patch: Partial<Omit<Task, "id">>) => void;
     deleteTask: (id: string) => void;
     changeStatus: (id: string, status: TaskStatus) => void;
 
-    // ── Completion / verification ─────────────────────────────
+    // â”€â”€ Completion / verification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     submitCompletion: (data: Omit<TaskCompletionReport, "id" | "submittedAt">) => string;
     verifyCompletion: (reportId: string, verifiedBy: string) => void;
     rejectCompletion: (reportId: string, reason: string) => void;
 
-    // ── Comments ──────────────────────────────────────────────
+    // â”€â”€ Comments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     addComment: (data: Omit<TaskComment, "id" | "createdAt">) => string;
 
-    // ── Tags ──────────────────────────────────────────────────
+    // â”€â”€ Tags â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     addTag: (data: Omit<TaskTag, "id" | "createdAt">) => string;
     updateTag: (id: string, patch: Partial<Omit<TaskTag, "id" | "createdAt">>) => void;
     deleteTag: (id: string) => void;
 
-    // ── Selectors ─────────────────────────────────────────────
+    // â”€â”€ Selectors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     getTasksByGroup: (groupId: string) => Task[];
     getTasksForEmployee: (employeeId: string) => Task[];
     getCompletionReport: (taskId: string) => TaskCompletionReport | undefined;
@@ -62,7 +62,7 @@ interface TasksState {
     getTaskById: (id: string) => Task | undefined;
     getStats: () => { total: number; open: number; inProgress: number; submitted: number; verified: number; rejected: number; overdue: number };
 
-    // ── Reset ─────────────────────────────────────────────────
+    // â”€â”€ Reset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     resetToSeed: () => void;
 }
 
@@ -74,7 +74,7 @@ export const useTasksStore = create<TasksState>()(
             comments: USE_DEMO_MODE ? SEED_TASK_COMMENTS : [],
             taskTags: USE_DEMO_MODE ? SEED_TASK_TAGS : [],
 
-            // ── Groups ────────────────────────────────────────
+            // â”€â”€ Groups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             addGroup: (data) => {
                 const id = `TG-${nanoid(6)}`;
                 set((s) => ({
@@ -97,7 +97,7 @@ export const useTasksStore = create<TasksState>()(
                     tasks: s.tasks.filter((t) => t.groupId !== id),
                 })),
 
-            // ── Tasks ─────────────────────────────────────────
+            // â”€â”€ Tasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             addTask: (data) => {
                 const id = data.id?.trim() || `TSK-${nanoid(6)}`;
                 const { id: _id, ...rest } = data as typeof data & { id?: string };
@@ -151,7 +151,7 @@ export const useTasksStore = create<TasksState>()(
                     ),
                 })),
 
-            // ── Completion ────────────────────────────────────
+            // â”€â”€ Completion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             submitCompletion: (data) => {
                 const id = `TCR-${nanoid(6)}`;
                 set((s) => ({
@@ -174,7 +174,7 @@ export const useTasksStore = create<TasksState>()(
                 // Notify admin/HR that an employee submitted a task for review
                 const submittedTask = get().tasks.find((t) => t.id === data.taskId);
                 if (submittedTask) {
-                    const admins = useEmployeesStore.getState().employees.filter(
+                    const admins = getEmployees().filter(
                         (e) => e.status === "active" && (e.role === "admin" || e.role === "hr")
                     );
                     admins.forEach((admin) =>
@@ -262,7 +262,7 @@ export const useTasksStore = create<TasksState>()(
                 }
             },
 
-            // ── Comments ──────────────────────────────────────
+            // â”€â”€ Comments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             addComment: (data) => {
                 const id = `TC-${nanoid(6)}`;
                 set((s) => ({
@@ -274,7 +274,7 @@ export const useTasksStore = create<TasksState>()(
                 return id;
             },
 
-            // ── Tags ──────────────────────────────────────────
+            // â”€â”€ Tags â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             addTag: (data) => {
                 const id = `TAG-${nanoid(6)}`;
                 set((s) => ({
@@ -303,7 +303,7 @@ export const useTasksStore = create<TasksState>()(
                     taskTags: s.taskTags.filter((t) => t.id !== id),
                 })),
 
-            // ── Selectors ─────────────────────────────────────
+            // â”€â”€ Selectors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             getTasksByGroup: (groupId) =>
                 get().tasks.filter((t) => t.groupId === groupId),
             getTasksForEmployee: (employeeId) =>

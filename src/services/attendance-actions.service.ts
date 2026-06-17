@@ -1,6 +1,6 @@
 "use client";
 /**
- * Attendance Actions Service — DB-first mutations.
+ * Attendance Actions Service â€” DB-first mutations.
  *
  * Writes to Supabase first, then updates local Zustand cache on success.
  * Migration target: Store 17 of ZUSTAND_MIGRATION_CHECKLIST.md
@@ -12,7 +12,7 @@
 
 import { attendanceDb } from "./db.service";
 import { useAttendanceStore } from "@/store/attendance.store";
-import { useEmployeesStore } from "@/store/employees.store";
+import { getEmployees } from "@/lib/employee-data";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useAuditStore } from "@/store/audit.store";
 import type {
@@ -63,10 +63,10 @@ function calculateHours(checkIn: string, checkOut: string): number {
     return Math.round((diff / 3600) * 100) / 100;
 }
 
-// ─── Events (append-only ledger) ─────────────────────────────────
+// â”€â”€â”€ Events (append-only ledger) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
- * Append an attendance event — DB-first.
+ * Append an attendance event â€” DB-first.
  */
 export async function appendEvent(
     data: Omit<AttendanceEvent, "id" | "createdAt"> & { id?: string }
@@ -86,7 +86,7 @@ export async function appendEvent(
 }
 
 /**
- * Record evidence for an event — DB-first.
+ * Record evidence for an event â€” DB-first.
  */
 export async function recordEvidence(
     data: Omit<AttendanceEvidence, "id">
@@ -102,10 +102,10 @@ export async function recordEvidence(
     return true;
 }
 
-// ─── Check-in / Check-out ────────────────────────────────────────
+// â”€â”€â”€ Check-in / Check-out â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
- * Check in an employee — DB-first. Writes both the IN event and the
+ * Check in an employee â€” DB-first. Writes both the IN event and the
  * derived attendance log entry to Supabase before updating local cache.
  */
 export async function checkIn(
@@ -191,7 +191,7 @@ export async function checkIn(
 }
 
 /**
- * Check out an employee — DB-first. Same-method enforcement preserved.
+ * Check out an employee â€” DB-first. Same-method enforcement preserved.
  */
 export async function checkOut(
     employeeId: string,
@@ -258,7 +258,7 @@ export async function checkOut(
 }
 
 /**
- * Mark an employee absent for a given date — DB-first.
+ * Mark an employee absent for a given date â€” DB-first.
  */
 export async function markAbsent(
     employeeId: string,
@@ -299,7 +299,7 @@ export async function markAbsent(
 
     // Best-effort notifications + audit (preserved from legacy store)
     try {
-        const allEmployees = useEmployeesStore.getState().employees;
+        const allEmployees = getEmployees();
         const notifStore = useNotificationsStore.getState();
         const adminHr = allEmployees.filter(
             (e) => e.role === "admin" || e.role === "hr"
@@ -343,7 +343,7 @@ export async function markAbsent(
 }
 
 /**
- * Bulk upsert attendance logs (CSV import / batch corrections) — DB-first.
+ * Bulk upsert attendance logs (CSV import / batch corrections) â€” DB-first.
  */
 export async function bulkUpsertLogs(
     rows: Array<
@@ -387,7 +387,7 @@ export async function bulkUpsertLogs(
     if (ok) {
         successLogs.push(...builtLogs);
     } else {
-        // Fallback: the batch failed as a whole — retry row-by-row so partial
+        // Fallback: the batch failed as a whole â€” retry row-by-row so partial
         // success is still possible and we can report an accurate failed count.
         for (const log of builtLogs) {
             const rowOk = await attendanceDb.upsertLog(log);
@@ -429,7 +429,7 @@ export async function resetTodayLog(employeeId: string): Promise<boolean> {
             { method: "DELETE" }
         );
     } catch {
-        /* network error — local reset still proceeds */
+        /* network error â€” local reset still proceeds */
     }
 
     useAttendanceStore.setState((s) => ({
@@ -447,10 +447,10 @@ export async function resetTodayLog(employeeId: string): Promise<boolean> {
     return true;
 }
 
-// ─── Exceptions ──────────────────────────────────────────────────
+// â”€â”€â”€ Exceptions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
- * Resolve an exception — DB-first.
+ * Resolve an exception â€” DB-first.
  */
 export async function resolveException(
     id: string,
@@ -478,7 +478,7 @@ export async function resolveException(
 }
 
 /**
- * Update an exception's flag/notes — DB-first.
+ * Update an exception's flag/notes â€” DB-first.
  */
 export async function updateException(
     id: string,
@@ -499,10 +499,10 @@ export async function updateException(
     return true;
 }
 
-// ─── Overtime Requests ───────────────────────────────────────────
+// â”€â”€â”€ Overtime Requests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
- * Submit an overtime request — DB-first. Notifies approvers.
+ * Submit an overtime request â€” DB-first. Notifies approvers.
  */
 export async function submitOvertimeRequest(
     data: Omit<OvertimeRequest, "id" | "status" | "requestedAt">
@@ -524,7 +524,7 @@ export async function submitOvertimeRequest(
 
     // Notify approvers (best-effort, mirrors legacy)
     try {
-        const employees = useEmployeesStore.getState().employees;
+        const employees = getEmployees();
         const requester = employees.find((e) => e.id === data.employeeId);
         const requesterName = requester?.name ?? data.employeeId;
         const approvers = employees.filter(
@@ -552,7 +552,7 @@ export async function submitOvertimeRequest(
 }
 
 /**
- * Approve an overtime request — DB-first. Adds approved hours to the day's log.
+ * Approve an overtime request â€” DB-first. Adds approved hours to the day's log.
  */
 export async function approveOvertime(
     requestId: string,
@@ -613,7 +613,7 @@ export async function approveOvertime(
 }
 
 /**
- * Reject an overtime request — DB-first.
+ * Reject an overtime request â€” DB-first.
  */
 export async function rejectOvertime(
     requestId: string,
@@ -656,10 +656,10 @@ export async function rejectOvertime(
     return true;
 }
 
-// ─── Shifts ──────────────────────────────────────────────────────
+// â”€â”€â”€ Shifts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
- * Create a shift template — DB-first.
+ * Create a shift template â€” DB-first.
  */
 export async function createShift(
     shift: Omit<ShiftTemplate, "id">
@@ -683,7 +683,7 @@ export async function createShift(
 }
 
 /**
- * Update a shift template — DB-first.
+ * Update a shift template â€” DB-first.
  */
 export async function updateShift(
     id: string,
@@ -705,7 +705,7 @@ export async function updateShift(
 }
 
 /**
- * Delete a shift template — DB-first.
+ * Delete a shift template â€” DB-first.
  */
 export async function deleteShift(id: string): Promise<boolean> {
     const ok = await attendanceDb.deleteShift(id);
@@ -721,7 +721,7 @@ export async function deleteShift(id: string): Promise<boolean> {
 }
 
 /**
- * Assign a shift to an employee — DB-first.
+ * Assign a shift to an employee â€” DB-first.
  */
 export async function assignShift(
     employeeId: string,
@@ -737,7 +737,7 @@ export async function assignShift(
 }
 
 /**
- * Remove an employee's shift assignment — DB-first.
+ * Remove an employee's shift assignment â€” DB-first.
  */
 export async function unassignShift(employeeId: string): Promise<boolean> {
     const ok = await attendanceDb.deleteEmployeeShift(employeeId);
@@ -751,10 +751,10 @@ export async function unassignShift(employeeId: string): Promise<boolean> {
     return true;
 }
 
-// ─── Holidays ────────────────────────────────────────────────────
+// â”€â”€â”€ Holidays â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
- * Add a holiday — DB-first.
+ * Add a holiday â€” DB-first.
  */
 export async function addHoliday(
     h: Omit<Holiday, "id">
@@ -774,7 +774,7 @@ export async function addHoliday(
 }
 
 /**
- * Update a holiday — DB-first.
+ * Update a holiday â€” DB-first.
  */
 export async function updateHoliday(
     id: string,
@@ -798,7 +798,7 @@ export async function updateHoliday(
 }
 
 /**
- * Delete a holiday — DB-first.
+ * Delete a holiday â€” DB-first.
  */
 export async function deleteHoliday(id: string): Promise<boolean> {
     const ok = await attendanceDb.deleteHoliday(id);
@@ -810,10 +810,10 @@ export async function deleteHoliday(id: string): Promise<boolean> {
     return true;
 }
 
-// ─── Penalties ───────────────────────────────────────────────────
+// â”€â”€â”€ Penalties â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
- * Apply an anti-cheat penalty — DB-first.
+ * Apply an anti-cheat penalty â€” DB-first.
  */
 export async function applyPenalty(
     data: Omit<PenaltyRecord, "id" | "resolved">
@@ -831,7 +831,7 @@ export async function applyPenalty(
 }
 
 /**
- * Clear an active penalty for an employee — DB-first.
+ * Clear an active penalty for an employee â€” DB-first.
  */
 export async function clearPenalty(employeeId: string): Promise<boolean> {
     const active = useAttendanceStore

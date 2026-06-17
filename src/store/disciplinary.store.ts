@@ -9,7 +9,7 @@ import type {
     NODDecision,
 } from "@/types";
 import { useAuditStore } from "./audit.store";
-import { useEmployeesStore } from "./employees.store";
+import { getEmployee, getEmployees } from "@/lib/employee-data";
 import { notifyDisciplinaryExplanationSubmitted, dispatchNotification } from "@/lib/notifications";
 
 interface DisciplinaryState {
@@ -96,7 +96,7 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
             ntes: [],
             nods: [],
 
-            // ── Case lifecycle ─────────────────────────────────
+            // â”€â”€ Case lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             createCase: (data) => {
                 const c: DisciplinaryCase = {
                     id: `CASE-${nanoid(8)}`,
@@ -117,7 +117,7 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 });
                 // Notify the employee about the new disciplinary case
                 try {
-                    const emp = useEmployeesStore.getState().employees.find((e) => e.id === data.employeeId);
+                    const emp = getEmployee(data.employeeId);
                     if (emp) {
                         dispatchNotification("disciplinary_case_created", {
                             name: emp.name,
@@ -177,7 +177,7 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 set((s) => ({ cases: setCaseStatus(s.cases, caseId, "under_review") }));
             },
 
-            // ── NTE ────────────────────────────────────────────
+            // â”€â”€ NTE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             issueNTE: (caseId, data) => {
                 const c = get().cases.find((x) => x.id === caseId);
                 if (!c) return undefined;
@@ -235,7 +235,7 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                         afterSnapshot: { length: explanation.length },
                     });
                     if (shouldNotify && caseRecord) {
-                        const employeeName = useEmployeesStore.getState().employees.find((e) => e.id === nte.employeeId)?.name ?? nte.employeeId;
+                        const employeeName = getEmployee(nte.employeeId)?.name ?? nte.employeeId;
                         notifyDisciplinaryExplanationSubmitted({
                             caseId: caseRecord.id,
                             caseNumber: caseRecord.caseNumber,
@@ -267,7 +267,7 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     };
                 }),
 
-            // ── NOD ────────────────────────────────────────────
+            // â”€â”€ NOD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             issueNOD: (caseId, data) => {
                 const c = get().cases.find((x) => x.id === caseId);
                 if (!c) return undefined;
@@ -319,7 +319,7 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 }
                 // Notify the employee about the NOD
                 try {
-                    const emp = useEmployeesStore.getState().employees.find((e) => e.id === c.employeeId);
+                    const emp = getEmployee(c.employeeId);
                     if (emp) {
                         const decisionLabel = data.decision.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
                         dispatchNotification("nod_issued", {
@@ -357,7 +357,7 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     };
                 }),
 
-            // ── Selectors ──────────────────────────────────────
+            // â”€â”€ Selectors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             getCase: (caseId) => get().cases.find((c) => c.id === caseId),
             getNTEByCase: (caseId) => get().ntes.find((n) => n.caseId === caseId),
             getNODByCase: (caseId) => get().nods.find((n) => n.caseId === caseId),

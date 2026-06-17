@@ -15,15 +15,15 @@
  */
 
 import { usePayrollStore } from "@/store/payroll.store";
-import { useAttendanceStore } from "@/store/attendance.store";
-import { useEmployeesStore } from "@/store/employees.store";
+import { getEmployees } from "@/lib/employee-data";
+import { getAttendanceLogs, getHolidays } from "@/lib/attendance-data";
 import { payrollDb } from "./db.service";
 import { computePayroll, detectCycles, type ComputePayrollParams, type PayrollCycle } from "@/lib/payroll-computation-engine";
 import { computeAllPHDeductions } from "@/lib/ph-deductions";
 import { DEFAULT_HOLIDAYS } from "@/lib/constants";
 import type { Employee, ComputedPayroll, Holiday, AttendanceLog, Payslip, PayrollRun } from "@/types";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface BackfillRequest {
   employeeIds: string[];
@@ -49,14 +49,14 @@ export interface BackfillResult {
   totalErrors: number;
 }
 
-// ─── Preview (dry-run without persisting) ────────────────────────────────────
+// â”€â”€â”€ Preview (dry-run without persisting) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function previewBackfill(request: BackfillRequest): BackfillResult[] {
   const { employeeIds, startDate, endDate, computeWorkDays = 21.5, customCycles } = request;
-  const employees = useEmployeesStore.getState().employees;
-  const logs = useAttendanceStore.getState().logs;
-  const storeHolidays = useAttendanceStore.getState().holidays;
-  // Merge store holidays with DEFAULT_HOLIDAYS (constants) — ensure PH holidays are always available
+  const employees = getEmployees();
+  const logs = getAttendanceLogs();
+  const storeHolidays = getHolidays();
+  // Merge store holidays with DEFAULT_HOLIDAYS (constants) â€” ensure PH holidays are always available
   const holidayDates = new Set(storeHolidays.map(h => h.date));
   const fallbackHolidays = DEFAULT_HOLIDAYS
     .filter(h => !holidayDates.has(h.date))
@@ -122,14 +122,14 @@ export function previewBackfill(request: BackfillRequest): BackfillResult[] {
   return results;
 }
 
-// ─── Execute Backfill (persist to store + DB) ────────────────────────────────
+// â”€â”€â”€ Execute Backfill (persist to store + DB) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function executeBackfill(request: BackfillRequest): Promise<BackfillResult[]> {
   const { employeeIds, startDate, endDate, computeWorkDays = 21.5, customCycles } = request;
-  const employees = useEmployeesStore.getState().employees;
-  const logs = useAttendanceStore.getState().logs;
-  const storeHolidays = useAttendanceStore.getState().holidays;
-  // Merge store holidays with DEFAULT_HOLIDAYS — ensure PH holidays are always recognized
+  const employees = getEmployees();
+  const logs = getAttendanceLogs();
+  const storeHolidays = getHolidays();
+  // Merge store holidays with DEFAULT_HOLIDAYS â€” ensure PH holidays are always recognized
   const holidayDates = new Set(storeHolidays.map(h => h.date));
   const fallbackHolidays = DEFAULT_HOLIDAYS
     .filter(h => !holidayDates.has(h.date))
@@ -263,7 +263,7 @@ export async function executeBackfill(request: BackfillRequest): Promise<Backfil
   return results;
 }
 
-// ─── Helper: Compute Deductions for Employee ─────────────────────────────────
+// â”€â”€â”€ Helper: Compute Deductions for Employee â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function computeDeductionsForEmployee(employee: Employee) {
   if (employee.deductionExempt) {
@@ -273,17 +273,17 @@ function computeDeductionsForEmployee(employee: Employee) {
   const store = usePayrollStore.getState();
 
   // Only use per-employee overrides. If no override is configured for this
-  // specific employee, default to 0. Do NOT apply global/system defaults —
+  // specific employee, default to 0. Do NOT apply global/system defaults â€”
   // deductions must come from the employee's own configured values only.
   const computeDeduction = (type: "sss" | "philhealth" | "pagibig" | "bir"): number => {
     const override = store.getDeductionOverride(employee.id, type);
 
-    // No per-employee override → zero
+    // No per-employee override â†’ zero
     if (!override) return 0;
 
     if (override.mode === "exempt") return 0;
     if (override.mode === "auto") {
-      // Employee has explicitly set "auto" — use standard PH calc
+      // Employee has explicitly set "auto" â€” use standard PH calc
       const phDeductions = computeAllPHDeductions(employee.salary);
       const autoValues: Record<string, number> = {
         sss: phDeductions.sss,

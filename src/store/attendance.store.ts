@@ -11,7 +11,7 @@ import { SEED_ATTENDANCE } from "@/data/seed";
 const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
 import { DEFAULT_HOLIDAYS } from "@/lib/constants";
 import { useNotificationsStore } from "@/store/notifications.store";
-import { useEmployeesStore } from "@/store/employees.store";
+import { getEmployees, getAdminHrEmployees } from "@/lib/employee-data";
 import { useAuditStore } from "@/store/audit.store";
 
 interface AttendanceState {
@@ -296,7 +296,7 @@ export const useAttendanceStore = create<AttendanceState>()(
 
                 // ─── Notify admins/HR for each absence + audit log ────
                 try {
-                    const allEmployees = useEmployeesStore.getState().employees;
+                    const allEmployees = getEmployees();
                     const notifStore = useNotificationsStore.getState();
                     const adminHrEmployees = allEmployees.filter((e) => e.role === "admin" || e.role === "hr");
 
@@ -556,7 +556,7 @@ export const useAttendanceStore = create<AttendanceState>()(
 
                 // ─── Notify admins/HR + employee + audit log ──────────
                 try {
-                    const allEmployees = useEmployeesStore.getState().employees;
+                    const allEmployees = getEmployees();
                     const notifStore = useNotificationsStore.getState();
                     const adminHrEmployees = allEmployees.filter((e) => e.role === "admin" || e.role === "hr");
                     const emp = allEmployees.find((e) => e.id === employeeId);
@@ -717,7 +717,7 @@ export const useAttendanceStore = create<AttendanceState>()(
                     });
 
                 // Notify admin and supervisor employees
-                const employees = useEmployeesStore.getState().employees;
+                const employees = getEmployees();
                 const requester = employees.find((e) => e.id === data.employeeId);
                 const requesterName = requester?.name ?? data.employeeId;
                 const approvers = employees.filter(

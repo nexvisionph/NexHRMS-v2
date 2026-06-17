@@ -1,5 +1,5 @@
 import { useNotificationsStore, isNotificationAllowed, isPushAllowed } from "@/store/notifications.store";
-import { useEmployeesStore } from "@/store/employees.store";
+import { getEmployees, getEmployee } from "@/lib/employee-data";
 import { toast } from "sonner";
 import type { NotificationType, NotificationTrigger } from "@/types";
 
@@ -29,7 +29,7 @@ const TYPE_LINK_MAP: Record<string, string> = {
     task_verified: "/tasks",
     task_rejected: "/tasks",
     payslip_on_hold: "/payroll",
-    // ─── Admin/HR → Employee notifications ──
+    // â”€â”€â”€ Admin/HR â†’ Employee notifications â”€â”€
     employee_added: "/employees/manage",
     status_changed: "/employees/manage",
     resignation: "/employees/manage",
@@ -51,7 +51,7 @@ interface SendNotificationParams {
     body: string;
     channel?: "email" | "sms" | "both" | "in_app";
     link?: string;
-    // Optional — used to enrich the notification toast if available
+    // Optional â€” used to enrich the notification toast if available
     employeeName?: string;
     employeeEmail?: string;
     employeePhone?: string;
@@ -99,7 +99,7 @@ export function sendNotification(params: SendNotificationParams): void {
     if (isPushAllowed(employeeId)) {
         let pushUrl = resolvedLink;
         try {
-            const emp = useEmployeesStore.getState().employees.find((e) => e.id === employeeId);
+            const emp = getEmployee(employeeId);
             if (emp?.role) {
                 pushUrl = `/${emp.role}${resolvedLink}`;
             }
@@ -155,8 +155,8 @@ export function dispatchNotification(
 }
 
 /**
- * Batch dispatch notifications — single store setState, parallel push, one summary toast.
- * Replaces forEach → dispatchNotification loops in batch handlers.
+ * Batch dispatch notifications â€” single store setState, parallel push, one summary toast.
+ * Replaces forEach â†’ dispatchNotification loops in batch handlers.
  */
 export function dispatchBatchNotifications(
     items: Array<{
@@ -218,7 +218,7 @@ export function notifyGeofenceViolation(params: {
     time: string;
 }): void {
     // Auto-resolve admin recipients (rule says recipientRoles: ["admin"])
-    const employees = useEmployeesStore.getState().employees;
+    const employees = getEmployees();
     const admins = employees.filter(
         (e) => e.role === "admin" && e.status === "active"
     );
@@ -254,7 +254,7 @@ export function notifyPayslipSigned(params: {
     period: string;
 }): void {
     // Notify admin/finance users only (per rule NR-14 recipientRoles: ["admin", "finance"])
-    const employees = useEmployeesStore.getState().employees;
+    const employees = getEmployees();
     const adminsAndFinance = employees.filter(
         (e) => (e.role === "admin" || e.role === "finance") && e.status === "active" && e.id !== params.employeeId
     );
@@ -286,7 +286,7 @@ export function notifyLocationDisabled(params: {
     time: string;
 }): void {
     // Notify admin users only (per rule NR-13 recipientRoles: ["admin"])
-    const employees = useEmployeesStore.getState().employees;
+    const employees = getEmployees();
     const admins = employees.filter(
         (e) => e.role === "admin" && e.status === "active" && e.id !== params.employeeId
     );
@@ -304,7 +304,7 @@ export function notifyDisciplinaryExplanationSubmitted(params: {
     violationType: string;
     submittedByEmployeeId?: string;
 }): void {
-    const employees = useEmployeesStore.getState().employees;
+    const employees = getEmployees();
     const recipients = employees.filter(
         (e) =>
             (e.role === "admin" || e.role === "hr") &&

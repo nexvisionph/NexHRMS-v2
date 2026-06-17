@@ -5,7 +5,7 @@ import type { LeaveRequest, LeaveStatus, LeavePolicy, LeaveBalance, LeaveType, L
 import { SEED_LEAVES } from "@/data/seed";
 
 const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_USE_DEMO_MODE === "true";
-import { useEmployeesStore } from "@/store/employees.store";
+import { getEmployees } from "@/lib/employee-data";
 import { useNotificationsStore } from "@/store/notifications.store";
 
 const LEAVE_TYPE_LABELS: Record<string, string> = {
@@ -52,7 +52,7 @@ function calculateLeaveDays(
     }
 }
 
-// ─── Default PH Leave Policies ───────────────────────────────
+// â”€â”€â”€ Default PH Leave Policies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const DEFAULT_LEAVE_POLICIES: LeavePolicy[] = [
     {
         id: "LP-SL", leaveType: "SL", name: "Sick Leave",
@@ -103,25 +103,25 @@ interface LeaveState {
     policies: LeavePolicy[];
     balances: LeaveBalance[];
 
-    // ─── Requests ─────────────────────────────────────
+    // â”€â”€â”€ Requests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     addRequest: (req: Omit<LeaveRequest, "id" | "status">) => void;
     updateStatus: (id: string, status: LeaveStatus, reviewedBy: string) => void;
     getByEmployee: (employeeId: string) => LeaveRequest[];
     getPending: () => LeaveRequest[];
 
-    // ─── Policies ─────────────────────────────────────
+    // â”€â”€â”€ Policies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     addPolicy: (policy: Omit<LeavePolicy, "id">) => void;
     updatePolicy: (id: string, data: Partial<LeavePolicy>) => void;
     deletePolicy: (id: string) => void;
     getPolicy: (leaveType: LeaveType) => LeavePolicy | undefined;
 
-    // ─── Balances ─────────────────────────────────────
+    // â”€â”€â”€ Balances â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     initBalances: (employeeId: string, year: number) => void;
     getBalance: (employeeId: string, leaveType: LeaveType, year: number) => LeaveBalance | undefined;
     getEmployeeBalances: (employeeId: string, year: number) => LeaveBalance[];
     accrueLeave: (employeeId: string, leaveType: LeaveType, year: number, days: number) => void;
 
-    // ─── Conflict detection ───────────────────────────
+    // â”€â”€â”€ Conflict detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     hasLeaveConflict: (employeeId: string, date: string) => boolean;
     resetToSeed: () => void;
 }
@@ -132,7 +132,7 @@ export const useLeaveStore = create<LeaveState>()(
             policies: DEFAULT_LEAVE_POLICIES,
             balances: [],
 
-            // ─── Requests ─────────────────────────────────────────────
+            // â”€â”€â”€ Requests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             addRequest: (req) => {
                 const policy = get().policies.find((p) => p.leaveType === req.type);
                 // Auto-initialize balances if not yet done for this employee/year
@@ -145,7 +145,7 @@ export const useLeaveStore = create<LeaveState>()(
                 const days = calculateLeaveDays(req.startDate, req.endDate, req.duration, req.hours);
 
                 if (bal && bal.remaining < days && !(policy?.negativeLeaveAllowed)) {
-                    // Insufficient balance — still create but it will be noted
+                    // Insufficient balance â€” still create but it will be noted
                 }
 
                 const leaveId = `LV-${nanoid(8)}`;
@@ -163,7 +163,7 @@ export const useLeaveStore = create<LeaveState>()(
 
                 // Notify admin/HR about the new leave request
                 try {
-                    const employees = useEmployeesStore.getState().employees;
+                    const employees = getEmployees();
                     const requester = employees.find((e) => e.id === req.employeeId);
                     const requesterName = requester?.name ?? req.employeeId;
                     const adminsAndHR = employees.filter(
@@ -175,7 +175,7 @@ export const useLeaveStore = create<LeaveState>()(
                             {
                                 name: requesterName,
                                 leaveType: req.type,
-                                dates: `${req.startDate} – ${req.endDate}`,
+                                dates: `${req.startDate} â€“ ${req.endDate}`,
                             },
                             recipient.id,
                             recipient.email ?? undefined,
@@ -210,7 +210,7 @@ export const useLeaveStore = create<LeaveState>()(
                     );
                     const policy = s.policies.find((p) => p.leaveType === req.type);
                     if (bal && bal.remaining < days && !policy?.negativeLeaveAllowed) {
-                        // Insufficient balance — reject instead of approving
+                        // Insufficient balance â€” reject instead of approving
                         actualStatus = "rejected";
                         set({
                             requests: s.requests.map((r) =>
@@ -245,7 +245,7 @@ export const useLeaveStore = create<LeaveState>()(
 
                 // Notify the employee about their leave approval/rejection
                 try {
-                    const employees = useEmployeesStore.getState().employees;
+                    const employees = getEmployees();
                     const requester = employees.find((e) => e.id === req.employeeId);
                     const requesterName = requester?.name ?? req.employeeId;
                     const trigger = actualStatus === "approved" ? "leave_approved" : "leave_rejected";
@@ -255,7 +255,7 @@ export const useLeaveStore = create<LeaveState>()(
                             {
                                 name: requesterName,
                                 leaveType: LEAVE_TYPE_LABELS[req.type] ?? req.type,
-                                dates: `${req.startDate} – ${req.endDate}`,
+                                dates: `${req.startDate} â€“ ${req.endDate}`,
                                 status: actualStatus,
                             },
                             req.employeeId,
@@ -269,7 +269,7 @@ export const useLeaveStore = create<LeaveState>()(
                 get().requests.filter((r) => r.employeeId === employeeId),
             getPending: () => get().requests.filter((r) => r.status === "pending"),
 
-            // ─── Policies ─────────────────────────────────────────────
+            // â”€â”€â”€ Policies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             addPolicy: (policy) =>
                 set((s) => ({
                     policies: [...s.policies, { ...policy, id: `LP-${nanoid(6)}` }],
@@ -286,7 +286,7 @@ export const useLeaveStore = create<LeaveState>()(
             getPolicy: (leaveType) =>
                 get().policies.find((p) => p.leaveType === leaveType),
 
-            // ─── Balances ─────────────────────────────────────────────
+            // â”€â”€â”€ Balances â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             initBalances: (employeeId, year) =>
                 set((s) => {
                     const existing = s.balances.filter(
@@ -337,7 +337,7 @@ export const useLeaveStore = create<LeaveState>()(
                     ),
                 })),
 
-            // ─── Conflict detection (§9 — clock-in on approved leave day) ─
+            // â”€â”€â”€ Conflict detection (Â§9 â€” clock-in on approved leave day) â”€
             hasLeaveConflict: (employeeId, date) => {
                 return get().requests.some((r) => {
                     if (r.employeeId !== employeeId || r.status !== "approved") return false;

@@ -18,7 +18,7 @@ const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC
 import { useAuditStore } from "@/store/audit.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useNotificationsStore } from "@/store/notifications.store";
-import { useEmployeesStore } from "@/store/employees.store";
+import { getEmployees } from "@/lib/employee-data";
 
 export interface MessagingConfig {
     defaultChannel: MessageChannel;
@@ -122,7 +122,7 @@ export const useMessagingStore = create<MessagingState>()(
                         const group = useTasksStore.getState().groups.find((g) => g.id === data.targetGroupId);
                         recipientIds = group?.memberEmployeeIds ?? [];
                     } else if (data.scope === "all_employees") {
-                        recipientIds = useEmployeesStore.getState().employees
+                        recipientIds = getEmployees()
                             .filter((e) => e.status === "active")
                             .map((e) => e.id);
                     }
