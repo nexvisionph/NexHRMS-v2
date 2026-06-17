@@ -58,8 +58,6 @@ import { useAuthStore } from "@/store/auth.store";
 import { useDisciplinaryStore } from "@/store/disciplinary.store";
 import { usePerformanceStore } from "@/store/performance.store";
 import { useBIRComplianceStore } from "@/store/bir-compliance.store";
-import { useDepartmentsStore } from "@/store/departments.store";
-import { useJobTitlesStore } from "@/store/job-titles.store";
 
 let _hydrated = false;
 let _subscriptions: (() => void)[] = [];
@@ -136,24 +134,10 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
     // or ~100 HTTP/2 streams). Firing all 40+ at once can cause the browser to
     // drop some requests, producing CORS-style "Failed to fetch" errors.
 
-    // ── Batch 1: Leave + Loans (employees/attendance/payroll now self-hydrate via hydrateFromDb) ──
+    // ── Batch 1: REMOVED — leave/loans now self-hydrate ──
+    // ── Batch 2: Comms + Tasks + Misc (projects/events/timesheets/depts/jobTitles now self-hydrate) ──
     const [
-      leaveRequests,
-      leaveBalances,
-      leavePolicies,
-      loans,
-    ] = await Promise.all([
-      leaveDb.fetchRequests(),
-      leaveDb.fetchBalances(),
-      leaveDb.fetchPolicies(),
-      loansDb.fetchAll(),
-    ]);
-
-    // ── Batch 2: Projects + Comms + Tasks + Misc ────────────────
-    const [
-      projects,
       auditLogs,
-      calendarEvents,
       announcements,
       textChannels,
       channelMessages,
@@ -162,22 +146,14 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
       completionReports,
       taskComments,
       taskTagsList,
-      timesheets,
-      ruleSets,
       notificationLogs,
       notificationRules,
       locationPings,
       sitePhotos,
       breakRecords,
-      allLoanDeductions,
-      allRepaymentSchedules,
       fetchedDocuments,
-      fetchedDepartments,
-      fetchedJobTitles,
     ] = await Promise.all([
-      projectsDb.fetchAll(),
       auditDb.fetchAll(),
-      eventsDb.fetchAll(),
       messagingDb.fetchAnnouncements(),
       messagingDb.fetchChannels(),
       messagingDb.fetchMessages(),
@@ -186,56 +162,20 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
       tasksDb.fetchCompletionReports(),
       tasksDb.fetchComments(),
       tasksDb.fetchTags(),
-      timesheetsDb.fetchTimesheets(),
-      timesheetsDb.fetchRuleSets(),
       notificationsDb.fetchLogs(),
       notificationsDb.fetchRules(),
       locationDb.fetchPings(),
       locationDb.fetchPhotos(),
       locationDb.fetchBreaks(),
-      loanExtrasDb.fetchAllDeductions(),
-      loanExtrasDb.fetchAllRepaymentSchedules(),
       documents201Db.fetchAll(),
-      departmentsDb.fetchAll(),
-      jobTitlesDb.fetchAll(),
     ]);
 
     // ── Employees, Attendance, Payroll: now self-hydrate via store.hydrateFromDb() ──
     // (called from client-layout.tsx after this function completes)
 
-    // Hydrate leave store
-    if (leavePolicies.length > 0 || leaveRequests.length > 0 || leaveBalances.length > 0) {
-      useLeaveStore.setState({
-        ...(leavePolicies.length > 0 ? { policies: leavePolicies } : {}),
-        ...(leaveRequests.length > 0 ? { requests: leaveRequests } : {}),
-        ...(leaveBalances.length > 0 ? { balances: leaveBalances } : {}),
-      });
-    }
-
-    // Hydrate loans store — attach deductions & repayment schedules
-    if (loans.length > 0) {
-      const hydratedLoans = loans.map((loan) => ({
-        ...loan,
-        deductions: allLoanDeductions.filter((d) => d.loanId === loan.id),
-        repaymentSchedule: allRepaymentSchedules.filter((r) => r.loanId === loan.id),
-        balanceHistory: loan.balanceHistory ?? [],
-      }));
-      useLoansStore.setState({ loans: hydratedLoans });
-    }
-
-    // Hydrate projects store
-    if (projects.length > 0) {
-      useProjectsStore.setState({ projects });
-    }
-
     // Hydrate audit store
     if (auditLogs.length > 0) {
       useAuditStore.setState({ logs: auditLogs });
-    }
-
-    // Hydrate events store
-    if (calendarEvents.length > 0) {
-      useEventsStore.setState({ events: calendarEvents });
     }
 
     // Hydrate messaging store
@@ -257,14 +197,6 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
       ...(taskComments.length > 0 ? { comments: taskComments } : {}),
       ...(taskTagsList.length > 0 ? { taskTags: taskTagsList } : {}),
     });
-
-    // Hydrate timesheet store
-    if (timesheets.length > 0 || ruleSets.length > 0) {
-      useTimesheetStore.setState({
-        ...(timesheets.length > 0 ? { timesheets } : {}),
-        ...(ruleSets.length > 0 ? { ruleSets } : {}),
-      });
-    }
 
     // Hydrate notifications store — always set logs from DB so stale
     // localStorage data from a previous user session is cleared on login.
@@ -304,14 +236,6 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
     // Hydrate documents 201 store — always set from DB so DB-side changes
     // (uploads, approvals, deletions) propagate on next login/refresh.
     useDocumentsStore.setState({ documents: fetchedDocuments });
-
-    // Hydrate departments + job titles stores from Supabase
-    if (fetchedDepartments.length > 0) {
-      useDepartmentsStore.setState({ departments: fetchedDepartments });
-    }
-    if (fetchedJobTitles.length > 0) {
-      useJobTitlesStore.setState({ jobTitles: fetchedJobTitles });
-    }
 
     // ── Batch 3: Disciplinary + Documents + Performance + BIR ────
     // Use allSettled so missing tables (migration not yet applied) don't
@@ -422,115 +346,13 @@ export function startWriteThrough(): void {
 
   // ─── Employees write-through — REMOVED (mutations now persist via db.service directly) ──
 
-  // ─── Leave write-through ──────────────────────────────────
-  _subscriptions.push(
-    useLeaveStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        // Leave requests: any authenticated user can submit/update their own
-        for (const req of state.requests) {
-          const prev = prevState.requests.find((r) => r.id === req.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(req)) {
-            leaveDb.upsertRequest(req);
-          }
-        }
-        // Leave balances and policies: admin/hr only
-        if (isAdminOrHr) {
-          for (const bal of state.balances) {
-            const prev = prevState.balances.find((b) => b.id === bal.id);
-            if (!prev || JSON.stringify(prev) !== JSON.stringify(bal)) {
-              leaveDb.upsertBalance(bal);
-            }
-          }
-          for (const pol of state.policies) {
-            const prev = prevState.policies.find((p) => p.id === pol.id);
-            if (!prev || JSON.stringify(prev) !== JSON.stringify(pol)) {
-              leaveDb.upsertPolicy(pol);
-            }
-          }
-          for (const prev of prevState.policies) {
-            if (!state.policies.find((p) => p.id === prev.id)) {
-              leaveDb.deletePolicy(prev.id);
-            }
-          }
-        }
-      }
-    )
-  );
-
+  // Leave write-through — REMOVED
   // ─── Attendance write-through — REMOVED (mutations now persist via db.service directly) ──
 
   // ─── Payroll write-through — REMOVED (mutations now persist via db.service directly) ──
 
-  // ─── Loans write-through ──────────────────────────────────
-  _subscriptions.push(
-    useLoansStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        for (const loan of state.loans) {
-          const prev = prevState.loans.find((l) => l.id === loan.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(loan)) {
-            // Separate the embedded arrays from the loan row (repaymentSchedule / balanceHistory are child sub-tables, not loan columns)
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { deductions, repaymentSchedule: _repaymentSchedule, balanceHistory: _balanceHistory, ...loanRow } = loan;
-            loansDb.upsert(loanRow as typeof loanRow & { id: string });
-            // Sync new deductions
-            if (deductions) {
-              const prevDeds = prev?.deductions ?? [];
-              for (const ded of deductions) {
-                if (!prevDeds.find((d) => d.id === ded.id)) {
-                  // FK guard: loan_deductions.payslip_id → payslips.id
-                  // Only insert the deduction after the referenced payslip is
-                  // confirmed written to Supabase. If the payslip is unknown
-                  // (e.g. after a reset), skip entirely — inserting without the
-                  // parent row would always violate fk_ld_payslip.
-                  if (!ded.payslipId) {
-                    // No payslip reference at all — safe to insert directly
-                    loansDb.insertDeduction(ded);
-                  } else {
-                    const referencedPayslip = usePayrollStore
-                      .getState()
-                      .payslips.find((p) => p.id === ded.payslipId);
-                    if (referencedPayslip) {
-                      // Upsert the payslip first; only proceed if it succeeded
-                      payrollDb.upsertPayslip(referencedPayslip).then((ok) => {
-                        if (ok) loansDb.insertDeduction(ded);
-                        else console.warn("[sync] Skipping loan deduction — payslip upsert failed:", ded.payslipId);
-                      });
-                    } else {
-                      // Payslip not in store → not in DB either; skip to avoid FK violation
-                      console.warn("[sync] Skipping loan deduction — referenced payslip not in store:", ded.payslipId);
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    )
-  );
-
-  // ─── Projects write-through ───────────────────────────────
-  _subscriptions.push(
-    useProjectsStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        for (const proj of state.projects) {
-          const prev = prevState.projects.find((p) => p.id === proj.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(proj)) {
-            projectsDb.upsert(proj);
-          }
-        }
-        for (const prev of prevState.projects) {
-          if (!state.projects.find((p) => p.id === prev.id)) {
-            projectsDb.remove(prev.id);
-          }
-        }
-      }
-    )
-  );
-
+  // Loans write-through — REMOVED
+  // Projects write-through — REMOVED
   // ─── Audit write-through ──────────────────────────────────
   _subscriptions.push(
     useAuditStore.subscribe(
@@ -545,26 +367,7 @@ export function startWriteThrough(): void {
     )
   );
 
-  // ─── Events write-through ─────────────────────────────────
-  _subscriptions.push(
-    useEventsStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        for (const evt of state.events) {
-          const prev = prevState.events.find((e) => e.id === evt.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(evt)) {
-            eventsDb.upsert(evt);
-          }
-        }
-        for (const prev of prevState.events) {
-          if (!state.events.find((e) => e.id === prev.id)) {
-            eventsDb.remove(prev.id);
-          }
-        }
-      }
-    )
-  );
-
+  // Events write-through — REMOVED
   // ─── Messaging write-through ──────────────────────────────
   _subscriptions.push(
     useMessagingStore.subscribe(
@@ -681,32 +484,7 @@ export function startWriteThrough(): void {
     )
   );
 
-  // ─── Timesheets write-through ─────────────────────────────
-  _subscriptions.push(
-    useTimesheetStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        for (const ts of state.timesheets) {
-          const prev = prevState.timesheets.find((pt) => pt.id === ts.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(ts)) {
-            timesheetsDb.upsertTimesheet(ts);
-          }
-        }
-        for (const rs of state.ruleSets) {
-          const prev = prevState.ruleSets.find((pr) => pr.id === rs.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(rs)) {
-            timesheetsDb.upsertRuleSet(rs);
-          }
-        }
-        for (const prev of prevState.ruleSets) {
-          if (!state.ruleSets.find((rs) => rs.id === prev.id)) {
-            timesheetsDb.deleteRuleSet(prev.id);
-          }
-        }
-      }
-    )
-  );
-
+  // Timesheets write-through — REMOVED
   // ─── Notifications write-through ──────────────────────────
   _subscriptions.push(
     useNotificationsStore.subscribe(
@@ -910,46 +688,8 @@ export function startWriteThrough(): void {
     )
   );
 
-  // ─── Departments write-through (admin/hr only) ───────────────────────
-  _subscriptions.push(
-    useDepartmentsStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused || !isAdminOrHr) return;
-        for (const dept of state.departments) {
-          const prev = prevState.departments.find((d) => d.id === dept.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(dept)) {
-            departmentsDb.upsert(dept);
-          }
-        }
-        for (const prev of prevState.departments) {
-          if (!state.departments.find((d) => d.id === prev.id)) {
-            departmentsDb.remove(prev.id);
-          }
-        }
-      }
-    )
-  );
-
-  // ─── Job Titles write-through (admin/hr only) ────────────────────────
-  _subscriptions.push(
-    useJobTitlesStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused || !isAdminOrHr) return;
-        for (const jt of state.jobTitles) {
-          const prev = prevState.jobTitles.find((j) => j.id === jt.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(jt)) {
-            jobTitlesDb.upsert(jt);
-          }
-        }
-        for (const prev of prevState.jobTitles) {
-          if (!state.jobTitles.find((j) => j.id === prev.id)) {
-            jobTitlesDb.remove(prev.id);
-          }
-        }
-      }
-    )
-  );
-
+  // Departments write-through — REMOVED
+  // Job Titles write-through — REMOVED
   console.log("[sync] Write-through subscriptions active");
 }
 
