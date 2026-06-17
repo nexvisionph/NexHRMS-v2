@@ -243,6 +243,10 @@ export const useAttendanceStore = create<AttendanceState>()(
                         }
                     }
                     if (newExceptions.length === 0) return {};
+                    // Persist new exceptions to DB (fire-and-forget)
+                    for (const exc of newExceptions) {
+                        attendanceDb.upsertException(exc).catch(() => {});
+                    }
                     return { exceptions: [...s.exceptions, ...newExceptions] };
                 }),
 
@@ -285,19 +289,19 @@ export const useAttendanceStore = create<AttendanceState>()(
                 }
                 if (toMarkAbsent.length === 0) return 0;
                 // Batch mark absent
-                set((s) => ({
-                    logs: [
-                        ...s.logs,
-                        ...toMarkAbsent.map((empId) => ({
-                            id: `ATT-${date}-${empId}`,
-                            employeeId: empId,
-                            date,
-                            status: "absent" as const,
-                            createdAt: nowISO,
-                            updatedAt: nowISO,
-                        })),
-                    ],
+                const absentLogs = toMarkAbsent.map((empId) => ({
+                    id: `ATT-${date}-${empId}`,
+                    employeeId: empId,
+                    date,
+                    status: "absent" as const,
+                    createdAt: nowISO,
+                    updatedAt: nowISO,
                 }));
+                set((s) => ({
+                    logs: [...s.logs, ...absentLogs],
+                }));
+                // Persist absent logs to DB (fire-and-forget batch)
+                attendanceDb.batchUpsertLogs(absentLogs as unknown as AttendanceLog[]).catch(() => {});
 
                 // ─── Notify admins/HR for each absence + audit log ────
                 try {
@@ -611,26 +615,34 @@ export const useAttendanceStore = create<AttendanceState>()(
                     (l) => l.employeeId === employeeId && l.date === today
                 );
             },
-            addFlag: (logId, flag) =>
+            addFlag: (logId, flag) => {
                 set((s) => ({
                     logs: s.logs.map((l) =>
                         l.id === logId
                             ? { ...l, flags: [...new Set([...(l.flags ?? []), flag])] }
                             : l
                     ),
-                })),
-            removeFlag: (logId, flag) =>
+                }));
+                // Persist flag change to DB
+                const log = get().logs.find((l) => l.id === logId);
+                if (log) attendanceDb.upsertLog(log).catch(() => {});
+            },
+            removeFlag: (logId, flag) => {
                 set((s) => ({
                     logs: s.logs.map((l) =>
                         l.id === logId
                             ? { ...l, flags: (l.flags ?? []).filter((f) => f !== flag) }
                             : l
                     ),
-                })),
+                }));
+                // Persist flag change to DB
+                const log = get().logs.find((l) => l.id === logId);
+                if (log) attendanceDb.upsertLog(log).catch(() => {});
+            },
             getFlaggedLogs: () =>
                 get().logs.filter((l) => l.flags && l.flags.length > 0),
 
-            updateLog: (id, patch) =>
+            updateLog: (id, patch) => {
                 set((s) => ({
                     logs: s.logs.map((l) => {
                         if (l.id !== id) return l;
@@ -641,7 +653,11 @@ export const useAttendanceStore = create<AttendanceState>()(
                         }
                         return updated;
                     }),
-                })),
+                }));
+                // Persist updated log to DB
+                const log = get().logs.find((l) => l.id === id);
+                if (log) attendanceDb.upsertLog(log).catch(() => {});
+            },
 
             bulkUpsertLogs: (rows) =>
                 set((s) => {

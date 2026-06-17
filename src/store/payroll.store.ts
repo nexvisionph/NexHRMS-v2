@@ -122,14 +122,20 @@ export const usePayrollStore = create<PayrollState>()(
                 { deductionType: "bir", enabled: true, mode: "auto" },
             ],
 
-            updatePaySchedule: (patch) =>
-                set((s) => ({ paySchedule: { ...s.paySchedule, ...patch } })),
+            updatePaySchedule: (patch) => {
+                set((s) => ({ paySchedule: { ...s.paySchedule, ...patch } }));
+                const updated = get().paySchedule;
+                payrollDb.upsertPaySchedule({ id: "default", ...updated }).catch(() => {});
+            },
 
-            updateSignatureConfig: (patch) =>
-                set((s) => ({ signatureConfig: { ...s.signatureConfig, ...patch } })),
+            updateSignatureConfig: (patch) => {
+                set((s) => ({ signatureConfig: { ...s.signatureConfig, ...patch } }));
+                const updated = get().signatureConfig;
+                payrollDb.upsertSignatureConfig(updated).catch(() => {});
+            },
 
             // ─── Government Deduction Overrides (PH Standard) ─────────
-            setDeductionOverride: (override) =>
+            setDeductionOverride: (override) => {
                 set((s) => ({
                     deductionOverrides: [
                         ...s.deductionOverrides.filter(
@@ -137,19 +143,25 @@ export const usePayrollStore = create<PayrollState>()(
                         ),
                         override,
                     ],
-                })),
+                }));
+                payrollDb.upsertDeductionOverride(override).catch(() => {});
+            },
 
-            removeDeductionOverride: (employeeId, deductionType) =>
+            removeDeductionOverride: (employeeId, deductionType) => {
                 set((s) => ({
                     deductionOverrides: s.deductionOverrides.filter(
                         (d) => !(d.employeeId === employeeId && d.deductionType === deductionType)
                     ),
-                })),
+                }));
+                payrollDb.deleteDeductionOverride(employeeId, deductionType as string).catch(() => {});
+            },
 
-            clearEmployeeOverrides: (employeeId) =>
+            clearEmployeeOverrides: (employeeId) => {
                 set((s) => ({
                     deductionOverrides: s.deductionOverrides.filter((d) => d.employeeId !== employeeId),
-                })),
+                }));
+                payrollDb.clearEmployeeDeductionOverrides(employeeId).catch(() => {});
+            },
 
             getDeductionOverride: (employeeId, deductionType) =>
                 get().deductionOverrides.find(
@@ -160,7 +172,7 @@ export const usePayrollStore = create<PayrollState>()(
                 get().deductionOverrides.filter((d) => d.employeeId === employeeId),
 
             // ─── Global Defaults ──────────────────────────────────────
-            updateGlobalDefault: (config) =>
+            updateGlobalDefault: (config) => {
                 set((s) => {
                     const exists = s.globalDefaults.some((g) => g.deductionType === config.deductionType);
                     if (exists) {
@@ -171,7 +183,9 @@ export const usePayrollStore = create<PayrollState>()(
                         };
                     }
                     return { globalDefaults: [...s.globalDefaults, config as DeductionGlobalDefault] };
-                }),
+                });
+                payrollDb.upsertGlobalDefault(config as unknown as Record<string, unknown>).catch(() => {});
+            },
 
             getGlobalDefault: (deductionType) =>
                 get().globalDefaults.find((g) => g.deductionType === deductionType),
@@ -319,17 +333,20 @@ export const usePayrollStore = create<PayrollState>()(
                 }),
 
             // DEPRECATED: merged into signPayslip (kept for backward compat)
-            acknowledgePayslip: (id, employeeId) =>
+            acknowledgePayslip: (id, employeeId) => {
                 set((s) => ({
                     payslips: s.payslips.map((p) =>
                         p.id === id && p.status === "published"
                             ? { ...p, status: "signed" as const, acknowledgedAt: new Date().toISOString(), acknowledgedBy: employeeId }
                             : p
                     ),
-                })),
+                }));
+                const ps = get().payslips.find((p) => p.id === id);
+                if (ps) payrollDb.upsertPayslip(ps).catch(() => {});
+            },
 
             // Payment tracking (requires locked payroll run)
-            confirmPaidByFinance: (id, confirmedBy, method, reference, cashAmount, paymentProofUrl) =>
+            confirmPaidByFinance: (id, confirmedBy, method, reference, cashAmount, paymentProofUrl) => {
                 set((s) => {
                     const ps = s.payslips.find((p) => p.id === id);
                     if (!ps || (ps.status !== "signed" && !(ps.status === "payment_hold" && ps.signedAt))) return {};
@@ -355,7 +372,10 @@ export const usePayrollStore = create<PayrollState>()(
                                 : p
                         ),
                     };
-                }),
+                });
+                const ps = get().payslips.find((p) => p.id === id);
+                if (ps) payrollDb.upsertPayslip(ps).catch(() => {});
+            },
 
             holdPayment: (id, note) =>
                 set((s) => {
@@ -379,7 +399,7 @@ export const usePayrollStore = create<PayrollState>()(
                     };
                 }),
 
-            releasePaymentHold: (id) =>
+            releasePaymentHold: (id) => {
                 set((s) => ({
                     payslips: s.payslips.map((p) =>
                         p.id === id && p.status === "payment_hold"
@@ -391,7 +411,10 @@ export const usePayrollStore = create<PayrollState>()(
                               }
                             : p
                     ),
-                })),
+                }));
+                const ps = get().payslips.find((p) => p.id === id);
+                if (ps) payrollDb.upsertPayslip(ps).catch(() => {});
+            },
 
             // ─── Batch mutations ─────────────────────────────────────
             batchReleasePaymentHold: (ids) =>
@@ -430,14 +453,17 @@ export const usePayrollStore = create<PayrollState>()(
                     };
                 }),
 
-            rejectHoldSignature: (id) =>
+            rejectHoldSignature: (id) => {
                 set((s) => ({
                     payslips: s.payslips.map((p) =>
                         p.id === id && p.status === "payment_hold"
                             ? { ...p, signedAt: undefined, signatureDataUrl: undefined, acknowledgedAt: undefined, acknowledgedBy: undefined }
                             : p
                     ),
-                })),
+                }));
+                const ps = get().payslips.find((p) => p.id === id);
+                if (ps) payrollDb.upsertPayslip(ps).catch(() => {});
+            },
 
             /** Update payslip with server data (timestamps match DB, avoids write-through conflicts) */
             updatePayslipFromServer: (serverPayslip) =>
@@ -467,7 +493,7 @@ export const usePayrollStore = create<PayrollState>()(
             getUnsignedPublished: () => get().payslips.filter((p) => p.status === "published" && !p.signedAt),
 
             // ─── Payroll runs — draft → locked → completed ───────────
-            createDraftRun: (runDate, payslipIds, runType = "regular", periodStart, periodEnd) =>
+            createDraftRun: (runDate, payslipIds, runType = "regular", periodStart, periodEnd) => {
                 set((s) => {
                     const existing = s.runs.find((r) => r.periodLabel === runDate);
                     if (existing) return {}; // already exists
@@ -493,7 +519,10 @@ export const usePayrollStore = create<PayrollState>()(
                                 : p
                         ),
                     };
-                }),
+                });
+                const newRun = get().runs.find((r) => r.periodLabel === runDate);
+                if (newRun) payrollDb.upsertRun(newRun).catch(() => {});
+            },
 
             // DEPRECATED: no-op in simplified flow (draft goes directly to locked)
             validateRun: (/* runDate */) =>
@@ -572,7 +601,7 @@ export const usePayrollStore = create<PayrollState>()(
                 }),
 
             // Reactivate run: ended → locked (when a re-issued payslip needs signing again)
-            reactivateRun: (runDate) =>
+            reactivateRun: (runDate) => {
                 set((s) => {
                     const run = s.runs.find((r) => r.periodLabel === runDate);
                     if (!run || run.status !== "ended") return {};
@@ -583,7 +612,10 @@ export const usePayrollStore = create<PayrollState>()(
                                 : r
                         ),
                     };
-                }),
+                });
+                const updatedRun = get().runs.find((r) => r.periodLabel === runDate);
+                if (updatedRun) payrollDb.upsertRun(updatedRun).catch(() => {});
+            },
 
             // Complete run: locked/published/ended → completed (terminal state)
             markRunPaid: (runDate) =>
@@ -600,7 +632,7 @@ export const usePayrollStore = create<PayrollState>()(
                 }),
 
             // ─── Adjustments ──────────────────────────────────────────
-            createAdjustment: (data) =>
+            createAdjustment: (data) => {
                 set((s) => ({
                     adjustments: [
                         ...s.adjustments,
@@ -611,27 +643,36 @@ export const usePayrollStore = create<PayrollState>()(
                             createdAt: new Date().toISOString(),
                         },
                     ],
-                })),
+                }));
+                const lastAdj = get().adjustments[get().adjustments.length - 1];
+                if (lastAdj) payrollDb.upsertAdjustment(lastAdj).catch(() => {});
+            },
 
-            approveAdjustment: (adjustmentId, approverId) =>
+            approveAdjustment: (adjustmentId, approverId) => {
                 set((s) => ({
                     adjustments: s.adjustments.map((a) =>
                         a.id === adjustmentId && a.status === "pending"
                             ? { ...a, status: "approved" as const, approvedBy: approverId, approvedAt: new Date().toISOString() }
                             : a
                     ),
-                })),
+                }));
+                const adj = get().adjustments.find((a) => a.id === adjustmentId);
+                if (adj) payrollDb.upsertAdjustment(adj).catch(() => {});
+            },
 
-            rejectAdjustment: (adjustmentId, approverId) =>
+            rejectAdjustment: (adjustmentId, approverId) => {
                 set((s) => ({
                     adjustments: s.adjustments.map((a) =>
                         a.id === adjustmentId && a.status === "pending"
                             ? { ...a, status: "rejected" as const, approvedBy: approverId, approvedAt: new Date().toISOString() }
                             : a
                     ),
-                })),
+                }));
+                const adj = get().adjustments.find((a) => a.id === adjustmentId);
+                if (adj) payrollDb.upsertAdjustment(adj).catch(() => {});
+            },
 
-            applyAdjustment: (adjustmentId, runId) =>
+            applyAdjustment: (adjustmentId, runId) => {
                 set((s) => {
                     const adj = s.adjustments.find((a) => a.id === adjustmentId);
                     if (!adj || adj.status !== "approved") return {};
@@ -666,10 +707,15 @@ export const usePayrollStore = create<PayrollState>()(
                         ),
                         payslips: [...s.payslips, adjPayslip],
                     };
-                }),
+                });
+                const appliedAdj = get().adjustments.find((a) => a.id === adjustmentId);
+                if (appliedAdj) payrollDb.upsertAdjustment(appliedAdj).catch(() => {});
+                const adjPs = get().payslips.find((p) => p.adjustmentRef === adjustmentId);
+                if (adjPs) payrollDb.upsertPayslip(adjPs).catch(() => {});
+            },
 
             // ─── Final Pay (§14) ───────────────────────────────────────
-            computeFinalPay: (data) =>
+            computeFinalPay: (data) => {
                 set((s) => {
                     const resignDate = new Date(data.resignedAt);
                     // Pro-rate salary for the CURRENT PARTIAL MONTH only (last payroll to resignation)
@@ -707,7 +753,10 @@ export const usePayrollStore = create<PayrollState>()(
                     // Replace existing computation if present, otherwise append
                     const filtered = s.finalPayComputations.filter((f) => f.employeeId !== data.employeeId);
                     return { finalPayComputations: [...filtered, comp] };
-                }),
+                });
+                const fp = get().finalPayComputations.find((f) => f.employeeId === data.employeeId);
+                if (fp) payrollDb.upsertFinalPay(fp).catch(() => {});
+            },
 
             getFinalPay: (employeeId) =>
                 get().finalPayComputations.find((f) => f.employeeId === employeeId),
@@ -724,7 +773,7 @@ export const usePayrollStore = create<PayrollState>()(
 
             // 13th month = (total basic salary earned in the year) / 12
             // Pro-rated for mid-year joiners: only months worked count
-            generate13thMonth: (employees, year?: number) =>
+            generate13thMonth: (employees, year?: number) => {
                 set((s) => {
                     const today = new Date().toISOString().split("T")[0];
                     const targetYear = year ?? new Date().getFullYear();
@@ -772,7 +821,10 @@ export const usePayrollStore = create<PayrollState>()(
                         };
                     }).filter((s) => s.netPay > 0);
                     return { payslips: [...s.payslips, ...newSlips] };
-                }),
+                });
+                const newSlips = get().payslips.filter((p) => p.notes?.includes("13th Month Pay") && p.status === "draft");
+                if (newSlips.length > 0) payrollDb.batchUpsertPayslips(newSlips).catch(() => {});
+            },
 
             getByEmployee: (employeeId) =>
                 get().payslips.filter((p) => p.employeeId === employeeId),

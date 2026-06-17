@@ -4,7 +4,6 @@ import { ThemeProvider } from "@/components/shell/theme-provider";
 import { AppShell } from "@/components/shell/app-shell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryProvider } from "@/components/query-provider";
-import { StoreQueryBridge } from "@/hooks/use-store-query-bridge";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -290,8 +289,6 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                     {isAuthenticated && !isKiosk && <ForcePasswordChangeModal />}
                 </ThemeProvider>
             </TooltipProvider>
-            {/* Bridge Zustand store state → TanStack Query cache during migration */}
-            {isAuthenticated && <StoreQueryBridge />}
         </QueryProvider>
     );
 }

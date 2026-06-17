@@ -179,6 +179,17 @@ export const useEmployeesStore = create<EmployeesState>()(
                 const deduped = dedupeAll(employees);
                 if (deduped.length < before) {
                     set({ employees: deduped });
+                    // Persist deduped list — upsert all remaining employees
+                    for (const emp of deduped) {
+                        employeesDb.upsert(emp).catch(() => {});
+                    }
+                    // Remove the ones that were dropped
+                    const dedupedIds = new Set(deduped.map((e) => e.id));
+                    for (const emp of employees) {
+                        if (!dedupedIds.has(emp.id)) {
+                            employeesDb.remove(emp.id).catch(() => {});
+                        }
+                    }
                 }
                 return before - deduped.length;
             },

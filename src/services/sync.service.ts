@@ -36,6 +36,7 @@ import {
   createClient,
 } from "./db.service";
 import { disciplinaryDb, documentsDb, performanceDb, birComplianceDb } from "./db.service";
+import { getEmployees } from "@/lib/employee-data";
 import { clearStaleStorage } from "@/lib/clear-stale-storage";
 import { keysToCamel } from "@/lib/db-utils";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -409,7 +410,7 @@ export function startWriteThrough(): void {
   const role = useAuthStore.getState().currentUser?.role ?? "";
   const isAdminOrHr = ["admin", "hr"].includes(role);
   const currentUser = useAuthStore.getState().currentUser;
-  const currentEmployee = useEmployeesStore.getState().employees.find(
+  const currentEmployee = getEmployees().find(
     (e) =>
       e.profileId === currentUser?.id ||
       e.email?.trim().toLowerCase() === currentUser?.email?.trim().toLowerCase() ||
@@ -419,44 +420,7 @@ export function startWriteThrough(): void {
   // Kiosk mode syncs all attendance data (used by all employees without individual login)
   const isKioskMode = typeof window !== "undefined" && window.location.pathname.startsWith("/kiosk");
 
-  // ─── Employees write-through ──────────────────────────────
-  _subscriptions.push(
-    useEmployeesStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        // Detect changed employees — only admin/hr can write employee records
-        if (isAdminOrHr) {
-          const deletedIds = new Set(state.deletedEmployeeIds ?? []);
-          for (const emp of state.employees) {
-            if (deletedIds.has(emp.id)) continue;
-            const prev = prevState.employees.find((e) => e.id === emp.id);
-            if (!prev || JSON.stringify(prev) !== JSON.stringify(emp)) {
-              employeesDb.upsert(emp);
-            }
-          }
-          // Detect deletions
-          for (const prev of prevState.employees) {
-            if (!state.employees.find((e) => e.id === prev.id)) {
-              employeesDb.remove(prev.id);
-            }
-          }
-        }
-        // Salary requests
-        for (const req of state.salaryRequests) {
-          const prev = prevState.salaryRequests.find((r) => r.id === req.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(req)) {
-            salaryDb.upsertRequest(req);
-          }
-        }
-        // Salary history
-        for (const entry of state.salaryHistory) {
-          if (!prevState.salaryHistory.find((h) => h.id === entry.id)) {
-            salaryDb.insertHistory(entry);
-          }
-        }
-      }
-    )
-  );
+  // ─── Employees write-through — REMOVED (mutations now persist via db.service directly) ──
 
   // ─── Leave write-through ──────────────────────────────────
   _subscriptions.push(
@@ -494,196 +458,9 @@ export function startWriteThrough(): void {
     )
   );
 
-  // ─── Attendance write-through ─────────────────────────────
-  _subscriptions.push(
-    useAttendanceStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        // Logs: admin/hr/kiosk sync all logs; employees sync only their own log entries
-        const currentUserState = useAuthStore.getState().currentUser;
-        const currentEmployees = useEmployeesStore.getState().employees;
-        const myEmployeeId = currentEmployees.find(
-          (e) => e.profileId === currentUserState?.id || e.email === currentUserState?.email || e.name === currentUserState?.name
-        )?.id;
+  // ─── Attendance write-through — REMOVED (mutations now persist via db.service directly) ──
 
-        for (const log of state.logs) {
-          const prev = prevState.logs.find((l) => l.id === log.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(log)) {
-            // Admin/HR/kiosk sync all; employees only sync their own
-            if (isAdminOrHr || isKioskMode || log.employeeId === myEmployeeId) {
-              attendanceDb.upsertLog(log);
-            }
-          }
-        }
-        // Events (append-only): all roles — employees clock in/out
-        // Collect promises so evidence inserts can wait for parent events (FK constraint)
-        const eventInsertPromises: Promise<boolean>[] = [];
-        for (const evt of state.events) {
-          if (!prevState.events.find((e) => e.id === evt.id)) {
-            eventInsertPromises.push(attendanceDb.insertEvent(evt));
-          }
-        }
-        // Holidays, shifts, exceptions, penalties, shifts: admin/hr only
-        if (isAdminOrHr) {
-          for (const h of state.holidays) {
-            const prev = prevState.holidays.find((ph) => ph.id === h.id);
-            if (!prev || JSON.stringify(prev) !== JSON.stringify(h)) {
-              attendanceDb.upsertHoliday(h);
-            }
-          }
-          for (const prev of prevState.holidays) {
-            if (!state.holidays.find((h) => h.id === prev.id)) {
-              attendanceDb.deleteHoliday(prev.id);
-            }
-          }
-          for (const s of state.shiftTemplates) {
-            const prev = prevState.shiftTemplates.find((ps) => ps.id === s.id);
-            if (!prev || JSON.stringify(prev) !== JSON.stringify(s)) {
-              attendanceDb.upsertShift(s);
-            }
-          }
-          for (const prev of prevState.shiftTemplates) {
-            if (!state.shiftTemplates.find((s) => s.id === prev.id)) {
-              attendanceDb.deleteShift(prev.id);
-            }
-          }
-        }
-        // Overtime requests: all roles — employees submit their own
-        for (const req of state.overtimeRequests) {
-          const prev = prevState.overtimeRequests.find((r) => r.id === req.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(req)) {
-            attendanceDb.upsertOvertimeRequest(req);
-          }
-        }
-        // Evidence (append-only): all roles
-        // Must wait for parent event inserts to commit first (attendance_evidence_event_id_fkey)
-        const newEvidence = state.evidence.filter(
-          (ev) => !prevState.evidence.find((e) => e.id === ev.id)
-        );
-        if (newEvidence.length > 0) {
-          Promise.all(eventInsertPromises).then(() => {
-            for (const ev of newEvidence) {
-              attendanceDb.insertEvidence(ev);
-            }
-          });
-        }
-        // Exceptions and penalties: admin/hr only
-        if (isAdminOrHr) {
-          for (const exc of state.exceptions) {
-            const prev = prevState.exceptions.find((e) => e.id === exc.id);
-            if (!prev || JSON.stringify(prev) !== JSON.stringify(exc)) {
-              attendanceDb.upsertException(exc);
-            }
-          }
-          for (const pen of state.penalties) {
-            const prev = prevState.penalties.find((p) => p.id === pen.id);
-            if (!prev || JSON.stringify(prev) !== JSON.stringify(pen)) {
-              attendanceDb.upsertPenalty(pen);
-            }
-          }
-        }
-        // Employee-shift assignments: admin/hr only
-        if (isAdminOrHr) {
-          for (const [empId, shiftId] of Object.entries(state.employeeShifts)) {
-            if (prevState.employeeShifts[empId] !== shiftId) {
-              attendanceDb.upsertEmployeeShift(empId, shiftId);
-            }
-          }
-          for (const empId of Object.keys(prevState.employeeShifts)) {
-            if (!(empId in state.employeeShifts)) {
-              attendanceDb.deleteEmployeeShift(empId);
-            }
-          }
-        }
-      }
-    )
-  );
-
-  // ─── Payroll write-through ────────────────────────────────
-  _subscriptions.push(
-    usePayrollStore.subscribe(
-      (state, prevState) => {
-        if (_writePaused) return;
-        // Only roles with payroll write access may push mutations through the browser
-        // client. Employees, supervisors, and auditors are read-only on payslips —
-        // their mutations go through API routes (admin client) to bypass RLS.
-        const payrollRole = useAuthStore.getState().currentUser?.role ?? "";
-        const canWritePayroll = ["admin", "hr", "finance", "payroll_admin"].includes(payrollRole);
-        if (!canWritePayroll) return;
-
-        // Build set of real employee IDs to guard FK integrity.
-        // Seed/demo payslips use placeholder IDs (EMP001 etc.) that may not
-        // exist in Supabase — skip those to avoid FK constraint violations.
-        const validEmployeeIds = new Set(
-          useEmployeesStore.getState().employees.map((e) => e.id)
-        );
-
-        for (const ps of state.payslips) {
-          if (!validEmployeeIds.has(ps.employeeId)) continue; // skip seed data
-          const prev = prevState.payslips.find((p) => p.id === ps.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(ps)) {
-            payrollDb.upsertPayslip(ps);
-          }
-        }
-        for (const run of state.runs) {
-          const prev = prevState.runs.find((r) => r.id === run.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(run)) {
-            payrollDb.upsertRun(run);
-          }
-        }
-        for (const adj of state.adjustments) {
-          if (!validEmployeeIds.has(adj.employeeId)) continue;
-          const prev = prevState.adjustments.find((a) => a.id === adj.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(adj)) {
-            payrollDb.upsertAdjustment(adj);
-          }
-        }
-        for (const fp of state.finalPayComputations) {
-          if (!validEmployeeIds.has(fp.employeeId)) continue;
-          const prev = prevState.finalPayComputations.find((f) => f.id === fp.id);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(fp)) {
-            payrollDb.upsertFinalPay(fp);
-          }
-        }
-        if (JSON.stringify(state.paySchedule) !== JSON.stringify(prevState.paySchedule)) {
-          payrollDb.upsertPaySchedule({ id: "default", ...state.paySchedule });
-        }
-
-        // ─── Deduction Overrides write-through ─────────────────
-        // Upsert new or changed overrides
-        for (const ov of state.deductionOverrides) {
-          const prev = prevState.deductionOverrides.find(
-            (d) => d.employeeId === ov.employeeId && d.deductionType === ov.deductionType
-          );
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(ov)) {
-            payrollDb.upsertDeductionOverride(ov);
-          }
-        }
-        // Delete removed overrides
-        for (const prev of prevState.deductionOverrides) {
-          const stillExists = state.deductionOverrides.find(
-            (d) => d.employeeId === prev.employeeId && d.deductionType === prev.deductionType
-          );
-          if (!stillExists) {
-            payrollDb.deleteDeductionOverride(prev.employeeId, prev.deductionType);
-          }
-        }
-
-        // ─── Global Defaults write-through ─────────────────────
-        for (const gd of state.globalDefaults) {
-          const prev = prevState.globalDefaults.find((d) => d.deductionType === gd.deductionType);
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(gd)) {
-            payrollDb.upsertGlobalDefault(gd as unknown as Record<string, unknown>);
-          }
-        }
-
-        // ─── Signature Config write-through ────────────────────
-        if (JSON.stringify(state.signatureConfig) !== JSON.stringify(prevState.signatureConfig)) {
-          payrollDb.upsertSignatureConfig(state.signatureConfig);
-        }
-      }
-    )
-  );
+  // ─── Payroll write-through — REMOVED (mutations now persist via db.service directly) ──
 
   // ─── Loans write-through ──────────────────────────────────
   _subscriptions.push(
