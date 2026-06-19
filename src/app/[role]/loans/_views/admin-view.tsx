@@ -1,9 +1,9 @@
 "use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CashAdvanceTab } from "@/app/[role]/loans/_components/cash-advance-tab";
-import { SSSLoanTab } from "@/app/[role]/loans/_components/sss-loan-tab";
-import { PagibigLoanTab } from "@/app/[role]/loans/_components/pagibig-loan-tab";
+import { CompanyLoansTab } from "@/app/[role]/loans/_components/company-loans-tab";
+import { CashAdvancesTab } from "@/app/[role]/loans/_components/cash-advances-tab";
+import { GovernmentLoansTab } from "@/app/[role]/loans/_components/government-loans-tab";
 
 export default function AdminLoansView() {
     return (
@@ -13,23 +13,23 @@ export default function AdminLoansView() {
                 <p className="text-sm text-muted-foreground mt-0.5">Manage company loans, cash advances, SSS, and Pag-IBIG loans</p>
             </div>
 
-            <Tabs defaultValue="cash-advance">
+            <Tabs defaultValue="company-loans">
                 <TabsList className="w-full justify-start h-auto flex-wrap gap-1">
-                    <TabsTrigger value="cash-advance">Cash Advances / Company Loan</TabsTrigger>
-                    <TabsTrigger value="sss">SSS Loan</TabsTrigger>
-                    <TabsTrigger value="pagibig">Pag-IBIG Loan</TabsTrigger>
+                    <TabsTrigger value="company-loans">Company Loans</TabsTrigger>
+                    <TabsTrigger value="cash-advances">Cash Advances</TabsTrigger>
+                    <TabsTrigger value="government-loans">Government Loans</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="cash-advance" className="mt-6">
-                    <CashAdvanceTab />
+                <TabsContent value="company-loans" className="mt-6">
+                    <CompanyLoansTab />
                 </TabsContent>
 
-                <TabsContent value="sss" className="mt-6">
-                    <SSSLoanTab />
+                <TabsContent value="cash-advances" className="mt-6">
+                    <CashAdvancesTab />
                 </TabsContent>
 
-                <TabsContent value="pagibig" className="mt-6">
-                    <PagibigLoanTab />
+                <TabsContent value="government-loans" className="mt-6">
+                    <GovernmentLoansTab />
                 </TabsContent>
             </Tabs>
         </div>

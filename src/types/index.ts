@@ -58,7 +58,7 @@ export interface PayslipLineItem {
   templateId?: string;
   calculationDetail?: string;
 }
-export type LoanStatus = "active" | "settled" | "frozen" | "cancelled";
+export type LoanStatus = "pending" | "approved" | "rejected" | "active" | "settled" | "frozen" | "cancelled";
 export type OvertimeStatus = "pending" | "approved" | "rejected";
 export type AdjustmentType = "earnings" | "deduction" | "net_correction" | "statutory_correction";
 export type AdjustmentStatus = "pending" | "approved" | "applied" | "rejected";
@@ -635,7 +635,7 @@ export interface LoanBalanceHistory {
 export interface Loan {
   id: string;
   employeeId: string;
-  type: string;          // "cash_advance" | "salary_loan" | "other"
+  type: string;          // "cash_advance" | "salary_loan" | "other" | "government_loan"
   amount: number;
   remainingBalance: number;
   monthlyDeduction: number;
@@ -648,6 +648,12 @@ export interface Loan {
   lastDeductedAt?: string;
   repaymentSchedule?: LoanRepaymentSchedule[];
   balanceHistory?: LoanBalanceHistory[];
+  agency?: string;
+  loanType?: string;
+  referenceNumber?: string;
+  deductionFrequency?: "every_payroll" | "first_payroll" | "last_payroll";
+  startDeductionDate?: string;
+  releaseDate?: string;
 }
 
 // ─── Payslip & Payroll (§4, §8) ─────────────────────────────

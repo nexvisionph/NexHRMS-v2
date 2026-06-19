@@ -40,9 +40,11 @@ export function LoansFilterBar({
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="active">Active</SelectItem>
                     <SelectItem value="settled">Settled</SelectItem>
                     <SelectItem value="frozen">Frozen</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
                     <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
             </Select>

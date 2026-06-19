@@ -194,3 +194,79 @@ export const SEED_PAGIBIG_DEDUCTIONS: GovernmentLoanDeduction[] = [
     { id: "PGD002", loanId: "PGB001", employeeId: "EMP001", deductedAt: "2026-02-28", amount: 2083.33, remainingAfter: 45833.34, payslipId: "PS-2026-02-A" },
     { id: "PGD003", loanId: "PGB003", employeeId: "EMP002", deductedAt: "2026-03-15", amount: 3333.33, remainingAfter: 76666.67, payslipId: "PS-2026-03-A" },
 ];
+
+export interface CompanyLoanScheduleItem {
+    payrollPeriod: string;
+    amount: number;
+    status: "paid" | "pending";
+}
+
+export function generateCompanyLoanSchedule(
+    totalAmount: number,
+    monthlyDeduction: number,
+    startDeductionDate: string,
+    deductionFrequency: "every_payroll" | "first_payroll" | "last_payroll" = "every_payroll",
+    totalDeducted = 0
+): CompanyLoanScheduleItem[] {
+    const start = new Date(startDeductionDate || new Date());
+    if (Number.isNaN(start.getTime()) || monthlyDeduction <= 0 || totalAmount <= 0) return [];
+
+    const schedule: CompanyLoanScheduleItem[] = [];
+    let remainingBalance = totalAmount;
+    let currentDate = new Date(start);
+    let totalDeductionsMade = totalDeducted;
+
+    while (remainingBalance > 0.01) {
+        let installmentAmount = 0;
+
+        if (deductionFrequency === "every_payroll") {
+            installmentAmount = Math.min(monthlyDeduction / 2, remainingBalance);
+            const currentDay = currentDate.getDate();
+            if (currentDay <= 15) {
+                currentDate.setDate(15);
+            } else {
+                const nextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+                currentDate = nextMonth;
+            }
+        } else if (deductionFrequency === "first_payroll") {
+            installmentAmount = Math.min(monthlyDeduction, remainingBalance);
+            currentDate.setDate(15);
+        } else {
+            installmentAmount = Math.min(monthlyDeduction, remainingBalance);
+            const eom = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+            currentDate = eom;
+        }
+
+        const payrollPeriodLabel = currentDate.toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+        });
+
+        let status: "paid" | "pending" = "pending";
+        if (totalDeductionsMade >= installmentAmount - 0.01) {
+            status = "paid";
+            totalDeductionsMade -= installmentAmount;
+        }
+
+        schedule.push({
+            payrollPeriod: payrollPeriodLabel,
+            amount: Math.round(installmentAmount * 100) / 100,
+            status,
+        });
+
+        remainingBalance -= installmentAmount;
+
+        if (deductionFrequency === "every_payroll") {
+            if (currentDate.getDate() === 15) {
+                currentDate.setDate(28); // trigger moving to second cutoff next iteration
+            } else {
+                currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 15);
+            }
+        } else {
+            currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 15);
+        }
+    }
+
+    return schedule;
+}

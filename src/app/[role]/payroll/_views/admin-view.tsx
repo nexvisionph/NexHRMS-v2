@@ -642,10 +642,6 @@
                     const govMultiplier = 1;
 
                     const empLoans = getActiveByEmployee(empId);
-                    const rawLoanDeduction = empLoans.reduce((sum, l) => sum + Math.min(l.monthlyDeduction, l.remainingBalance), 0);
-                    // Enforce 30% deduction cap per DB schema (loans.deduction_cap_percent DEFAULT 30)
-                    const empLoanDeduction = Math.min(rawLoanDeduction, Math.round(effectiveGrossPay * 0.30));
-                    totalLoanDeductions += empLoanDeduction;
 
                     const allowances = allowancesVal;
                     const otherDed = otherDedVal;
@@ -843,7 +839,40 @@
                     // OT pay from engine (matches client payslip formula exactly)
                     const otPay = engineResult.totalOtPay > 0 ? engineResult.totalOtPay : Math.round(finalOtHours * fullPrecisionHourlyRate * 1.25);
 
-                    const rawNetPay = effectiveGrossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - empLoanDeduction - customDedTotal - autoDedTotal;
+                    // Compute dynamic capped loan deductions against Net Pay Before Loans
+                    const netPayBeforeLoans = Math.max(
+                        0,
+                        effectiveGrossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - customDedTotal - autoDedTotal
+                    );
+                    const baseLoanDeduction = (loan: typeof empLoans[0]) => {
+                        const freq = loan.deductionFrequency || "every_payroll";
+                        let baseAmt = loan.monthlyDeduction;
+                        if (freq === "every_payroll") {
+                            baseAmt = loan.monthlyDeduction / 2;
+                        } else if (freq === "first_payroll") {
+                            baseAmt = cutoff === "first" ? loan.monthlyDeduction : 0;
+                        } else if (freq === "last_payroll") {
+                            baseAmt = cutoff === "second" ? loan.monthlyDeduction : 0;
+                        }
+                        return Math.min(baseAmt, loan.remainingBalance);
+                    };
+                    const rawLoanDeduction = empLoans.reduce((sum, l) => sum + baseLoanDeduction(l), 0);
+
+                    let empLoanDeduction = 0;
+                    if (empLoans.length > 0) {
+                        const firstLoan = empLoans[0];
+                        const capPercent = firstLoan.deductionCapPercent ?? 30;
+                        const targetCapAmount = (capPercent / 100) * netPayBeforeLoans;
+                        const totalRemainingBalance = empLoans.reduce((sum, l) => sum + l.remainingBalance, 0);
+                        empLoanDeduction = Math.min(
+                            rawLoanDeduction,
+                            totalRemainingBalance,
+                            Math.round(targetCapAmount)
+                        );
+                    }
+                    totalLoanDeductions += empLoanDeduction;
+
+                    const rawNetPay = netPayBeforeLoans - empLoanDeduction;
                     const netPay = Math.max(0, rawNetPay);
                     if (rawNetPay <= 0) zeroNetPayCount++;
 
@@ -887,7 +916,15 @@
                     });
 
                     const actualPayslipId = usePayrollStore.getState().payslips.filter((p) => p.employeeId === empId).sort((a, b) => b.id.localeCompare(a.id))[0]?.id ?? `PS-fallback-${Date.now()}`;
-                    empLoans.forEach((loan) => { const amt = Math.min(loan.monthlyDeduction, loan.remainingBalance); if (amt > 0) recordDeduction(loan.id, actualPayslipId, amt); });
+                    let remainingCap = empLoanDeduction;
+                    empLoans.forEach((loan) => {
+                        const baseAmt = baseLoanDeduction(loan);
+                        const amt = Math.min(baseAmt, remainingCap);
+                        if (amt > 0) {
+                            recordDeduction(loan.id, actualPayslipId, amt);
+                            remainingCap -= amt;
+                        }
+                    });
                     successCount++;
                 });
 

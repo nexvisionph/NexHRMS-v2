@@ -16,6 +16,7 @@ import { nanoid } from "nanoid";
  */
 export async function createLoan(
     data: Omit<Loan, "id" | "createdAt" | "remainingBalance" | "deductionCapPercent" | "approvedBy"> & {
+        remainingBalance?: number;
         deductionCapPercent?: number;
         approvedBy?: string;
     }
@@ -24,7 +25,7 @@ export async function createLoan(
     const loan: Loan = {
         ...data,
         id,
-        remainingBalance: data.amount,
+        remainingBalance: data.remainingBalance ?? data.amount,
         deductionCapPercent: data.deductionCapPercent ?? 30,
         approvedBy: data.approvedBy ?? "system",
         createdAt: new Date().toISOString().split("T")[0],
@@ -149,4 +150,26 @@ export async function recordCappedDeduction(
     // Update local state
     useLoansStore.getState().recordDeduction(loanId, payslipId, maxDeduction);
     return { deducted: maxDeduction, skipped: false };
+}
+
+/**
+ * Approve a loan — DB-first.
+ */
+export async function approveLoan(id: string): Promise<boolean> {
+    const ok = await loansDb.update(id, { status: "active" });
+    if (!ok) return false;
+
+    useLoansStore.getState().approveLoan(id);
+    return true;
+}
+
+/**
+ * Reject a loan — DB-first.
+ */
+export async function rejectLoan(id: string): Promise<boolean> {
+    const ok = await loansDb.update(id, { status: "rejected" });
+    if (!ok) return false;
+
+    useLoansStore.getState().rejectLoan(id);
+    return true;
 }
