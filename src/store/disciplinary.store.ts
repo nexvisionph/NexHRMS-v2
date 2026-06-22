@@ -4,24 +4,32 @@ import { nanoid } from "nanoid";
 import type {
     DisciplinaryCase,
     DisciplinaryCaseStatus,
+    DisciplinaryNote,
     NTERecord,
     NODRecord,
     NODDecision,
+    CaseResult,
 } from "@/types";
 import { useAuditStore } from "./audit.store";
 import { useEmployeesStore } from "./employees.store";
 import { notifyDisciplinaryExplanationSubmitted, dispatchNotification } from "@/lib/notifications";
+import { disciplinaryDb } from "@/services/db.service";
+import { toast } from "sonner";
 
 interface DisciplinaryState {
     cases: DisciplinaryCase[];
     ntes: NTERecord[];
     nods: NODRecord[];
+    notes: DisciplinaryNote[];
 
     // Case lifecycle
     createCase: (data: Omit<DisciplinaryCase, "id" | "caseNumber" | "createdAt" | "updatedAt" | "status">) => DisciplinaryCase;
-    updateCase: (caseId: string, data: Partial<Pick<DisciplinaryCase, "violationType" | "policyReference" | "incidentDate" | "incidentLocation" | "description" | "status">>, by: string) => void;
+    saveDraft: (data: Omit<DisciplinaryCase, "id" | "caseNumber" | "createdAt" | "updatedAt" | "status">) => DisciplinaryCase;
+    submitCase: (caseId: string, by: string) => Promise<void>;
+    updateCase: (caseId: string, data: Partial<Pick<DisciplinaryCase, "violationType" | "policyReference" | "incidentDate" | "incidentLocation" | "description" | "status" | "severityLevel" | "witnesses">>, by: string) => void;
     deleteCase: (caseId: string, by: string) => void;
-    closeCase: (caseId: string, by: string) => void;
+    closeCase: (caseId: string, by: string, result?: CaseResult) => void;
+    completeSanction: (caseId: string, result: CaseResult, by: string) => Promise<void>;
     reopenCase: (caseId: string, by: string) => void;
     moveToReview: (caseId: string) => void;
 
@@ -46,8 +54,12 @@ interface DisciplinaryState {
     ) => NODRecord | undefined;
     acknowledgeNOD: (nodId: string) => void;
 
+    // Notes
+    addNote: (caseId: string, body: string, authorId: string) => DisciplinaryNote;
+
     // Selectors
     getCase: (caseId: string) => DisciplinaryCase | undefined;
+    getNotesByCase: (caseId: string) => DisciplinaryNote[];
     getNTEByCase: (caseId: string) => NTERecord | undefined;
     getNODByCase: (caseId: string) => NODRecord | undefined;
     getByEmployee: (employeeId: string) => DisciplinaryCase[];
@@ -68,6 +80,7 @@ interface DisciplinaryState {
     setCases: (c: DisciplinaryCase[]) => void;
     setNTEs: (n: NTERecord[]) => void;
     setNODs: (n: NODRecord[]) => void;
+    setNotes: (n: DisciplinaryNote[]) => void;
 }
 
 function nowIso() { return new Date().toISOString(); }
@@ -95,6 +108,7 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
             cases: [],
             ntes: [],
             nods: [],
+            notes: [],
 
             // ── Case lifecycle ─────────────────────────────────
             createCase: (data) => {
@@ -129,6 +143,78 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 return c;
             },
 
+            saveDraft: (data) => {
+                const c: DisciplinaryCase = {
+                    id: `CASE-${nanoid(8)}`,
+                    caseNumber: nextCaseNumber(get().cases),
+                    status: "draft",
+                    createdAt: nowIso(),
+                    updatedAt: nowIso(),
+                    ...data,
+                    evidenceUrls: data.evidenceUrls ?? [],
+                };
+                set((s) => ({ cases: [c, ...s.cases] }));
+                useAuditStore.getState().log({
+                    entityType: "disciplinary_case",
+                    entityId: c.id,
+                    action: "case_created",
+                    performedBy: data.createdBy,
+                    afterSnapshot: { status: "draft", caseNumber: c.caseNumber, employeeId: c.employeeId, violationType: c.violationType },
+                });
+                // No dispatchNotification — drafts are internal only
+                return c;
+            },
+
+            submitCase: async (caseId, by) => {
+                const prev = get().cases.find((c) => c.id === caseId);
+                if (!prev || prev.status !== "draft") return;
+
+                const updated: DisciplinaryCase = { ...prev, status: "open" as const, updatedAt: nowIso() };
+
+                // Optimistic update
+                set((s) => ({ cases: s.cases.map((c) => (c.id === caseId ? updated : c)) }));
+
+                // DB write
+                try {
+                    const ok = await disciplinaryDb.upsertCase(updated);
+                    if (!ok) throw new Error("DB write failed");
+                } catch {
+                    // Rollback on failure
+                    set((s) => ({ cases: s.cases.map((c) => (c.id === caseId ? prev : c)) }));
+                    toast.error("Failed to submit case");
+                    return;
+                }
+
+                // Notify the employee about the now-open case
+                try {
+                    const emp = useEmployeesStore.getState().employees.find((e) => e.id === updated.employeeId);
+                    if (emp) {
+                        dispatchNotification(
+                            "disciplinary_case_created",
+                            {
+                                name: emp.name,
+                                caseNumber: updated.caseNumber,
+                                violationType: updated.violationType,
+                            },
+                            emp.id,
+                            emp.email ?? undefined,
+                            emp.phone,
+                            undefined,
+                            { suppressToast: true }
+                        );
+                    }
+                } catch { /* notification is best-effort */ }
+
+                // Audit log
+                useAuditStore.getState().log({
+                    entityType: "disciplinary_case",
+                    entityId: caseId,
+                    action: "case_created",
+                    performedBy: by,
+                    afterSnapshot: { status: "open", caseNumber: updated.caseNumber, employeeId: updated.employeeId, violationType: updated.violationType },
+                });
+            },
+
             updateCase: (caseId, data, by) => {
                 set((s) => ({
                     cases: s.cases.map((c) =>
@@ -159,10 +245,19 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 });
             },
 
-            closeCase: (caseId, by) => {
-                set((s) => ({ cases: setCaseStatus(s.cases, caseId, "closed") }));
+            closeCase: (caseId, by, result) => {
+                const ts = nowIso();
+                set((s) => ({
+                    cases: s.cases.map((c) =>
+                        c.id === caseId ? { ...c, status: "closed", result, updatedAt: ts } : c
+                    ),
+                }));
                 useAuditStore.getState().log({
-                    entityType: "disciplinary_case", entityId: caseId, action: "case_closed", performedBy: by,
+                    entityType: "disciplinary_case",
+                    entityId: caseId,
+                    action: "case_closed",
+                    performedBy: by,
+                    afterSnapshot: result ? { result } : undefined,
                 });
             },
 
@@ -174,7 +269,29 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
             },
 
             moveToReview: (caseId) => {
+                const caseRec = get().cases.find((c) => c.id === caseId);
+                if (!caseRec) return;
+                // Optimistic update
                 set((s) => ({ cases: setCaseStatus(s.cases, caseId, "under_review") }));
+                // Persist to DB
+                (async () => {
+                    try {
+                        const updated = { ...caseRec, status: "under_review" as const, updatedAt: nowIso() };
+                        const ok = await disciplinaryDb.upsertCase(updated);
+                        if (!ok) throw new Error("DB write failed");
+                    } catch {
+                        // Rollback on failure
+                        set((s) => ({ cases: setCaseStatus(s.cases, caseId, caseRec.status) }));
+                        toast.error("Failed to move case to review");
+                    }
+                })();
+                // Audit log
+                useAuditStore.getState().log({
+                    entityType: "disciplinary_case",
+                    entityId: caseId,
+                    action: "case_moved_to_review",
+                    performedBy: "system",
+                });
             },
 
             // ── NTE ────────────────────────────────────────────
@@ -194,10 +311,28 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     createdAt: nowIso(),
                     updatedAt: nowIso(),
                 };
+                // Optimistic update
                 set((s) => ({
                     ntes: [nte, ...s.ntes],
                     cases: setCaseStatus(s.cases, caseId, "nte_issued"),
                 }));
+                // Persist case status to DB
+                (async () => {
+                    const caseRec = get().cases.find((c) => c.id === caseId);
+                    if (!caseRec) return;
+                    const updated = { ...caseRec, status: "nte_issued" as const, updatedAt: nowIso() };
+                    try {
+                        const ok = await disciplinaryDb.upsertCase(updated);
+                        if (!ok) throw new Error("DB write failed");
+                    } catch {
+                        // Rollback on failure
+                        set((s) => ({
+                            cases: setCaseStatus(s.cases, caseId, caseRec.status),
+                            ntes: s.ntes.filter((n) => n.id !== nte.id),
+                        }));
+                        toast.error("Failed to issue NTE");
+                    }
+                })();
                 useAuditStore.getState().log({
                     entityType: "disciplinary_case",
                     entityId: caseId,
@@ -223,49 +358,87 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                     };
                 }),
 
-            submitExplanation: (nteId, explanation, submittedBy) =>
-                set((s) => {
-                    const nte = s.ntes.find((n) => n.id === nteId);
-                    if (!nte) return s;
-                    const caseRecord = s.cases.find((c) => c.id === nte.caseId);
-                    const ts = nowIso();
-                    const shouldNotify = nte.status !== "explanation_submitted";
-                    useAuditStore.getState().log({
-                        entityType: "disciplinary_case", entityId: nte.caseId, action: "nte_explained", performedBy: nte.employeeId,
-                        afterSnapshot: { length: explanation.length },
-                    });
-                    if (shouldNotify && caseRecord) {
-                        const employeeName = useEmployeesStore.getState().employees.find((e) => e.id === nte.employeeId)?.name ?? nte.employeeId;
-                        notifyDisciplinaryExplanationSubmitted({
-                            caseId: caseRecord.id,
-                            caseNumber: caseRecord.caseNumber,
-                            employeeId: nte.employeeId,
-                            employeeName,
-                            violationType: caseRecord.violationType,
-                            submittedByEmployeeId: submittedBy,
-                        });
+            submitExplanation: (nteId, explanation, submittedBy) => {
+                const nte = get().ntes.find((n) => n.id === nteId);
+                if (!nte) return;
+                const caseRecord = get().cases.find((c) => c.id === nte.caseId);
+                const ts = nowIso();
+                const shouldNotify = nte.status !== "explanation_submitted";
+                // Optimistic update
+                set((s) => ({
+                    ntes: s.ntes.map((n) =>
+                        n.id === nteId
+                            ? { ...n, status: "explanation_submitted", employeeExplanation: explanation, explanationSubmittedAt: ts, acknowledgedAt: n.acknowledgedAt ?? ts, updatedAt: ts }
+                            : n
+                    ),
+                    cases: caseRecord ? setCaseStatus(s.cases, nte.caseId, "explanation_submitted") : s.cases,
+                }));
+                // Persist case status to DB
+                (async () => {
+                    if (!caseRecord) return;
+                    const updated = { ...caseRecord, status: "explanation_submitted" as const, updatedAt: ts };
+                    try {
+                        const ok = await disciplinaryDb.upsertCase(updated);
+                        if (!ok) throw new Error("DB write failed");
+                    } catch {
+                        // Rollback on failure
+                        set((s) => ({
+                            cases: setCaseStatus(s.cases, nte.caseId, caseRecord.status),
+                        }));
+                        toast.error("Failed to save explanation");
                     }
-                    return {
-                        ...s,
-                        ntes: s.ntes.map((n) =>
-                            n.id === nteId
-                                ? { ...n, status: "explanation_submitted", employeeExplanation: explanation, explanationSubmittedAt: ts, acknowledgedAt: n.acknowledgedAt ?? ts, updatedAt: ts }
-                                : n
-                        ),
-                        cases: setCaseStatus(s.cases, nte.caseId, "explanation_submitted"),
-                    };
-                }),
+                })();
+                useAuditStore.getState().log({
+                    entityType: "disciplinary_case",
+                    entityId: nte.caseId,
+                    action: "nte_explained",
+                    performedBy: nte.employeeId,
+                    afterSnapshot: { length: explanation.length },
+                });
+                if (shouldNotify && caseRecord) {
+                    const employeeName = useEmployeesStore.getState().employees.find((e) => e.id === nte.employeeId)?.name ?? nte.employeeId;
+                    notifyDisciplinaryExplanationSubmitted({
+                        caseId: caseRecord.id,
+                        caseNumber: caseRecord.caseNumber,
+                        employeeId: nte.employeeId,
+                        employeeName,
+                        violationType: caseRecord.violationType,
+                        submittedByEmployeeId: submittedBy,
+                    });
+                }
+            },
 
-            markNoResponse: (nteId) =>
-                set((s) => {
-                    const nte = s.ntes.find((n) => n.id === nteId);
-                    if (!nte) return s;
-                    return {
-                        ...s,
-                        ntes: s.ntes.map((n) => (n.id === nteId ? { ...n, status: "no_response", updatedAt: nowIso() } : n)),
-                        cases: setCaseStatus(s.cases, nte.caseId, "no_response"),
-                    };
-                }),
+            markNoResponse: (nteId) => {
+                const nte = get().ntes.find((n) => n.id === nteId);
+                if (!nte) return;
+                // Optimistic update
+                set((s) => ({
+                    ntes: s.ntes.map((n) => (n.id === nteId ? { ...n, status: "no_response", updatedAt: nowIso() } : n)),
+                    cases: setCaseStatus(s.cases, nte.caseId, "no_response"),
+                }));
+                // Persist case status to DB
+                (async () => {
+                    const caseRec = get().cases.find((c) => c.id === nte.caseId);
+                    if (!caseRec) return;
+                    const updated = { ...caseRec, status: "no_response" as const, updatedAt: nowIso() };
+                    try {
+                        const ok = await disciplinaryDb.upsertCase(updated);
+                        if (!ok) throw new Error("DB write failed");
+                    } catch {
+                        // Rollback on failure
+                        set((s) => ({
+                            cases: setCaseStatus(s.cases, nte.caseId, caseRec.status),
+                        }));
+                        toast.error("Failed to mark no response");
+                    }
+                })();
+                useAuditStore.getState().log({
+                    entityType: "disciplinary_case",
+                    entityId: nte.caseId,
+                    action: "no_response_marked",
+                    performedBy: "system",
+                });
+            },
 
             // ── NOD ────────────────────────────────────────────
             issueNOD: (caseId, data) => {
@@ -302,7 +475,16 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                         ...s,
                         nods: [nod, ...s.nods],
                         ntes,
-                        cases: setCaseStatus(s.cases, caseId, nextCaseStatus),
+                        cases: s.cases.map((cs) =>
+                            cs.id === caseId
+                                ? {
+                                      ...cs,
+                                      status: nextCaseStatus,
+                                      result: data.decision === "no_violation" ? "DISMISSED" : cs.result,
+                                      updatedAt: nowIso(),
+                                  }
+                                : cs
+                        ),
                     };
                 });
                 useAuditStore.getState().log({
@@ -332,33 +514,114 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 return nod;
             },
 
-            acknowledgeNOD: (nodId) =>
-                set((s) => {
-                    const nod = s.nods.find((n) => n.id === nodId);
-                    if (!nod) return s;
-                    const ack = nowIso();
-                    const isSanction =
-                        nod.decision === "suspension" ||
-                        nod.decision === "salary_deduction" ||
-                        nod.decision === "training_required" ||
-                        nod.decision === "pip";
-                    const nextCaseStatus: DisciplinaryCaseStatus = isSanction ? "sanction_active" : "nod_acknowledged";
-                    useAuditStore.getState().log({
-                        entityType: "disciplinary_case", entityId: nod.caseId, action: "nod_acknowledged", performedBy: nod.employeeId,
-                    });
-                    return {
-                        ...s,
-                        nods: s.nods.map((n) =>
-                            n.id === nodId
-                                ? { ...n, status: isSanction ? "sanction_active" : "acknowledged", acknowledgedAt: ack, updatedAt: ack }
-                                : n
-                        ),
-                        cases: setCaseStatus(s.cases, nod.caseId, nextCaseStatus),
-                    };
-                }),
+            acknowledgeNOD: (nodId) => {
+                const nod = get().nods.find((n) => n.id === nodId);
+                if (!nod) return;
+                const prevCase = get().cases.find((c) => c.id === nod.caseId);
+                const ack = nowIso();
+                const isSanction = ["suspension", "salary_deduction", "training_required", "pip"].includes(nod.decision);
+                const nextStatus: DisciplinaryCaseStatus = isSanction ? "sanction_active" : "nod_acknowledged";
+                const nextResult = (nod.decision === "verbal_warning" ? "VERBAL_WARNING" : nod.decision === "written_warning" ? "WRITTEN_WARNING" : nod.decision === "final_warning" ? "FINAL_WARNING" : nod.decision === "termination" ? "TERMINATION" : prevCase?.result) ?? prevCase?.result;
+
+                set((s) => ({
+                    nods: s.nods.map((n) => n.id === nodId ? { ...n, status: isSanction ? "sanction_active" : "acknowledged", acknowledgedAt: ack, updatedAt: ack } : n),
+                    cases: s.cases.map((c) => c.id === nod.caseId ? { ...c, status: nextStatus, result: nextResult, updatedAt: ack } : c),
+                }));
+
+                (async () => {
+                    const c = get().cases.find((c) => c.id === nod.caseId);
+                    if (!c) return;
+                    try {
+                        const ok = await disciplinaryDb.upsertCase(c);
+                        if (!ok) throw new Error("DB write failed");
+                    } catch {
+                        set((s) => ({
+                            nods: s.nods.map((n) => n.id === nodId ? nod : n),
+                            cases: s.cases.map((cs) => cs.id === nod.caseId ? (prevCase ?? cs) : cs),
+                        }));
+                        toast.error("Failed to acknowledge NOD");
+                    }
+                })();
+
+                useAuditStore.getState().log({
+                    entityType: "disciplinary_case", entityId: nod.caseId, action: "nod_acknowledged", performedBy: nod.employeeId,
+                });
+            },
+
+            // ── Notes & Sanction lifecycle ────────────────────
+            addNote: (caseId, body, authorId) => {
+                if (!body || !body.trim()) {
+                    toast.error("Note cannot be empty");
+                    throw new Error("Note cannot be empty");
+                }
+                const note: DisciplinaryNote = {
+                    id: `NOTE-${nanoid(8)}`,
+                    caseId,
+                    authorId,
+                    body: body.trim(),
+                    createdAt: nowIso(),
+                };
+
+                // Optimistic update
+                set((s) => ({ notes: [...s.notes, note] }));
+
+                // Write through to DB
+                (async () => {
+                    try {
+                        const ok = await disciplinaryDb.upsertNote(note);
+                        if (!ok) throw new Error("DB write failed");
+                    } catch {
+                        // Rollback on DB failure
+                        set((s) => ({ notes: s.notes.filter((n) => n.id !== note.id) }));
+                        toast.error("Failed to save note");
+                    }
+                })();
+
+                return note;
+            },
+
+            completeSanction: async (caseId, result, by) => {
+                const prev = get().cases.find((c) => c.id === caseId);
+                if (!prev) return;
+
+                const updated: DisciplinaryCase = {
+                    ...prev,
+                    status: "closed",
+                    result,
+                    updatedAt: nowIso(),
+                };
+
+                // Optimistic update
+                set((s) => ({
+                    cases: s.cases.map((c) => (c.id === caseId ? updated : c)),
+                }));
+
+                // DB write
+                try {
+                    const ok = await disciplinaryDb.upsertCase(updated);
+                    if (!ok) throw new Error("DB write failed");
+                } catch {
+                    // Rollback
+                    set((s) => ({
+                        cases: s.cases.map((c) => (c.id === caseId ? prev : c)),
+                    }));
+                    toast.error("Failed to close case — please try again");
+                    return;
+                }
+
+                // Audit log
+                useAuditStore.getState().log({
+                    entityType: "disciplinary_case",
+                    entityId: caseId,
+                    action: "sanction_completed",
+                    performedBy: by,
+                    afterSnapshot: { status: "closed", result },
+                });
+            },
 
             // ── Selectors ──────────────────────────────────────
             getCase: (caseId) => get().cases.find((c) => c.id === caseId),
+            getNotesByCase: (caseId) => get().notes.filter((n) => n.caseId === caseId),
             getNTEByCase: (caseId) => get().ntes.find((n) => n.caseId === caseId),
             getNODByCase: (caseId) => get().nods.find((n) => n.caseId === caseId),
             getByEmployee: (employeeId) => get().cases.filter((c) => c.employeeId === employeeId),
@@ -367,20 +630,21 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
             getDashboardStats: () => {
                 const cases = get().cases;
                 return {
-                    open: cases.filter((c) => c.status !== "closed").length,
+                    open: cases.filter((c) => c.status === "open").length,
                     awaitingExplanation: cases.filter((c) => c.status === "nte_issued" || c.status === "nte_acknowledged").length,
                     forReview: cases.filter((c) => c.status === "explanation_submitted" || c.status === "no_response" || c.status === "under_review").length,
                     nodPending: cases.filter((c) => c.status === "nod_issued").length,
                     suspensionsActive: cases.filter((c) => c.status === "sanction_active").length,
-                    closed: cases.filter((c) => c.status === "closed").length,
+                    closed: cases.filter((c) => c.status === "closed" || c.status === "nod_acknowledged").length,
                     total: cases.length,
                 };
             },
 
-        resetToSeed: () => set({ cases: [], ntes: [], nods: [] }),
+        resetToSeed: () => set({ cases: [], ntes: [], nods: [], notes: [] }),
 
         setCases: (c) => set({ cases: c }),
         setNTEs: (n) => set({ ntes: n }),
         setNODs: (n) => set({ nods: n }),
+        setNotes: (n) => set({ notes: n }),
     }),
 );

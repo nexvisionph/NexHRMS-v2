@@ -45,6 +45,11 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
     const acknowledgeNOD = useDisciplinaryStore((s) => s.acknowledgeNOD);
     const closeCase = useDisciplinaryStore((s) => s.closeCase);
     const deleteCase = useDisciplinaryStore((s) => s.deleteCase);
+    const submitCase = useDisciplinaryStore((s) => s.submitCase);
+    const completeSanction = useDisciplinaryStore((s) => s.completeSanction);
+    const addNote = useDisciplinaryStore((s) => s.addNote);
+    const getNotesByCase = useDisciplinaryStore((s) => s.getNotesByCase);
+    const notes = useDisciplinaryStore((s) => s.notes);
 
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
@@ -76,6 +81,14 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
         rtw: "",
     });
 
+    const [noteBody, setNoteBody] = useState("");
+    const [sanctionCompleteOpen, setSanctionCompleteOpen] = useState(false);
+    const [selectedResult, setSelectedResult] = useState<string>("");
+    const [resultError, setResultError] = useState("");
+
+    const caseNotes = useMemo(() => getNotesByCase(caseId), [notes, getNotesByCase, caseId]);
+    const sortedNotes = useMemo(() => [...caseNotes].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [caseNotes]);
+
     if (!c) {
         return (
             <div className="p-6">
@@ -94,6 +107,7 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
     const emp = employees.find((e) => e.id === c.employeeId);
     const isStaff = currentUser.role === "admin" || currentUser.role === "hr";
     const isCaseEmployee = currentEmployee?.id === c.employeeId;
+    const isClosed = c.status === "closed";
     void role;
 
     if (!isStaff && !isCaseEmployee) {
@@ -181,69 +195,85 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                         </div>
 
                         {/* Action buttons */}
-                        {isStaff && (
-                            <div className="flex items-center gap-2 shrink-0">
-                                {/* Edit */}
-                                <Button variant="outline" size="sm" className="gap-1.5">
-                                    <Pencil className="h-3.5 w-3.5" /> Edit
-                                </Button>
-
-                                {/* Delete */}
-                                <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                        <Button variant="outline" size="sm" className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30">
-                                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                        {isStaff && (() => {
+                            return (
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {/* Submit Case (Draft only) */}
+                                    {c.status === "draft" && (
+                                        <Button size="sm" onClick={async () => {
+                                            await submitCase(c.id, currentUser.id);
+                                            toast.success("Case submitted");
+                                        }}>
+                                            Submit Case
                                         </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                            <AlertDialogTitle>Delete this case?</AlertDialogTitle>
-                                            <AlertDialogDescription>
-                                                This will permanently delete {c.caseNumber} and all associated records. This action cannot be undone.
-                                            </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction
-                                                className="bg-red-600 hover:bg-red-700"
-                                                onClick={() => {
-                                                    deleteCase(c.id, currentUser.id);
-                                                    toast.success("Case deleted");
-                                                    router.push(rh("/disciplinary"));
-                                                }}
-                                            >
-                                                Delete Case
-                                            </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
+                                    )}
 
-                                {/* Close Case */}
-                                {c.status !== "closed" && (
-                                    <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                            <Button size="sm" className="gap-1.5 bg-black hover:bg-black/80 text-white dark:bg-white dark:text-black dark:hover:bg-white/80">
-                                                <X className="h-3.5 w-3.5" /> Close Case
-                                            </Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                            <AlertDialogHeader>
-                                                <AlertDialogTitle>Close this case?</AlertDialogTitle>
-                                                <AlertDialogDescription>
-                                                    This marks {c.caseNumber} as closed. You can still view it in audit logs.
-                                                </AlertDialogDescription>
-                                            </AlertDialogHeader>
-                                            <AlertDialogFooter>
-                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                <AlertDialogAction onClick={() => { closeCase(c.id, currentUser.id); toast.success("Case closed"); }}>
-                                                    Close Case
-                                                </AlertDialogAction>
-                                            </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
-                                )}
-                            </div>
-                        )}
+                                    {/* Edit */}
+                                    {!isClosed && (
+                                        <Button variant="outline" size="sm" className="gap-1.5">
+                                            <Pencil className="h-3.5 w-3.5" /> Edit
+                                        </Button>
+                                    )}
+
+                                    {/* Delete */}
+                                    {!isClosed && (
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button variant="outline" size="sm" className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30">
+                                                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Delete this case?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This will permanently delete {c.caseNumber} and all associated records. This action cannot be undone.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction
+                                                        className="bg-red-600 hover:bg-red-700"
+                                                        onClick={() => {
+                                                            deleteCase(c.id, currentUser.id);
+                                                            toast.success("Case deleted");
+                                                            router.push(rh("/disciplinary"));
+                                                        }}
+                                                    >
+                                                        Delete Case
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    )}
+
+                                    {/* Close Case */}
+                                    {!isClosed && c.status !== "draft" && (
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button size="sm" className="gap-1.5 bg-black hover:bg-black/80 text-white dark:bg-white dark:text-black dark:hover:bg-white/80">
+                                                    <X className="h-3.5 w-3.5" /> Close Case
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Close this case?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This marks {c.caseNumber} as closed. You can still view it in audit logs.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={() => { closeCase(c.id, currentUser.id); toast.success("Case closed"); }}>
+                                                        Close Case
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    )}
+                                </div>
+                            );
+                        })()}
                     </div>
                 </CardContent>
             </Card>
@@ -261,6 +291,9 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                         <Row label="Employee" value={emp?.name ?? c.employeeId} />
                         <Row label="Department" value={emp?.department ?? "—"} />
                         <Row label="Violation" value={c.violationType} />
+                        <Row label="Severity" value={c.severityLevel ?? "—"} />
+                        <Row label="Witnesses" value={c.witnesses || "—"} />
+                        {c.status === "closed" && <Row label="Outcome" value={(() => { try { return c.result ?? "—"; } catch { return "—"; } })()} />}
                         <Row label="Policy Reference" value={c.policyReference ?? "—"} />
                         <Row label="Incident Date" value={new Date(c.incidentDate).toLocaleDateString()} />
                         <Row label="Location" value={c.incidentLocation ?? "—"} />
@@ -280,25 +313,27 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                     </CardHeader>
                     <CardContent className="space-y-3">
                         {/* Step 1: Issue NTE */}
-                        <Step
-                            active={c.status === "open"}
-                            done={!!nte}
-                            title="1. Issue Notice to Explain (NTE)"
-                            icon={Mail}
-                            body={
-                                nte ? (
-                                    <div className="text-sm space-y-1">
-                                        <div>Deadline: <span className="font-medium">{new Date(nte.responseDeadline).toLocaleDateString()}</span></div>
-                                        <div>Issued: <span className="text-muted-foreground">{new Date(nte.issuedAt).toLocaleString()}</span></div>
-                                        {nte.acknowledgedAt && <div>Acknowledged: <span className="text-muted-foreground">{new Date(nte.acknowledgedAt).toLocaleString()}</span></div>}
-                                    </div>
-                                ) : isStaff ? (
-                                    <Button size="sm" onClick={() => setNteOpen(true)}>Issue NTE</Button>
-                                ) : (
-                                    <p className="text-sm text-muted-foreground">Waiting for HR to issue the notice.</p>
-                                )
-                            }
-                        />
+                        {c.status !== "draft" && (
+                            <Step
+                                active={c.status === "open"}
+                                done={!!nte}
+                                title="1. Issue Notice to Explain (NTE)"
+                                icon={Mail}
+                                body={
+                                    nte ? (
+                                        <div className="text-sm space-y-1">
+                                            <div>Deadline: <span className="font-medium">{new Date(nte.responseDeadline).toLocaleDateString()}</span></div>
+                                            <div>Issued: <span className="text-muted-foreground">{new Date(nte.issuedAt).toLocaleString()}</span></div>
+                                            {nte.acknowledgedAt && <div>Acknowledged: <span className="text-muted-foreground">{new Date(nte.acknowledgedAt).toLocaleString()}</span></div>}
+                                        </div>
+                                    ) : !isClosed && isStaff ? (
+                                        <Button size="sm" onClick={() => setNteOpen(true)}>Issue NTE</Button>
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground">{isClosed ? "No notice issued." : "Waiting for HR to issue the notice."}</p>
+                                    )
+                                }
+                            />
+                        )}
 
                         {/* Step 2: Acknowledge NTE */}
                         {nte && (
@@ -310,12 +345,12 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                                 body={
                                     nte.acknowledgedAt ? (
                                         <p className="text-sm text-muted-foreground">Acknowledged on {new Date(nte.acknowledgedAt).toLocaleString()}</p>
-                                    ) : isStaff || isCaseEmployee ? (
+                                    ) : !isClosed && (isStaff || isCaseEmployee) ? (
                                         <Button size="sm" variant="outline" onClick={() => { acknowledgeNTE(nte.id); toast.success(isStaff ? "Marked as acknowledged" : "NTE acknowledged"); }}>
                                             {isStaff ? "Mark Acknowledged" : "Acknowledge NTE"}
                                         </Button>
                                     ) : (
-                                        <p className="text-sm text-muted-foreground">Waiting for employee acknowledgment.</p>
+                                        <p className="text-sm text-muted-foreground">{isClosed ? "Not acknowledged before closure." : "Waiting for employee acknowledgment."}</p>
                                     )
                                 }
                             />
@@ -336,7 +371,7 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                                         </div>
                                     ) : nte.status === "no_response" ? (
                                         <p className="text-sm text-orange-700">Marked as no-response.</p>
-                                    ) : isStaff || isCaseEmployee ? (
+                                    ) : !isClosed && (isStaff || isCaseEmployee) ? (
                                         <div className="flex gap-2">
                                             <Button size="sm" onClick={() => setExplanationOpen(true)}>{isStaff ? "Record Explanation" : "Submit Explanation"}</Button>
                                             {isStaff && (
@@ -346,21 +381,21 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                                             )}
                                         </div>
                                     ) : (
-                                        <p className="text-sm text-muted-foreground">Waiting for employee explanation.</p>
+                                        <p className="text-sm text-muted-foreground">{isClosed ? "No explanation submitted before closure." : "Waiting for employee explanation."}</p>
                                     )
                                 }
                             />
                         )}
 
                         {/* Step 4: Move to Review */}
-                        {isStaff && (c.status === "explanation_submitted" || c.status === "no_response") && (
-                            <Step active done={false} title="4. Review by HR" icon={FileText}
+                        {isStaff && (c.status === "explanation_submitted" || c.status === "no_response") && !isClosed && (
+                            <Step active={c.status === "under_review"} done={false} title="4. Review by HR" icon={FileText}
                                 body={<Button size="sm" variant="outline" onClick={() => { moveToReview(c.id); toast.success("Moved to under review"); }}>Move to Under Review</Button>}
                             />
                         )}
 
                         {/* Step 5: Issue NOD */}
-                        {isStaff && !nod && (c.status === "under_review" || c.status === "explanation_submitted" || c.status === "no_response") && (
+                        {isStaff && !nod && (c.status === "under_review" || c.status === "explanation_submitted" || c.status === "no_response") && !isClosed && (
                             <Step active done={false} title="5. Issue Notice of Decision (NOD)" icon={ShieldAlert}
                                 body={<Button size="sm" onClick={() => setNodOpen(true)}>Issue NOD</Button>}
                             />
@@ -375,7 +410,7 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                                         <div>Decision: <Badge variant="secondary" className="capitalize">{nod.decision.replace(/_/g, " ")}</Badge></div>
                                         <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3">{nod.decisionDetails}</p>
                                         {nod.sanctionStartDate && <div>Sanction: {nod.sanctionStartDate} → {nod.sanctionEndDate ?? "—"}</div>}
-                                        {!nod.acknowledgedAt && nod.decision !== "no_violation" && (isStaff || isCaseEmployee) && (
+                                        {!nod.acknowledgedAt && nod.decision !== "no_violation" && !isClosed && (isStaff || isCaseEmployee) && (
                                             <Button size="sm" variant="outline" onClick={() => { acknowledgeNOD(nod.id); toast.success(isStaff ? "Marked as acknowledged" : "NOD acknowledged"); }}>
                                                 {isStaff ? "Mark Acknowledged" : "Acknowledge NOD"}
                                             </Button>
@@ -385,11 +420,148 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                                 }
                             />
                         )}
+
+                        {/* Step 6: Sanction active (Mark Sanction Completed) */}
+                        {nod && (nod.decision === "suspension" || nod.decision === "training_required" || nod.decision === "pip" || nod.decision === "salary_deduction") && nod.status === "sanction_active" && (
+                            <Step
+                                active={c.status === "sanction_active"}
+                                done={c.status === "closed"}
+                                title="6. Sanction Execution"
+                                icon={Gavel}
+                                body={
+                                    c.status === "sanction_active" ? (
+                                        isStaff && !isClosed ? (
+                                            <Button size="sm" onClick={() => setSanctionCompleteOpen(true)}>
+                                                Mark Sanction Completed
+                                            </Button>
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground">Sanction is currently active.</p>
+                                        )
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground">Sanction completed and case closed.</p>
+                                    )
+                                }
+                            />
+                        )}
                     </CardContent>
                 </Card>
             </div>
 
+            {/* Investigation Notes Section */}
+            {isStaff && (
+                <Card className="border border-border/50">
+                    <CardHeader>
+                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                            <MessageSquare className="h-4 w-4" /> Investigation Notes
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        {/* Add Note Form */}
+                        {c.status === "under_review" && (
+                            <div className="space-y-2 border-b pb-4">
+                                <Label htmlFor="new-note-body">Add Investigation Note</Label>
+                                <Textarea
+                                    id="new-note-body"
+                                    rows={3}
+                                    placeholder="Enter case note details..."
+                                    value={noteBody}
+                                    onChange={(e) => setNoteBody(e.target.value)}
+                                />
+                                <Button
+                                    size="sm"
+                                    onClick={() => {
+                                        if (!noteBody || !noteBody.trim()) {
+                                            toast.error("Note cannot be empty");
+                                            return;
+                                        }
+                                        addNote(c.id, noteBody.trim(), currentUser.id);
+                                        toast.success("Note saved");
+                                        setNoteBody("");
+                                    }}
+                                >
+                                    Save Note
+                                </Button>
+                            </div>
+                        )}
+
+                        {/* Notes List */}
+                        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                            {sortedNotes.length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-4">No notes recorded yet.</p>
+                            ) : (
+                                sortedNotes.map((n) => {
+                                    const author = employees.find((e) => e.id === n.authorId);
+                                    const authorName = author ? author.name : n.authorId;
+                                    return (
+                                        <div key={n.id} className="rounded-md bg-muted/30 p-3 border border-border/30 space-y-1">
+                                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                                <span className="font-semibold text-foreground/80">{authorName}</span>
+                                                <span>{new Date(n.createdAt).toLocaleString()}</span>
+                                            </div>
+                                            <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{n.body}</p>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
             {/* ── Dialogs ────────────────────────────────────────── */}
+
+            {/* Mark Sanction Completed Dialog */}
+            <Dialog open={sanctionCompleteOpen} onOpenChange={(v) => { setSanctionCompleteOpen(v); if (!v) { setSelectedResult(""); setResultError(""); } }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Mark Sanction Completed</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                            Marking the sanction as completed will resolve and close the case. Please select the final case outcome.
+                        </p>
+                        <div>
+                            <Label htmlFor="case-result-select">Case Result <span className="text-red-500">*</span></Label>
+                            <Select value={selectedResult} onValueChange={(v) => { setSelectedResult(v); setResultError(""); }}>
+                                <SelectTrigger id="case-result-select" className="mt-1">
+                                    <SelectValue placeholder="Select outcome result" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="DISMISSED">Dismissed</SelectItem>
+                                    <SelectItem value="VERBAL_WARNING">Verbal Warning</SelectItem>
+                                    <SelectItem value="WRITTEN_WARNING">Written Warning</SelectItem>
+                                    <SelectItem value="FINAL_WARNING">Final Warning</SelectItem>
+                                    <SelectItem value="SUSPENSION">Suspension</SelectItem>
+                                    <SelectItem value="TERMINATION">Termination</SelectItem>
+                                    <SelectItem value="WITHDRAWN">Withdrawn</SelectItem>
+                                    <SelectItem value="SETTLED">Settled</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            {resultError && <p className="text-xs text-red-500 mt-1">{resultError}</p>}
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setSanctionCompleteOpen(false)}>Cancel</Button>
+                        <Button
+                            onClick={async () => {
+                                if (!selectedResult) {
+                                    setResultError("Case result is required");
+                                    return;
+                                }
+                                try {
+                                    await completeSanction(c.id, selectedResult as any, currentUser.id);
+                                    toast.success("Sanction marked completed and case closed");
+                                    setSanctionCompleteOpen(false);
+                                } catch {
+                                    toast.error("Failed to complete sanction");
+                                }
+                            }}
+                        >
+                            Confirm Completion
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Issue NTE */}
             <Dialog open={nteOpen} onOpenChange={setNteOpen}>

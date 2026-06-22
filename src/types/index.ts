@@ -93,7 +93,7 @@ export type AuditAction =
   | "announcement_sent" | "channel_created"
   | "doc_uploaded" | "doc_approved" | "doc_rejected" | "doc_archived" | "doc_requested"
   | "case_created" | "nte_issued" | "nte_acknowledged" | "nte_explained"
-  | "nod_issued" | "nod_acknowledged" | "case_closed";
+  | "nod_issued" | "nod_acknowledged" | "case_closed" | "sanction_completed";
 
 // ─── Holiday Type ────────────────────────────────────────────
 
@@ -159,7 +159,20 @@ export interface Employee201Document {
 
 // ─── Disciplinary (NTE / NOD) ────────────────────────────────
 
+export type SeverityLevel = "minor" | "moderate" | "major" | "critical";
+
+export type CaseResult =
+  | "DISMISSED"
+  | "VERBAL_WARNING"
+  | "WRITTEN_WARNING"
+  | "FINAL_WARNING"
+  | "SUSPENSION"
+  | "TERMINATION"
+  | "WITHDRAWN"
+  | "SETTLED";
+
 export type DisciplinaryCaseStatus =
+  | "draft"
   | "open" | "nte_issued" | "nte_acknowledged" | "explanation_submitted"
   | "no_response" | "under_review" | "nod_issued" | "nod_acknowledged"
   | "sanction_active" | "closed";
@@ -179,6 +192,9 @@ export interface DisciplinaryCase {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  severityLevel?: SeverityLevel;
+  witnesses?: string;
+  result?: CaseResult;
 }
 
 export type NTEStatus =
@@ -225,6 +241,14 @@ export interface NODRecord {
   status: NODStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DisciplinaryNote {
+  id: string;
+  caseId: string;
+  authorId: string;
+  body: string;
+  createdAt: string; // ISO 8601
 }
 
 // ─── Job Title ───────────────────────────────────────────────

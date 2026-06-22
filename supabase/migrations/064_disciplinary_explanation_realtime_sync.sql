@@ -24,34 +24,33 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.sync_disc_case_from_nte()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  IF NEW.status = 'explanation_submitted' THEN
-    UPDATE public.disciplinary_cases
-    SET status = 'explanation_submitted',
-        updated_at = now()
-    WHERE id = NEW.case_id
-      AND status IN ('nte_issued', 'nte_acknowledged', 'open');
-  ELSIF NEW.status = 'acknowledged' THEN
-    UPDATE public.disciplinary_cases
-    SET status = 'nte_acknowledged',
-        updated_at = now()
-    WHERE id = NEW.case_id
-      AND status IN ('nte_issued', 'open');
-  END IF;
+CREATE OR REPLACE FUNCTION public.sync_disc_case_from_nte ( ) 
+RETURNS trigger 
+LANGUAGE plpgsql 
+SECURITY DEFINER 
+SET search_path = public 
+AS $$ 
+BEGIN 
+  IF NEW.status = 'explanation_submitted' THEN 
+    UPDATE public.disciplinary_cases 
+    SET status = 'explanation_submitted' , 
+        updated_at = now ( ) 
+    WHERE id = NEW.case_id 
+      AND status IN ( 'nte_issued' , 'nte_acknowledged' , 'open' ) ; 
+  ELSIF NEW.status = 'acknowledged' THEN 
+    UPDATE public.disciplinary_cases 
+    SET status = 'nte_acknowledged' , 
+        updated_at = now ( ) 
+    WHERE id = NEW.case_id 
+      AND status IN ( 'nte_issued' , 'open' ) ; 
+  END IF ; 
+  RETURN NEW ; 
+END ; 
+$$ ; 
 
-  RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_sync_disc_case_from_nte ON public.nte_records;
-CREATE TRIGGER trg_sync_disc_case_from_nte
-AFTER INSERT OR UPDATE OF status, employee_explanation, explanation_submitted_at, acknowledged_at
-ON public.nte_records
-FOR EACH ROW
-EXECUTE FUNCTION public.sync_disc_case_from_nte();
+DROP TRIGGER IF EXISTS trg_sync_disc_case_from_nte ON public.nte_records ; 
+CREATE TRIGGER trg_sync_disc_case_from_nte 
+AFTER INSERT OR UPDATE OF status, employee_explanation, explanation_submitted_at, acknowledged_at 
+ON public.nte_records 
+FOR EACH ROW 
+EXECUTE FUNCTION public.sync_disc_case_from_nte ( ) ;
