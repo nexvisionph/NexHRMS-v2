@@ -12,6 +12,7 @@ import type {
 } from "@/types";
 import { useAuditStore } from "./audit.store";
 import { useEmployeesStore } from "./employees.store";
+import { useAuthStore } from "./auth.store";
 import { notifyDisciplinaryExplanationSubmitted, dispatchNotification } from "@/lib/notifications";
 import { disciplinaryDb } from "@/services/db.service";
 import { toast } from "sonner";
@@ -343,20 +344,57 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 return nte;
             },
 
-            acknowledgeNTE: (nteId) =>
-                set((s) => {
-                    const nte = s.ntes.find((n) => n.id === nteId);
-                    if (!nte) return s;
-                    const ack = nowIso();
-                    useAuditStore.getState().log({
-                        entityType: "disciplinary_case", entityId: nte.caseId, action: "nte_acknowledged", performedBy: nte.employeeId,
-                    });
-                    return {
-                        ...s,
-                        ntes: s.ntes.map((n) => (n.id === nteId ? { ...n, status: "acknowledged", acknowledgedAt: ack, updatedAt: ack } : n)),
-                        cases: setCaseStatus(s.cases, nte.caseId, "nte_acknowledged"),
-                    };
-                }),
+            acknowledgeNTE: (nteId) => {
+                const nte = get().ntes.find((n) => n.id === nteId);
+                if (!nte) return;
+                const prevCase = get().cases.find((c) => c.id === nte.caseId);
+                const ack = nowIso();
+                useAuditStore.getState().log({
+                    entityType: "disciplinary_case", entityId: nte.caseId, action: "nte_acknowledged", performedBy: nte.employeeId,
+                });
+
+                set((s) => ({
+                    ntes: s.ntes.map((n) => (n.id === nteId ? { ...n, status: "acknowledged", acknowledgedAt: ack, updatedAt: ack } : n)),
+                    cases: setCaseStatus(s.cases, nte.caseId, "nte_acknowledged"),
+                }));
+
+                (async () => {
+                    const currentUser = useAuthStore.getState().currentUser;
+                    const isStaff = currentUser?.role === "admin" || currentUser?.role === "hr";
+
+                    if (isStaff && prevCase) {
+                        const updated = { ...prevCase, status: "nte_acknowledged" as const, updatedAt: ack };
+                        try {
+                            const ok = await disciplinaryDb.upsertCase(updated);
+                            if (!ok) throw new Error("DB write failed");
+                        } catch {
+                            set((s) => ({
+                                cases: setCaseStatus(s.cases, nte.caseId, prevCase.status),
+                            }));
+                            toast.error("Failed to acknowledge NTE");
+                            return;
+                        }
+                    }
+
+                    // Always persist the updated NTE record directly so it is saved immediately
+                    const updatedNte = get().ntes.find((n) => n.id === nteId);
+                    if (updatedNte) {
+                        try {
+                            let ok = false;
+                            if (isStaff) {
+                                ok = await disciplinaryDb.upsertNTE(updatedNte);
+                            } else {
+                                const { id: _id, ...patch } = updatedNte;
+                                ok = await disciplinaryDb.updateNTE(updatedNte.id, patch);
+                            }
+                            if (!ok) throw new Error("DB write failed");
+                        } catch (err) {
+                            console.error("Failed to persist NTE ack to DB", err);
+                            toast.error("Failed to save NTE acknowledgement");
+                        }
+                    }
+                })();
+            },
 
             submitExplanation: (nteId, explanation, submittedBy) => {
                 const nte = get().ntes.find((n) => n.id === nteId);
@@ -375,17 +413,40 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 }));
                 // Persist case status to DB
                 (async () => {
-                    if (!caseRecord) return;
-                    const updated = { ...caseRecord, status: "explanation_submitted" as const, updatedAt: ts };
-                    try {
-                        const ok = await disciplinaryDb.upsertCase(updated);
-                        if (!ok) throw new Error("DB write failed");
-                    } catch {
-                        // Rollback on failure
-                        set((s) => ({
-                            cases: setCaseStatus(s.cases, nte.caseId, caseRecord.status),
-                        }));
-                        toast.error("Failed to save explanation");
+                    const currentUser = useAuthStore.getState().currentUser;
+                    const isStaff = currentUser?.role === "admin" || currentUser?.role === "hr";
+
+                    if (isStaff && caseRecord) {
+                        const updated = { ...caseRecord, status: "explanation_submitted" as const, updatedAt: ts };
+                        try {
+                            const ok = await disciplinaryDb.upsertCase(updated);
+                            if (!ok) throw new Error("DB write failed");
+                        } catch {
+                            // Rollback on failure
+                            set((s) => ({
+                                cases: setCaseStatus(s.cases, nte.caseId, caseRecord.status),
+                            }));
+                            toast.error("Failed to save explanation");
+                            return;
+                        }
+                    }
+
+                    // Always persist the updated NTE record directly so it is saved immediately
+                    const updatedNte = get().ntes.find((n) => n.id === nteId);
+                    if (updatedNte) {
+                        try {
+                            let ok = false;
+                            if (isStaff) {
+                                ok = await disciplinaryDb.upsertNTE(updatedNte);
+                            } else {
+                                const { id: _id, ...patch } = updatedNte;
+                                ok = await disciplinaryDb.updateNTE(updatedNte.id, patch);
+                            }
+                            if (!ok) throw new Error("DB write failed");
+                        } catch (err) {
+                            console.error("Failed to persist NTE explanation to DB", err);
+                            toast.error("Failed to save explanation to database");
+                        }
                     }
                 })();
                 useAuditStore.getState().log({
@@ -529,17 +590,40 @@ export const useDisciplinaryStore = create<DisciplinaryState>()(
                 }));
 
                 (async () => {
-                    const c = get().cases.find((c) => c.id === nod.caseId);
-                    if (!c) return;
-                    try {
-                        const ok = await disciplinaryDb.upsertCase(c);
-                        if (!ok) throw new Error("DB write failed");
-                    } catch {
-                        set((s) => ({
-                            nods: s.nods.map((n) => n.id === nodId ? nod : n),
-                            cases: s.cases.map((cs) => cs.id === nod.caseId ? (prevCase ?? cs) : cs),
-                        }));
-                        toast.error("Failed to acknowledge NOD");
+                    const currentUser = useAuthStore.getState().currentUser;
+                    const isStaff = currentUser?.role === "admin" || currentUser?.role === "hr";
+
+                    if (isStaff) {
+                        const c = get().cases.find((cs) => cs.id === nod.caseId);
+                        if (!c) return;
+                        try {
+                            const ok = await disciplinaryDb.upsertCase(c);
+                            if (!ok) throw new Error("DB write failed");
+                        } catch {
+                            set((s) => ({
+                                cases: s.cases.map((cs) => cs.id === nod.caseId ? (prevCase ?? cs) : cs),
+                            }));
+                            toast.error("Failed to acknowledge NOD");
+                            return;
+                        }
+                    }
+
+                    // Always persist the updated NOD record directly
+                    const updatedNod = get().nods.find((n) => n.id === nodId);
+                    if (updatedNod) {
+                        try {
+                            let ok = false;
+                            if (isStaff) {
+                                ok = await disciplinaryDb.upsertNOD(updatedNod);
+                            } else {
+                                const { id: _id, ...patch } = updatedNod;
+                                ok = await disciplinaryDb.updateNOD(updatedNod.id, patch);
+                            }
+                            if (!ok) throw new Error("DB write failed");
+                        } catch (err) {
+                            console.error("Failed to persist NOD ack to DB", err);
+                            toast.error("Failed to save NOD acknowledgement");
+                        }
                     }
                 })();
 

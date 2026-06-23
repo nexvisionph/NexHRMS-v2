@@ -47,8 +47,9 @@ SET search_path = public
 AS $$
 DECLARE
   c_result text;
+  next_case_status text;
 BEGIN
-  IF NEW.status = 'acknowledged' THEN
+  IF NEW.status = 'acknowledged' OR NEW.status = 'sanction_active' THEN
     -- Map nod.decision to CaseResult
     IF NEW.decision = 'verbal_warning' THEN c_result := 'VERBAL_WARNING';
     ELSIF NEW.decision = 'written_warning' THEN c_result := 'WRITTEN_WARNING';
@@ -59,8 +60,14 @@ BEGIN
     ELSE c_result := upper(NEW.decision);
     END IF;
 
+    IF NEW.status = 'sanction_active' THEN
+      next_case_status := 'sanction_active';
+    ELSE
+      next_case_status := 'nod_acknowledged';
+    END IF;
+
     UPDATE public.disciplinary_cases
-    SET status = 'nod_acknowledged',
+    SET status = next_case_status,
         result = coalesce(c_result, result),
         updated_at = now()
     WHERE id = NEW.case_id;

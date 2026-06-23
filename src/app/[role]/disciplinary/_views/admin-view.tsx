@@ -62,6 +62,7 @@ const STATUS_TONE: Record<DisciplinaryCaseStatus, string> = {
 
 export default function DisciplinaryAdminView() {
     const cases = useDisciplinaryStore((s) => s.cases);
+    const nods = useDisciplinaryStore((s) => s.nods);
     const createCase = useDisciplinaryStore((s) => s.createCase);
     const saveDraft = useDisciplinaryStore((s) => s.saveDraft);
     const updateCase = useDisciplinaryStore((s) => s.updateCase);
@@ -75,11 +76,31 @@ export default function DisciplinaryAdminView() {
 
     useEffect(() => {
         cases.forEach((c) => {
-            if (c.status === 'sanction_active' && c.sanctionEndDate && new Date(c.sanctionEndDate) < new Date()) {
-                console.log(`Case ${c.caseNumber} has an overdue sanction.`);
+            if (c.status === 'nod_issued') {
+                const nod = nods.find((n) => n.caseId === c.id);
+                if (nod && nod.acknowledgedAt) {
+                    const isSanction = ["suspension", "salary_deduction", "training_required", "pip"].includes(nod.decision);
+                    if (isSanction) {
+                        updateCase(c.id, { status: "sanction_active" }, currentUser.id);
+                    }
+                }
+            } else if (c.status === 'sanction_active') {
+                const nod = nods.find((n) => n.caseId === c.id);
+                if (nod && nod.sanctionEndDate) {
+                    const todayStr = new Date().toISOString().slice(0, 10);
+                    if (todayStr > nod.sanctionEndDate) {
+                        let autoResult: CaseResult = "SETTLED";
+                        if (nod.decision === "suspension") autoResult = "SUSPENSION";
+                        completeSanction(c.id, autoResult, "system").then(() => {
+                            toast.success(`Case ${c.caseNumber} sanction completed automatically based on schedule end date. Case closed.`);
+                        }).catch((err) => {
+                            console.error("Auto close failed", err);
+                        });
+                    }
+                }
             }
         });
-    }, [cases]);
+    }, [cases, nods, updateCase, completeSanction, currentUser.id]);
 
     // ── Search / filter ────────────────────────────────────────
     const [search, setSearch] = useState("");
@@ -229,19 +250,21 @@ export default function DisciplinaryAdminView() {
     };
 
     function SummaryTile({ label, value, icon: Icon, accent, isLast }: any) {
-        const colors = {
-            amber: "text-amber-600",
-            orange: "text-orange-600",
-            blue: "text-blue-600",
-            red: "text-red-600",
-            emerald: "text-emerald-600",
-            muted: "text-slate-500"
+        const colors: Record<string, { text: string; bg: string }> = {
+            amber: { text: "text-amber-600", bg: "bg-amber-500/10" },
+            orange: { text: "text-orange-600", bg: "bg-orange-500/10" },
+            blue: { text: "text-blue-600", bg: "bg-blue-500/10" },
+            red: { text: "text-red-600", bg: "bg-red-500/10" },
+            emerald: { text: "text-emerald-600", bg: "bg-emerald-500/10" },
+            muted: { text: "text-slate-500", bg: "bg-slate-500/10" }
         };
+        const activeColor = colors[accent] || colors.muted;
+
         return (
             <div className={`p-4 ${!isLast ? "border-b sm:border-b-0 sm:border-r" : ""}`}>
                 <div className="flex items-center gap-2 mb-2">
-                    <div className={`p-1.5 rounded`}>
-                        <Icon className="h-3.5 w-3.5" />
+                    <div className={`p-1.5 rounded ${activeColor.bg}`}>
+                        <Icon className={`h-3.5 w-3.5 ${activeColor.text}`} />
                     </div>
                     <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</span>
                 </div>
@@ -604,13 +627,13 @@ export default function DisciplinaryAdminView() {
 // ── Summary tile ───────────────────────────────────────────────────────────────
 
 type SummaryAccent = "amber" | "orange" | "red" | "blue" | "emerald" | "muted";
-const ACCENT_STYLES: Record<SummaryAccent, { value: string; icon: string; dot: string }> = {
-    amber:   { value: "text-amber-600",   icon: "text-amber-500",   dot: "bg-amber-500" },
-    orange:  { value: "text-orange-600",  icon: "text-orange-500",  dot: "bg-orange-500" },
-    red:     { value: "text-red-600",     icon: "text-red-500",     dot: "bg-red-500" },
-    blue:    { value: "text-blue-600",    icon: "text-blue-500",    dot: "bg-blue-500" },
-    emerald: { value: "text-emerald-600", icon: "text-emerald-500", dot: "bg-emerald-500" },
-    muted:   { value: "text-muted-foreground", icon: "text-muted-foreground/60", dot: "bg-muted-foreground/40" },
+const ACCENT_STYLES: Record<SummaryAccent, { value: string; icon: string; dot: string; bg: string }> = {
+    amber:   { value: "text-amber-600",   icon: "text-amber-500",   dot: "bg-amber-500",   bg: "bg-amber-500/10" },
+    orange:  { value: "text-orange-600",  icon: "text-orange-500",  dot: "bg-orange-500",  bg: "bg-orange-500/10" },
+    red:     { value: "text-red-600",     icon: "text-red-500",     dot: "bg-red-500",     bg: "bg-red-500/10" },
+    blue:    { value: "text-blue-600",    icon: "text-blue-500",    dot: "bg-blue-500",    bg: "bg-blue-500/10" },
+    emerald: { value: "text-emerald-600", icon: "text-emerald-500", dot: "bg-emerald-500", bg: "bg-emerald-500/10" },
+    muted:   { value: "text-muted-foreground", icon: "text-muted-foreground/60", dot: "bg-muted-foreground/40", bg: "bg-muted/50" },
 };
 
 function SummaryTile({
@@ -622,9 +645,11 @@ function SummaryTile({
     const s = ACCENT_STYLES[accent];
     return (
         <div className={`flex flex-col gap-3 px-5 py-4 ${isLast ? "" : "border-b sm:border-b-0 sm:border-r last:border-0"}`.trim()}>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-medium text-muted-foreground leading-tight">{label}</p>
-                <Icon className={`h-4 w-4 shrink-0 ${s.icon}`} />
+                <div className={`rounded-lg p-1.5 ${s.bg} flex items-center justify-center shrink-0`}>
+                    <Icon className={`h-3.5 w-3.5 ${s.icon}`} />
+                </div>
             </div>
             <div className="flex items-end gap-2">
                 <span className={`text-3xl font-bold tabular-nums leading-none ${s.value}`}>{value}</span>

@@ -93,7 +93,7 @@ export type AuditAction =
   | "announcement_sent" | "channel_created"
   | "doc_uploaded" | "doc_approved" | "doc_rejected" | "doc_archived" | "doc_requested"
   | "case_created" | "nte_issued" | "nte_acknowledged" | "nte_explained"
-  | "nod_issued" | "nod_acknowledged" | "case_closed" | "sanction_completed";
+  | "nod_issued" | "nod_acknowledged" | "case_closed" | "sanction_completed" | "case_moved_to_review" | "no_response_marked";
 
 // ─── Holiday Type ────────────────────────────────────────────
 

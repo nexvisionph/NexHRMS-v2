@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useDisciplinaryStore } from "@/store/disciplinary.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Gavel, Mail, MessageSquare, ShieldAlert, CheckCircle2, FileText, X, Pencil, Trash2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import type { NODDecision } from "@/types";
+import type { NODDecision, CaseResult } from "@/types";
 import Link from "next/link";
 
 export default function DisciplinaryCasePage({ params }: { params: Promise<{ role: string; caseId: string }> }) {
@@ -47,6 +47,7 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
     const deleteCase = useDisciplinaryStore((s) => s.deleteCase);
     const submitCase = useDisciplinaryStore((s) => s.submitCase);
     const completeSanction = useDisciplinaryStore((s) => s.completeSanction);
+    const updateCase = useDisciplinaryStore((s) => s.updateCase);
     const addNote = useDisciplinaryStore((s) => s.addNote);
     const getNotesByCase = useDisciplinaryStore((s) => s.getNotesByCase);
     const notes = useDisciplinaryStore((s) => s.notes);
@@ -88,6 +89,40 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
 
     const caseNotes = useMemo(() => getNotesByCase(caseId), [notes, getNotesByCase, caseId]);
     const sortedNotes = useMemo(() => [...caseNotes].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [caseNotes]);
+
+    const isAfterEndDate = useMemo(() => {
+        if (!nod || !nod.sanctionEndDate) return false;
+        const todayStr = new Date().toISOString().slice(0, 10);
+        return todayStr > nod.sanctionEndDate;
+    }, [nod]);
+
+    const isSanctionDone = c ? (c.status === "closed" || isAfterEndDate) : false;
+
+    useEffect(() => {
+        if (c && c.status === "sanction_active" && nod && nod.sanctionEndDate) {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            if (todayStr > nod.sanctionEndDate) {
+                let autoResult: CaseResult = "SETTLED";
+                if (nod.decision === "suspension") autoResult = "SUSPENSION";
+                
+                completeSanction(c.id, autoResult, "system").then(() => {
+                    toast.success("Sanction completed automatically based on schedule end date. Case closed.");
+                }).catch((err) => {
+                    console.error("Auto close failed", err);
+                });
+            }
+        }
+    }, [c, nod, completeSanction]);
+
+    useEffect(() => {
+        const isStaffUser = currentUser?.role === "admin" || currentUser?.role === "hr";
+        if (isStaffUser && c && c.status === "nod_issued" && nod && nod.acknowledgedAt) {
+            const isSanction = ["suspension", "salary_deduction", "training_required", "pip"].includes(nod.decision);
+            if (isSanction) {
+                updateCase(c.id, { status: "sanction_active" }, currentUser.id);
+            }
+        }
+    }, [currentUser, c, nod, updateCase]);
 
     if (!c) {
         return (
@@ -387,10 +422,28 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                             />
                         )}
 
-                        {/* Step 4: Move to Review */}
-                        {isStaff && (c.status === "explanation_submitted" || c.status === "no_response") && !isClosed && (
-                            <Step active={c.status === "under_review"} done={false} title="4. Review by HR" icon={FileText}
-                                body={<Button size="sm" variant="outline" onClick={() => { moveToReview(c.id); toast.success("Moved to under review"); }}>Move to Under Review</Button>}
+                        {/* Step 4: Review by HR — staff see action button, employee sees read-only status */}
+                        {(isStaff || isCaseEmployee) && (c.status === "explanation_submitted" || c.status === "no_response" || c.status === "under_review" || c.status === "nod_issued" || c.status === "nod_acknowledged" || c.status === "sanction_active" || isClosed) && nte && (
+                            <Step
+                                active={c.status === "under_review"}
+                                done={["nod_issued", "nod_acknowledged", "sanction_active", "closed"].includes(c.status)}
+                                title="4. Review by HR"
+                                icon={FileText}
+                                body={
+                                    isStaff && (c.status === "explanation_submitted" || c.status === "no_response") ? (
+                                        <Button size="sm" variant="outline" onClick={() => { moveToReview(c.id); toast.success("Moved to under review"); }}>
+                                            Move to Under Review
+                                        </Button>
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground">
+                                            {c.status === "under_review"
+                                                ? "Case is currently under HR review."
+                                                : ["nod_issued", "nod_acknowledged", "sanction_active", "closed"].includes(c.status)
+                                                    ? "Review completed."
+                                                    : "Pending HR review."}
+                                        </p>
+                                    )
+                                }
                             />
                         )}
 
@@ -421,24 +474,41 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                             />
                         )}
 
-                        {/* Step 6: Sanction active (Mark Sanction Completed) */}
-                        {nod && (nod.decision === "suspension" || nod.decision === "training_required" || nod.decision === "pip" || nod.decision === "salary_deduction") && nod.status === "sanction_active" && (
+                        {/* Step 6: Sanction Execution — shown once NOD is issued with a sanction-type decision */}
+                        {nod && (nod.decision === "suspension" || nod.decision === "training_required" || nod.decision === "pip" || nod.decision === "salary_deduction") && (c.status === "nod_issued" || c.status === "nod_acknowledged" || c.status === "sanction_active" || isClosed) && (
                             <Step
-                                active={c.status === "sanction_active"}
-                                done={c.status === "closed"}
+                                active={c.status === "sanction_active" && !isAfterEndDate}
+                                done={isSanctionDone}
+                                variant={
+                                    isClosed || isAfterEndDate
+                                        ? "green"
+                                        : c.status === "sanction_active"
+                                            ? "yellow"
+                                            : undefined
+                                }
                                 title="6. Sanction Execution"
                                 icon={Gavel}
                                 body={
-                                    c.status === "sanction_active" ? (
-                                        isStaff && !isClosed ? (
-                                            <Button size="sm" onClick={() => setSanctionCompleteOpen(true)}>
-                                                Mark Sanction Completed
-                                            </Button>
-                                        ) : (
-                                            <p className="text-sm text-muted-foreground">Sanction is currently active.</p>
-                                        )
+                                    isClosed ? (
+                                        <p className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">Sanction completed — case closed.</p>
+                                    ) : isAfterEndDate ? (
+                                        <p className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">Sanction period has ended.</p>
+                                    ) : c.status === "sanction_active" ? (
+                                        <div className="space-y-2">
+                                            <p className="text-sm text-yellow-700 dark:text-yellow-400 font-medium">Sanction is currently active.</p>
+                                            {nod.sanctionStartDate && (
+                                                <p className="text-xs text-muted-foreground">
+                                                    {nod.sanctionStartDate} → {nod.sanctionEndDate ?? "—"}
+                                                </p>
+                                            )}
+                                            {currentUser.role === "admin" && !isClosed && (
+                                                <Button size="sm" onClick={() => setSanctionCompleteOpen(true)}>
+                                                    Complete Sanction
+                                                </Button>
+                                            )}
+                                        </div>
                                     ) : (
-                                        <p className="text-sm text-muted-foreground">Sanction completed and case closed.</p>
+                                        <p className="text-sm text-muted-foreground">Awaiting sanction activation after NOD acknowledgment.</p>
                                     )
                                 }
                             />
@@ -645,19 +715,47 @@ function Row({ label, value }: { label: string; value: string }) {
     );
 }
 
-function Step({ active, done, title, icon: Icon, body }: { active: boolean; done: boolean; title: string; icon: typeof Mail; body: React.ReactNode }) {
-    const tone = done
+function Step({ active, done, title, icon: Icon, body, variant }: { active: boolean; done: boolean; title: string; icon: typeof Mail; body: React.ReactNode; variant?: "default" | "yellow" | "green" }) {
+    // variant overrides the automatic amber/emerald logic (used for Sanction step)
+    const tone = variant === "green"
         ? "border-emerald-300 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/20"
-        : active
-            ? "border-amber-400 bg-amber-50/40 dark:border-amber-600 dark:bg-amber-950/20"
-            : "border-muted bg-muted/30 opacity-70";
+        : variant === "yellow"
+            ? "border-yellow-400 bg-yellow-50/40 dark:border-yellow-600 dark:bg-yellow-950/20"
+            : done
+                ? "border-emerald-300 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/20"
+                : active
+                    ? "border-amber-400 bg-amber-50/40 dark:border-amber-600 dark:bg-amber-950/20"
+                    : "border-muted bg-muted/30 opacity-70";
+
+    const iconColor = variant === "green"
+        ? "text-emerald-600 dark:text-emerald-400"
+        : variant === "yellow"
+            ? "text-yellow-600 dark:text-yellow-400"
+            : done
+                ? "text-emerald-600 dark:text-emerald-400"
+                : active
+                    ? "text-amber-500 dark:text-amber-400"
+                    : "text-muted-foreground";
+
+    const iconBg = variant === "green"
+        ? "bg-emerald-100 dark:bg-emerald-900/40"
+        : variant === "yellow"
+            ? "bg-yellow-100 dark:bg-yellow-900/40"
+            : done
+                ? "bg-emerald-100 dark:bg-emerald-900/40"
+                : active
+                    ? "bg-amber-100 dark:bg-amber-900/40"
+                    : "bg-muted/60";
+
     return (
         <div className={`rounded-md border ${tone} p-3`}>
             <div className="flex items-center gap-2 mb-2">
-                <Icon className={`h-4 w-4 ${done ? "text-emerald-600" : active ? "text-amber-500" : "text-muted-foreground"}`} />
+                <div className={`rounded-md p-1 ${iconBg}`}>
+                    <Icon className={`h-4 w-4 ${iconColor}`} />
+                </div>
                 <h3 className="font-medium text-sm">{title}</h3>
             </div>
-            <div className="pl-6">{body}</div>
+            <div className="pl-8">{body}</div>
         </div>
     );
 }
