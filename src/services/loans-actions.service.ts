@@ -153,23 +153,27 @@ export async function recordCappedDeduction(
 }
 
 /**
- * Approve a loan — DB-first.
+ * Approve a loan — DB-first. Supports multi-stage states.
  */
-export async function approveLoan(id: string): Promise<boolean> {
-    const ok = await loansDb.update(id, { status: "active" });
+export async function approveLoan(id: string, targetStatus: Loan["status"] = "active"): Promise<boolean> {
+    const ok = await loansDb.update(id, { status: targetStatus });
     if (!ok) return false;
 
-    useLoansStore.getState().approveLoan(id);
+    useLoansStore.getState().updateLoan(id, { status: targetStatus });
     return true;
 }
 
 /**
- * Reject a loan — DB-first.
+ * Reject a loan — DB-first. Supports rejection reason.
  */
-export async function rejectLoan(id: string): Promise<boolean> {
-    const ok = await loansDb.update(id, { status: "rejected" });
+export async function rejectLoan(id: string, reason?: string): Promise<boolean> {
+    const patch: Partial<Loan> = { status: "rejected" };
+    if (reason) {
+        patch.remarks = reason;
+    }
+    const ok = await loansDb.update(id, patch);
     if (!ok) return false;
 
-    useLoansStore.getState().rejectLoan(id);
+    useLoansStore.getState().updateLoan(id, patch);
     return true;
 }

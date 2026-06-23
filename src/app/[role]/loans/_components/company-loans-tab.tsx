@@ -62,6 +62,10 @@ export function CompanyLoansTab() {
     const [editStartDate, setEditStartDate] = useState("");
     const [cancelId, setCancelId] = useState<string | null>(null);
 
+    const [rejectOpen, setRejectOpen] = useState(false);
+    const [rejectLoanId, setRejectLoanId] = useState<string | null>(null);
+    const [rejectionReason, setRejectionReason] = useState("");
+
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
 
     // Filter for only Company Loans (type = salary_loan)
@@ -166,26 +170,60 @@ export function CompanyLoansTab() {
         setFormFrequency("every_payroll");
     };
 
-    const handleApprove = async (id: string) => {
-        const ok = await approveLoan(id);
+    const handleApprove = async (loan: typeof loans[0]) => {
+        let nextStatus: typeof loans[0]["status"] = "active";
+        let message = "Loan request approved";
+
+        if (loan.status === "pending" || loan.status === "pending_supervisor") {
+            nextStatus = "pending_hr";
+            message = "Loan request endorsed to HR Review";
+        } else if (loan.status === "pending_hr") {
+            nextStatus = "pending_finance";
+            message = "Loan request endorsed to Finance Review";
+        } else if (loan.status === "pending_finance") {
+            nextStatus = "active";
+            message = "Loan request fully approved and activated";
+        }
+
+        const ok = await approveLoan(loan.id, nextStatus);
         if (ok) {
-            toast.success("Loan request approved");
-            const loan = companyLoans.find(l => l.id === id);
-            if (loan) {
+            toast.success(message);
+            useAuditStore.getState().log({
+                entityType: "loan",
+                entityId: loan.id,
+                action: nextStatus === "active" ? "loan_approved" : "loan_endorsed",
+                performedBy: currentUser.id,
+                reason: `Endorsed to status: ${nextStatus}`
+            });
+            if (nextStatus === "active") {
                 const emp = employees.find(e => e.id === loan.employeeId);
                 if (emp) {
                     dispatchNotification("loan_unfrozen", { name: emp.name, type: "Company Loan" }, emp.id, emp.email ?? undefined, emp.phone, undefined, { suppressToast: true });
                 }
             }
         } else {
-            toast.error("Failed to approve loan");
+            toast.error("Failed to approve/endorse loan");
         }
     };
 
-    const handleReject = async (id: string) => {
-        const ok = await rejectLoan(id);
+    const submitRejection = async () => {
+        if (!rejectLoanId || !rejectionReason.trim()) {
+            toast.error("Please enter a rejection reason");
+            return;
+        }
+        const ok = await rejectLoan(rejectLoanId, rejectionReason);
         if (ok) {
             toast.success("Loan request rejected");
+            useAuditStore.getState().log({
+                entityType: "loan",
+                entityId: rejectLoanId,
+                action: "loan_rejected",
+                performedBy: currentUser.id,
+                reason: `Reason: ${rejectionReason}`
+            });
+            setRejectOpen(false);
+            setRejectLoanId(null);
+            setRejectionReason("");
         } else {
             toast.error("Failed to reject loan");
         }
@@ -236,7 +274,7 @@ export function CompanyLoansTab() {
                             </div>
                             <div>
                                 <label className="text-sm font-medium">Deduction Frequency *</label>
-                                <Select value={formFrequency} onValueChange={(v) => setFormFrequency(v as any)}>
+                                <Select value={formFrequency} onValueChange={(v) => setFormFrequency(v as "every_payroll" | "first_payroll" | "last_payroll")}>
                                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="every_payroll">Every Payroll (Split equally)</SelectItem>
@@ -336,14 +374,28 @@ export function CompanyLoansTab() {
                                                 <TableCell className="text-xs">{loan.startDeductionDate ? new Date(loan.startDeductionDate).toLocaleDateString() : "-"}</TableCell>
                                                 <TableCell>
                                                     <div className="flex items-center gap-1">
-                                                        {loan.status === "pending" && (
+                                                        {(loan.status === "pending" || loan.status === "pending_supervisor" || loan.status === "pending_hr" || loan.status === "pending_finance") && (
                                                             <>
-                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => handleApprove(loan.id)} title="Approve Request">
-                                                                    <CheckCircle className="h-3.5 w-3.5" />
-                                                                </Button>
-                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600" onClick={() => handleReject(loan.id)} title="Reject Request">
-                                                                    <XCircle className="h-3.5 w-3.5" />
-                                                                </Button>
+                                                                {/* Enforce role permissions based on workflow stage */}
+                                                                {((loan.status === "pending" || loan.status === "pending_supervisor") && (role === "admin" || role === "supervisor" || role === "hr")) ||
+                                                                 (loan.status === "pending_hr" && (role === "admin" || role === "hr")) ||
+                                                                 (loan.status === "pending_finance" && (role === "admin" || role === "finance")) ? (
+                                                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => handleApprove(loan)} title={
+                                                                        loan.status === "pending" || loan.status === "pending_supervisor" ? "Endorse to HR" :
+                                                                        loan.status === "pending_hr" ? "Endorse to Finance" : "Fully Approve & Activate"
+                                                                    }>
+                                                                        <CheckCircle className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                ) : (
+                                                                    <span className="text-[9px] text-muted-foreground italic px-1">Awaiting role approval</span>
+                                                                )}
+                                                                {((loan.status === "pending" || loan.status === "pending_supervisor") && (role === "admin" || role === "supervisor" || role === "hr")) ||
+                                                                 (loan.status === "pending_hr" && (role === "admin" || role === "hr")) ||
+                                                                 (loan.status === "pending_finance" && (role === "admin" || role === "finance")) ? (
+                                                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600" onClick={() => { setRejectLoanId(loan.id); setRejectOpen(true); }} title="Reject Request">
+                                                                        <XCircle className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                ) : null}
                                                             </>
                                                         )}
                                                         {(loan.status === "active" || loan.status === "frozen") && (
@@ -494,6 +546,22 @@ export function CompanyLoansTab() {
                 </TabsContent>
             </Tabs>
 
+            <Dialog open={rejectOpen} onOpenChange={(o) => { if (!o) { setRejectOpen(false); setRejectLoanId(null); setRejectionReason(""); } }}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader><DialogTitle>Reject Company Loan</DialogTitle></DialogHeader>
+                    <div className="space-y-4 pt-2">
+                        <div>
+                            <label className="text-sm font-medium">Rejection Reason *</label>
+                            <Input value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} className="mt-1" placeholder="e.g. Tenury requirement not met / outstanding balance too high" />
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" className="flex-1" onClick={() => { setRejectOpen(false); setRejectLoanId(null); setRejectionReason(""); }}>Cancel</Button>
+                            <Button variant="destructive" className="flex-1" onClick={submitRejection}>Reject Request</Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={editOpen} onOpenChange={setEditOpen}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader><DialogTitle>Edit Company Loan Terms</DialogTitle></DialogHeader>
@@ -508,7 +576,7 @@ export function CompanyLoansTab() {
                         </div>
                         <div>
                             <label className="text-sm font-medium">Deduction Frequency</label>
-                            <Select value={editFrequency} onValueChange={(v) => setEditFrequency(v as any)}>
+                            <Select value={editFrequency} onValueChange={(v) => setEditFrequency(v as "every_payroll" | "first_payroll" | "last_payroll")}>
                                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="every_payroll">Every Payroll</SelectItem>

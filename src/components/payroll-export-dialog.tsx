@@ -6,6 +6,7 @@ import { useDepartmentsStore } from "@/store/departments.store";
 import { usePayrollStore } from "@/store/payroll.store";
 import { useAttendanceStore } from "@/store/attendance.store";
 import { useDeductionsStore } from "@/store/deductions.store";
+import { useLoansStore } from "@/store/loans.store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -362,13 +363,13 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   const navyHdr = { font: { name: "Arial", sz: 10, bold: true, color: { rgb: WHITE } }, fill: { patternType: "solid", fgColor: { rgb: NAVY } }, alignment: { horizontal: "center", vertical: "center" }, border: thinBorder };
   const sigLabel = { font: { name: "Arial", sz: 8, bold: true, color: { rgb: TXT } }, alignment: { horizontal: "center", vertical: "center" } };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const styleRange = (r1: number, c1: number, r2: number, c2: number, s: any) => {
+  const styleRange = (r1: number, c1: number, r2: number, c2: number, s: Record<string, unknown>) => {
     for (let r = r1; r <= r2; r++) {
       for (let c = c1; c <= c2; c++) {
         const addr = XLSX.utils.encode_cell({ r, c });
         if (!ws[addr]) ws[addr] = { t: "z", v: null };
-        (ws[addr] as any).s = { ...(ws[addr] as any).s, ...s };
+        const cell = ws[addr] as unknown as { s?: Record<string, unknown> };
+        cell.s = { ...cell.s, ...s };
       }
     }
   };
@@ -408,8 +409,11 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   // Right-align monetary values in col H
   for (let r = 7; r <= NET_PAY_ROW; r++) {
     const addr = XLSX.utils.encode_cell({ r, c: 7 });
-    if (ws[addr] && typeof (ws[addr] as any).v === "number") {
-      (ws[addr] as any).s = { ...(ws[addr] as any).s, alignment: { horizontal: "right", vertical: "center" } };
+    if (ws[addr]) {
+      const cell = ws[addr] as unknown as { v?: unknown; s?: Record<string, unknown> };
+      if (typeof cell.v === "number") {
+        cell.s = { ...cell.s, alignment: { horizontal: "right", vertical: "center" } };
+      }
     }
   }
 
@@ -429,8 +433,11 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   // Currency format
   for (let r = 0; r < totalRows; r++) {
     const addr = XLSX.utils.encode_cell({ r, c: 7 });
-    if (ws[addr] && typeof (ws[addr] as any).v === "number") {
-      (ws[addr] as any).z = "₱#,##0.00";
+    if (ws[addr]) {
+      const cell = ws[addr] as unknown as { v?: unknown; z?: string };
+      if (typeof cell.v === "number") {
+        cell.z = "₱#,##0.00";
+      }
     }
   }
 
@@ -1084,8 +1091,44 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
         }
       }
 
+      const loanDeductions = payslip
+        ? useLoansStore.getState().getAllDeductions().filter((d) => d.payslipId === payslip.id)
+        : [];
+
+      const itemizedLoans = loanDeductions.map((d) => {
+        const loan = useLoansStore.getState().loans.find((l) => l.id === d.loanId);
+        let label = "Loan Deduction";
+        if (loan) {
+          if (loan.type === "cash_advance") {
+            label = "Cash Advance";
+          } else if (loan.type === "salary_loan") {
+            label = "Company Loan";
+          } else if (loan.type === "government_loan" || loan.type === "sss" || loan.type === "pagibig") {
+            let agencyLabel = (loan.agency || loan.type || "").toUpperCase();
+            if (agencyLabel === "PAGIBIG") {
+              agencyLabel = "Pag-IBIG";
+            }
+            let subType = "Loan";
+            if (loan.loanType === "salary_loan" || loan.loanType === "salary") {
+              subType = "Salary Loan";
+            } else if (loan.loanType === "calamity_loan" || loan.loanType === "calamity") {
+              subType = "Calamity Loan";
+            } else if (loan.loanType === "mpl") {
+              subType = "Multi-Purpose Loan";
+            } else if (loan.loanType) {
+              subType = `${loan.loanType.charAt(0).toUpperCase()}${loan.loanType.slice(1)} Loan`;
+            }
+            label = agencyLabel ? `${agencyLabel} ${subType}` : subType;
+          } else {
+            label = loan.remarks || "Loan";
+          }
+        }
+        return { label, amount: d.amount };
+      });
+
       const deductionItems = [
         ...customDeductionItems,
+        ...itemizedLoans,
         // Only show "Custom Deductions" lump sum if no individual line items exist
         ...(customDeductionItems.length === 0 && payslip && Number(payslip.customDeductions ?? 0) > 0
           ? [{ label: "Custom Deductions", amount: Number(payslip.customDeductions ?? 0) }]
@@ -1120,7 +1163,7 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
         deductionItems,
         withholdingTax: payslip ? Number(payslip.taxDeduction ?? 0) : 0,
         sssContribution: payslip ? Number(payslip.sssDeduction ?? 0) : 0,
-        sssSalaryLoan: payslip ? Number(payslip.loanDeduction ?? 0) : 0,
+        sssSalaryLoan: payslip && itemizedLoans.length === 0 ? Number(payslip.loanDeduction ?? 0) : 0,
         philhealthContribution: payslip ? Number(payslip.philhealthDeduction ?? 0) : 0,
         pagibigContribution: payslip ? Number(payslip.pagibigDeduction ?? 0) : 0,
         pagibigLoan: 0,
@@ -1179,8 +1222,41 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
       customAllowanceItems = lineItems.filter((li) => li.type === "earning").map((li) => ({ label: li.label, amount: li.amount }));
       customDeductionItems = lineItems.filter((li) => li.type === "deduction").map((li) => ({ label: li.label, amount: li.amount }));
     }
+    const loanDeductions = useLoansStore.getState().getAllDeductions().filter((d) => d.payslipId === payslip.id);
+    const itemizedLoans = loanDeductions.map((d) => {
+      const loan = useLoansStore.getState().loans.find((l) => l.id === d.loanId);
+      let label = "Loan Deduction";
+      if (loan) {
+        if (loan.type === "cash_advance") {
+          label = "Cash Advance";
+        } else if (loan.type === "salary_loan") {
+          label = "Company Loan";
+        } else if (loan.type === "government_loan" || loan.type === "sss" || loan.type === "pagibig") {
+          let agencyLabel = (loan.agency || loan.type || "").toUpperCase();
+          if (agencyLabel === "PAGIBIG") {
+            agencyLabel = "Pag-IBIG";
+          }
+          let subType = "Loan";
+          if (loan.loanType === "salary_loan" || loan.loanType === "salary") {
+            subType = "Salary Loan";
+          } else if (loan.loanType === "calamity_loan" || loan.loanType === "calamity") {
+            subType = "Calamity Loan";
+          } else if (loan.loanType === "mpl") {
+            subType = "Multi-Purpose Loan";
+          } else if (loan.loanType) {
+            subType = `${loan.loanType.charAt(0).toUpperCase()}${loan.loanType.slice(1)} Loan`;
+          }
+          label = agencyLabel ? `${agencyLabel} ${subType}` : subType;
+        } else {
+          label = loan.remarks || "Loan";
+        }
+      }
+      return { label, amount: d.amount };
+    });
+
     const deductionItems = [
       ...customDeductionItems,
+      ...itemizedLoans,
       // Only show "Custom Deductions" as a lump sum if there are no individual line items
       ...(customDeductionItems.length === 0 && Number(payslip.customDeductions ?? 0) > 0
         ? [{ label: "Custom Deductions", amount: Number(payslip.customDeductions ?? 0) }]
@@ -1214,7 +1290,7 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
       deductionItems,
       withholdingTax: Number(payslip.taxDeduction ?? 0),
       sssContribution: Number(payslip.sssDeduction ?? 0),
-      sssSalaryLoan: Number(payslip.loanDeduction ?? 0),
+      sssSalaryLoan: itemizedLoans.length === 0 ? Number(payslip.loanDeduction ?? 0) : 0,
       philhealthContribution: Number(payslip.philhealthDeduction ?? 0),
       pagibigContribution: Number(payslip.pagibigDeduction ?? 0),
       pagibigLoan: 0,

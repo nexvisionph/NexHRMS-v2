@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, CheckCircle, History, Pencil, Trash2 } from "lucide-react";
+import { Plus, CheckCircle, XCircle, History, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 import { dispatchNotification } from "@/lib/notifications";
@@ -52,6 +52,73 @@ export function GovernmentLoansTab() {
     const [editReference, setEditReference] = useState("");
     const [editRemarks, setEditRemarks] = useState("");
     const [cancelId, setCancelId] = useState<string | null>(null);
+
+    const handleExportSSSLCL = () => {
+        const sssLoans = governmentLoans.filter((l) => l.agency === "SSS" && (l.status === "active" || l.status === "settled"));
+        if (sssLoans.length === 0) {
+            toast.error("No SSS loans available to export");
+            return;
+        }
+
+        const csvContent = [
+            ["Employee Name", "SS Number", "Loan Type", "Reference No.", "Monthly Amortization", "Remaining Balance", "Status"],
+            ...sssLoans.map((l) => [
+                getEmpName(l.employeeId),
+                "N/A",
+                getLoanTypeLabel(l.loanType),
+                l.referenceNumber || "N/A",
+                `₱${l.monthlyDeduction.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                `₱${l.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                l.status
+            ])
+        ]
+            .map((e) => e.map((val) => `"${String(val).replace(/"/g, '""')}"`).join(","))
+            .join("\n");
+
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `SSS_Loan_Collection_List_${new Date().toISOString().split("T")[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success("SSS Loan Collection List exported successfully");
+    };
+
+    const handleExportPagIBIGSTL = () => {
+        const pagibigLoans = governmentLoans.filter((l) => l.agency === "Pag-IBIG" && (l.status === "active" || l.status === "settled"));
+        if (pagibigLoans.length === 0) {
+            toast.error("No Pag-IBIG loans available to export");
+            return;
+        }
+
+        const csvContent = [
+            ["Employee Name", "Agency ID Number", "Loan Type", "Loan Account No.", "Loan Amount", "Monthly Amortization", "Outstanding Balance", "Status"],
+            ...pagibigLoans.map((l) => [
+                getEmpName(l.employeeId),
+                "N/A",
+                getLoanTypeLabel(l.loanType),
+                l.referenceNumber || "N/A",
+                `₱${l.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                `₱${l.monthlyDeduction.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                `₱${l.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                l.status
+            ])
+        ]
+            .map((e) => e.map((val) => `"${String(val).replace(/"/g, '""')}"`).join(","))
+            .join("\n");
+
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `Pag-IBIG_STL_Remittance_${new Date().toISOString().split("T")[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success("Pag-IBIG STL Remittance file exported successfully");
+    };
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
 
@@ -178,12 +245,15 @@ export function GovernmentLoansTab() {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <p className="text-sm text-muted-foreground">{governmentLoans.length} government loans</p>
-                <Dialog open={open} onOpenChange={setOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"><Plus className="h-4 w-4" /> Create Gov Loan</Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-md">
-                        <DialogHeader><DialogTitle>Create Government Loan</DialogTitle></DialogHeader>
+                <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" className="gap-1 bg-background text-xs font-semibold" onClick={handleExportSSSLCL}>Export SSS LCL</Button>
+                    <Button variant="outline" size="sm" className="gap-1 bg-background text-xs font-semibold" onClick={handleExportPagIBIGSTL}>Export Pag-IBIG STL</Button>
+                    <Dialog open={open} onOpenChange={setOpen}>
+                        <DialogTrigger asChild>
+                            <Button size="sm" className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"><Plus className="h-4 w-4" /> Create Gov Loan</Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md">
+                            <DialogHeader><DialogTitle>Create Government Loan</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
                             <div>
                                 <label className="text-sm font-medium">Employee *</label>
@@ -194,7 +264,7 @@ export function GovernmentLoansTab() {
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-sm font-medium">Agency *</label>
-                                    <Select value={formAgency} onValueChange={(v) => handleAgencyChange(v as any)}>
+                                    <Select value={formAgency} onValueChange={(v) => handleAgencyChange(v as "SSS" | "Pag-IBIG")}>
                                         <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="SSS">SSS</SelectItem>
@@ -261,6 +331,7 @@ export function GovernmentLoansTab() {
                     </DialogContent>
                 </Dialog>
             </div>
+        </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <Card className="border border-blue-500/20 bg-blue-500/5 dark:bg-blue-500/10">
@@ -336,6 +407,24 @@ export function GovernmentLoansTab() {
                                                 <TableCell><LoanStatusBadge status={loan.status} /></TableCell>
                                                 <TableCell>
                                                     <div className="flex items-center gap-1">
+                                                        {loan.status === "pending" && (
+                                                            <>
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10" onClick={() => {
+                                                                    updateLoan(loan.id, { status: "active" });
+                                                                    useAuditStore.getState().log({ entityType: "loan", entityId: loan.id, action: "loan_approved", performedBy: currentUser.id });
+                                                                    toast.success("Government loan verified and activated");
+                                                                }} title="Verify & Activate">
+                                                                    <CheckCircle className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => {
+                                                                    updateLoan(loan.id, { status: "rejected" });
+                                                                    useAuditStore.getState().log({ entityType: "loan", entityId: loan.id, action: "loan_rejected", performedBy: currentUser.id });
+                                                                    toast.success("Government loan record rejected");
+                                                                }} title="Reject Submission">
+                                                                    <XCircle className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            </>
+                                                        )}
                                                         {(loan.status === "active" || loan.status === "frozen") && (
                                                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditLoan(loan)} title="Edit record">
                                                                 <Pencil className="h-3.5 w-3.5" />
@@ -350,7 +439,7 @@ export function GovernmentLoansTab() {
                                                                 <CheckCircle className="h-3.5 w-3.5" />
                                                             </Button>
                                                         )}
-                                                        {(loan.status === "settled" || loan.status === "cancelled") && (
+                                                        {(loan.status === "settled" || loan.status === "cancelled" || loan.status === "rejected") && (
                                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => setCancelId(loan.id)} title="Remove record">
                                                                 <Trash2 className="h-3.5 w-3.5" />
                                                             </Button>

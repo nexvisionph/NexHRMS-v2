@@ -498,10 +498,277 @@
             () => new Set(selectedActiveLoanRows.map((r) => r.employeeId)).size,
             [selectedActiveLoanRows]
         );
-        const totalProjectedLoanDeduction = useMemo(
-            () => selectedActiveLoanRows.reduce((sum, r) => sum + Math.min(r.monthlyDeduction, r.remainingBalance), 0),
-            [selectedActiveLoanRows]
-        );
+        const getCappedLoanDeductions = useCallback((empId: string) => {
+            const emp = employees.find((e) => e.id === empId);
+            if (!emp) return { totalLoanDeduction: 0, breakdown: new Map<string, { baseAmount: number; cappedAmount: number; isCapped: boolean }>() };
+
+            const freq = emp.payFrequency || paySchedule.defaultFrequency;
+            const settledSalary = getSettledSalary(emp.id, emp.salary);
+            if (settledSalary === null) {
+                return { totalLoanDeduction: 0, breakdown: new Map<string, { baseAmount: number; cappedAmount: number; isCapped: boolean }>() };
+            }
+
+            const empDailyRate = Math.round(settledSalary / (paySchedule.workDaysPerMonth || 22));
+            let weekdaysInPeriod = 0;
+            if (cutoffDates.start && cutoffDates.end) {
+                for (let d = new Date(parseISO(cutoffDates.start)); d <= parseISO(cutoffDates.end); d.setDate(d.getDate() + 1)) {
+                    const dow = d.getDay();
+                    if (dow !== 0 && dow !== 6) weekdaysInPeriod++;
+                }
+            }
+            const grossPay = empDailyRate * weekdaysInPeriod;
+
+            const overrideStr = grossOverrides[empId];
+            const effectiveGrossPay = (overrideStr && Number(overrideStr) > 0)
+                ? Math.round(Number(overrideStr))
+                : grossPay;
+
+            const phDeductions = computeAllPHDeductions(settledSalary);
+            const govMultiplier = 1;
+
+            const empLoans = getActiveByEmployee(empId);
+
+            const allowances = Number(formAllowances) || 0;
+            const otherDed = Number(formOtherDeductions) || 0;
+            const otHours = Number(formOTHours) || 0;
+            const nightDiffHours = Number(formNightDiffHours) || 0;
+
+            const approvedOtHours = overtimeRequests
+                .filter(
+                    (r) =>
+                        r.employeeId === empId &&
+                        r.status === "approved" &&
+                        r.date >= cutoffDates.start &&
+                        r.date <= cutoffDates.end
+                )
+                .reduce((sum, r) => sum + (r.hoursRequested || 0), 0);
+            const effectiveOtHours = otHours + approvedOtHours;
+
+            const computeDeduction = (type: DeductionType, autoValue: number, basis: number = grossPay): number => {
+                const override = getDeductionOverride(empId, type);
+                const globalDef = usePayrollStore.getState().globalDefaults.find((g) => g.deductionType === type);
+
+                if (globalDef && !globalDef.enabled) return 0;
+
+                const effective = override ?? (globalDef && globalDef.mode !== "auto" ? { mode: globalDef.mode, percentage: globalDef.percentage, fixedAmount: globalDef.fixedAmount } : null);
+
+                if (!effective || effective.mode === "auto") {
+                    return Math.round(autoValue * govMultiplier);
+                }
+                if (effective.mode === "exempt") {
+                    return 0;
+                }
+                if (effective.mode === "percentage" && effective.percentage !== undefined) {
+                    return Math.round(basis * (effective.percentage / 100) * govMultiplier);
+                }
+                if (effective.mode === "fixed" && effective.fixedAmount !== undefined) {
+                    return Math.round(effective.fixedAmount * govMultiplier);
+                }
+                return Math.round(autoValue * govMultiplier);
+            };
+
+            const sss = emp.deductionExempt ? 0 : computeDeduction("sss", phDeductions.sss);
+            const ph = emp.deductionExempt ? 0 : computeDeduction("philhealth", phDeductions.philHealth);
+            const pi = emp.deductionExempt ? 0 : computeDeduction("pagibig", phDeductions.pagIBIG);
+
+            const taxableIncome = Math.max(0, effectiveGrossPay - sss - ph - pi);
+            const birOverride = getDeductionOverride(empId, "bir");
+            const birGlobal = getGlobalDefault("bir");
+            let tax: number;
+            if (emp.deductionExempt || (birGlobal && !birGlobal.enabled)) {
+                tax = 0;
+            } else {
+                const birEffective = birOverride ?? (birGlobal && birGlobal.mode !== "auto" ? { mode: birGlobal.mode, percentage: birGlobal.percentage, fixedAmount: birGlobal.fixedAmount } : null);
+                if (!birEffective || birEffective.mode === "auto") {
+                    tax = Math.round(phDeductions.withholdingTax * govMultiplier);
+                } else if (birEffective.mode === "exempt") {
+                    tax = 0;
+                } else if (birEffective.mode === "percentage" && birEffective.percentage !== undefined) {
+                    tax = Math.round(taxableIncome * (birEffective.percentage / 100));
+                } else if (birEffective.mode === "fixed" && birEffective.fixedAmount !== undefined) {
+                    tax = Math.round(birEffective.fixedAmount * govMultiplier);
+                } else {
+                    tax = Math.round(phDeductions.withholdingTax * govMultiplier);
+                }
+            }
+
+            const totalGovDed = sss + ph + pi + tax;
+
+            const libDailyRate = computeDailyRate(settledSalary, paySchedule.workDaysPerMonth);
+            const activeRuleSet = ruleSets[0]; // RS-DEFAULT
+            const stdHours = activeRuleSet?.standardHoursPerDay ?? 8;
+            const libHourlyRate = computeHourlyRate(libDailyRate, stdHours);
+            const fullPrecisionHourlyRate = settledSalary / (paySchedule.workDaysPerMonth || 22) / stdHours;
+            const nightDiffPay = Math.round(nightDiffHours * fullPrecisionHourlyRate * 0.10);
+
+            const periodHolidays = holidays.filter((h) => h.date >= cutoffDates.start && h.date <= cutoffDates.end);
+            let holidayPaySupp = 0;
+            periodHolidays.forEach((hol) => {
+                const log = attendanceLogs.find((l) => l.employeeId === empId && l.date === hol.date);
+                const worked = log?.status === "present";
+                if (hol.type === "regular") { if (worked) holidayPaySupp += empDailyRate; }
+                else { if (worked) holidayPaySupp += Math.round(empDailyRate * (PH_HOLIDAY_MULTIPLIERS.special_holiday.worked - 1)); else holidayPaySupp -= empDailyRate; }
+            });
+
+            const periodLogs = attendanceLogs.filter(
+                (l) => l.employeeId === empId && l.date >= cutoffDates.start && l.date <= cutoffDates.end
+            );
+            const presentLogs = periodLogs.filter((l) => l.status === "present");
+            const expectedHoursTotal = presentLogs.length * stdHours;
+            const actualHoursTotal = presentLogs.reduce((sum, l) => sum + (l.hours || 0), 0);
+
+            const lateMinutesAgg = periodLogs.reduce((sum, l) => sum + (l.lateMinutes || 0), 0);
+            let absentDaysAgg = 0;
+            if (cutoffDates.start && cutoffDates.end) {
+                for (let d = new Date(parseISO(cutoffDates.start)); d <= parseISO(cutoffDates.end); d.setDate(d.getDate() + 1)) {
+                    const dayOfWeek = d.getDay();
+                    if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+                    const dateStr = format(d, "yyyy-MM-dd");
+                    const log = periodLogs.find((l) => l.date === dateStr);
+                    if (!log || log.status === "absent") absentDaysAgg++;
+                }
+            }
+
+            const autoBreakdown = buildPayslipDeductions({
+                autoDeductLate: false,
+                autoDeductAbsent: false,
+                autoDeductUndertime: false,
+                autoAddOvertime: false,
+                dailyRate: libDailyRate,
+                hourlyRate: libHourlyRate,
+                lateMinutes: lateMinutesAgg,
+                absentDays: absentDaysAgg,
+                shiftHours: expectedHoursTotal,
+                actualHours: actualHoursTotal,
+                overtimeEntries: [],
+                multipliers: {
+                    otMultiplierRegular: activeRuleSet?.otMultiplierRegular ?? 1.25,
+                    otMultiplierRestDay: activeRuleSet?.otMultiplierRestDay ?? 1.30,
+                    otMultiplierSpecialHoliday: activeRuleSet?.otMultiplierSpecialHoliday ?? 1.30,
+                    otMultiplierRegularHoliday: activeRuleSet?.otMultiplierRegularHoliday ?? 2.00,
+                    otMultiplierNightDiff: activeRuleSet?.otMultiplierNightDiff ?? 1.10,
+                },
+            });
+            const autoDedTotal = autoBreakdown.totalDeductions;
+
+            const holDates = new Set(holidays.map(h => h.date));
+            const mergedHolidays = [...holidays, ...DEFAULT_HOLIDAYS.filter(h => !holDates.has(h.date)).map((h, i) => ({ ...h, id: `CONST-${i}` }))] as typeof holidays;
+            const engineResult = computePayrollEngine({
+                employee: emp,
+                periodStart: cutoffDates.start,
+                periodEnd: cutoffDates.end,
+                attendanceLogs: periodLogs,
+                holidays: mergedHolidays,
+                deductions: { tax: 0, sss: 0, philhealth: 0, pagibig: 0, loans: 0, other: 0 },
+                computeWorkDays: 21.5,
+            });
+            const dtrOtHours = engineResult.regOtHours + engineResult.satOtHours + (engineResult.regOtMinutes + engineResult.satOtMinutes) / 60;
+            const finalOtHours = dtrOtHours > 0 ? dtrOtHours : effectiveOtHours;
+            const otPay = engineResult.totalOtPay > 0 ? engineResult.totalOtPay : Math.round(finalOtHours * fullPrecisionHourlyRate * 1.25);
+
+            const workDaysPerPeriod = emp.workDays?.length
+                ? Math.round(emp.workDays.length * (22 / 5))
+                : 22;
+            const customItems = emp.deductionExempt
+                ? []
+                : computeDeductionsForEmployee(empId, settledSalary, workDaysPerPeriod);
+            const customDedTotal = customItems
+                .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "deduction")
+                .reduce((sum, item) => sum + item.amount, 0);
+            const customAllowanceTotal = customItems
+                .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "allowance")
+                .reduce((sum, item) => sum + item.amount, 0);
+
+            const netPayBeforeLoans = Math.max(
+                0,
+                effectiveGrossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - customDedTotal - autoDedTotal
+            );
+
+            const baseLoanDeduction = (loan: typeof empLoans[0]) => {
+                const freq = loan.deductionFrequency || "every_payroll";
+                let baseAmt = loan.monthlyDeduction;
+                if (freq === "every_payroll") {
+                    baseAmt = loan.monthlyDeduction / 2;
+                } else if (freq === "first_payroll") {
+                    baseAmt = cutoff === "first" ? loan.monthlyDeduction : 0;
+                } else if (freq === "last_payroll") {
+                    baseAmt = cutoff === "second" ? loan.monthlyDeduction : 0;
+                }
+                return Math.min(baseAmt, loan.remainingBalance);
+            };
+
+            const rawLoanDeduction = empLoans.reduce((sum, l) => sum + baseLoanDeduction(l), 0);
+
+            let empLoanDeduction = 0;
+            const breakdown = new Map<string, { baseAmount: number; cappedAmount: number; isCapped: boolean }>();
+
+            if (empLoans.length > 0) {
+                const firstLoan = empLoans[0];
+                const capPercent = firstLoan.deductionCapPercent ?? 30;
+                const targetCapAmount = (capPercent / 100) * netPayBeforeLoans;
+                const totalRemainingBalance = empLoans.reduce((sum, l) => sum + l.remainingBalance, 0);
+                empLoanDeduction = Math.min(
+                    rawLoanDeduction,
+                    totalRemainingBalance,
+                    Math.round(targetCapAmount)
+                );
+
+                let remainingCap = empLoanDeduction;
+                empLoans.forEach((loan) => {
+                    const baseAmt = baseLoanDeduction(loan);
+                    const amt = Math.min(baseAmt, remainingCap);
+                    breakdown.set(loan.id, {
+                        baseAmount: baseAmt,
+                        cappedAmount: amt,
+                        isCapped: baseAmt > amt,
+                    });
+                    remainingCap = Math.max(0, remainingCap - amt);
+                });
+            }
+
+            return { totalLoanDeduction: empLoanDeduction, breakdown };
+        }, [
+            employees,
+            paySchedule,
+            cutoffDates,
+            grossOverrides,
+            formAllowances,
+            formOtherDeductions,
+            formOTHours,
+            formNightDiffHours,
+            overtimeRequests,
+            ruleSets,
+            holidays,
+            attendanceLogs,
+            deductionTemplates,
+            getSettledSalary,
+            getDeductionOverride,
+            getGlobalDefault,
+            computeAllPHDeductions,
+            computePayrollEngine,
+            buildPayslipDeductions,
+            computeDailyRate,
+            computeHourlyRate,
+            getActiveByEmployee
+        ]);
+
+        const cappedLoanDetails = useMemo(() => {
+            const map = new Map<string, { totalLoanDeduction: number; breakdown: Map<string, { baseAmount: number; cappedAmount: number; isCapped: boolean }> }>();
+            selectedEmployeeIds.forEach((empId) => {
+                const result = getCappedLoanDeductions(empId);
+                map.set(empId, result);
+            });
+            return map;
+        }, [selectedEmployeeIds, getCappedLoanDeductions]);
+
+        const totalProjectedLoanDeduction = useMemo(() => {
+            let sum = 0;
+            cappedLoanDetails.forEach((val) => {
+                sum += val.totalLoanDeduction;
+            });
+            return sum;
+        }, [cappedLoanDetails]);
+
         const [viewLoansDialogOpen, setViewLoansDialogOpen] = useState(false);
 
         // ─── Per-employee loan info (visible BEFORE selection) ─────────
@@ -619,7 +886,6 @@
                         fullPeriodGross = settledSalary;
                     }
                     // For all frequencies: use daily rate × weekdays in period for consistent, auditable computation
-                    let grossPay: number;
                     const empDailyRate = Math.round(settledSalary / (paySchedule.workDaysPerMonth || 22));
                     // Count weekdays in the period
                     let weekdaysInPeriod = 0;
@@ -627,7 +893,7 @@
                         const dow = d.getDay();
                         if (dow !== 0 && dow !== 6) weekdaysInPeriod++;
                     }
-                    grossPay = empDailyRate * weekdaysInPeriod;
+                    const grossPay = empDailyRate * weekdaysInPeriod;
 
                     // ─── Admin per-employee gross override ────────────────────────────
                     const overrideStr = grossOverrides[empId];
@@ -1373,7 +1639,7 @@
                                                                 </p>
                                                                 <p className="text-[11px] text-amber-700 dark:text-amber-300/90 mt-0.5 leading-relaxed">
                                                                     A loan deduction of <strong>{formatCurrency(totalProjectedLoanDeduction)}</strong> will be automatically applied to this cutoff.
-                                                                    Deduction follows each loan's schedule and will never exceed the remaining balance.
+                                                                    Deduction follows each loan&apos;s schedule and will never exceed the remaining balance.
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -1412,7 +1678,7 @@
                                                                         </p>
                                                                     </div>
                                                                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                                                        Net Pay = Gross − Government Deductions − Tax − Loan Deduction. The loan amount follows the schedule and is capped at the remaining balance. After issuance, each loan's balance is automatically updated.
+                                                                        Net Pay = Gross − Government Deductions − Tax − Loan Deduction. The loan amount follows the schedule and is capped at the remaining balance. After issuance, each loan&apos;s balance is automatically updated.
                                                                     </p>
                                                                     {(() => {
                                                                         // Group rows by employee
@@ -1432,15 +1698,55 @@
                                                                                         </div>
                                                                                         <div className="divide-y divide-border/50 rounded border border-border/50">
                                                                                             {rows.map((r) => {
-                                                                                                const scheduled = Math.min(r.monthlyDeduction, r.remainingBalance);
+                                                                                                const empCappedInfo = cappedLoanDetails.get(r.employeeId);
+                                                                                                const loanBreakdown = empCappedInfo?.breakdown.get(r.loanId);
+                                                                                                
+                                                                                                const scheduled = loanBreakdown ? loanBreakdown.cappedAmount : Math.min(r.monthlyDeduction, r.remainingBalance);
+                                                                                                const isCapped = loanBreakdown ? loanBreakdown.isCapped : false;
+                                                                                                const rawScheduled = loanBreakdown ? loanBreakdown.baseAmount : Math.min(r.monthlyDeduction, r.remainingBalance);
+                                                                                                
                                                                                                 const newBalance = Math.max(0, r.remainingBalance - scheduled);
+                                                                                                
+                                                                                                const loan = allLoans.find((l) => l.id === r.loanId);
+                                                                                                let label = r.loanType.replace(/_/g, " ");
+                                                                                                if (loan) {
+                                                                                                    if (loan.type === "cash_advance") {
+                                                                                                        label = "Cash Advance";
+                                                                                                    } else if (loan.type === "salary_loan") {
+                                                                                                        label = "Company Loan";
+                                                                                                    } else if (loan.type === "government_loan" || loan.type === "sss" || loan.type === "pagibig") {
+                                                                                                        let agencyLabel = (loan.agency || loan.type || "").toUpperCase();
+                                                                                                        if (agencyLabel === "PAGIBIG") {
+                                                                                                            agencyLabel = "Pag-IBIG";
+                                                                                                        }
+                                                                                                        let subType = "Loan";
+                                                                                                        if (loan.loanType === "salary_loan" || loan.loanType === "salary") {
+                                                                                                            subType = "Salary Loan";
+                                                                                                        } else if (loan.loanType === "calamity_loan" || loan.loanType === "calamity") {
+                                                                                                            subType = "Calamity Loan";
+                                                                                                        } else if (loan.loanType === "mpl") {
+                                                                                                            subType = "Multi-Purpose Loan";
+                                                                                                        } else if (loan.loanType) {
+                                                                                                            subType = `${loan.loanType.charAt(0).toUpperCase()}${loan.loanType.slice(1)} Loan`;
+                                                                                                        }
+                                                                                                        label = agencyLabel ? `${agencyLabel} ${subType}` : subType;
+                                                                                                    } else {
+                                                                                                        label = loan.remarks || "Loan";
+                                                                                                    }
+                                                                                                }
+                                                                                                
                                                                                                 return (
                                                                                                     <div key={r.loanId} className="p-2 space-y-1">
                                                                                                         <div className="flex items-center justify-between text-xs">
                                                                                                             <div className="flex items-center gap-1.5">
                                                                                                                 <Wallet className="h-3 w-3 text-amber-600" />
-                                                                                                                <span className="font-medium capitalize">{r.loanType.replace(/_/g, " ")}</span>
+                                                                                                                <span className="font-medium capitalize">{label}</span>
                                                                                                                 <code className="text-[9px] text-muted-foreground bg-muted px-1 rounded">{r.loanId}</code>
+                                                                                                                {isCapped && (
+                                                                                                                    <Badge variant="destructive" className="text-[9px] bg-red-500/15 text-red-700 dark:text-red-400 border-red-200/50 py-0 h-4">
+                                                                                                                        Capped
+                                                                                                                    </Badge>
+                                                                                                                )}
                                                                                                             </div>
                                                                                                             <Badge variant="outline" className="text-[9px]">{r.capPercent}% cap</Badge>
                                                                                                         </div>
@@ -1451,7 +1757,14 @@
                                                                                                             </div>
                                                                                                             <div>
                                                                                                                 <p className="uppercase tracking-wide">Cutoff Ded.</p>
-                                                                                                                <p className="text-red-600 dark:text-red-400 font-semibold text-xs">−{formatCurrency(scheduled)}</p>
+                                                                                                                <p className="text-red-600 dark:text-red-400 font-semibold text-xs flex flex-wrap items-baseline gap-1">
+                                                                                                                    <span>−{formatCurrency(scheduled)}</span>
+                                                                                                                    {isCapped && (
+                                                                                                                        <span className="text-[9px] text-muted-foreground line-through font-normal">
+                                                                                                                            ({formatCurrency(rawScheduled)})
+                                                                                                                        </span>
+                                                                                                                    )}
+                                                                                                                </p>
                                                                                                             </div>
                                                                                                             <div>
                                                                                                                 <p className="uppercase tracking-wide">After</p>

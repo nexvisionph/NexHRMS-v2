@@ -58,7 +58,7 @@ export interface PayslipLineItem {
   templateId?: string;
   calculationDetail?: string;
 }
-export type LoanStatus = "pending" | "approved" | "rejected" | "active" | "settled" | "frozen" | "cancelled";
+export type LoanStatus = "pending" | "approved" | "rejected" | "active" | "settled" | "frozen" | "cancelled" | "separated" | "draft" | "pending_supervisor" | "pending_hr" | "pending_finance";
 export type OvertimeStatus = "pending" | "approved" | "rejected";
 export type AdjustmentType = "earnings" | "deduction" | "net_correction" | "statutory_correction";
 export type AdjustmentStatus = "pending" | "approved" | "applied" | "rejected";
@@ -83,7 +83,7 @@ export type AuditAction =
   | "overtime_approved" | "overtime_rejected"
   | "payroll_locked" | "payroll_published" | "payroll_paid" | "payroll_ended" | "payroll_completed"
   | "adjustment_created" | "adjustment_approved" | "adjustment_applied"
-  | "loan_created" | "loan_frozen" | "loan_unfrozen" | "loan_settled"
+  | "loan_created" | "loan_frozen" | "loan_unfrozen" | "loan_settled" | "loan_approved" | "loan_rejected" | "loan_endorsed"
   | "payment_recorded" | "employee_resigned" | "employee_deleted" | "final_pay_created"
   | "timesheet_approved" | "timesheet_rejected"
   | "kiosk_registered" | "attendance_correction" | "cheat_detected"
