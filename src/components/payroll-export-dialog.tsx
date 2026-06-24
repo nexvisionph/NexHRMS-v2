@@ -765,7 +765,7 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
   const allDepartments = useDepartmentsStore((s) => s.departments);
   const departments = useMemo(() => allDepartments.filter((d) => d.isActive), [allDepartments]);
   const employees = useEmployeesStore((s) => s.employees);
-  const { payslips } = usePayrollStore();
+  const { payslips, runs } = usePayrollStore();
   const { logs: attendanceLogs, overtimeRequests } = useAttendanceStore();
 const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTemplates, fetchAssignments } = useDeductionsStore();
 
@@ -949,14 +949,18 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
   const runPayslipOptions = useMemo(() => {
     if (!runEmployeeId) return [];
     return payslips
-      .filter((p) => p.employeeId === runEmployeeId)
+      .filter((p) => {
+        if (p.employeeId !== runEmployeeId) return false;
+        const associatedRun = runs.find((r) => r.id === p.payrollBatchId);
+        return associatedRun?.status === "completed";
+      })
       .sort((a, b) => b.periodStart.localeCompare(a.periodStart))
       .map((p) => ({
         id: p.id,
         label: `${p.periodStart} to ${p.periodEnd} (${String(p.payFrequency || "").replace(/_/g, "-") || "period"})`,
         source: p.source === "imported" || p.computedExternally ? "Imported" : "System",
       }));
-  }, [payslips, runEmployeeId]);
+  }, [payslips, runs, runEmployeeId]);
 
   const runEmployeeOptions = useMemo(() =>
     employees
