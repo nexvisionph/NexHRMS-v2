@@ -7,13 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export default function AttendanceReviewPage() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
   const [logs, setLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading] = useState(false);
 
   useEffect(() => {
     // In a real implementation, this would fetch from /api/attendance/review
     // which joins attendance_logs, attendance_events, and attendance_evidence
-    setLoading(false);
   }, []);
 
   return (
