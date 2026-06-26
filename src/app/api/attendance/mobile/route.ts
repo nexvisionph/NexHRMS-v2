@@ -92,7 +92,7 @@ export async function POST(req: Request) {
       let passed = false;
       
       for (const loc of employeeLocations) {
-        const wl = loc.work_locations as { latitude: number; longitude: number; allowed_radius_meters: number; is_active: boolean };
+        const wl = loc.work_locations as unknown as { latitude: number; longitude: number; allowed_radius_meters: number; is_active: boolean };
         if (!wl || !wl.is_active) continue;
         
         const dist = calculateDistanceInMeters(
