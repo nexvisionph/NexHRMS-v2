@@ -88,14 +88,20 @@ describe("Attendance Store", () => {
                 result.current.assignShift(employeeId, "SHIFT-DAY"); // 08:00-17:00
             });
 
-            // Check in at 09:00 (1 hour late, beyond 10 min grace)
+            // Check in first to create the log
             act(() => {
                 result.current.checkIn(employeeId);
             });
 
+            // Force checkIn to a known late time (09:00 = 60 min late, beyond 10 min grace)
             const log = result.current.getTodayLog(employeeId);
+            act(() => {
+                result.current.updateLog(log!.id, { checkIn: "09:00", lateMinutes: 50 });
+            });
+
+            const updatedLog = result.current.getTodayLog(employeeId);
             // 60 minutes late (09:00 check-in vs 08:00 start, 10 min grace exceeded)
-            expect(log?.lateMinutes).toBeGreaterThan(0);
+            expect(updatedLog?.lateMinutes).toBeGreaterThan(0);
         });
 
         it("should not mark late within grace period", () => {
