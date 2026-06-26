@@ -224,11 +224,57 @@ export function PrintablePayslip({
                             )}
 
                             {(payslip.overtimePay ?? 0) > 0 && (
+                            <>
                             <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
                                 <td style={{ padding: "6px 8px" }}>Overtime Pay</td>
                                 <td style={{ padding: "6px 8px", textAlign: "right" }}>{formatCurrency(payslip.overtimePay ?? 0)}</td>
                             </tr>
+                            {/* OT breakdown sub-rows — shown when engine fields are available */}
+                            {((payslip.regOtHours ?? 0) > 0 || (payslip.satOtHours ?? 0) > 0) && (() => {
+                                const hrRate = payslip.hourlyRate ?? 0;
+                                const regH = (payslip.regOtHours ?? 0) + (payslip.regOtMinutes ?? 0) / 60;
+                                const satH = (payslip.satOtHours ?? 0) + (payslip.satOtMinutes ?? 0) / 60;
+                                const subRowStyle: React.CSSProperties = {
+                                    padding: "3px 8px 3px 24px",
+                                    fontSize: "10px",
+                                    color: "#555",
+                                    borderBottom: "1px solid #f0f0f0",
+                                };
+                                return (
+                                    <>
+                                        <tr>
+                                            <td colSpan={2} style={{ padding: "2px 8px 2px 24px", fontSize: "9px", textTransform: "uppercase", color: "#999", fontWeight: 600 }}>
+                                                Overtime Breakdown
+                                            </td>
+                                        </tr>
+                                        {regH > 0 && (
+                                            <tr style={{ borderBottom: "1px solid #f0f0f0" }}>
+                                                <td style={subRowStyle}>
+                                                    Regular Day OT — {regH.toFixed(2)} hr{regH !== 1 ? "s" : ""}
+                                                    {hrRate > 0 && <span style={{ color: "#888" }}> @ ×1.25</span>}
+                                                </td>
+                                                <td style={{ ...subRowStyle, textAlign: "right" }}>
+                                                    {hrRate > 0 ? formatCurrency(Math.round(regH * hrRate * 1.25 * 100) / 100) : "—"}
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {satH > 0 && (
+                                            <tr style={{ borderBottom: "1px solid #f0f0f0" }}>
+                                                <td style={subRowStyle}>
+                                                    Rest Day / Sat OT — {satH.toFixed(2)} hr{satH !== 1 ? "s" : ""}
+                                                    {hrRate > 0 && <span style={{ color: "#888" }}> @ ×1.30</span>}
+                                                </td>
+                                                <td style={{ ...subRowStyle, textAlign: "right" }}>
+                                                    {hrRate > 0 ? formatCurrency(Math.round(satH * hrRate * 1.30 * 100) / 100) : "—"}
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </>
+                                );
+                            })()}
+                            </>
                         )}
+
                             {(payslip.holidayPay ?? 0) !== 0 && (
                                 <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
                                     <td style={{ padding: "6px 8px" }}>Holiday Pay (DOLE)</td>
