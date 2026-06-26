@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PayScheduleSettings } from "@/components/payroll/pay-schedule-settings";
+import { PayrollRulesTab } from "./_components/payroll-rules-tab";
 import { Plus, Trash2, Edit, Settings, Users, Calculator, CalendarDays, ArrowLeft, Layers } from "lucide-react";
 import { toast } from "sonner";
 import type { DeductionTemplateType, DeductionCalculationMode, DeductionTemplate, EmployeeDeductionAssignment, Employee, Role, Department, Project } from "@/types";
@@ -76,6 +77,7 @@ export default function PayrollSettingsPage() {
                     <TabsTrigger value="deductions" className="gap-1.5"><Calculator className="h-3.5 w-3.5" /> Custom Deductions</TabsTrigger>
                     <TabsTrigger value="assignments" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Employee Assignments</TabsTrigger>
                     <TabsTrigger value="schedule" className="gap-1.5"><CalendarDays className="h-3.5 w-3.5" /> Pay Schedule</TabsTrigger>
+                    <TabsTrigger value="rules" className="gap-1.5"><Settings className="h-3.5 w-3.5" /> Payroll Rules</TabsTrigger>
                 </TabsList>
 
                 {/* ─── Custom Deductions Tab ─────────────────────────── */}
@@ -108,6 +110,11 @@ export default function PayrollSettingsPage() {
                 {/* ─── Pay Schedule Tab ──────────────────────────────── */}
                 <TabsContent value="schedule" className="mt-4">
                     <PayScheduleSettings schedule={paySchedule} onUpdate={updatePaySchedule} />
+                </TabsContent>
+
+                {/* ─── Payroll Rules Tab ─────────────────────────────── */}
+                <TabsContent value="rules" className="mt-4">
+                    <PayrollRulesTab />
                 </TabsContent>
             </Tabs>
         </div>
