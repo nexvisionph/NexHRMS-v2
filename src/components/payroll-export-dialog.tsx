@@ -363,13 +363,18 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   const navyHdr = { font: { name: "Arial", sz: 10, bold: true, color: { rgb: WHITE } }, fill: { patternType: "solid", fgColor: { rgb: NAVY } }, alignment: { horizontal: "center", vertical: "center" }, border: thinBorder };
   const sigLabel = { font: { name: "Arial", sz: 8, bold: true, color: { rgb: TXT } }, alignment: { horizontal: "center", vertical: "center" } };
 
+  interface StyledCell {
+    s?: Record<string, unknown>;
+    v?: unknown;
+    z?: string;
+  }
+
   const styleRange = (r1: number, c1: number, r2: number, c2: number, s: Record<string, unknown>) => {
     for (let r = r1; r <= r2; r++) {
       for (let c = c1; c <= c2; c++) {
         const addr = XLSX.utils.encode_cell({ r, c });
         if (!ws[addr]) ws[addr] = { t: "z", v: null };
-        const cell = ws[addr] as unknown as { s?: Record<string, unknown> };
-        cell.s = { ...cell.s, ...s };
+        (ws[addr] as StyledCell).s = { ...(ws[addr] as StyledCell).s, ...s };
       }
     }
   };
@@ -409,11 +414,8 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   // Right-align monetary values in col H
   for (let r = 7; r <= NET_PAY_ROW; r++) {
     const addr = XLSX.utils.encode_cell({ r, c: 7 });
-    if (ws[addr]) {
-      const cell = ws[addr] as unknown as { v?: unknown; s?: Record<string, unknown> };
-      if (typeof cell.v === "number") {
-        cell.s = { ...cell.s, alignment: { horizontal: "right", vertical: "center" } };
-      }
+    if (ws[addr] && typeof (ws[addr] as StyledCell).v === "number") {
+      (ws[addr] as StyledCell).s = { ...(ws[addr] as StyledCell).s, alignment: { horizontal: "right", vertical: "center" } };
     }
   }
 
@@ -433,11 +435,8 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   // Currency format
   for (let r = 0; r < totalRows; r++) {
     const addr = XLSX.utils.encode_cell({ r, c: 7 });
-    if (ws[addr]) {
-      const cell = ws[addr] as unknown as { v?: unknown; z?: string };
-      if (typeof cell.v === "number") {
-        cell.z = "₱#,##0.00";
-      }
+    if (ws[addr] && typeof (ws[addr] as StyledCell).v === "number") {
+      (ws[addr] as StyledCell).z = "₱#,##0.00";
     }
   }
 
@@ -772,7 +771,7 @@ export function PayrollExportDialog({ trigger }: PayrollExportDialogProps) {
   const allDepartments = useDepartmentsStore((s) => s.departments);
   const departments = useMemo(() => allDepartments.filter((d) => d.isActive), [allDepartments]);
   const employees = useEmployeesStore((s) => s.employees);
-  const { payslips } = usePayrollStore();
+  const { payslips, runs } = usePayrollStore();
   const { logs: attendanceLogs, overtimeRequests } = useAttendanceStore();
 const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTemplates, fetchAssignments } = useDeductionsStore();
 
@@ -956,14 +955,18 @@ const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTempla
   const runPayslipOptions = useMemo(() => {
     if (!runEmployeeId) return [];
     return payslips
-      .filter((p) => p.employeeId === runEmployeeId)
+      .filter((p) => {
+        if (p.employeeId !== runEmployeeId) return false;
+        const associatedRun = runs.find((r) => r.id === p.payrollBatchId);
+        return associatedRun?.status === "completed";
+      })
       .sort((a, b) => b.periodStart.localeCompare(a.periodStart))
       .map((p) => ({
         id: p.id,
         label: `${p.periodStart} to ${p.periodEnd} (${String(p.payFrequency || "").replace(/_/g, "-") || "period"})`,
         source: p.source === "imported" || p.computedExternally ? "Imported" : "System",
       }));
-  }, [payslips, runEmployeeId]);
+  }, [payslips, runs, runEmployeeId]);
 
   const runEmployeeOptions = useMemo(() =>
     employees

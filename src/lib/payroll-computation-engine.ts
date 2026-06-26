@@ -365,8 +365,11 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
 
   // Step 1: Derive rates (round salary first to avoid float precision issues like 28499.9)
   const monthlySalary = Math.round(employee.salary * 100) / 100;
-  const ratePerDay = round2(monthlySalary / computeWorkDays);
-  const ratePerHour = round2(ratePerDay / STANDARD_HOURS_PER_DAY);
+  const rawRatePerDay = monthlySalary / computeWorkDays;
+  const rawRatePerHour = rawRatePerDay / STANDARD_HOURS_PER_DAY;
+
+  const ratePerDay = round2(rawRatePerDay);
+  const ratePerHour = round2(rawRatePerHour);
 
   // Step 7 (partial): Semi-monthly basic
   const semiMonthlyBasic = round2(monthlySalary / 2);
@@ -483,7 +486,7 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
 
       if (checkInDecimal !== null && checkOutDecimal !== null) {
         const halfDay = isDeclaredHalfDay(dateStr, holidays);
-        const comp = computeDayHours(checkInDecimal, checkOutDecimal, dayType, ratePerHour, isSaturday, halfDay);
+        const comp = computeDayHours(checkInDecimal, checkOutDecimal, dayType, rawRatePerHour, isSaturday, halfDay);
 
         dayRecord.totalHrs = round2(comp.totalHours);
         // Display OT uses with-lunch formula for readability (matching client DTR column)
@@ -571,7 +574,7 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
     if (payableOtRaw > 0) {
       if (day.dayType === "SAT" || day.dayType === "SUN" || day.dayType === "SPEC_HOL" || day.dayType === "REG_HOL") {
         // Saturday/Sunday/Holiday: separate pool at 1.30x (no truncation — always 8 flat)
-        day.otPay = round2(payableOtRaw * ratePerHour * 1.30);
+        day.otPay = round2(payableOtRaw * rawRatePerHour * 1.30);
         sumSatOtPay += day.otPay;
       } else {
         // Regular weekday OT: apply minute truncation rule
@@ -580,7 +583,7 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
         const otMinutes = Math.round((payableOtRaw - otFloorHrs) * 60);
         const payableMinutes = otMinutes >= 30 ? otMinutes : 0;
         const payableOtHrs = otFloorHrs + payableMinutes / 60;
-        day.otPay = round2(payableOtHrs * ratePerHour * 1.25);
+        day.otPay = round2(payableOtHrs * rawRatePerHour * 1.25);
         sumRegOtPay += day.otPay;
       }
     }
@@ -603,7 +606,7 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
   // Step 7: Basic pay is FIXED at semi-monthly (salary / 2)
   // Absent deduction is a separate line item that reduces net pay.
   // Undertime: tracked for display but NOT deducted (client does not deduct undertime).
-  const absentDeduction = round2(absentDays * ratePerDay);
+  const absentDeduction = round2(absentDays * rawRatePerDay);
   const undertimeDeduction = 0; // Client formula: no undertime deduction
   const totalBasic = semiMonthlyBasic; // FIXED — never prorated
 

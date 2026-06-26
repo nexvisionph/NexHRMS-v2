@@ -230,7 +230,7 @@ function QuickStatCards() {
     );
 
     const openDisciplinaryCases = myDisciplinaryCases.filter((c) => c.status !== "closed").length;
-    const disciplinaryNeedsAction = myDisciplinaryCases.filter((c) => ["nte_issued", "nte_acknowledged", "nod_issued"].includes(c.status)).length;
+    const disciplinaryNeedsAction = myDisciplinaryCases.filter((c) => ["nte_issued", "nte_acknowledged", "nod_issued", "nod_acknowledged"].includes(c.status)).length;
 
     const stats = [
         {

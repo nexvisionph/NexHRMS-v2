@@ -143,7 +143,30 @@
             toast.success("Payroll data reset");
         };
 
-        const suggestedWizardStep = usePayrollProgress();
+        const [selectedRunId, setSelectedRunIdState] = useState<string | null>(null);
+
+        // Load initially from localStorage on mount
+        useEffect(() => {
+            if (typeof window !== "undefined") {
+                const stored = window.localStorage.getItem("nexhrms-selected-run-id");
+                if (stored) {
+                    setSelectedRunIdState(stored);
+                }
+            }
+        }, []);
+
+        const setSelectedRunId = useCallback((val: string | null) => {
+            setSelectedRunIdState(val);
+            if (typeof window !== "undefined") {
+                if (val) {
+                    window.localStorage.setItem("nexhrms-selected-run-id", val);
+                } else {
+                    window.localStorage.removeItem("nexhrms-selected-run-id");
+                }
+            }
+        }, []);
+
+        const suggestedWizardStep = usePayrollProgress(selectedRunId);
         const [wizardStep, setWizardStep] = useState<WizardStep>(suggestedWizardStep);
         // Auto-follow suggested step unless user manually navigated
         useEffect(() => { setWizardStep(suggestedWizardStep); }, [suggestedWizardStep]);
@@ -361,9 +384,25 @@
             });
         }, [activeEmployees, empSearchTerm, getSettledSalary, selectedEmployeeIdSet]);
 
-        const activeRun = useMemo(() => runs
-            .filter((r) => r.status !== "completed")
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0], [runs]);
+        const activeRun = useMemo(() => {
+            if (selectedRunId) {
+                const found = runs.find((r) => r.id === selectedRunId);
+                if (found) return found;
+            }
+            const activeRuns = runs.filter((r) => r.status !== "completed");
+            if (activeRuns.length === 0) return undefined;
+            const getStatusPriority = (status: string) => {
+                if (status === "locked" || status === "published" || status === "ended") return 2;
+                if (status === "validated" || status === "draft") return 1;
+                return 0;
+            };
+            return [...activeRuns].sort((a, b) => {
+                const prioA = getStatusPriority(a.status);
+                const prioB = getStatusPriority(b.status);
+                if (prioA !== prioB) return prioB - prioA;
+                return b.createdAt.localeCompare(a.createdAt);
+            })[0];
+        }, [runs, selectedRunId]);
         const hasActiveRun = Boolean(activeRun);
         const activeRunPayslipIds = useMemo(() => new Set(activeRun?.payslipIds ?? []), [activeRun]);
         const activeRunPayslips = useMemo(
@@ -1219,7 +1258,7 @@
                     }).catch((err) => console.error("[payroll] DB persist after issue failed:", err));
                 }
 
-                setOpen(false); setSelectedEmployeeIds([]); setFormAllowances("0"); setFormOtherDeductions("0"); setFormOTHours("0"); setFormNightDiffHours("0"); setFormNotes(""); setFormIssuedAt(format(new Date(), "yyyy-MM-dd")); setFormPeriodEnd(computeSmartPeriodEnd(naturalBounds)); setEmpSearchTerm(""); setGrossOverrides({}); setExpandedOverrideEmpId(null);
+                setOpen(false); setSelectedEmployeeIds([]); setFormAllowances("0"); setFormOtherDeductions("0"); setFormOTHours("0"); setFormNightDiffHours("0"); setFormNotes(""); setFormIssuedAt(format(new Date(), "yyyy-MM-dd")); setFormPeriodEnd(computeSmartPeriodEnd(naturalBounds)); setEmpSearchTerm(""); setGrossOverrides({}); setExpandedOverrideEmpId(null); setSelectedRunId(`RUN-${cutoffDates.start}/${cutoffDates.end}`);
             } catch (err) {
                 toast.error(`Payslip issuance failed: ${err instanceof Error ? err.message : "Unknown error"}`);
             }
@@ -1973,6 +2012,46 @@
                         <div className="flex gap-6">
                             {/* ── Left: Step Content ── */}
                             <div className="flex-1 min-w-0 space-y-4">
+                                {runs.length > 0 && (
+                                    <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-muted/40 rounded-xl border border-border/50">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Cycle:</span>
+                                            <span className="text-sm font-bold text-foreground">
+                                                {(() => {
+                                                    const [pStart, pEnd] = (activeRun?.periodLabel ?? "").split("/");
+                                                    return pStart && pEnd ? `${pStart} – ${pEnd}` : activeRun?.periodLabel ?? "None";
+                                                })()}
+                                            </span>
+                                            {activeRun && (
+                                                <Badge variant="secondary" className="text-[10px] py-0 bg-primary/10 text-primary border border-primary/20">
+                                                    {activeRun.status}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-muted-foreground">Switch Cycle:</span>
+                                            <Select
+                                                value={activeRun?.id || ""}
+                                                onValueChange={(val) => setSelectedRunId(val)}
+                                            >
+                                                <SelectTrigger className="h-8 text-xs w-[240px] bg-background">
+                                                    <SelectValue placeholder="Select payroll cycle" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {runs.map((r) => {
+                                                        const [pStart, pEnd] = r.periodLabel.split("/");
+                                                        const display = pStart && pEnd ? `${pStart} – ${pEnd}` : r.periodLabel;
+                                                        return (
+                                                            <SelectItem key={r.id} value={r.id} className="text-xs">
+                                                                {display} ({r.status})
+                                                            </SelectItem>
+                                                        );
+                                                    })}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* ═══ STEP: Run Payroll — Payslips ═══ */}
                                 {(wizardStep === "issue" || wizardStep === "lock") && (
@@ -2674,6 +2753,9 @@
                                                                     {canIssue && (
                                                                         <TableCell>
                                                                             <div className="flex items-center gap-1">
+                                                                                {runObj && (
+                                                                                    <Button variant="ghost" size="icon" className={`h-7 w-7 ${activeRun?.id === runObj.id ? "text-emerald-500 font-bold" : "text-muted-foreground"}`} title="View/Select this cycle" onClick={() => setSelectedRunId(runObj.id)}><Eye className="h-3.5 w-3.5" /></Button>
+                                                                                )}
                                                                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="Export bank file" onClick={() => exportBankFile(run.date, employees.map((e) => ({ id: e.id, name: e.name, salary: e.salary })))}><Download className="h-3.5 w-3.5" /></Button>
                                                                                 {runObj && !locked && (
                                                                                     <AlertDialog>
@@ -2894,7 +2976,7 @@
                                 <div className="sticky top-4 space-y-3">
                                     <Card className="border border-border/50">
                                         <CardContent className="py-3.5 px-3">
-                                            <PayrollPaymentWizard activeStep={wizardStep} onStepClick={setWizardStep} />
+                                            <PayrollPaymentWizard activeStep={wizardStep} onStepClick={setWizardStep} selectedRunId={activeRun?.id} />
                                         </CardContent>
                                     </Card>
                                     {/* Held Payslips — Compact Trigger Card + Modal */}

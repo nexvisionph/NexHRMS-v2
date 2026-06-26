@@ -31,6 +31,7 @@ function mergeById<T extends { id: string; updatedAt?: string }>(
 }
 
 const STATUS_LABELS: Record<DisciplinaryCaseStatus, string> = {
+    draft: "Draft",
     open: "Open",
     nte_issued: "NTE Issued",
     nte_acknowledged: "NTE Acknowledged",
@@ -44,6 +45,7 @@ const STATUS_LABELS: Record<DisciplinaryCaseStatus, string> = {
 };
 
 const STATUS_TONE: Record<DisciplinaryCaseStatus, string> = {
+    draft: "bg-slate-100 text-slate-500 border border-dashed",
     open: "bg-slate-100 text-slate-700",
     nte_issued: "bg-blue-100 text-blue-700",
     nte_acknowledged: "bg-cyan-100 text-cyan-700",
@@ -59,8 +61,12 @@ const STATUS_TONE: Record<DisciplinaryCaseStatus, string> = {
 function getNextAction(status: DisciplinaryCaseStatus) {
     if (status === "nte_issued") return "Acknowledge NTE";
     if (status === "nte_acknowledged") return "Submit explanation";
+    if (status === "no_response") return "View details";
+    if (status === "explanation_submitted") return "Awaiting HR review";
+    if (status === "under_review") return "Under HR review";
     if (status === "nod_issued") return "Acknowledge NOD";
-    if (status === "sanction_active") return "Review decision";
+    if (status === "nod_acknowledged") return "Awaiting decision";
+    if (status === "sanction_active") return "Sanction active";
     if (status === "closed") return "View record";
     return "View details";
 }
@@ -71,9 +77,11 @@ export default function DisciplinaryEmployeeView() {
     const cases = useDisciplinaryStore((s) => s.cases);
     const ntes = useDisciplinaryStore((s) => s.ntes);
     const nods = useDisciplinaryStore((s) => s.nods);
+    const notes = useDisciplinaryStore((s) => s.notes);
     const setCases = useDisciplinaryStore((s) => s.setCases);
     const setNTEs = useDisciplinaryStore((s) => s.setNTEs);
     const setNODs = useDisciplinaryStore((s) => s.setNODs);
+    const setNotes = useDisciplinaryStore((s) => s.setNotes);
     const rh = useRoleHref();
     const [refreshing, setRefreshing] = useState(false);
 
@@ -95,7 +103,7 @@ export default function DisciplinaryEmployeeView() {
     }, [cases, empRecord]);
 
     const openCases = myCases.filter((c) => c.status !== "closed").length;
-    const awaitingMe = myCases.filter((c) => ["nte_issued", "nte_acknowledged", "nod_issued"].includes(c.status)).length;
+    const awaitingMe = myCases.filter((c) => ["nte_issued", "nte_acknowledged", "nod_issued", "nod_acknowledged"].includes(c.status)).length;
     const closedCases = myCases.length - openCases;
 
     // Re-fetch disciplinary cases (and related NTE/NOD) on mount and on
@@ -111,14 +119,15 @@ export default function DisciplinaryEmployeeView() {
         if (refreshing) return;
         setRefreshing(true);
         try {
-            const [fetchedCases, fetchedNTEs, fetchedNODs] = await Promise.all([
+            const [fetchedCases, fetchedNTEs, fetchedNODs, fetchedNotes] = await Promise.all([
                 disciplinaryDb.fetchCases(),
                 disciplinaryDb.fetchNTEs(),
                 disciplinaryDb.fetchNODs(),
+                disciplinaryDb.fetchNotes(),
             ]);
             // Merge with existing store entries so we never drop a row that
             // arrived through realtime between renders.
-            if (fetchedCases.length > 0 || fetchedNTEs.length > 0 || fetchedNODs.length > 0) {
+            if (fetchedCases.length > 0 || fetchedNTEs.length > 0 || fetchedNODs.length > 0 || fetchedNotes.length > 0) {
                 setCases(
                     fetchedCases.length > 0
                         ? mergeById(cases, fetchedCases)
@@ -134,6 +143,11 @@ export default function DisciplinaryEmployeeView() {
                         ? mergeById(nods, fetchedNODs)
                         : nods,
                     );
+                setNotes(
+                    fetchedNotes.length > 0
+                        ? mergeById(notes, fetchedNotes)
+                        : notes,
+                );
             }
         } catch (err) {
             console.warn("[disciplinary] Failed to refresh cases:", err);

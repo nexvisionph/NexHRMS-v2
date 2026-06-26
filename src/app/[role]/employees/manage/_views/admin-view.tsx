@@ -209,10 +209,21 @@ export default function AdminEmployeesView() {
     });
 }, [jobTitles, jtSearch, jtDeptFilter, jtStatusFilter, jtTypeFilter]);
 
+    const [prevJtFilters, setPrevJtFilters] = useState({ jtSearch, jtDeptFilter, jtStatusFilter, jtTypeFilter, jtPageSize });
+    if (
+        prevJtFilters.jtSearch !== jtSearch ||
+        prevJtFilters.jtDeptFilter !== jtDeptFilter ||
+        prevJtFilters.jtStatusFilter !== jtStatusFilter ||
+        prevJtFilters.jtTypeFilter !== jtTypeFilter ||
+        prevJtFilters.jtPageSize !== jtPageSize
+    ) {
+        setPrevJtFilters({ jtSearch, jtDeptFilter, jtStatusFilter, jtTypeFilter, jtPageSize });
+        setJtPage(1);
+    }
+
     const jtTotalPages = Math.max(1, Math.ceil(filteredJobTitles.length / jtPageSize));
     const jtSafePage = Math.min(jtPage, jtTotalPages);
     const paginatedJobTitles = filteredJobTitles.slice((jtSafePage - 1) * jtPageSize, jtSafePage * jtPageSize);
-    useEffect(() => { setJtPage(1); }, [jtSearch, jtDeptFilter, jtStatusFilter, jtTypeFilter, jtPageSize]);
 
     const handleAddJobTitle = () => {
         if (!jtNewName.trim()) { toast.error("Job title name is required."); return; }
@@ -303,10 +314,19 @@ export default function AdminEmployeesView() {
         });
     }, [departments, deptSearch, deptStatusFilter]);
 
+    const [prevDeptFilters, setPrevDeptFilters] = useState({ deptSearch, deptStatusFilter, deptPageSize });
+    if (
+        prevDeptFilters.deptSearch !== deptSearch ||
+        prevDeptFilters.deptStatusFilter !== deptStatusFilter ||
+        prevDeptFilters.deptPageSize !== deptPageSize
+    ) {
+        setPrevDeptFilters({ deptSearch, deptStatusFilter, deptPageSize });
+        setDeptPage(1);
+    }
+
     const deptTotalPages = Math.max(1, Math.ceil(filteredDepartments.length / deptPageSize));
     const deptSafePage = Math.min(deptPage, deptTotalPages);
     const paginatedDepartments = filteredDepartments.slice((deptSafePage - 1) * deptPageSize, deptSafePage * deptPageSize);
-    useEffect(() => { setDeptPage(1); }, [deptSearch, deptStatusFilter, deptPageSize]);
 
     const handleAddDepartment = () => {
         if (!deptNewName.trim()) { toast.error("Department name is required."); return; }

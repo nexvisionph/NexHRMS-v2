@@ -286,7 +286,7 @@ describe("POST /api/import/employees — dryRun validation", () => {
   it("returns 401 when not authenticated", async () => {
     mockAuthAsAnon();
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "Juan", Email: "juan@test.com" }],
+      rows: [{ Name: "Juan", Email: "juan@nexsdsi.com" }],
       dryRun: true,
     });
     const res = await importPOST(req);
@@ -296,7 +296,7 @@ describe("POST /api/import/employees — dryRun validation", () => {
   it("returns 403 for non-admin/hr role", async () => {
     makeMockForImportGET("employee"); // uses same auth-only mock
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "Juan", Email: "juan@test.com" }],
+      rows: [{ Name: "Juan", Email: "juan@nexsdsi.com" }],
       dryRun: true,
     });
     const res = await importPOST(req);
@@ -317,7 +317,7 @@ describe("POST /api/import/employees — dryRun validation", () => {
     makeMockForImportPOST();
     const rows = Array.from({ length: 501 }, (_, i) => ({
       Name: `Employee ${i}`,
-      Email: `emp${i}@test.com`,
+      Email: `emp${i}@nexsdsi.com`,
     }));
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
       rows,
@@ -332,7 +332,7 @@ describe("POST /api/import/employees — dryRun validation", () => {
   it("marks row as error when Name is missing", async () => {
     makeMockForImportPOST();
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "", Email: "noemail@test.com" }],
+      rows: [{ Name: "", Email: "noemail@nexsdsi.com" }],
       dryRun: true,
     });
     const res = await importPOST(req);
@@ -359,7 +359,7 @@ describe("POST /api/import/employees — dryRun validation", () => {
   it("marks row as error when Birthday format is wrong", async () => {
     makeMockForImportPOST();
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "Juan", Email: "juan@test.com", Birthday: "05/20/1990" }],
+      rows: [{ Name: "Juan", Email: "juan@nexsdsi.com", Birthday: "05/20/1990" }],
       dryRun: true,
     });
     const res = await importPOST(req);
@@ -372,7 +372,7 @@ describe("POST /api/import/employees — dryRun validation", () => {
   it("accepts Birthday in correct YYYY-MM-DD format", async () => {
     makeMockForImportPOST();
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "Maria", Email: "maria@test.com", Birthday: "1993-11-15" }],
+      rows: [{ Name: "Maria", Email: "maria@nexsdsi.com", Birthday: "1993-11-15" }],
       dryRun: true,
     });
     const res = await importPOST(req);
@@ -385,8 +385,8 @@ describe("POST /api/import/employees — dryRun validation", () => {
     makeMockForImportPOST();
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
       rows: [
-        { Name: "Juan A", Email: "same@test.com" },
-        { Name: "Juan B", Email: "same@test.com" }, // duplicate
+        { Name: "Juan A", Email: "same@nexsdsi.com" },
+        { Name: "Juan B", Email: "same@nexsdsi.com" }, // duplicate
       ],
       dryRun: true,
     });
@@ -397,9 +397,9 @@ describe("POST /api/import/employees — dryRun validation", () => {
   });
 
   it("detects duplicate email against existing DB records", async () => {
-    makeMockForImportPOST({ existingEmails: ["existing@test.com"] });
+    makeMockForImportPOST({ existingEmails: ["existing@nexsdsi.com"] });
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "Existing Person", Email: "existing@test.com" }],
+      rows: [{ Name: "Existing Person", Email: "existing@nexsdsi.com" }],
       dryRun: true,
     });
     const res = await importPOST(req);
@@ -410,7 +410,7 @@ describe("POST /api/import/employees — dryRun validation", () => {
   it("returns dryRun:true and imported:0 in dry run mode", async () => {
     makeMockForImportPOST();
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "New Person", Email: "new@test.com" }],
+      rows: [{ Name: "New Person", Email: "new@nexsdsi.com" }],
       dryRun: true,
     });
     const res = await importPOST(req);
@@ -424,7 +424,7 @@ describe("POST /api/import/employees — dryRun validation", () => {
   it("response includes rowValidations array with correct shape", async () => {
     makeMockForImportPOST();
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "Good Row", Email: "good@test.com" }],
+      rows: [{ Name: "Good Row", Email: "good@nexsdsi.com" }],
       dryRun: true,
     });
     const res = await importPOST(req);
@@ -445,7 +445,7 @@ describe("POST /api/import/employees — live insert", () => {
   it("returns dryRun:false and imported > 0 for valid rows", async () => {
     makeMockForImportPOST();
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "New Hire", Email: "newhire@test.com" }],
+      rows: [{ Name: "New Hire", Email: "newhire@nexsdsi.com" }],
       dryRun: false,
     });
     const res = await importPOST(req);
@@ -458,7 +458,7 @@ describe("POST /api/import/employees — live insert", () => {
   it("does NOT import rows with missing Name", async () => {
     makeMockForImportPOST();
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "", Email: "missing-name@test.com" }],
+      rows: [{ Name: "", Email: "missing-name@nexsdsi.com" }],
       dryRun: false,
     });
     const res = await importPOST(req);
@@ -468,9 +468,9 @@ describe("POST /api/import/employees — live insert", () => {
   });
 
   it("does NOT import duplicate emails (skips, counts as duplicate)", async () => {
-    makeMockForImportPOST({ existingEmails: ["dup@test.com"] });
+    makeMockForImportPOST({ existingEmails: ["dup@nexsdsi.com"] });
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "Dup Person", Email: "dup@test.com" }],
+      rows: [{ Name: "Dup Person", Email: "dup@nexsdsi.com" }],
       dryRun: false,
     });
     const res = await importPOST(req);
@@ -503,7 +503,7 @@ describe("POST /api/import/employees — live insert", () => {
     });
 
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "Auto Default", Email: "defaults@test.com" }],
+      rows: [{ Name: "Auto Default", Email: "defaults@nexsdsi.com" }],
       dryRun: false,
     });
     await importPOST(req);
@@ -518,7 +518,7 @@ describe("POST /api/import/employees — live insert", () => {
   it("counts DB insert error as row error (not a 500 crash)", async () => {
     makeMockForImportPOST({ insertError: "unique constraint" });
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
-      rows: [{ Name: "DB Fail", Email: "dbfail@test.com" }],
+      rows: [{ Name: "DB Fail", Email: "dbfail@nexsdsi.com" }],
       dryRun: false,
     });
     const res = await importPOST(req);
@@ -551,7 +551,7 @@ describe("GET /api/export/employees", () => {
   it("returns XLSX file for admin", async () => {
     makeMockForExportGET({
       employees: [
-        { id: "EMP01", name: "Juan Cruz", email: "juan@test.com", role: "employee", status: "active" },
+        { id: "EMP01", name: "Juan Cruz", email: "juan@nexsdsi.com", role: "employee", status: "active" },
       ],
     });
     const req = makeRequest("GET", "http://localhost/api/export/employees");
@@ -591,8 +591,8 @@ describe("GET /api/export/employees", () => {
 describe("Employee import — end-to-end flow simulation", () => {
   /** Simulate the exact data that parseImportFile would return from the template */
   const TEMPLATE_ROWS = [
-    { Name: "Juan Dela Cruz", Email: "juan@example.com", Phone: "+63 917 123 4567", Birthday: "1990-05-20", Address: "Manila, Philippines" },
-    { Name: "Maria Santos", Email: "maria@example.com", Phone: "+63 918 234 5678", Birthday: "1993-11-15", Address: "Quezon City, Philippines" },
+    { Name: "Juan Dela Cruz", Email: "juan@nexsdsi.com", Phone: "+63 917 123 4567", Birthday: "1990-05-20", Address: "Manila, Philippines" },
+    { Name: "Maria Santos", Email: "maria@nexsdsi.com", Phone: "+63 918 234 5678", Birthday: "1993-11-15", Address: "Quezon City, Philippines" },
   ];
 
   it("dry run of template rows produces 2 valid, 0 errors, 0 duplicates", async () => {
@@ -627,7 +627,7 @@ describe("Employee import — end-to-end flow simulation", () => {
 
   it("second import of same rows produces 2 duplicates (idempotent)", async () => {
     makeMockForImportPOST({
-      existingEmails: ["juan@example.com", "maria@example.com"],
+      existingEmails: ["juan@nexsdsi.com", "maria@nexsdsi.com"],
     });
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
       rows: TEMPLATE_ROWS,
@@ -641,12 +641,12 @@ describe("Employee import — end-to-end flow simulation", () => {
   });
 
   it("mixed batch: 1 valid, 1 error, 1 duplicate", async () => {
-    makeMockForImportPOST({ existingEmails: ["dup@test.com"] });
+    makeMockForImportPOST({ existingEmails: ["dup@nexsdsi.com"] });
     const req = makeRequest("POST", "http://localhost/api/import/employees", {
       rows: [
-        { Name: "Valid Person", Email: "valid@test.com" },    // valid
-        { Name: "", Email: "error@test.com" },                // error: no name
-        { Name: "Dup Person", Email: "dup@test.com" },        // duplicate
+        { Name: "Valid Person", Email: "valid@nexsdsi.com" },    // valid
+        { Name: "", Email: "error@nexsdsi.com" },                // error: no name
+        { Name: "Dup Person", Email: "dup@nexsdsi.com" },        // duplicate
       ],
       dryRun: true,
     });

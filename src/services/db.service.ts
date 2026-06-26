@@ -28,7 +28,7 @@ import type {
   LocationPing, SiteSurveyPhoto, BreakRecord,
   DeductionOverride, DeductionGlobalDefault, PayrollSignatureConfig,
   Employee201Document,
-  DisciplinaryCase, NTERecord, NODRecord,
+  DisciplinaryCase, NTERecord, NODRecord, DisciplinaryNote,
   PerformanceCycle, PerformanceCriterion, PerformanceSalaryBand,
   PerformanceReview, PerformanceSalaryAdjustment, PerformanceAuditLog,
   EmployeeTaxProfile, AnnualTaxSummary, PreviousEmployerRecord,
@@ -1521,6 +1521,7 @@ export const disciplinaryDb = {
   fetchCases: () => fetchAll<DisciplinaryCase>("disciplinary_cases"),
   fetchNTEs: () => fetchAll<NTERecord>("nte_records"),
   fetchNODs: () => fetchAll<NODRecord>("nod_records"),
+  fetchNotes: () => fetchAll<DisciplinaryNote>("disciplinary_notes"),
 
   async upsertCase(c: DisciplinaryCase): Promise<boolean> {
     return upsertRow("disciplinary_cases", c as unknown as Record<string, unknown>);
@@ -1536,6 +1537,9 @@ export const disciplinaryDb = {
   },
   async updateNOD(id: string, patch: Partial<NODRecord>): Promise<boolean> {
     return updateRow("nod_records", id, patch as unknown as Record<string, unknown>);
+  },
+  async upsertNote(n: DisciplinaryNote): Promise<boolean> {
+    return upsertRow("disciplinary_notes", n as unknown as Record<string, unknown>);
   },
   async removeCase(id: string): Promise<boolean> {
     return deleteRow("disciplinary_cases", id);

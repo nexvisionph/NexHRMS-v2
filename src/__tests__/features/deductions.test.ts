@@ -365,7 +365,7 @@ describe("Deduction Computation", () => {
       const result = computeAllPHDeductions(30000);
       expect(result.sss).toBeGreaterThan(0);
       expect(result.philHealth).toBeGreaterThan(0);
-      expect(result.pagIBIG).toBe(100); // Max PagIBIG employee share (₱100)
+      expect(result.pagIBIG).toBe(200); // Max PagIBIG employee share (₱200)
       expect(result.totalDeductions).toBe(result.sss + result.philHealth + result.pagIBIG + result.withholdingTax);
     });
 

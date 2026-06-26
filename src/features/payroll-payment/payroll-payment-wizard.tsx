@@ -26,16 +26,19 @@ export const WIZARD_STEPS: { key: WizardStep; label: string; icon: typeof Lock; 
 interface PayrollPaymentWizardProps {
     activeStep: WizardStep;
     onStepClick: (step: WizardStep) => void;
+    selectedRunId?: string | null;
 }
 
 /** Compute the furthest completed step based on run/payslip data */
-export function usePayrollProgress() {
+export function usePayrollProgress(selectedRunId?: string | null) {
     const { payslips, runs } = usePayrollStore();
 
     return useMemo(() => {
-        const activeRun = runs
-            .filter((r) => r.status !== "completed")
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+        const activeRun = selectedRunId
+            ? runs.find((r) => r.id === selectedRunId)
+            : runs
+                .filter((r) => r.status !== "completed")
+                .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 
         if (!activeRun) return "issue" as WizardStep;
 
@@ -51,17 +54,19 @@ export function usePayrollProgress() {
         if (!hasPaymentReady) return "sign" as WizardStep;
 
         return "pay" as WizardStep;
-    }, [payslips, runs]);
+    }, [payslips, runs, selectedRunId]);
 }
 
 /** Get summary counts for the active run */
-export function useActiveRunSummary() {
+export function useActiveRunSummary(selectedRunId?: string | null) {
     const { payslips, runs } = usePayrollStore();
 
     return useMemo(() => {
-        const activeRun = runs
-            .filter((r) => r.status !== "completed")
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+        const activeRun = selectedRunId
+            ? runs.find((r) => r.id === selectedRunId)
+            : runs
+                .filter((r) => r.status !== "completed")
+                .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 
         if (!activeRun) return null;
 
@@ -76,12 +81,12 @@ export function useActiveRunSummary() {
             paid: runPs.filter((p) => p.status === "paid").length,
             totalNet: runPs.reduce((sum, p) => sum + p.netPay, 0),
         };
-    }, [payslips, runs]);
+    }, [payslips, runs, selectedRunId]);
 }
 
-export default function PayrollPaymentWizard({ activeStep, onStepClick }: PayrollPaymentWizardProps) {
-    const suggestedStep = usePayrollProgress();
-    const summary = useActiveRunSummary();
+export default function PayrollPaymentWizard({ activeStep, onStepClick, selectedRunId }: PayrollPaymentWizardProps) {
+    const suggestedStep = usePayrollProgress(selectedRunId);
+    const summary = useActiveRunSummary(selectedRunId);
     const suggestedIdx = WIZARD_STEPS.findIndex((s) => s.key === suggestedStep);
     const activeIdx = WIZARD_STEPS.findIndex((s) => s.key === activeStep);
 

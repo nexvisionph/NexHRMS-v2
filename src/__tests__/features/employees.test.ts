@@ -170,7 +170,10 @@ describe("Employees Store", () => {
             });
 
             const all = result.current.getFiltered();
-            expect(all.length).toBe(result.current.employees.length);
+            const nonAdminCount = result.current.employees.filter(
+                (e) => !["admin", "hr", "payroll_admin", "finance"].includes(e.role)
+            ).length;
+            expect(all.length).toBe(nonAdminCount);
         });
     });
 
@@ -179,6 +182,8 @@ describe("Employees Store", () => {
     // ══════════════════════════════════════════════════════════
 
     describe("Salary Governance", () => {
+        const today = new Date().toISOString().split("T")[0];
+
         it("should propose salary change with pending status", () => {
             const { result } = renderHook(() => useEmployeesStore());
 
@@ -189,7 +194,7 @@ describe("Employees Store", () => {
                 result.current.proposeSalaryChange({
                     employeeId: existingEmp.id,
                     proposedSalary: 35000,
-                    effectiveDate: "2026-05-01",
+                    effectiveDate: today,
                     reason: "Annual review",
                     proposedBy: "ADMIN-001",
                 });
@@ -212,7 +217,7 @@ describe("Employees Store", () => {
                 result.current.proposeSalaryChange({
                     employeeId: existingEmp.id,
                     proposedSalary: 40000,
-                    effectiveDate: "2026-05-01",
+                    effectiveDate: today,
                     reason: "Promotion",
                     proposedBy: "ADMIN-001",
                 });
@@ -248,7 +253,7 @@ describe("Employees Store", () => {
                 result.current.proposeSalaryChange({
                     employeeId: existingEmp.id,
                     proposedSalary: 50000,
-                    effectiveDate: "2026-06-01",
+                    effectiveDate: today,
                     reason: "Raise request",
                     proposedBy: "ADMIN-001",
                 });

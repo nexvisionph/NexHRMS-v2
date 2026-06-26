@@ -46,8 +46,8 @@ describe("Attendance Store", () => {
             });
 
             const log = result.current.getTodayLog(employeeId);
-            // 09:00 UTC = check-in time
-            expect(log?.checkIn).toMatch(/^\d{2}:\d{2}$/);
+            // HH:mm:ss format
+            expect(log?.checkIn).toMatch(/^\d{2}:\d{2}:\d{2}$/);
         });
 
         it("should append IN event to ledger", () => {
