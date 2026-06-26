@@ -109,19 +109,19 @@ After today's E2E fix, push to main and confirm all 5 jobs pass green. Capture t
 
 | Phase | Goal | Owner | Tickets | Exit Criteria |
 |---|---|---|---|---|
-| **Phase 0** | Baseline Stabilization | Senior Dev | STAB-001 → STAB-005 | All 5 CI jobs green; migration audit documented; baseline commit recorded |
-| **Phase 1A** | Payroll Rules Settings UI | Intern 1 | PAYRULE-001, PAYRULE-002 | Settings page renders compliance mode toggle, all 5 OT multipliers, night diff config; `usePayrollRulesStore` wired; compliance warning modal works |
-| **Phase 1B** | Attendance Summaries Migration + API | Intern 2 | ATT-001, ATT-002, ATT-006 | `attendance_summaries` table exists; summary generation service creates rows from reviewed attendance logs; `location_lat`/`location_lng` formally migrated |
-| **Phase 1C** | Attendance Review API + UI | Intern 3 | ATT-003, ATT-004 | `/api/attendance/review` returns paginated records; UI table shows employee, source, GPS, selfie, status; Approve/Reject/Edit actions work |
-| **Phase 2A** | Payroll Rules Engine Integration | Senior Dev | PAYRULE-003, PAYRULE-004 | `payroll-computation-engine.ts` accepts `PayrollRules` param; all hardcoded multipliers replaced; falls back to DOLE defaults if rules unavailable; `admin-view.tsx` fetches rules before computation |
-| **Phase 2B** | OT Review → Payroll Integration | Senior Dev | OT-001, OT-003, OT-004 | Payroll engine reads `ot_records` filtered by `status IN ('approved','partially_approved')`; uses `approved_ot_hours` and `approved_amount`; pending/rejected OT excluded |
-| **Phase 2C** | Payroll Pending OT Guard | Senior Dev + Intern 1 | OT-002 | Before `lockRun`, system queries `getPendingCountForPeriod`; if count > 0, warning dialog appears with "Review Pending OT" and "Proceed Without" options; audit log written on proceed |
-| **Phase 3A** | Payslip OT Breakdown | Intern 2 | OT-005 | Payslip shows total OT pay + optional breakdown by type (Regular OT, Rest Day OT, Holiday OT); sourced from approved `ot_records` |
-| **Phase 3B** | Strict Geofence Mode | Intern 3 | ATT-005 | `geofence_mode` setting from `ot_settings`/mobile attendance settings controls strict vs flexible; strict mode returns 403 to mobile if outside geofence |
-| **Phase 3C** | Multi-Source Reconciliation | Senior Dev | ATT-007 | When both biometric and mobile logs exist for same employee + date, reconciliation rule (configurable: prefer biometric / prefer mobile / prefer earliest) creates one authoritative `attendance_summary` row |
-| **Phase 4A** | Compliance Mode Warning + Audit Verification | Intern 1 | PAYRULE-005, PAYRULE-006 | UI shows compliance warning modal exactly as spec; confirm action writes to `payroll_rules_audit_logs`; unit tests cover DOLE Standard vs Custom mode switching |
-| **Phase 4B** | QA Regression | QA Intern | QA-001 → QA-006 | All scenarios in QA test plan pass; no payroll computation regression; CI green on all branches |
-| **Phase 5** | Production Readiness | Senior Dev | REL-001, REL-002 | Branch protection configured; deployment job is real; env vars confirmed; migration order confirmed; rollback plan documented |
+| **Phase 0** | Baseline Stabilization | Senior Dev | STAB-001 → STAB-005 | ✅ Complete |
+| **Phase 1A** | Payroll Rules Settings UI | Intern 1 | PAYRULE-001, PAYRULE-002 | ✅ Complete |
+| **Phase 1B** | Attendance Summaries Migration + API | Intern 2 | ATT-001, ATT-002, ATT-006 | ✅ Complete |
+| **Phase 1C** | Attendance Review API + UI | Intern 3 | ATT-003, ATT-004 | ✅ Complete |
+| **Phase 2A** | Payroll Rules Engine Integration | Senior Dev | PAYRULE-003, PAYRULE-004 | ✅ Complete |
+| **Phase 2B** | OT Review → Payroll Integration | Senior Dev | OT-001, OT-003, OT-004 | ✅ Complete |
+| **Phase 2C** | Payroll Pending OT Guard | Senior Dev + Intern 1 | OT-002 | ✅ Complete |
+| **Phase 3A** | Payslip OT Breakdown | Intern 2 | OT-005 | ✅ Complete |
+| **Phase 3B** | Strict Geofence Mode | Intern 3 | ATT-005 | Settings configurable; strict mode returns 403 to mobile if outside geofence |
+| **Phase 3C** | Multi-Source Reconciliation | Senior Dev | ATT-007 | Reconciliation rules create authoritative `attendance_summary` row |
+| **Phase 4A** | Compliance Mode Warning + Audit Verification | Intern 1 | PAYRULE-005, PAYRULE-006 | UI warning modal works; writes to `payroll_rules_audit_logs`; unit tests pass |
+| **Phase 4B** | QA Regression | QA Intern | QA-001 → QA-006 | All QA scenarios pass; no payroll regression; CI green |
+| **Phase 5** | Production Readiness | Senior Dev | REL-001, REL-002 | Branch protection; real deploy; env vars verified; rollback plan |
 
 
 ---

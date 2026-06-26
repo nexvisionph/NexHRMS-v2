@@ -21,11 +21,11 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 
 | Ticket | Task | Owner | Status | PR | Notes |
 |---|---|---|---|---|---|
-| STAB-001 | Verify CI/CD — all 5 jobs green on latest main | Senior Dev | 🔴 | — | |
-| STAB-002 | Run full baseline locally (lint, typecheck, test, build) | QA Intern | 🔴 | — | Depends on STAB-001 |
-| STAB-003 | Fix any blocking failures from STAB-002 | Senior Dev | 🔴 | — | Depends on STAB-002 |
-| STAB-004 | Audit migration files — document canonical order | Senior Dev | 🔴 | — | See duplicate numbers: 001,002,003,009,010,012,013,014,015,016,017,065,066 |
-| STAB-005 | Write baseline status doc | QA Intern | 🔴 | — | Depends on STAB-002 |
+| STAB-001 | Verify CI/CD — all 5 jobs green on latest main | Senior Dev | 🟢 | — | Completed 2026-06-26 |
+| STAB-002 | Run full baseline locally (lint, typecheck, test, build) | QA Intern | 🟢 | — | Completed 2026-06-26 |
+| STAB-003 | Fix any blocking failures from STAB-002 | Senior Dev | 🟢 | — | Completed 2026-06-26 |
+| STAB-004 | Audit migration files — document canonical order | Senior Dev | 🟢 | — | Completed 2026-06-26 |
+| STAB-005 | Write baseline status doc | QA Intern | 🟢 | — | Completed 2026-06-26 |
 
 ---
 
@@ -33,8 +33,8 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 
 | Ticket | Task | Owner | Status | PR | Notes |
 |---|---|---|---|---|---|
-| PAYRULE-001 | Add Payroll Rules tab to settings page | Intern 1 | 🔴 | — | |
-| PAYRULE-002 | Wire `usePayrollRulesStore` to settings page | Intern 1 | 🔴 | — | Depends on PAYRULE-001 |
+| PAYRULE-001 | Add Payroll Rules tab to settings page | Intern 1 | 🟢 | — | Completed 2026-06-26 |
+| PAYRULE-002 | Wire `usePayrollRulesStore` to settings page | Intern 1 | 🟢 | — | Completed 2026-06-26 |
 
 ---
 
@@ -42,9 +42,9 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 
 | Ticket | Task | Owner | Status | PR | Notes |
 |---|---|---|---|---|---|
-| ATT-001 | Create `068_attendance_summaries.sql` migration | Intern 2 | 🔴 | — | |
-| ATT-002 | Build attendance summary generation service | Intern 2 | 🔴 | — | Depends on ATT-001 |
-| ATT-006 | Create `069_attendance_location_columns.sql` migration | Intern 2 | 🔴 | — | Fixes schema drift in `/api/attendance/mobile` |
+| ATT-001 | Create `068_attendance_summaries.sql` migration | Intern 2 | 🟢 | — | Completed 2026-06-26 |
+| ATT-002 | Build attendance summary generation service | Intern 2 | 🟢 | — | Completed 2026-06-26 |
+| ATT-006 | Create `069_attendance_location_columns.sql` migration | Intern 2 | 🟢 | — | Completed 2026-06-26 |
 
 ---
 
@@ -52,8 +52,8 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 
 | Ticket | Task | Owner | Status | PR | Notes |
 |---|---|---|---|---|---|
-| ATT-003 | Implement `GET /api/attendance/review` route | Intern 3 | 🔴 | — | |
-| ATT-004 | Complete Attendance Review UI | Intern 3 | 🔴 | — | Depends on ATT-003 |
+| ATT-003 | Implement `GET /api/attendance/review` route | Intern 3 | 🟢 | — | Completed 2026-06-26 |
+| ATT-004 | Complete Attendance Review UI | Intern 3 | 🟢 | — | Completed 2026-06-26 |
 
 ---
 
@@ -61,8 +61,8 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 
 | Ticket | Task | Owner | Status | PR | Notes |
 |---|---|---|---|---|---|
-| PAYRULE-003 | Remove hardcoded multipliers from `payroll-computation-engine.ts` | Senior Dev | 🔴 | — | **CRITICAL — blocks OT integration** |
-| PAYRULE-004 | Inject `PayrollRules` into `admin-view.tsx` computation call | Senior Dev | 🔴 | — | Depends on PAYRULE-003 |
+| PAYRULE-003 | Remove hardcoded multipliers from `payroll-computation-engine.ts` | Senior Dev | 🟢 | — | Completed 2026-06-26 |
+| PAYRULE-004 | Inject `PayrollRules` into `admin-view.tsx` computation call | Senior Dev | 🟢 | — | Completed 2026-06-26 |
 
 ---
 
@@ -70,9 +70,9 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 
 | Ticket | Task | Owner | Status | PR | Notes |
 |---|---|---|---|---|---|
-| OT-001 | Connect payroll engine to `ot_records` approved data | Senior Dev | 🔴 | — | **CRITICAL — highest business priority** |
-| OT-003 | Fetch and filter OT records in `admin-view.tsx` before compute | Senior Dev | 🔴 | — | Depends on OT-001 |
-| OT-004 | Write `ot_audit_logs` on payroll inclusion with `payroll_run_id` | Senior Dev | 🔴 | — | Depends on OT-001 |
+| OT-001 | Connect payroll engine to `ot_records` approved data | Senior Dev | 🟢 | — | Completed 2026-06-26 |
+| OT-003 | Fetch and filter OT records in `admin-view.tsx` before compute | Senior Dev | 🟢 | — | Completed 2026-06-26 |
+| OT-004 | Write `ot_audit_logs` on payroll inclusion with `payroll_run_id` | Senior Dev | 🟢 | — | Completed 2026-06-26 |
 
 ---
 
@@ -80,7 +80,7 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 
 | Ticket | Task | Owner | Status | PR | Notes |
 |---|---|---|---|---|---|
-| OT-002 | Add pending OT warning dialog before payroll lock | Senior Dev + Intern 1 | 🔴 | — | Depends on OT-003 |
+| OT-002 | Add pending OT warning dialog before payroll lock | Senior Dev + Intern 1 | 🟢 | — | Completed 2026-06-26 |
 
 ---
 
@@ -88,7 +88,7 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 
 | Ticket | Task | Owner | Status | PR | Notes |
 |---|---|---|---|---|---|
-| OT-005 | Add OT type breakdown to payslip | Intern 2 | 🔴 | — | Depends on Phase 2B |
+| OT-005 | Add OT type breakdown to payslip | Intern 2 | 🟢 | — | Completed 2026-06-26 |
 | ATT-005 | Implement strict geofence mode | Intern 3 | 🔴 | — | |
 | ATT-007 | Multi-source attendance reconciliation | Senior Dev | 🔴 | — | Depends on ATT-002 |
 
@@ -124,7 +124,7 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 |---|---|---|
 | Lint | ✅ Passing | 2026-06-26 |
 | Typecheck | ✅ Passing | 2026-06-26 |
-| Tests (Jest) | ✅ 621/622 | 2026-06-26 |
+| Tests (Jest) | ✅ 640/640 (100% pass) | 2026-06-26 |
 | Build | ✅ Passing | 2026-06-26 |
 | E2E (Playwright) | ✅ 2/2 | 2026-06-26 (after hydration fix) |
 

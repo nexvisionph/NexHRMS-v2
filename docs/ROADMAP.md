@@ -35,14 +35,14 @@ Raw Attendance Sources
 
 | Phase | Name | Status | Owner | Tickets |
 |---|---|---|---|---|
-| **Phase 0** | Baseline Stabilization | 🔴 Not Started | Senior Dev | STAB-001 → 005 |
-| **Phase 1A** | Payroll Rules Settings UI | 🔴 Not Started | Intern 1 | PAYRULE-001, 002 |
-| **Phase 1B** | Attendance Summaries + Location Migration | 🔴 Not Started | Intern 2 | ATT-001, 002, 006 |
-| **Phase 1C** | Attendance Review API + UI | 🔴 Not Started | Intern 3 | ATT-003, 004 |
-| **Phase 2A** | Payroll Rules Engine Integration | 🔴 Not Started | Senior Dev | PAYRULE-003, 004 |
-| **Phase 2B** | OT Review → Payroll Integration | 🔴 Not Started | Senior Dev | OT-001, 003, 004 |
-| **Phase 2C** | Payroll Pending OT Guard | 🔴 Not Started | Senior Dev + Intern 1 | OT-002 |
-| **Phase 3A** | Payslip OT Breakdown | 🔴 Not Started | Intern 2 | OT-005 |
+| **Phase 0** | Baseline Stabilization | 🟢 Done | Senior Dev | STAB-001 → 005 |
+| **Phase 1A** | Payroll Rules Settings UI | 🟢 Done | Intern 1 | PAYRULE-001, 002 |
+| **Phase 1B** | Attendance Summaries + Location Migration | 🟢 Done | Intern 2 | ATT-001, 002, 006 |
+| **Phase 1C** | Attendance Review API + UI | 🟢 Done | Intern 3 | ATT-003, 004 |
+| **Phase 2A** | Payroll Rules Engine Integration | 🟢 Done | Senior Dev | PAYRULE-003, 004 |
+| **Phase 2B** | OT Review → Payroll Integration | 🟢 Done | Senior Dev | OT-001, 003, 004 |
+| **Phase 2C** | Payroll Pending OT Guard | 🟢 Done | Senior Dev + Intern 1 | OT-002 |
+| **Phase 3A** | Payslip OT Breakdown | 🟢 Done | Intern 2 | OT-005 |
 | **Phase 3B** | Strict Geofence Mode | 🔴 Not Started | Intern 3 | ATT-005 |
 | **Phase 3C** | Multi-Source Attendance Reconciliation | 🔴 Not Started | Senior Dev | ATT-007 |
 | **Phase 4A** | Compliance Mode Warning + Audit Verification | 🔴 Not Started | Intern 1 | PAYRULE-005, 006 |
