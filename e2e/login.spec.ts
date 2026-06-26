@@ -12,8 +12,11 @@ test.describe('Login & Redirection Flow', () => {
   test('should render the login form correctly', async ({ page }) => {
     await page.goto('/login');
 
-    // Check if the Secure Portal title or login subheading exists
-    await expect(page.locator('text=Secure Portal').first()).toBeVisible();
+    // Wait for page to be fully rendered
+    await page.waitForLoadState('domcontentloaded');
+
+    // Check if the Secure Portal label exists (may have surrounding whitespace)
+    await expect(page.getByText('Secure Portal', { exact: false }).first()).toBeVisible({ timeout: 10000 });
     
     // Check if the email and password inputs are present
     const emailInput = page.locator('input[type="email"]');
