@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useCallback } from "react";
 import type { LoanStatus } from "@/types";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -70,43 +70,37 @@ export function CompanyLoansTab() {
     const [rejectLoanId, setRejectLoanId] = useState<string | null>(null);
     const [rejectionReason, setRejectionReason] = useState("");
 
-    const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
-    // eslint-disable-next-line react-compiler/react-compiler
+    const getEmpName = useCallback((id: string) => employees.find((e) => e.id === id)?.name || id, [employees]);
 
     // Filter for only Company Loans (type = salary_loan)
-    const companyLoans = useMemo(() => loans.filter((l) => l.type === "salary_loan"), [loans]);
+    const companyLoans = loans.filter((l) => l.type === "salary_loan");
 
-    const filtered = useMemo(() => {
+    const filtered = companyLoans.filter((l) => {
         const q = search.trim().toLowerCase();
-        return companyLoans.filter((l) => {
-            const matchesStatus = statusFilter === "all" || l.status === statusFilter;
-            const matchesSearch = !q || getEmpName(l.employeeId).toLowerCase().includes(q);
-            return matchesStatus && matchesSearch;
-        });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [companyLoans, statusFilter, search, employees]);
+        const matchesStatus = statusFilter === "all" || l.status === statusFilter;
+        const matchesSearch = !q || getEmpName(l.employeeId).toLowerCase().includes(q);
+        return matchesStatus && matchesSearch;
+    });
 
-    const stats = useMemo(() => {
+    const stats = (() => {
         const active = companyLoans.filter((l) => l.status === "active");
         return {
             totalActive: active.length,
             totalOutstanding: active.reduce((sum, l) => sum + l.remainingBalance, 0),
             totalSettled: companyLoans.filter((l) => l.status === "settled").length,
         };
-    }, [companyLoans]);
+    })();
 
-    const activeLoans = useMemo(() => companyLoans.filter((l) => l.status === "active"), [companyLoans]);
-    const paginatedActiveLoans = useMemo(() => paginate(activeLoans, schedulePage, schedulePageSize), [activeLoans, schedulePage, schedulePageSize]);
-    const paginatedAccounts = useMemo(() => paginate(filtered, accountsPage, accountsPageSize), [filtered, accountsPage, accountsPageSize]);
+    const activeLoans = companyLoans.filter((l) => l.status === "active");
+    const paginatedActiveLoans = paginate(activeLoans, schedulePage, schedulePageSize);
+    const paginatedAccounts = paginate(filtered, accountsPage, accountsPageSize);
 
     const allDeductions = getAllDeductions().filter((d) => companyLoans.some((l) => l.id === d.loanId));
-    // eslint-disable-next-line react-compiler/react-compiler
-    const filteredDeductions = useMemo(() => {
+    const filteredDeductions = allDeductions.filter((d) => {
         const q = search.trim().toLowerCase();
-        return allDeductions.filter((d) => !q || getEmpName(d.employeeId).toLowerCase().includes(q));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [allDeductions, search, employees]);
-    const paginatedDeductions = useMemo(() => paginate(filteredDeductions, historyPage, historyPageSize), [filteredDeductions, historyPage, historyPageSize]);
+        return !q || getEmpName(d.employeeId).toLowerCase().includes(q);
+    });
+    const paginatedDeductions = paginate(filteredDeductions, historyPage, historyPageSize);
 
     const openEditLoan = (loan: typeof loans[0]) => {
         setEditLoanId(loan.id);

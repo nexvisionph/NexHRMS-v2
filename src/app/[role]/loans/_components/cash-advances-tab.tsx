@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useCallback } from "react";
 import type { LoanStatus } from "@/types";
 import { useParams } from "next/navigation";
 import { useLoansStore } from "@/store/loans.store";
@@ -59,23 +59,19 @@ export function CashAdvancesTab() {
     const [editReleaseDate, setEditReleaseDate] = useState("");
     const [cancelId, setCancelId] = useState<string | null>(null);
 
-    const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
-    // eslint-disable-next-line react-compiler/react-compiler
+    const getEmpName = useCallback((id: string) => employees.find((e) => e.id === id)?.name || id, [employees]);
 
     // Filter for only Cash Advances (type = cash_advance)
-    const cashAdvances = useMemo(() => loans.filter((l) => l.type === "cash_advance"), [loans]);
+    const cashAdvances = loans.filter((l) => l.type === "cash_advance");
 
-    const filtered = useMemo(() => {
+    const filtered = cashAdvances.filter((l) => {
         const q = search.trim().toLowerCase();
-        return cashAdvances.filter((l) => {
-            const matchesStatus = statusFilter === "all" || l.status === statusFilter;
-            const matchesSearch = !q || getEmpName(l.employeeId).toLowerCase().includes(q);
-            return matchesStatus && matchesSearch;
-        });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [cashAdvances, statusFilter, search, employees]);
+        const matchesStatus = statusFilter === "all" || l.status === statusFilter;
+        const matchesSearch = !q || getEmpName(l.employeeId).toLowerCase().includes(q);
+        return matchesStatus && matchesSearch;
+    });
 
-    const stats = useMemo(() => {
+    const stats = (() => {
         const active = cashAdvances.filter((l) => l.status === "active");
         const pending = cashAdvances.filter((l) => l.status === "pending");
         return {
@@ -84,18 +80,16 @@ export function CashAdvancesTab() {
             totalPending: pending.length,
             totalSettled: cashAdvances.filter((l) => l.status === "settled").length,
         };
-    }, [cashAdvances]);
+    })();
 
-    const paginatedAccounts = useMemo(() => paginate(filtered, accountsPage, accountsPageSize), [filtered, accountsPage, accountsPageSize]);
+    const paginatedAccounts = paginate(filtered, accountsPage, accountsPageSize);
 
     const allDeductions = getAllDeductions().filter((d) => cashAdvances.some((l) => l.id === d.loanId));
-    // eslint-disable-next-line react-compiler/react-compiler
-    const filteredDeductions = useMemo(() => {
+    const filteredDeductions = allDeductions.filter((d) => {
         const q = search.trim().toLowerCase();
-        return allDeductions.filter((d) => !q || getEmpName(d.employeeId).toLowerCase().includes(q));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [allDeductions, search, employees]);
-    const paginatedDeductions = useMemo(() => paginate(filteredDeductions, historyPage, historyPageSize), [filteredDeductions, historyPage, historyPageSize]);
+        return !q || getEmpName(d.employeeId).toLowerCase().includes(q);
+    });
+    const paginatedDeductions = paginate(filteredDeductions, historyPage, historyPageSize);
 
     const openEditLoan = (loan: typeof loans[0]) => {
         setEditLoanId(loan.id);

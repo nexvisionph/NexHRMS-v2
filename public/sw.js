@@ -108,7 +108,7 @@ self.addEventListener('push', (event) => {
           notificationId: payload.notificationId,
         },
       };
-    } catch (e) {
+    } catch (_e) {
       // If not JSON, use text
       data.body = event.data.text();
     }
@@ -165,7 +165,7 @@ self.addEventListener('notificationclick', (event) => {
               urlToOpen = '/' + clientRole + rawUrl;
               break;
             }
-          } catch (e) { /* ignore */ }
+          } catch (_e) { /* ignore */ }
         }
       }
 

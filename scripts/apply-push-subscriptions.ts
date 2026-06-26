@@ -89,9 +89,9 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END; $$;
 `;
 
-function runSQL(sql: string): Promise<{ status: number; body: string }> {
+function _runSQL(sql: string): Promise<{ status: number; body: string }> {
     return new Promise((resolve, reject) => {
-        const url = new URL(`/rest/v1/rpc/`, SUPABASE_URL);
+        const _url = new URL(`/rest/v1/rpc/`, SUPABASE_URL);
         const payload = JSON.stringify({ query: sql });
         // Use the Management API (pg meta) via the db endpoint
         const apiUrl = new URL(`https://api.supabase.com/v1/projects/${projectRef}/database/query`);
@@ -118,13 +118,13 @@ function runSQL(sql: string): Promise<{ status: number; body: string }> {
     });
 }
 
-async function applyViaDbPassword(): Promise<boolean> {
+async function _applyViaDbPassword(): Promise<boolean> {
     const DB_PASSWORD = process.env.SUPABASE_DB_PASSWORD;
     if (!DB_PASSWORD) return false;
 
     // Use the Supabase pg meta REST endpoint with service_role JWT
     const { createClient } = await import("@supabase/supabase-js");
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    const _admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
         auth: { autoRefreshToken: false, persistSession: false },
     });
 

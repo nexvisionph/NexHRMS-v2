@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useCallback } from "react";
 import type { LoanStatus } from "@/types";
 import { useLoansStore } from "@/store/loans.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -125,18 +125,16 @@ export function GovernmentLoansTab() {
     const getEmpName = useCallback((id: string) => employees.find((e) => e.id === id)?.name || id, [employees]);
 
     // Filter for only Government Loans (type = government_loan or type in sss/pagibig)
-    const governmentLoans = useMemo(() => loans.filter((l) => l.type === "government_loan" || l.type === "sss" || l.type === "pagibig"), [loans]);
+    const governmentLoans = loans.filter((l) => l.type === "government_loan" || l.type === "sss" || l.type === "pagibig");
 
-    const filtered = useMemo(() => {
+    const filtered = governmentLoans.filter((l) => {
         const q = search.trim().toLowerCase();
-        return governmentLoans.filter((l) => {
-            const matchesStatus = statusFilter === "all" || l.status === statusFilter;
-            const matchesSearch = !q || getEmpName(l.employeeId).toLowerCase().includes(q) || (l.referenceNumber || "").toLowerCase().includes(q);
-            return matchesStatus && matchesSearch;
-        });
-    }, [governmentLoans, statusFilter, search, getEmpName]);
+        const matchesStatus = statusFilter === "all" || l.status === statusFilter;
+        const matchesSearch = !q || getEmpName(l.employeeId).toLowerCase().includes(q) || (l.referenceNumber || "").toLowerCase().includes(q);
+        return matchesStatus && matchesSearch;
+    });
 
-    const stats = useMemo(() => {
+    const stats = (() => {
         const active = governmentLoans.filter((l) => l.status === "active");
         return {
             totalActive: active.length,
@@ -144,16 +142,16 @@ export function GovernmentLoansTab() {
             totalMonthly: active.reduce((sum, l) => sum + l.monthlyDeduction, 0),
             totalSettled: governmentLoans.filter((l) => l.status === "settled").length,
         };
-    }, [governmentLoans]);
+    })();
 
-    const paginatedAccounts = useMemo(() => paginate(filtered, accountsPage, accountsPageSize), [filtered, accountsPage, accountsPageSize]);
+    const paginatedAccounts = paginate(filtered, accountsPage, accountsPageSize);
 
     const allDeductions = getAllDeductions().filter((d) => governmentLoans.some((l) => l.id === d.loanId));
-    const filteredDeductions = useMemo(() => {
+    const filteredDeductions = allDeductions.filter((d) => {
         const q = search.trim().toLowerCase();
-        return allDeductions.filter((d) => !q || getEmpName(d.employeeId).toLowerCase().includes(q));
-    }, [allDeductions, search, getEmpName]);
-    const paginatedDeductions = useMemo(() => paginate(filteredDeductions, historyPage, historyPageSize), [filteredDeductions, historyPage, historyPageSize]);
+        return !q || getEmpName(d.employeeId).toLowerCase().includes(q);
+    });
+    const paginatedDeductions = paginate(filteredDeductions, historyPage, historyPageSize);
 
     // Handle Agency changes to set logical default loan types
     const handleAgencyChange = (agency: "SSS" | "Pag-IBIG") => {

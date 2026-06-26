@@ -12,7 +12,6 @@
  * No real DB calls — all assertions on in-memory mock behavior.
  */
 
-import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/services/supabase-server";
 import {
   EMPLOYEES_TEMPLATE_HEADERS,

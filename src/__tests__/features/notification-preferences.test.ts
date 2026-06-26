@@ -47,12 +47,10 @@ import {
   isNotificationAllowed,
   isPushAllowed,
   DEFAULT_EMPLOYEE_PREFS,
-  type EmployeeNotifPrefs,
 } from "@/store/notifications.store";
 
 import {
   sendNotification,
-  dispatchNotification,
   notifyPayslipPublished,
   notifyAbsence,
 } from "@/lib/notifications";
