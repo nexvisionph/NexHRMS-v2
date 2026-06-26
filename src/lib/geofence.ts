@@ -29,13 +29,63 @@ export function calculateDistanceInMeters(coord1: Coordinates, coord2: Coordinat
 }
 
 /**
+ * Calculates the distance between two GPS coordinates in meters.
+ */
+export function getDistanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  return calculateDistanceInMeters(
+    { latitude: lat1, longitude: lon1 },
+    { latitude: lat2, longitude: lon2 }
+  );
+}
+
+/**
  * Checks if a given coordinate is within the allowed radius of a target location.
+ * Supports both Coordinates object signature (returns boolean) and flat numbers signature (returns object).
  */
 export function isWithinGeofence(
   current: Coordinates,
   target: Coordinates,
   allowedRadiusMeters: number
-): boolean {
-  const distance = calculateDistanceInMeters(current, target);
-  return distance <= allowedRadiusMeters;
+): boolean;
+
+export function isWithinGeofence(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+  allowedRadiusMeters: number
+): { within: boolean; distanceMeters: number };
+
+export function isWithinGeofence(
+  arg1: any,
+  arg2: any,
+  arg3: any,
+  arg4?: any,
+  arg5?: any
+): any {
+  if (typeof arg1 === "object" && typeof arg2 === "object" && typeof arg3 === "number") {
+    const distance = calculateDistanceInMeters(arg1, arg2);
+    return distance <= arg3;
+  }
+  
+  if (
+    typeof arg1 === "number" &&
+    typeof arg2 === "number" &&
+    typeof arg3 === "number" &&
+    typeof arg4 === "number" &&
+    typeof arg5 === "number"
+  ) {
+    const distance = getDistanceMeters(arg1, arg2, arg3, arg4);
+    return {
+      within: distance <= arg5,
+      distanceMeters: distance,
+    };
+  }
+
+  throw new Error("Invalid arguments passed to isWithinGeofence");
 }

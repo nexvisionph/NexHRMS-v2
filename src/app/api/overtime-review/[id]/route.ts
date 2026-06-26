@@ -11,8 +11,10 @@ const ALLOWED_ROLES = ["admin", "hr", "finance", "payroll_admin", "supervisor"];
  */
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
+  const params = { id };
   try {
     const serverClient = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await serverClient.auth.getUser();
@@ -67,8 +69,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
+  const params = { id };
   try {
     const serverClient = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await serverClient.auth.getUser();
