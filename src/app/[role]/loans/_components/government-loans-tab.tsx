@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { LoanStatus } from "@/types";
 import { useLoansStore } from "@/store/loans.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -122,7 +122,7 @@ export function GovernmentLoansTab() {
         toast.success("Pag-IBIG STL Remittance file exported successfully");
     };
 
-    const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
+    const getEmpName = useCallback((id: string) => employees.find((e) => e.id === id)?.name || id, [employees]);
 
     // Filter for only Government Loans (type = government_loan or type in sss/pagibig)
     const governmentLoans = useMemo(() => loans.filter((l) => l.type === "government_loan" || l.type === "sss" || l.type === "pagibig"), [loans]);
@@ -134,7 +134,7 @@ export function GovernmentLoansTab() {
             const matchesSearch = !q || getEmpName(l.employeeId).toLowerCase().includes(q) || (l.referenceNumber || "").toLowerCase().includes(q);
             return matchesStatus && matchesSearch;
         });
-    }, [governmentLoans, statusFilter, search, employees]);
+    }, [governmentLoans, statusFilter, search, getEmpName]);
 
     const stats = useMemo(() => {
         const active = governmentLoans.filter((l) => l.status === "active");
@@ -152,7 +152,7 @@ export function GovernmentLoansTab() {
     const filteredDeductions = useMemo(() => {
         const q = search.trim().toLowerCase();
         return allDeductions.filter((d) => !q || getEmpName(d.employeeId).toLowerCase().includes(q));
-    }, [allDeductions, search, employees]);
+    }, [allDeductions, search, getEmpName]);
     const paginatedDeductions = useMemo(() => paginate(filteredDeductions, historyPage, historyPageSize), [filteredDeductions, historyPage, historyPageSize]);
 
     // Handle Agency changes to set logical default loan types
@@ -513,7 +513,7 @@ export function GovernmentLoansTab() {
                         </div>
                         <div>
                             <label className="text-sm font-medium">Status</label>
-                            <Select value={editStatus} onValueChange={(v) => setEditStatus(v as any)}>
+                            <Select value={editStatus} onValueChange={(v) => setEditStatus(v as LoanStatus)}>
                                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="active">Active</SelectItem>

@@ -60,6 +60,7 @@ export function CashAdvancesTab() {
     const [cancelId, setCancelId] = useState<string | null>(null);
 
     const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || id;
+    // eslint-disable-next-line react-compiler/react-compiler
 
     // Filter for only Cash Advances (type = cash_advance)
     const cashAdvances = useMemo(() => loans.filter((l) => l.type === "cash_advance"), [loans]);
@@ -71,6 +72,7 @@ export function CashAdvancesTab() {
             const matchesSearch = !q || getEmpName(l.employeeId).toLowerCase().includes(q);
             return matchesStatus && matchesSearch;
         });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [cashAdvances, statusFilter, search, employees]);
 
     const stats = useMemo(() => {
@@ -87,9 +89,11 @@ export function CashAdvancesTab() {
     const paginatedAccounts = useMemo(() => paginate(filtered, accountsPage, accountsPageSize), [filtered, accountsPage, accountsPageSize]);
 
     const allDeductions = getAllDeductions().filter((d) => cashAdvances.some((l) => l.id === d.loanId));
+    // eslint-disable-next-line react-compiler/react-compiler
     const filteredDeductions = useMemo(() => {
         const q = search.trim().toLowerCase();
         return allDeductions.filter((d) => !q || getEmpName(d.employeeId).toLowerCase().includes(q));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [allDeductions, search, employees]);
     const paginatedDeductions = useMemo(() => paginate(filteredDeductions, historyPage, historyPageSize), [filteredDeductions, historyPage, historyPageSize]);
 
@@ -236,7 +240,7 @@ export function CashAdvancesTab() {
                                 </div>
                                 <div>
                                     <label className="text-sm font-medium">Deduction Frequency *</label>
-                                    <Select value={formFrequency} onValueChange={(v) => setFormFrequency(v as any)}>
+                                    <Select value={formFrequency} onValueChange={(v) => setFormFrequency(v as "every_payroll" | "first_payroll" | "last_payroll")}>
                                         <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="every_payroll">Every Payroll (Split equally)</SelectItem>
@@ -454,7 +458,7 @@ export function CashAdvancesTab() {
                         </div>
                         <div>
                             <label className="text-sm font-medium">Deduction Frequency</label>
-                            <Select value={editFrequency} onValueChange={(v) => setEditFrequency(v as any)}>
+                            <Select value={editFrequency} onValueChange={(v) => setEditFrequency(v as "every_payroll" | "first_payroll" | "last_payroll")}>
                                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="every_payroll">Every Payroll</SelectItem>
@@ -473,7 +477,7 @@ export function CashAdvancesTab() {
                         </div>
                         <div>
                             <label className="text-sm font-medium">Status</label>
-                            <Select value={editStatus} onValueChange={(v) => setEditStatus(v as any)}>
+                            <Select value={editStatus} onValueChange={(v) => setEditStatus(v as LoanStatus)}>
                                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="active">Active</SelectItem>

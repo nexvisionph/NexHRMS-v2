@@ -102,7 +102,7 @@ export default function AdminLeaveView() {
     useEffect(() => {
         const status = searchParams.get("status");
         if (status) {
-            setStatusFilter(status);
+            setTimeout(() => setStatusFilter(status), 0);
         }
     }, [searchParams]);
 

@@ -92,7 +92,7 @@ export async function POST(req: Request) {
       let passed = false;
       
       for (const loc of employeeLocations) {
-        const wl = loc.work_locations as any;
+        const wl = loc.work_locations as { latitude: number; longitude: number; allowed_radius_meters: number; is_active: boolean };
         if (!wl || !wl.is_active) continue;
         
         const dist = calculateDistanceInMeters(
@@ -195,8 +195,9 @@ export async function POST(req: Request) {
       isGeofencePass,
       distanceMeters
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[mobile-attendance]", err);
-    return NextResponse.json({ ok: false, error: err.message || "Internal server error" }, { status: 500 });
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
