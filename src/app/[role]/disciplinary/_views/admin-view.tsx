@@ -172,7 +172,7 @@ export default function DisciplinaryAdminView() {
         if (!form.violationType.trim()) { toast.error("Violation type is required"); return; }
         if (!form.description.trim()) { toast.error("Description is required"); return; }
         if (!isDraft && !form.severityLevel) { toast.error("Severity level is required"); return; }
-        
+
         const payload = {
             employeeId: form.employeeId,
             violationType: form.violationType.trim(),
@@ -291,7 +291,7 @@ export default function DisciplinaryAdminView() {
             {/* Summary card */}
             <Card className="border">
                 <CardContent className="p-0">
-                    <div className="flex items-center gap-3 border-b px-5 py-3.5">
+                    <div className="flex items-center gap-3 border-b px-3 pb-4">
                         <TrendingUp className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm font-semibold text-foreground">Case Overview</span>
                         <span className="ml-auto text-xs text-muted-foreground">{stats.total} case{stats.total !== 1 ? "s" : ""} total</span>
@@ -484,39 +484,39 @@ export default function DisciplinaryAdminView() {
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <Label>Severity Level <span className="text-red-500">*</span></Label>
-                                    <Select value={form.severityLevel} onValueChange={(v) => setForm((f) => ({ ...f, severityLevel: v as SeverityLevel }))}>
-                                        <SelectTrigger className="mt-1">
-                                            <SelectValue placeholder="Select severity" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="minor">Minor</SelectItem>
-                                            <SelectItem value="moderate">Moderate</SelectItem>
-                                            <SelectItem value="major">Major</SelectItem>
-                                            <SelectItem value="critical">Critical</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div>
-                                    <Label>Witnesses (optional)</Label>
-                                    <Input className="mt-1" value={form.witnesses} placeholder="e.g. Witness A, Witness B"
-                                        onChange={(e) => setForm((f) => ({ ...f, witnesses: e.target.value }))} />
-                                </div>
+                            <div>
+                                <Label>Severity Level <span className="text-red-500">*</span></Label>
+                                <Select value={form.severityLevel} onValueChange={(v) => setForm((f) => ({ ...f, severityLevel: v as SeverityLevel }))}>
+                                    <SelectTrigger className="mt-1">
+                                        <SelectValue placeholder="Select severity" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="minor">Minor</SelectItem>
+                                        <SelectItem value="moderate">Moderate</SelectItem>
+                                        <SelectItem value="major">Major</SelectItem>
+                                        <SelectItem value="critical">Critical</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
-                            <div className="grid gap-2">
-                                <Label className="text-sm font-medium">Description</Label>
-                                <Textarea rows={6} value={form.description}
-                                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                                    placeholder="Detailed description of the incident…"
-                                    className="resize-none max-h-[9rem] overflow-y-auto" />
+                            <div>
+                                <Label>Witnesses (optional)</Label>
+                                <Input className="mt-1" value={form.witnesses} placeholder="e.g. Witness A, Witness B"
+                                    onChange={(e) => setForm((f) => ({ ...f, witnesses: e.target.value }))} />
                             </div>
                         </div>
-                        <DialogFooter className="gap-2">
-                            <Button variant="outline" className="mr-auto" onClick={() => setCreateOpen(false)}>Cancel</Button>
-                            <Button variant="secondary" onClick={() => handleCreate(true)}>Save as Draft</Button>
-                            <Button onClick={() => handleCreate(false)}>Create Case</Button>
-                        </DialogFooter>
+                        <div className="grid gap-2">
+                            <Label className="text-sm font-medium">Description</Label>
+                            <Textarea rows={6} value={form.description}
+                                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                                placeholder="Detailed description of the incident…"
+                                className="resize-none max-h-[9rem] overflow-y-auto" />
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" className="mr-auto" onClick={() => setCreateOpen(false)}>Cancel</Button>
+                        <Button variant="secondary" onClick={() => handleCreate(true)}>Save as Draft</Button>
+                        <Button onClick={() => handleCreate(false)}>Create Case</Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -567,38 +567,38 @@ export default function DisciplinaryAdminView() {
                             </Select>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <Label>Severity Level</Label>
-                                    <Select value={editForm.severityLevel} onValueChange={(v) => setEditForm((f) => ({ ...f, severityLevel: v as SeverityLevel }))}>
-                                        <SelectTrigger className="mt-1">
-                                            <SelectValue placeholder="Select severity" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="minor">Minor</SelectItem>
-                                            <SelectItem value="moderate">Moderate</SelectItem>
-                                            <SelectItem value="major">Major</SelectItem>
-                                            <SelectItem value="critical">Critical</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div>
-                                    <Label>Witnesses (optional)</Label>
-                                    <Input className="mt-1" value={editForm.witnesses} placeholder="e.g. Witness A, Witness B"
-                                        onChange={(e) => setEditForm((f) => ({ ...f, witnesses: e.target.value }))} />
-                                </div>
+                            <div>
+                                <Label>Severity Level</Label>
+                                <Select value={editForm.severityLevel} onValueChange={(v) => setEditForm((f) => ({ ...f, severityLevel: v as SeverityLevel }))}>
+                                    <SelectTrigger className="mt-1">
+                                        <SelectValue placeholder="Select severity" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="minor">Minor</SelectItem>
+                                        <SelectItem value="moderate">Moderate</SelectItem>
+                                        <SelectItem value="major">Major</SelectItem>
+                                        <SelectItem value="critical">Critical</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
-                            <div className="grid gap-2">
-                                <Label className="text-sm font-medium">Description</Label>
-                                <Textarea rows={6} value={editForm.description}
-                                    onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
-                                    placeholder="Detailed description of the incident…"
-                                    className="resize-none max-h-[9rem] overflow-y-auto" />
+                            <div>
+                                <Label>Witnesses (optional)</Label>
+                                <Input className="mt-1" value={editForm.witnesses} placeholder="e.g. Witness A, Witness B"
+                                    onChange={(e) => setEditForm((f) => ({ ...f, witnesses: e.target.value }))} />
                             </div>
                         </div>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-                            <Button onClick={handleSaveEdit}>Save Changes</Button>
-                        </DialogFooter>
+                        <div className="grid gap-2">
+                            <Label className="text-sm font-medium">Description</Label>
+                            <Textarea rows={6} value={editForm.description}
+                                onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                                placeholder="Detailed description of the incident…"
+                                className="resize-none max-h-[9rem] overflow-y-auto" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSaveEdit}>Save Changes</Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -628,12 +628,12 @@ export default function DisciplinaryAdminView() {
 
 type SummaryAccent = "amber" | "orange" | "red" | "blue" | "emerald" | "muted";
 const ACCENT_STYLES: Record<SummaryAccent, { value: string; icon: string; dot: string; bg: string }> = {
-    amber:   { value: "text-amber-600",   icon: "text-amber-500",   dot: "bg-amber-500",   bg: "bg-amber-500/10" },
-    orange:  { value: "text-orange-600",  icon: "text-orange-500",  dot: "bg-orange-500",  bg: "bg-orange-500/10" },
-    red:     { value: "text-red-600",     icon: "text-red-500",     dot: "bg-red-500",     bg: "bg-red-500/10" },
-    blue:    { value: "text-blue-600",    icon: "text-blue-500",    dot: "bg-blue-500",    bg: "bg-blue-500/10" },
+    amber: { value: "text-amber-600", icon: "text-amber-500", dot: "bg-amber-500", bg: "bg-amber-500/10" },
+    orange: { value: "text-orange-600", icon: "text-orange-500", dot: "bg-orange-500", bg: "bg-orange-500/10" },
+    red: { value: "text-red-600", icon: "text-red-500", dot: "bg-red-500", bg: "bg-red-500/10" },
+    blue: { value: "text-blue-600", icon: "text-blue-500", dot: "bg-blue-500", bg: "bg-blue-500/10" },
     emerald: { value: "text-emerald-600", icon: "text-emerald-500", dot: "bg-emerald-500", bg: "bg-emerald-500/10" },
-    muted:   { value: "text-muted-foreground", icon: "text-muted-foreground/60", dot: "bg-muted-foreground/40", bg: "bg-muted/50" },
+    muted: { value: "text-muted-foreground", icon: "text-muted-foreground/60", dot: "bg-muted-foreground/40", bg: "bg-muted/50" },
 };
 
 function SummaryTile({
