@@ -12,15 +12,12 @@ test.describe('Login & Redirection Flow', () => {
   test('should render the login form correctly', async ({ page }) => {
     await page.goto('/login');
 
-    // Wait for page to be fully rendered
-    await page.waitForLoadState('domcontentloaded');
-
-    // Check if the Secure Portal label exists (may have surrounding whitespace)
-    await expect(page.getByText('Secure Portal', { exact: false }).first()).toBeVisible({ timeout: 10000 });
-    
-    // Check if the email and password inputs are present
+    // Wait for the email input — reliable hydration anchor for this client component
     const emailInput = page.locator('input[type="email"]');
-    await expect(emailInput).toBeVisible();
+    await expect(emailInput).toBeVisible({ timeout: 15000 });
+
+    // Check if the Secure Portal label exists (rendered inside the card header)
+    await expect(page.getByText('Secure Portal', { exact: false }).first()).toBeVisible({ timeout: 5000 });
 
     const passwordInput = page.locator('input[type="password"]');
     await expect(passwordInput).toBeVisible();
