@@ -284,6 +284,8 @@ export function PayrollReadinessChecklist({
     );
 
     const checks = useMemo<CheckResult[]>(() => {
+        const runEmployeeIds = new Set(runPayslips.map((p) => p.employeeId));
+
         // Check 1 — Missing clock-outs (BLOCKING)
         const missingOuts = exceptions.filter(
             (ex) =>
@@ -292,8 +294,16 @@ export function PayrollReadinessChecklist({
                 periodStart &&
                 periodEnd &&
                 ex.date >= periodStart &&
-                ex.date <= periodEnd
+                ex.date <= periodEnd &&
+                runEmployeeIds.has(ex.employeeId)
         );
+        const missingOutNames = missingOuts
+            .map((ex) => getEmpName(ex.employeeId))
+            .filter((value, index, self) => self.indexOf(value) === index);
+        const missingOutNamesStr = missingOutNames.slice(0, 3).join(", ");
+        const missingOutExtra = missingOutNames.length > 3 ? ` +${missingOutNames.length - 3} more` : "";
+        const missingNamesDisplay = missingOutNames.length > 0 ? ` (${missingOutNamesStr}${missingOutExtra})` : "";
+
         const check1: CheckResult = {
             id: "missing-clockout",
             label: "No missing clock-outs",
@@ -302,7 +312,7 @@ export function PayrollReadinessChecklist({
             message:
                 missingOuts.length === 0
                     ? "All employees have complete attendance records"
-                    : `${missingOuts.length} employee(s) have missing clock-out in this period`,
+                    : `${missingOuts.length} employee(s) have missing clock-out${missingNamesDisplay} in this period`,
             count: missingOuts.length,
             icon: <Clock className="h-4 w-4" />,
             navHint: { label: "Go to Attendance", href: `/${role}/attendance` },
@@ -365,9 +375,18 @@ export function PayrollReadinessChecklist({
             periodStart && periodEnd
                 ? getPendingLeaves().filter(
                       (r) =>
-                          r.startDate <= periodEnd && r.endDate >= periodStart
+                          r.startDate <= periodEnd &&
+                          r.endDate >= periodStart &&
+                          runEmployeeIds.has(r.employeeId)
                   )
                 : [];
+        const pendingLeaveNames = pendingLeaves
+            .map((r) => getEmpName(r.employeeId))
+            .filter((value, index, self) => self.indexOf(value) === index);
+        const pendingLeaveNamesStr = pendingLeaveNames.slice(0, 3).join(", ");
+        const pendingLeaveExtra = pendingLeaveNames.length > 3 ? ` +${pendingLeaveNames.length - 3} more` : "";
+        const pendingNamesDisplay = pendingLeaveNames.length > 0 ? ` (${pendingLeaveNamesStr}${pendingLeaveExtra})` : "";
+
         const check5: CheckResult = {
             id: "pending-leaves",
             label: "No pending leave requests",
@@ -376,14 +395,23 @@ export function PayrollReadinessChecklist({
             message:
                 pendingLeaves.length === 0
                     ? "No pending leave requests in this period"
-                    : `${pendingLeaves.length} leave request(s) are still pending — may affect attendance`,
+                    : `${pendingLeaves.length} leave request(s) pending${pendingNamesDisplay} — may affect attendance`,
             count: pendingLeaves.length,
             icon: <CalendarClock className="h-4 w-4" />,
-            navHint: { label: "Go to Leave", href: `/${role}/leave` },
+            navHint: { label: "Go to Leave", href: `/${role}/leave?status=pending` },
         };
 
         // Check 5 — No pending adjustments (WARNING)
-        const pendingAdj = adjustments.filter((a) => a.status === "pending");
+        const pendingAdj = adjustments.filter(
+            (a) => a.status === "pending" && runEmployeeIds.has(a.employeeId)
+        );
+        const pendingAdjNames = pendingAdj
+            .map((a) => getEmpName(a.employeeId))
+            .filter((value, index, self) => self.indexOf(value) === index);
+        const pendingAdjNamesStr = pendingAdjNames.slice(0, 3).join(", ");
+        const pendingAdjExtra = pendingAdjNames.length > 3 ? ` +${pendingAdjNames.length - 3} more` : "";
+        const pendingAdjNamesDisplay = pendingAdjNames.length > 0 ? ` (${pendingAdjNamesStr}${pendingAdjExtra})` : "";
+
         const check6: CheckResult = {
             id: "pending-adjustments",
             label: "No pending adjustments",
@@ -392,7 +420,7 @@ export function PayrollReadinessChecklist({
             message:
                 pendingAdj.length === 0
                     ? "No pending payroll adjustments"
-                    : `${pendingAdj.length} adjustment(s) are pending and may not be included`,
+                    : `${pendingAdj.length} adjustment(s) pending${pendingAdjNamesDisplay} and may not be included`,
             count: pendingAdj.length,
             icon: <Settings2 className="h-4 w-4" />,
             navHint: { label: "View Management", tab: "management" },

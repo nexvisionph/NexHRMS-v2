@@ -139,6 +139,7 @@
 
             // Clear store → employee payslip views also immediately show empty state
             resetToSeed();
+            useLoansStore.getState().resetLoansOutstanding();
             toast.success("Payroll data reset");
         };
 
@@ -1651,8 +1652,8 @@
                                                                     size="sm"
                                                                     className="w-full h-8 text-xs gap-1.5 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/50"
                                                                 >
-                                                                    <Users className="h-3.5 w-3.5" />
-                                                                    View Employees ({selectedActiveLoanRows.length})
+                                                                    <Wallet className="h-3.5 w-3.5" />
+                                                                    View Details ({selectedActiveLoanRows.length} loan{selectedActiveLoanRows.length !== 1 ? "s" : ""})
                                                                     <ChevronDown className="h-3.5 w-3.5" />
                                                                 </Button>
                                                             </DialogTrigger>

@@ -27,6 +27,9 @@ export function LoanStatusBadge({ status }: { status: LoanStatus }) {
         statusLabel = "Separated Payout";
     } else if (status === "draft") {
         statusColor = "bg-zinc-500/15 text-zinc-700 dark:text-zinc-400";
+    } else if (status === "inactive") {
+        statusColor = "bg-rose-500/15 text-rose-700 dark:text-rose-400";
+        statusLabel = "inactive";
     }
 
     return (

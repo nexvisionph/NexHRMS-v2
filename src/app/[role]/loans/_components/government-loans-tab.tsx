@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import type { LoanStatus } from "@/types";
 import { useLoansStore } from "@/store/loans.store";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
@@ -51,6 +52,7 @@ export function GovernmentLoansTab() {
     const [editBalance, setEditBalance] = useState("");
     const [editReference, setEditReference] = useState("");
     const [editRemarks, setEditRemarks] = useState("");
+    const [editStatus, setEditStatus] = useState<LoanStatus>("active");
     const [cancelId, setCancelId] = useState<string | null>(null);
 
     const handleExportSSSLCL = () => {
@@ -218,6 +220,7 @@ export function GovernmentLoansTab() {
         setEditBalance(String(loan.remainingBalance));
         setEditReference(loan.referenceNumber || "");
         setEditRemarks(loan.remarks || "");
+        setEditStatus(loan.status);
         setEditOpen(true);
     };
 
@@ -228,6 +231,7 @@ export function GovernmentLoansTab() {
             remainingBalance: Number(editBalance),
             referenceNumber: editReference || undefined,
             remarks: editRemarks || undefined,
+            status: editStatus,
         });
         toast.success("Government loan updated");
         setEditOpen(false);
@@ -425,7 +429,7 @@ export function GovernmentLoansTab() {
                                                                 </Button>
                                                             </>
                                                         )}
-                                                        {(loan.status === "active" || loan.status === "frozen") && (
+                                                        {(loan.status === "active" || loan.status === "frozen" || loan.status === "inactive" || loan.status === "cancelled" || loan.status === "settled" || loan.status === "rejected") && (
                                                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditLoan(loan)} title="Edit record">
                                                                 <Pencil className="h-3.5 w-3.5" />
                                                             </Button>
@@ -439,7 +443,7 @@ export function GovernmentLoansTab() {
                                                                 <CheckCircle className="h-3.5 w-3.5" />
                                                             </Button>
                                                         )}
-                                                        {(loan.status === "settled" || loan.status === "cancelled" || loan.status === "rejected") && (
+                                                        {(loan.status === "settled" || loan.status === "cancelled" || loan.status === "rejected" || loan.status === "inactive") && (
                                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => setCancelId(loan.id)} title="Remove record">
                                                                 <Trash2 className="h-3.5 w-3.5" />
                                                             </Button>
@@ -506,6 +510,19 @@ export function GovernmentLoansTab() {
                         <div>
                             <label className="text-sm font-medium">Reference Number</label>
                             <Input value={editReference} onChange={(e) => setEditReference(e.target.value)} className="mt-1" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">Status</label>
+                            <Select value={editStatus} onValueChange={(v) => setEditStatus(v as any)}>
+                                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="active">Active</SelectItem>
+                                    <SelectItem value="frozen">Frozen</SelectItem>
+                                    <SelectItem value="inactive">Inactive</SelectItem>
+                                    <SelectItem value="settled">Settled</SelectItem>
+                                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div>
                             <label className="text-sm font-medium">Remarks</label>

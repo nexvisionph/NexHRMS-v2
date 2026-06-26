@@ -33,6 +33,7 @@ interface LoansState {
     computeCappedDeduction: (loanId: string, employeeNetPay: number) => number;
     recordCappedDeduction: (loanId: string, payslipId: string, employeeNetPay: number) => { deducted: number; skipped: boolean; reason?: string };
     resetToSeed: () => void;
+    resetLoansOutstanding: () => void;
 }
 
 export const useLoansStore = create<LoansState>()(
@@ -240,5 +241,21 @@ export const useLoansStore = create<LoansState>()(
                 return { deducted: maxDeduction, skipped: false };
             },
             resetToSeed: () => set({ loans: SEED_LOANS }),
+            resetLoansOutstanding: () =>
+                set((s) => ({
+                    loans: s.loans.map((l) => ({
+                        ...l,
+                        remainingBalance: l.amount,
+                        status: (l.status === "settled" || l.status === "frozen" || l.status === "active" || l.status === "inactive" || l.status === "cancelled") ? "active" as const : l.status,
+                        deductions: [],
+                        balanceHistory: [],
+                        repaymentSchedule: (l.repaymentSchedule || []).map((item) => ({
+                            ...item,
+                            paid: false,
+                            payslipId: null,
+                            skippedReason: null,
+                        })),
+                    })),
+                })),
         })
 );

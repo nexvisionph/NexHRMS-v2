@@ -9,9 +9,24 @@ ALTER TABLE public.loans ADD COLUMN IF NOT EXISTS deduction_frequency text DEFAU
 ALTER TABLE public.loans ADD COLUMN IF NOT EXISTS start_deduction_date date;
 ALTER TABLE public.loans ADD COLUMN IF NOT EXISTS release_date date;
 
--- Update the check constraint for loan status to support pending, approved, and rejected statuses
+-- Update the check constraint for loan status to support all required statuses
 ALTER TABLE public.loans DROP CONSTRAINT IF EXISTS loans_status_check;
-ALTER TABLE public.loans ADD CONSTRAINT loans_status_check CHECK (status IN ('pending', 'approved', 'rejected', 'active', 'settled', 'frozen', 'cancelled'));
+ALTER TABLE public.loans ADD CONSTRAINT loans_status_check CHECK (status IN (
+    'pending', 
+    'approved', 
+    'rejected', 
+    'active', 
+    'settled', 
+    'frozen', 
+    'cancelled', 
+    'separated', 
+    'draft', 
+    'pending_supervisor', 
+    'pending_hr', 
+    'pending_finance',
+    'inactive'
+));
+
 
 -- Update the check constraint for loan type to support government_loan or custom types
 ALTER TABLE public.loans DROP CONSTRAINT IF EXISTS loans_type_check;

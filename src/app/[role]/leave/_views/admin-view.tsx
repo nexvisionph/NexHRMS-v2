@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useLeaveStore } from "@/store/leave.store";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
@@ -95,7 +96,15 @@ export default function AdminLeaveView() {
     const employees = useEmployeesStore((s) => s.employees);
     const currentUser = useAuthStore((s) => s.currentUser);
     const [open, setOpen] = useState(false);
+    const searchParams = useSearchParams();
     const [statusFilter, setStatusFilter] = useState("all");
+
+    useEffect(() => {
+        const status = searchParams.get("status");
+        if (status) {
+            setStatusFilter(status);
+        }
+    }, [searchParams]);
 
     // Policy edit/delete state
     const [polDialogOpen, setPolDialogOpen] = useState(false);

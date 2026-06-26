@@ -16,5 +16,7 @@ ALTER TABLE public.loans ADD CONSTRAINT loans_status_check CHECK (status IN (
     'draft', 
     'pending_supervisor', 
     'pending_hr', 
-    'pending_finance'
+    'pending_finance',
+    'inactive'
 ));
+

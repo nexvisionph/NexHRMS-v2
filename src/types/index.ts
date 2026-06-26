@@ -58,7 +58,7 @@ export interface PayslipLineItem {
   templateId?: string;
   calculationDetail?: string;
 }
-export type LoanStatus = "pending" | "approved" | "rejected" | "active" | "settled" | "frozen" | "cancelled" | "separated" | "draft" | "pending_supervisor" | "pending_hr" | "pending_finance";
+export type LoanStatus = "pending" | "approved" | "rejected" | "active" | "settled" | "frozen" | "cancelled" | "separated" | "draft" | "pending_supervisor" | "pending_hr" | "pending_finance" | "inactive";
 export type OvertimeStatus = "pending" | "approved" | "rejected";
 export type AdjustmentType = "earnings" | "deduction" | "net_correction" | "statutory_correction";
 export type AdjustmentStatus = "pending" | "approved" | "applied" | "rejected";

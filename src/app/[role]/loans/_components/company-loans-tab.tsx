@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import type { LoanStatus } from "@/types";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useLoansStore } from "@/store/loans.store";
@@ -60,6 +61,9 @@ export function CompanyLoansTab() {
     const [editRemarks, setEditRemarks] = useState("");
     const [editFrequency, setEditFrequency] = useState<"every_payroll" | "first_payroll" | "last_payroll">("every_payroll");
     const [editStartDate, setEditStartDate] = useState("");
+    const [editStatus, setEditStatus] = useState<LoanStatus>("active");
+    const [editBalance, setEditBalance] = useState("");
+    const [editReleaseDate, setEditReleaseDate] = useState("");
     const [cancelId, setCancelId] = useState<string | null>(null);
 
     const [rejectOpen, setRejectOpen] = useState(false);
@@ -107,17 +111,30 @@ export function CompanyLoansTab() {
         setEditRemarks(loan.remarks || "");
         setEditFrequency(loan.deductionFrequency || "every_payroll");
         setEditStartDate(loan.startDeductionDate || "");
+        setEditStatus(loan.status);
+        setEditBalance(String(loan.remainingBalance));
+        setEditReleaseDate(loan.releaseDate || "");
         setEditOpen(true);
     };
 
     const handleSaveLoan = () => {
-        if (!editLoanId || !editMonthly) { toast.error("Monthly amortization is required"); return; }
+        if (!editLoanId || !editMonthly || !editBalance) { toast.error("Monthly amortization and outstanding balance are required"); return; }
+        
+        const loan = loans.find((l) => l.id === editLoanId);
+        let finalReleaseDate = editReleaseDate;
+        if (loan && !loan.releaseDate && !editReleaseDate) {
+            finalReleaseDate = new Date().toISOString().split("T")[0];
+        }
+
         updateLoan(editLoanId, {
             monthlyDeduction: Number(editMonthly),
+            remainingBalance: Number(editBalance),
             deductionCapPercent: Number(editCap) || 30,
             remarks: editRemarks || undefined,
             deductionFrequency: editFrequency,
             startDeductionDate: editStartDate || undefined,
+            releaseDate: finalReleaseDate || undefined,
+            status: editStatus,
         });
         toast.success("Company loan terms updated");
         setEditOpen(false);
@@ -398,7 +415,7 @@ export function CompanyLoansTab() {
                                                                 ) : null}
                                                             </>
                                                         )}
-                                                        {(loan.status === "active" || loan.status === "frozen") && (
+                                                        {(loan.status === "active" || loan.status === "frozen" || loan.status === "inactive" || loan.status === "cancelled" || loan.status === "settled" || loan.status === "rejected") && (
                                                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditLoan(loan)} title="Edit terms">
                                                                 <Pencil className="h-3.5 w-3.5" />
                                                             </Button>
@@ -433,7 +450,7 @@ export function CompanyLoansTab() {
                                                                 <Play className="h-3.5 w-3.5" />
                                                             </Button>
                                                         )}
-                                                        {(loan.status === "settled" || loan.status === "rejected" || loan.status === "cancelled") && (
+                                                        {(loan.status === "settled" || loan.status === "rejected" || loan.status === "cancelled" || loan.status === "inactive") && (
                                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => setCancelId(loan.id)} title="Remove record">
                                                                 <Trash2 className="h-3.5 w-3.5" />
                                                             </Button>
@@ -571,6 +588,10 @@ export function CompanyLoansTab() {
                             <Input type="number" value={editMonthly} onChange={(e) => setEditMonthly(e.target.value)} className="mt-1" />
                         </div>
                         <div>
+                            <label className="text-sm font-medium">Outstanding Balance (₱)</label>
+                            <Input type="number" value={editBalance} onChange={(e) => setEditBalance(e.target.value)} className="mt-1" />
+                        </div>
+                        <div>
                             <label className="text-sm font-medium">Deduction Cap (% of Net Pay)</label>
                             <Input type="number" min="1" max="100" value={editCap} onChange={(e) => setEditCap(e.target.value)} className="mt-1" />
                         </div>
@@ -588,6 +609,23 @@ export function CompanyLoansTab() {
                         <div>
                             <label className="text-sm font-medium">Start Deduction Date</label>
                             <Input type="date" value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)} className="mt-1" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">Release Date</label>
+                            <Input type="date" value={editReleaseDate} onChange={(e) => setEditReleaseDate(e.target.value)} className="mt-1" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium">Status</label>
+                            <Select value={editStatus} onValueChange={(v) => setEditStatus(v as any)}>
+                                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="active">Active</SelectItem>
+                                    <SelectItem value="frozen">Frozen</SelectItem>
+                                    <SelectItem value="inactive">Inactive</SelectItem>
+                                    <SelectItem value="settled">Settled</SelectItem>
+                                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div>
                             <label className="text-sm font-medium">Remarks</label>
