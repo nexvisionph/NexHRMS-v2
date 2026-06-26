@@ -6,6 +6,9 @@ import { usePayrollStore } from "@/store/payroll.store";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useProjectsStore } from "@/store/projects.store";
 import { useDepartmentsStore } from "@/store/departments.store";
+import { useAuthStore } from "@/store/auth.store";
+import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PayScheduleSettings } from "@/components/payroll/pay-schedule-settings";
-import { Plus, Trash2, Edit, Settings, Users, Calculator, CalendarDays, ArrowLeft, Layers } from "lucide-react";
+import { Plus, Trash2, Edit, Settings, Users, Calculator, CalendarDays, ArrowLeft, Layers, Info, Save } from "lucide-react";
 import { toast } from "sonner";
 import type { DeductionTemplateType, DeductionCalculationMode, DeductionTemplate, EmployeeDeductionAssignment, Employee, Role, Department, Project } from "@/types";
 import { formatCurrency } from "@/lib/format";
@@ -76,6 +79,7 @@ export default function PayrollSettingsPage() {
                     <TabsTrigger value="deductions" className="gap-1.5"><Calculator className="h-3.5 w-3.5" /> Custom Deductions</TabsTrigger>
                     <TabsTrigger value="assignments" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Employee Assignments</TabsTrigger>
                     <TabsTrigger value="schedule" className="gap-1.5"><CalendarDays className="h-3.5 w-3.5" /> Pay Schedule</TabsTrigger>
+                    <TabsTrigger value="rules" className="gap-1.5"><Layers className="h-3.5 w-3.5" /> Payroll Rules</TabsTrigger>
                 </TabsList>
 
                 {/* ─── Custom Deductions Tab ─────────────────────────── */}
@@ -108,6 +112,11 @@ export default function PayrollSettingsPage() {
                 {/* ─── Pay Schedule Tab ──────────────────────────────── */}
                 <TabsContent value="schedule" className="mt-4">
                     <PayScheduleSettings schedule={paySchedule} onUpdate={updatePaySchedule} />
+                </TabsContent>
+
+                {/* ─── Payroll Rules Tab ──────────────────────────────── */}
+                <TabsContent value="rules" className="mt-4">
+                    <PayrollRulesTab />
                 </TabsContent>
             </Tabs>
         </div>
@@ -187,18 +196,18 @@ function DeductionTemplatesTab({
 
     const handleSubmit = async () => {
         // Validation
-        if (!name.trim()) { 
-            toast.error("Template name is required"); 
-            return; 
+        if (!name.trim()) {
+            toast.error("Template name is required");
+            return;
         }
-        if (!value) { 
-            toast.error("Value is required"); 
-            return; 
+        if (!value) {
+            toast.error("Value is required");
+            return;
         }
         const numValue = parseFloat(value);
-        if (isNaN(numValue) || numValue < 0) { 
-            toast.error("Value must be a non-negative number"); 
-            return; 
+        if (isNaN(numValue) || numValue < 0) {
+            toast.error("Value must be a non-negative number");
+            return;
         }
         if (calcMode === "percentage" && numValue > 100) {
             toast.error("Percentage cannot exceed 100%");
@@ -287,114 +296,114 @@ function DeductionTemplatesTab({
                             <SelectItem value="allowance">Allowance (+)</SelectItem>
                         </SelectContent>
                     </Select>
-                <Dialog open={dialogOpen} onOpenChange={(v) => { setDialogOpen(v); if (!v) resetForm(); }}>
-                    <DialogTrigger asChild>
-                        <Button size="sm" className="gap-1.5" onClick={openCreate}>
-                            <Plus className="h-3.5 w-3.5" /> Add Template
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-lg">
-                        <DialogHeader>
-                            <DialogTitle>{editingId ? "Edit Template" : "Create Deduction/Allowance Template"}</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4 pt-2">
-                            <div>
-                                <label className="text-sm font-medium">Name</label>
-                                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Uniform Deduction" className="mt-1" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="text-sm font-medium">Type</label>
-                                    <Select value={type} onValueChange={(v) => setType(v as DeductionTemplateType)}>
-                                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="deduction">Deduction (−)</SelectItem>
-                                            <SelectItem value="allowance">Allowance (+)</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium">Calculation Mode</label>
-                                    <Select value={calcMode} onValueChange={(v) => setCalcMode(v as DeductionCalculationMode)}>
-                                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="fixed">Fixed Amount</SelectItem>
-                                            <SelectItem value="percentage">Percentage of Salary</SelectItem>
-                                            <SelectItem value="daily">Per Day</SelectItem>
-                                            <SelectItem value="hourly">Per Hour</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium">
-                                    Value {calcMode === "percentage" ? "(%)" : calcMode === "fixed" ? "(₱)" : calcMode === "daily" ? "(₱/day)" : "(₱/hr)"}
-                                </label>
-                                <Input type="number" min="0" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} className="mt-1" placeholder="0" />
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Checkbox checked={appliesToAll} onCheckedChange={(v) => setAppliesToAll(!!v)} id="appliesAll" />
-                                <label htmlFor="appliesAll" className="text-sm">Applies to all employees by default</label>
-                            </div>
-
-                            {/* Conditions */}
-                            <div className="border rounded-lg p-3 space-y-3">
-                                <p className="text-xs font-semibold text-muted-foreground uppercase">Conditions (optional)</p>
-                                <p className="text-[10px] text-muted-foreground -mt-2">Select one value per condition, or leave as &quot;None&quot; to skip</p>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-xs text-muted-foreground">Department</label>
-                                        <Select value={condDepartment || NONE_VALUE} onValueChange={(v) => setCondDepartment(v === NONE_VALUE ? "" : v)}>
-                                            <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="None" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value={NONE_VALUE}>None</SelectItem>
-                                                {activeDepartments.map((d) => (
-                                                    <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-muted-foreground">Role</label>
-                                        <Select value={condRole || NONE_VALUE} onValueChange={(v) => setCondRole(v === NONE_VALUE ? "" : v)}>
-                                            <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="None" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value={NONE_VALUE}>None</SelectItem>
-                                                {AVAILABLE_ROLES.map((r) => (
-                                                    <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-muted-foreground">Project</label>
-                                        <Select value={condProject || NONE_VALUE} onValueChange={(v) => setCondProject(v === NONE_VALUE ? "" : v)}>
-                                            <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="None" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value={NONE_VALUE}>None</SelectItem>
-                                                {activeProjects.map((p) => (
-                                                    <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-muted-foreground">Min Salary (₱)</label>
-                                        <Input type="number" min="0" value={condMinSalary} onChange={(e) => setCondMinSalary(e.target.value)} className="mt-1 h-8 text-xs" placeholder="0" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-muted-foreground">Max Salary (₱)</label>
-                                        <Input type="number" min="0" value={condMaxSalary} onChange={(e) => setCondMaxSalary(e.target.value)} className="mt-1 h-8 text-xs" placeholder="0" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <Button onClick={handleSubmit} className="w-full" disabled={isLoading || submitting}>
-                                {submitting ? "Saving..." : editingId ? "Update Template" : "Create Template"}
+                    <Dialog open={dialogOpen} onOpenChange={(v) => { setDialogOpen(v); if (!v) resetForm(); }}>
+                        <DialogTrigger asChild>
+                            <Button size="sm" className="gap-1.5" onClick={openCreate}>
+                                <Plus className="h-3.5 w-3.5" /> Add Template
                             </Button>
-                        </div>
-                    </DialogContent>
-                </Dialog>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-lg">
+                            <DialogHeader>
+                                <DialogTitle>{editingId ? "Edit Template" : "Create Deduction/Allowance Template"}</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4 pt-2">
+                                <div>
+                                    <label className="text-sm font-medium">Name</label>
+                                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Uniform Deduction" className="mt-1" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-sm font-medium">Type</label>
+                                        <Select value={type} onValueChange={(v) => setType(v as DeductionTemplateType)}>
+                                            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="deduction">Deduction (−)</SelectItem>
+                                                <SelectItem value="allowance">Allowance (+)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Calculation Mode</label>
+                                        <Select value={calcMode} onValueChange={(v) => setCalcMode(v as DeductionCalculationMode)}>
+                                            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="fixed">Fixed Amount</SelectItem>
+                                                <SelectItem value="percentage">Percentage of Salary</SelectItem>
+                                                <SelectItem value="daily">Per Day</SelectItem>
+                                                <SelectItem value="hourly">Per Hour</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium">
+                                        Value {calcMode === "percentage" ? "(%)" : calcMode === "fixed" ? "(₱)" : calcMode === "daily" ? "(₱/day)" : "(₱/hr)"}
+                                    </label>
+                                    <Input type="number" min="0" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} className="mt-1" placeholder="0" />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Checkbox checked={appliesToAll} onCheckedChange={(v) => setAppliesToAll(!!v)} id="appliesAll" />
+                                    <label htmlFor="appliesAll" className="text-sm">Applies to all employees by default</label>
+                                </div>
+
+                                {/* Conditions */}
+                                <div className="border rounded-lg p-3 space-y-3">
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase">Conditions (optional)</p>
+                                    <p className="text-[10px] text-muted-foreground -mt-2">Select one value per condition, or leave as &quot;None&quot; to skip</p>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-xs text-muted-foreground">Department</label>
+                                            <Select value={condDepartment || NONE_VALUE} onValueChange={(v) => setCondDepartment(v === NONE_VALUE ? "" : v)}>
+                                                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="None" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value={NONE_VALUE}>None</SelectItem>
+                                                    {activeDepartments.map((d) => (
+                                                        <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-muted-foreground">Role</label>
+                                            <Select value={condRole || NONE_VALUE} onValueChange={(v) => setCondRole(v === NONE_VALUE ? "" : v)}>
+                                                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="None" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value={NONE_VALUE}>None</SelectItem>
+                                                    {AVAILABLE_ROLES.map((r) => (
+                                                        <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-muted-foreground">Project</label>
+                                            <Select value={condProject || NONE_VALUE} onValueChange={(v) => setCondProject(v === NONE_VALUE ? "" : v)}>
+                                                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="None" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value={NONE_VALUE}>None</SelectItem>
+                                                    {activeProjects.map((p) => (
+                                                        <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-muted-foreground">Min Salary (₱)</label>
+                                            <Input type="number" min="0" value={condMinSalary} onChange={(e) => setCondMinSalary(e.target.value)} className="mt-1 h-8 text-xs" placeholder="0" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-muted-foreground">Max Salary (₱)</label>
+                                            <Input type="number" min="0" value={condMaxSalary} onChange={(e) => setCondMaxSalary(e.target.value)} className="mt-1 h-8 text-xs" placeholder="0" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <Button onClick={handleSubmit} className="w-full" disabled={isLoading || submitting}>
+                                    {submitting ? "Saving..." : editingId ? "Update Template" : "Create Template"}
+                                </Button>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
                 </div>
             </div>
 
@@ -845,6 +854,433 @@ function EmployeeAssignmentsTab({
                     )}
                 </CardContent>
             </Card>
+        </div>
+    );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PAYROLL RULES TAB
+   ═══════════════════════════════════════════════════════════════ */
+
+function PayrollRulesTab() {
+    const params = useParams();
+    const role = params.role as string;
+    const isEditable = ["admin", "hr", "payroll_admin"].includes(role);
+
+    const [complianceMode, setComplianceMode] = useState<"dole_standard" | "custom">("dole_standard");
+    const [showWarningDialog, setShowWarningDialog] = useState(false);
+    const [pendingMode, setPendingMode] = useState<"dole_standard" | "custom" | null>(null);
+
+    // Custom configuration state
+    const [customConfig, setCustomConfig] = useState({
+        regularOt: "1.25",
+        restDayOt: "1.30",
+        specialHolidayOt: "1.30",
+        regularHolidayOt: "2.00",
+        nightDiff: "1.10",
+        enableNightDiff: true,
+        minOtMinutes: "60",
+        otGracePeriod: "0",
+        roundingRule: "none",
+        requireOtReview: true,
+        requireSupervisorReview: true,
+        allowPartialApproval: true,
+    });
+
+    const handleSave = () => {
+        const regOt = parseFloat(customConfig.regularOt);
+        const restOt = parseFloat(customConfig.restDayOt);
+        const specOt = parseFloat(customConfig.specialHolidayOt);
+        const regHol = parseFloat(customConfig.regularHolidayOt);
+        const nd = parseFloat(customConfig.nightDiff);
+        const minOt = parseInt(customConfig.minOtMinutes, 10);
+        const grace = parseInt(customConfig.otGracePeriod, 10);
+
+        if (isNaN(regOt) || regOt < 1.00) {
+            toast.error("Regular OT Multiplier must be at least 1.00");
+            return;
+        }
+        if (isNaN(restOt) || restOt < 1.00) {
+            toast.error("Rest Day OT Multiplier must be at least 1.00");
+            return;
+        }
+        if (isNaN(specOt) || specOt < 1.00) {
+            toast.error("Special Holiday OT Multiplier must be at least 1.00");
+            return;
+        }
+        if (isNaN(regHol) || regHol < 1.00) {
+            toast.error("Regular Holiday OT Multiplier must be at least 1.00");
+            return;
+        }
+        if (isNaN(nd) || nd < 1.00) {
+            toast.error("Night Differential Multiplier must be at least 1.00");
+            return;
+        }
+        if (isNaN(minOt) || minOt < 0) {
+            toast.error("Minimum OT Minutes must be a non-negative number");
+            return;
+        }
+        if (isNaN(grace) || grace < 0) {
+            toast.error("OT Grace Period must be a non-negative number");
+            return;
+        }
+
+        toast.success("Payroll rules saved successfully!");
+    };
+
+    const handleModeChange = (val: string) => {
+        if (val === "custom") {
+            setPendingMode("custom");
+            setShowWarningDialog(true);
+        } else {
+            setComplianceMode("dole_standard");
+        }
+    };
+
+    const handleConfirmModeSwitch = () => {
+        if (pendingMode) {
+            setComplianceMode(pendingMode);
+        }
+        setShowWarningDialog(false);
+        setPendingMode(null);
+    };
+
+    const handleCancelModeSwitch = () => {
+        setShowWarningDialog(false);
+        setPendingMode(null);
+    };
+
+    return (
+        <div className="space-y-6">
+            {/* Compliance Mode Selector Card */}
+            <Card className="border border-border/50">
+                <CardContent className="p-6 space-y-4">
+                    <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Compliance Mode</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Define standard rules for holiday and overtime payroll calculations</p>
+                    </div>
+
+                    {!isEditable ? (
+                        <div className="p-4 rounded-lg border border-border/50 bg-muted/20 space-y-1">
+                            <p className="text-sm font-semibold">
+                                {complianceMode === "dole_standard" ? "Philippine DOLE Standard" : "Custom Company Policy"}
+                            </p>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                {complianceMode === "dole_standard"
+                                    ? "Enforces statutory Department of Labor and Employment (DOLE) multipliers and rules for overtime, holidays, and night differentials."
+                                    : "Allows customizing multipliers, minimum overtime thresholds, grace periods, and custom review pipelines according to your company handbook."}
+                            </p>
+                        </div>
+                    ) : (
+                        <RadioGroup
+                            value={complianceMode}
+                            onValueChange={handleModeChange}
+                            disabled={!isEditable}
+                            className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2"
+                        >
+                            <div className={`flex items-start gap-3 p-4 rounded-lg border transition-all ${complianceMode === "dole_standard" ? "border-primary bg-primary/5" : "border-border/50 hover:bg-muted/30"}`}>
+                                <RadioGroupItem value="dole_standard" id="dole_standard" className="mt-1" />
+                                <div className="space-y-1">
+                                    <label htmlFor="dole_standard" className="text-sm font-semibold cursor-pointer">
+                                        Philippine DOLE Standard
+                                    </label>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        Enforces statutory Department of Labor and Employment (DOLE) multipliers and rules for overtime, holidays, and night differentials.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className={`flex items-start gap-3 p-4 rounded-lg border transition-all ${complianceMode === "custom" ? "border-primary bg-primary/5" : "border-border/50 hover:bg-muted/30"}`}>
+                                <RadioGroupItem value="custom" id="custom" className="mt-1" />
+                                <div className="space-y-1">
+                                    <label htmlFor="custom" className="text-sm font-semibold cursor-pointer">
+                                        Custom Company Policy
+                                    </label>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        Allows customizing multipliers, minimum overtime thresholds, grace periods, and custom review pipelines according to your company handbook.
+                                    </p>
+                                </div>
+                            </div>
+                        </RadioGroup>
+                    )}
+                </CardContent>
+            </Card>
+
+            {complianceMode === "dole_standard" ? (
+                /* DOLE Standard View */
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Card className="border border-border/50">
+                            <CardContent className="p-6 space-y-4">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">DOLE Multipliers</p>
+                                <div className="space-y-3 pt-1">
+                                    <div className="flex items-center justify-between text-sm py-1 border-b border-border/30">
+                                        <span className="text-muted-foreground">Regular OT Multiplier</span>
+                                        <span className="font-semibold font-mono">1.25</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm py-1 border-b border-border/30">
+                                        <span className="text-muted-foreground">Rest Day OT Multiplier</span>
+                                        <span className="font-semibold font-mono">1.30</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm py-1 border-b border-border/30">
+                                        <span className="text-muted-foreground">Special Holiday OT Multiplier</span>
+                                        <span className="font-semibold font-mono">1.30</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm py-1 border-b border-border/30">
+                                        <span className="text-muted-foreground">Regular Holiday OT Multiplier</span>
+                                        <span className="font-semibold font-mono">2.00</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm py-1 border-b border-border/30">
+                                        <span className="text-muted-foreground">Night Differential Multiplier</span>
+                                        <span className="font-semibold font-mono">1.10</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm py-1">
+                                        <span className="text-muted-foreground">Night Differential</span>
+                                        <Badge variant="secondary" className="bg-emerald-500/15 text-emerald-700 font-medium text-xs">Enabled</Badge>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="border border-border/50">
+                            <CardContent className="p-6 space-y-4">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">DOLE OT &amp; Approval Rules</p>
+                                <div className="space-y-3 pt-1">
+                                    <div className="flex items-center justify-between text-sm py-1 border-b border-border/30">
+                                        <span className="text-muted-foreground">Minimum OT Minutes</span>
+                                        <span className="font-semibold font-mono">60</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm py-1 border-b border-border/30">
+                                        <span className="text-muted-foreground">OT Grace Period (minutes)</span>
+                                        <span className="font-semibold font-mono">0</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm py-1 border-b border-border/30">
+                                        <span className="text-muted-foreground">Rounding Rule</span>
+                                        <span className="font-semibold">None</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm py-1 border-b border-border/30">
+                                        <span className="text-muted-foreground">Require OT Review</span>
+                                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">Yes</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm py-1 border-b border-border/30">
+                                        <span className="text-muted-foreground">Require Supervisor Review</span>
+                                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">Yes</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm py-1">
+                                        <span className="text-muted-foreground">Allow Partial Approval</span>
+                                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">Yes</span>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    <div className="flex items-start gap-2.5 p-3.5 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs text-blue-700 dark:text-blue-400">
+                        <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                        <span>Values are set according to Philippine DOLE regulations and cannot be edited in this mode.</span>
+                    </div>
+                </div>
+            ) : (
+                /* Custom Company Policy Mode (Editable Form) */
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Card className="border border-border/50">
+                            <CardContent className="p-6 space-y-4">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Custom Multipliers</p>
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 items-center gap-4">
+                                        <label className="text-xs font-medium text-muted-foreground">Regular OT Multiplier</label>
+                                        <Input
+                                            type="number"
+                                            min="1.00"
+                                            step="0.01"
+                                            value={customConfig.regularOt}
+                                            onChange={(e) => setCustomConfig({ ...customConfig, regularOt: e.target.value })}
+                                            disabled={!isEditable}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 items-center gap-4">
+                                        <label className="text-xs font-medium text-muted-foreground">Rest Day OT Multiplier</label>
+                                        <Input
+                                            type="number"
+                                            min="1.00"
+                                            step="0.01"
+                                            value={customConfig.restDayOt}
+                                            onChange={(e) => setCustomConfig({ ...customConfig, restDayOt: e.target.value })}
+                                            disabled={!isEditable}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 items-center gap-4">
+                                        <label className="text-xs font-medium text-muted-foreground">Special Holiday OT Multiplier</label>
+                                        <Input
+                                            type="number"
+                                            min="1.00"
+                                            step="0.01"
+                                            value={customConfig.specialHolidayOt}
+                                            onChange={(e) => setCustomConfig({ ...customConfig, specialHolidayOt: e.target.value })}
+                                            disabled={!isEditable}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 items-center gap-4">
+                                        <label className="text-xs font-medium text-muted-foreground">Regular Holiday OT Multiplier</label>
+                                        <Input
+                                            type="number"
+                                            min="1.00"
+                                            step="0.01"
+                                            value={customConfig.regularHolidayOt}
+                                            onChange={(e) => setCustomConfig({ ...customConfig, regularHolidayOt: e.target.value })}
+                                            disabled={!isEditable}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 items-center gap-4">
+                                        <label className="text-xs font-medium text-muted-foreground">Night Differential Multiplier</label>
+                                        <Input
+                                            type="number"
+                                            min="1.00"
+                                            step="0.01"
+                                            value={customConfig.nightDiff}
+                                            onChange={(e) => setCustomConfig({ ...customConfig, nightDiff: e.target.value })}
+                                            disabled={!isEditable}
+                                        />
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <div className="space-y-6">
+                            <Card className="border border-border/50">
+                                <CardContent className="p-6 space-y-4">
+                                    <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Night Differential</p>
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <label className="text-xs font-semibold">Enable Night Differential</label>
+                                            <p className="text-[10px] text-muted-foreground">Apply night shift premium multipliers</p>
+                                        </div>
+                                        <Switch
+                                            checked={customConfig.enableNightDiff}
+                                            onCheckedChange={(v) => setCustomConfig({ ...customConfig, enableNightDiff: v })}
+                                            disabled={!isEditable}
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border border-border/50">
+                                <CardContent className="p-6 space-y-4">
+                                    <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">OT Policy</p>
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 items-center gap-4">
+                                            <label className="text-xs font-medium text-muted-foreground">Minimum OT Minutes</label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={customConfig.minOtMinutes}
+                                                onChange={(e) => setCustomConfig({ ...customConfig, minOtMinutes: e.target.value })}
+                                                disabled={!isEditable}
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 items-center gap-4">
+                                            <label className="text-xs font-medium text-muted-foreground">OT Grace Period (minutes)</label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={customConfig.otGracePeriod}
+                                                onChange={(e) => setCustomConfig({ ...customConfig, otGracePeriod: e.target.value })}
+                                                disabled={!isEditable}
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 items-center gap-4">
+                                            <label className="text-xs font-medium text-muted-foreground">Rounding Rule</label>
+                                            <Select
+                                                value={customConfig.roundingRule}
+                                                onValueChange={(v) => setCustomConfig({ ...customConfig, roundingRule: v })}
+                                                disabled={!isEditable}
+                                            >
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="none">None</SelectItem>
+                                                    <SelectItem value="up">Round Up</SelectItem>
+                                                    <SelectItem value="down">Round Down</SelectItem>
+                                                    <SelectItem value="nearest">Round to Nearest</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <Card className="border border-border/50 md:col-span-2">
+                            <CardContent className="p-6 space-y-4">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Approval Rules</p>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="flex items-center justify-between border-b md:border-b-0 md:border-r border-border/50 pb-4 md:pb-0 md:pr-6">
+                                        <div className="space-y-0.5">
+                                            <label className="text-xs font-semibold">Require OT Review</label>
+                                            <p className="text-[10px] text-muted-foreground">Requires HR/Admin confirmation</p>
+                                        </div>
+                                        <Switch
+                                            checked={customConfig.requireOtReview}
+                                            onCheckedChange={(v) => setCustomConfig({ ...customConfig, requireOtReview: v })}
+                                            disabled={!isEditable}
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between border-b md:border-b-0 md:border-r border-border/50 pb-4 md:pb-0 md:pr-6">
+                                        <div className="space-y-0.5">
+                                            <label className="text-xs font-semibold">Require Supervisor Review</label>
+                                            <p className="text-[10px] text-muted-foreground">Requires supervisor sign-off</p>
+                                        </div>
+                                        <Switch
+                                            checked={customConfig.requireSupervisorReview}
+                                            onCheckedChange={(v) => setCustomConfig({ ...customConfig, requireSupervisorReview: v })}
+                                            disabled={!isEditable}
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <label className="text-xs font-semibold">Allow Partial Approval</label>
+                                            <p className="text-[10px] text-muted-foreground">Approve/reject subset of requested hours</p>
+                                        </div>
+                                        <Switch
+                                            checked={customConfig.allowPartialApproval}
+                                            onCheckedChange={(v) => setCustomConfig({ ...customConfig, allowPartialApproval: v })}
+                                            disabled={!isEditable}
+                                        />
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {isEditable && (
+                        <div className="flex justify-end pt-2">
+                            <Button onClick={handleSave} className="gap-2">
+                                <Save className="h-4 w-4" /> Save Changes
+                            </Button>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <AlertDialog open={showWarningDialog} onOpenChange={setShowWarningDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Switch to Custom Company Policy?</AlertDialogTitle>
+                        <AlertDialogDescription asChild>
+                            <div className="space-y-3 pt-2 text-sm text-muted-foreground">
+                                <p>You are enabling Custom Company Policy.</p>
+                                <p>Your organization is responsible for ensuring that your payroll configuration complies with all applicable labor laws and regulations. NexHRIS will compute payroll according to the payroll rules configured by your organization.</p>
+                            </div>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={handleCancelModeSwitch}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleConfirmModeSwitch}>Proceed</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
