@@ -252,8 +252,8 @@ export const useLoansStore = create<LoansState>()(
                         repaymentSchedule: (l.repaymentSchedule || []).map((item) => ({
                             ...item,
                             paid: false,
-                            payslipId: null,
-                            skippedReason: null,
+                            payslipId: undefined,
+                            skippedReason: undefined,
                         })),
                     })),
                 })),

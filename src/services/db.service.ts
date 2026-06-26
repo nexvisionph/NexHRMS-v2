@@ -771,7 +771,7 @@ export const payrollDb = {
     if (eFetchLoans) {
       console.error("[db] resetAllPayrollData: fetch loans failed:", eFetchLoans.message);
     } else if (dbLoans && dbLoans.length > 0) {
-      const resetLoans = dbLoans.map((loan) => {
+      const resetLoans = dbLoans.map((loan: any) => {
         const currentStatus = loan.status;
         let targetStatus = currentStatus;
         if (
