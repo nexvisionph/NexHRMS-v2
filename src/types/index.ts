@@ -60,6 +60,146 @@ export interface PayslipLineItem {
 }
 export type LoanStatus = "active" | "settled" | "frozen" | "cancelled";
 export type OvertimeStatus = "pending" | "approved" | "rejected";
+
+// ─── OT Review Layer ─────────────────────────────────────────
+
+export type OTRecordStatus =
+  | "pending"
+  | "approved"
+  | "partially_approved"
+  | "rejected"
+  | "locked"
+  | "included_in_payroll";
+
+export type OTType =
+  | "regular"
+  | "rest_day"
+  | "regular_holiday"
+  | "special_holiday"
+  | "night_differential"
+  | "rest_day_holiday";
+
+export interface OTRecord {
+  id: string;
+  employeeId: string;
+  attendanceId?: string;
+  payrollPeriodId?: string;   // e.g. "2026-06-01/2026-06-15"
+  otDate: string;             // ISO date
+  scheduledTimeOut?: string;  // "HH:mm" from shift
+  actualTimeOut?: string;     // "HH:mm" from attendance log
+  computedOtHours: number;
+  approvedOtHours?: number;
+  otType: OTType;
+  computedAmount: number;
+  approvedAmount?: number;
+  status: OTRecordStatus;
+  reviewedBy?: string;        // employee_id
+  reviewedAt?: string;
+  remarks?: string;
+  companyId?: string;
+  createdAt: string;
+  updatedAt: string;
+  // joined data (not stored in DB column)
+  employee?: Pick<Employee, "id" | "name" | "department" | "jobTitle">;
+}
+
+export interface OTAuditLog {
+  id: string;
+  otRecordId: string;
+  action: string;
+  oldValue?: Record<string, unknown>;
+  newValue?: Record<string, unknown>;
+  performedBy: string;
+  performedAt: string;
+  remarks?: string;
+  ipAddress?: string;
+}
+
+export interface OTSettings {
+  enableOtReview: boolean;
+  minimumOtMinutes: number;
+  otGracePeriodMinutes: number;
+  requireSupervisorApproval: boolean;
+  allowPartialApproval: boolean;
+  allowPayrollOfficerOverride: boolean;
+  includePendingInPayroll: boolean;
+}
+
+// ─── Payroll Rules Engine ─────────────────────────────────────
+
+export type PayrollComplianceMode = "ph_dole" | "custom";
+
+/** Maps to public.payroll_rules — one row per company (id='default'). */
+export interface PayrollRules {
+  id: string;
+  companyId?: string;
+
+  /** 'ph_dole' = DOLE PH standard defaults. 'custom' = admin-configured. */
+  complianceMode: PayrollComplianceMode;
+
+  // ─── OT multipliers (total factor applied to hourly_rate) ─
+  // e.g. 1.25 = hourly_rate × 1.25 per OT hour (base pay + 25% premium)
+  // Set to 1.00 to disable premium entirely (company policy, no DOLE premium)
+  regularOtMultiplier: number;       // DOLE default: 1.25
+  restdayOtMultiplier: number;       // DOLE default: 1.30
+  specialHolidayMultiplier: number;  // DOLE default: 1.30
+  regularHolidayMultiplier: number;  // DOLE default: 2.00
+  restdayHolidayMultiplier: number;  // DOLE default: 1.50
+
+  // ─── Night differential ───────────────────────────────────
+  nightDiffMultiplier: number;       // DOLE default: 1.10
+  enableNightDiff: boolean;
+  nightDiffStart: string;            // "22:00"
+  nightDiffEnd: string;              // "06:00"
+
+  // ─── OT threshold & rounding ─────────────────────────────
+  minimumOtMinutes: number;
+  gracePeriodMinutes: number;
+  roundingRule: "none" | "nearest_15" | "nearest_30" | "floor_15" | "floor_30";
+
+  // ─── Review gates ─────────────────────────────────────────
+  requireOtReview: boolean;
+  requireSupervisorReview: boolean;
+  allowPartialOt: boolean;
+  includePendingInPayroll: boolean;
+
+  // ─── Work days / hours divisor ────────────────────────────
+  workDaysDivisor: number;           // daily_rate = monthly_salary / workDaysDivisor
+  hoursPerDay: number;               // hourly_rate = daily_rate / hoursPerDay
+
+  // ─── Compliance confirmation ──────────────────────────────
+  complianceModeConfirmedBy?: string;
+  complianceModeConfirmedAt?: string;
+
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** DOLE PH Standard defaults — used as fallback if payroll_rules not loaded. */
+export const DOLE_PH_DEFAULTS: Omit<PayrollRules, "id" | "companyId" | "createdAt" | "updatedAt"> = {
+  complianceMode: "ph_dole",
+  regularOtMultiplier: 1.25,
+  restdayOtMultiplier: 1.30,
+  specialHolidayMultiplier: 1.30,
+  regularHolidayMultiplier: 2.00,
+  restdayHolidayMultiplier: 1.50,
+  nightDiffMultiplier: 1.10,
+  enableNightDiff: true,
+  nightDiffStart: "22:00",
+  nightDiffEnd: "06:00",
+  minimumOtMinutes: 30,
+  gracePeriodMinutes: 0,
+  roundingRule: "none",
+  requireOtReview: true,
+  requireSupervisorReview: false,
+  allowPartialOt: true,
+  includePendingInPayroll: false,
+  workDaysDivisor: 22,
+  hoursPerDay: 8,
+};
+
 export type AdjustmentType = "earnings" | "deduction" | "net_correction" | "statutory_correction";
 export type AdjustmentStatus = "pending" | "approved" | "applied" | "rejected";
 export type SalaryChangeStatus = "pending" | "approved" | "rejected";

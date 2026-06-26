@@ -1,36 +1,41 @@
 /**
- * Haversine formula — calculates the great-circle distance between two points on Earth.
- * Returns distance in meters.
+ * Geofencing Utilities
+ * 
+ * Includes distance calculation using the Haversine formula.
  */
-function toRad(deg: number): number {
-    return (deg * Math.PI) / 180;
-}
 
-export function getDistanceMeters(
-    lat1: number,
-    lng1: number,
-    lat2: number,
-    lng2: number
-): number {
-    const R = 6371000; // Earth radius in meters
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+export interface Coordinates {
+  latitude: number;
+  longitude: number;
 }
 
 /**
- * Checks if a position is within a geofence.
+ * Calculates the distance between two GPS coordinates in meters using the Haversine formula.
+ */
+export function calculateDistanceInMeters(coord1: Coordinates, coord2: Coordinates): number {
+  const R = 6371e3; // Earth radius in meters
+  const lat1 = (coord1.latitude * Math.PI) / 180;
+  const lat2 = (coord2.latitude * Math.PI) / 180;
+  const deltaLat = ((coord2.latitude - coord1.latitude) * Math.PI) / 180;
+  const deltaLon = ((coord2.longitude - coord1.longitude) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return Math.round(R * c); // Distance in meters, rounded to nearest whole number
+}
+
+/**
+ * Checks if a given coordinate is within the allowed radius of a target location.
  */
 export function isWithinGeofence(
-    userLat: number,
-    userLng: number,
-    fenceLat: number,
-    fenceLng: number,
-    radiusMeters: number
-): { within: boolean; distanceMeters: number } {
-    const d = getDistanceMeters(userLat, userLng, fenceLat, fenceLng);
-    return { within: d <= radiusMeters, distanceMeters: Math.round(d) };
+  current: Coordinates,
+  target: Coordinates,
+  allowedRadiusMeters: number
+): boolean {
+  const distance = calculateDistanceInMeters(current, target);
+  return distance <= allowedRadiusMeters;
 }
