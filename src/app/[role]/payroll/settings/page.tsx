@@ -545,12 +545,17 @@ function EmployeeAssignmentsTab({
     const getTemplateName = (id: string) => templates.find((t) => t.id === id)?.name || id;
 
     const totalPages = Math.max(1, Math.ceil(assignments.length / PAGE_SIZE));
+
+    const [prevAssignmentsLength, setPrevAssignmentsLength] = useState(assignments.length);
+    if (assignments.length !== prevAssignmentsLength) {
+        setPrevAssignmentsLength(assignments.length);
+        setCurrentPage(1);
+    }
+
     const paginatedAssignments = useMemo(() => {
         const start = (currentPage - 1) * PAGE_SIZE;
         return assignments.slice(start, start + PAGE_SIZE);
     }, [assignments, currentPage]);
-
-    useEffect(() => { setCurrentPage(1); }, [assignments.length]);
 
     const handleAssign = async () => {
         if (!selectedEmployee || !selectedTemplate) {

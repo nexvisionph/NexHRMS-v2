@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useDisciplinaryStore } from "@/store/disciplinary.store";
 import { useEmployeesStore } from "@/store/employees.store";
@@ -30,9 +30,10 @@ import {
     AlertTriangle, FileText, ShieldAlert, Clock, CheckCircle2, Hourglass, TrendingUp, Users, X,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { DisciplinaryCase, DisciplinaryCaseStatus } from "@/types";
+import type { DisciplinaryCase, DisciplinaryCaseStatus, SeverityLevel, CaseResult } from "@/types";
 
 const STATUS_LABELS: Record<DisciplinaryCaseStatus, string> = {
+    draft: "Draft",
     open: "Open",
     nte_issued: "NTE Issued",
     nte_acknowledged: "NTE Acknowledged",
@@ -46,28 +47,60 @@ const STATUS_LABELS: Record<DisciplinaryCaseStatus, string> = {
 };
 
 const STATUS_TONE: Record<DisciplinaryCaseStatus, string> = {
+    draft: "bg-slate-100 text-slate-500 border border-dashed",
     open: "bg-slate-100 text-slate-700",
     nte_issued: "bg-blue-100 text-blue-700",
     nte_acknowledged: "bg-cyan-100 text-cyan-700",
     explanation_submitted: "bg-purple-100 text-purple-700",
     no_response: "bg-orange-100 text-orange-700",
     under_review: "bg-amber-100 text-amber-800",
-    nod_issued: "bg-red-100 text-red-700",
+    nod_issued: "bg-green-100 text-green-700",
     nod_acknowledged: "bg-rose-100 text-rose-700",
-    sanction_active: "bg-red-200 text-red-900",
+    sanction_active: "bg-orange-200 text-orange-900",
     closed: "bg-emerald-100 text-emerald-800",
 };
 
 export default function DisciplinaryAdminView() {
     const cases = useDisciplinaryStore((s) => s.cases);
+    const nods = useDisciplinaryStore((s) => s.nods);
     const createCase = useDisciplinaryStore((s) => s.createCase);
+    const saveDraft = useDisciplinaryStore((s) => s.saveDraft);
     const updateCase = useDisciplinaryStore((s) => s.updateCase);
     const deleteCase = useDisciplinaryStore((s) => s.deleteCase);
+    const completeSanction = useDisciplinaryStore((s) => s.completeSanction);
     const getDashboardStats = useDisciplinaryStore((s) => s.getDashboardStats);
     const stats = useMemo(() => getDashboardStats(), [cases, getDashboardStats]);
     const { employees } = useEmployeesStore();
     const currentUser = useAuthStore((s) => s.currentUser);
     const rh = useRoleHref();
+
+    useEffect(() => {
+        cases.forEach((c) => {
+            if (c.status === 'nod_issued') {
+                const nod = nods.find((n) => n.caseId === c.id);
+                if (nod && nod.acknowledgedAt) {
+                    const isSanction = ["suspension", "salary_deduction", "training_required", "pip"].includes(nod.decision);
+                    if (isSanction) {
+                        updateCase(c.id, { status: "sanction_active" }, currentUser.id);
+                    }
+                }
+            } else if (c.status === 'sanction_active') {
+                const nod = nods.find((n) => n.caseId === c.id);
+                if (nod && nod.sanctionEndDate) {
+                    const todayStr = new Date().toISOString().slice(0, 10);
+                    if (todayStr > nod.sanctionEndDate) {
+                        let autoResult: CaseResult = "SETTLED";
+                        if (nod.decision === "suspension") autoResult = "SUSPENSION";
+                        completeSanction(c.id, autoResult, "system").then(() => {
+                            toast.success(`Case ${c.caseNumber} sanction completed automatically based on schedule end date. Case closed.`);
+                        }).catch((err) => {
+                            console.error("Auto close failed", err);
+                        });
+                    }
+                }
+            }
+        });
+    }, [cases, nods, updateCase, completeSanction, currentUser.id]);
 
     // ── Search / filter ────────────────────────────────────────
     const [search, setSearch] = useState("");
@@ -82,6 +115,8 @@ export default function DisciplinaryAdminView() {
         incidentDate: new Date().toISOString().slice(0, 10),
         incidentLocation: "",
         description: "",
+        severityLevel: "" as SeverityLevel | "",
+        witnesses: "",
     });
     const [employeeSearch, setEmployeeSearch] = useState("");
     const [showEmpDropdown, setShowEmpDropdown] = useState(false);
@@ -96,6 +131,8 @@ export default function DisciplinaryAdminView() {
         incidentLocation: "",
         description: "",
         status: "open" as DisciplinaryCaseStatus,
+        severityLevel: "" as SeverityLevel | "",
+        witnesses: "",
     });
 
     // ── Delete state ───────────────────────────────────────────
@@ -115,6 +152,7 @@ export default function DisciplinaryAdminView() {
     const rows = useMemo(() => {
         const q = search.trim().toLowerCase();
         return cases
+            .filter((c) => c.status !== "draft")
             .filter((c) => statusFilter === "all" || c.status === statusFilter)
             .filter((c) => {
                 if (!q) return true;
@@ -129,11 +167,13 @@ export default function DisciplinaryAdminView() {
     }, [cases, search, statusFilter, empMap]);
 
     // ── Handlers ───────────────────────────────────────────────
-    const handleCreate = () => {
+    const handleCreate = (isDraft: boolean) => {
         if (!form.employeeId) { toast.error("Select an employee"); return; }
         if (!form.violationType.trim()) { toast.error("Violation type is required"); return; }
         if (!form.description.trim()) { toast.error("Description is required"); return; }
-        const c = createCase({
+        if (!isDraft && !form.severityLevel) { toast.error("Severity level is required"); return; }
+
+        const payload = {
             employeeId: form.employeeId,
             violationType: form.violationType.trim(),
             policyReference: form.policyReference.trim() || undefined,
@@ -142,8 +182,18 @@ export default function DisciplinaryAdminView() {
             description: form.description.trim(),
             evidenceUrls: [],
             createdBy: currentUser.id,
-        });
-        toast.success(`Case ${c.caseNumber} created`);
+            severityLevel: form.severityLevel || undefined,
+            witnesses: form.witnesses.trim() || undefined,
+        };
+
+        if (isDraft) {
+            const c = saveDraft(payload);
+            toast.success(`Draft ${c.caseNumber} saved`);
+        } else {
+            const c = createCase(payload);
+            toast.success(`Case ${c.caseNumber} created`);
+        }
+
         setCreateOpen(false);
         setForm({
             employeeId: "",
@@ -152,6 +202,8 @@ export default function DisciplinaryAdminView() {
             incidentDate: new Date().toISOString().slice(0, 10),
             incidentLocation: "",
             description: "",
+            severityLevel: "",
+            witnesses: "",
         });
         setEmployeeSearch("");
     };
@@ -165,6 +217,8 @@ export default function DisciplinaryAdminView() {
             incidentLocation: c.incidentLocation ?? "",
             description: c.description,
             status: c.status,
+            severityLevel: c.severityLevel ?? "",
+            witnesses: c.witnesses ?? "",
         });
         setEditOpen(true);
     };
@@ -180,6 +234,8 @@ export default function DisciplinaryAdminView() {
             incidentLocation: editForm.incidentLocation.trim() || undefined,
             description: editForm.description.trim(),
             status: editForm.status,
+            severityLevel: editForm.severityLevel || undefined,
+            witnesses: editForm.witnesses.trim() || undefined,
         }, currentUser.id);
         toast.success(`Case ${editingCase.caseNumber} updated`);
         setEditOpen(false);
@@ -211,7 +267,7 @@ export default function DisciplinaryAdminView() {
             {/* Summary card */}
             <Card className="border">
                 <CardContent className="p-0">
-                    <div className="flex items-center gap-3 border-b px-5 py-3.5">
+                    <div className="flex items-center gap-3 border-b px-3 pb-4">
                         <TrendingUp className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm font-semibold text-foreground">Case Overview</span>
                         <span className="ml-auto text-xs text-muted-foreground">{stats.total} case{stats.total !== 1 ? "s" : ""} total</span>
@@ -288,12 +344,16 @@ export default function DisciplinaryAdminView() {
                                                                 <Eye className="h-3.5 w-3.5" />
                                                             </Button>
                                                         </Link>
-                                                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit" onClick={() => handleOpenEdit(c)}>
-                                                            <Pencil className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-500/10" title="Delete" onClick={() => setDeleteTarget(c)}>
-                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                        </Button>
+                                                        {c.status !== "closed" && (
+                                                            <>
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit" onClick={() => handleOpenEdit(c)}>
+                                                                    <Pencil className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-500/10" title="Delete" onClick={() => setDeleteTarget(c)}>
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -399,6 +459,27 @@ export default function DisciplinaryAdminView() {
                                     onChange={(e) => setForm((f) => ({ ...f, incidentLocation: e.target.value }))} />
                             </div>
                         </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <Label>Severity Level <span className="text-red-500">*</span></Label>
+                                <Select value={form.severityLevel} onValueChange={(v) => setForm((f) => ({ ...f, severityLevel: v as SeverityLevel }))}>
+                                    <SelectTrigger className="mt-1">
+                                        <SelectValue placeholder="Select severity" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="minor">Minor</SelectItem>
+                                        <SelectItem value="moderate">Moderate</SelectItem>
+                                        <SelectItem value="major">Major</SelectItem>
+                                        <SelectItem value="critical">Critical</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <Label>Witnesses (optional)</Label>
+                                <Input className="mt-1" value={form.witnesses} placeholder="e.g. Witness A, Witness B"
+                                    onChange={(e) => setForm((f) => ({ ...f, witnesses: e.target.value }))} />
+                            </div>
+                        </div>
                         <div className="grid gap-2">
                             <Label className="text-sm font-medium">Description</Label>
                             <Textarea rows={6} value={form.description}
@@ -407,9 +488,10 @@ export default function DisciplinaryAdminView() {
                                 className="resize-none max-h-[9rem] overflow-y-auto" />
                         </div>
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-                        <Button onClick={handleCreate}>Create Case</Button>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" className="mr-auto" onClick={() => setCreateOpen(false)}>Cancel</Button>
+                        <Button variant="secondary" onClick={() => handleCreate(true)}>Save as Draft</Button>
+                        <Button onClick={() => handleCreate(false)}>Create Case</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -460,6 +542,27 @@ export default function DisciplinaryAdminView() {
                                 </SelectContent>
                             </Select>
                         </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <Label>Severity Level</Label>
+                                <Select value={editForm.severityLevel} onValueChange={(v) => setEditForm((f) => ({ ...f, severityLevel: v as SeverityLevel }))}>
+                                    <SelectTrigger className="mt-1">
+                                        <SelectValue placeholder="Select severity" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="minor">Minor</SelectItem>
+                                        <SelectItem value="moderate">Moderate</SelectItem>
+                                        <SelectItem value="major">Major</SelectItem>
+                                        <SelectItem value="critical">Critical</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <Label>Witnesses (optional)</Label>
+                                <Input className="mt-1" value={editForm.witnesses} placeholder="e.g. Witness A, Witness B"
+                                    onChange={(e) => setEditForm((f) => ({ ...f, witnesses: e.target.value }))} />
+                            </div>
+                        </div>
                         <div className="grid gap-2">
                             <Label className="text-sm font-medium">Description</Label>
                             <Textarea rows={6} value={editForm.description}
@@ -500,27 +603,29 @@ export default function DisciplinaryAdminView() {
 // ── Summary tile ───────────────────────────────────────────────────────────────
 
 type SummaryAccent = "amber" | "orange" | "red" | "blue" | "emerald" | "muted";
-const ACCENT_STYLES: Record<SummaryAccent, { value: string; icon: string; dot: string }> = {
-    amber:   { value: "text-amber-600",   icon: "text-amber-500",   dot: "bg-amber-500" },
-    orange:  { value: "text-orange-600",  icon: "text-orange-500",  dot: "bg-orange-500" },
-    red:     { value: "text-red-600",     icon: "text-red-500",     dot: "bg-red-500" },
-    blue:    { value: "text-blue-600",    icon: "text-blue-500",    dot: "bg-blue-500" },
-    emerald: { value: "text-emerald-600", icon: "text-emerald-500", dot: "bg-emerald-500" },
-    muted:   { value: "text-muted-foreground", icon: "text-muted-foreground/60", dot: "bg-muted-foreground/40" },
+const ACCENT_STYLES: Record<SummaryAccent, { value: string; icon: string; dot: string; bg: string }> = {
+    amber: { value: "text-amber-600", icon: "text-amber-500", dot: "bg-amber-500", bg: "bg-amber-500/10" },
+    orange: { value: "text-orange-600", icon: "text-orange-500", dot: "bg-orange-500", bg: "bg-orange-500/10" },
+    red: { value: "text-red-600", icon: "text-red-500", dot: "bg-red-500", bg: "bg-red-500/10" },
+    blue: { value: "text-blue-600", icon: "text-blue-500", dot: "bg-blue-500", bg: "bg-blue-500/10" },
+    emerald: { value: "text-emerald-600", icon: "text-emerald-500", dot: "bg-emerald-500", bg: "bg-emerald-500/10" },
+    muted: { value: "text-muted-foreground", icon: "text-muted-foreground/60", dot: "bg-muted-foreground/40", bg: "bg-muted/50" },
 };
 
 function SummaryTile({
     label, value, icon: Icon, accent, isLast = false,
 }: {
-    label: string; value: number; icon: typeof FileText;
+    label: string; value: number; icon: React.ComponentType<{ className?: string }>;
     accent: SummaryAccent; isLast?: boolean;
 }) {
     const s = ACCENT_STYLES[accent];
     return (
         <div className={`flex flex-col gap-3 px-5 py-4 ${isLast ? "" : "border-b sm:border-b-0 sm:border-r last:border-0"}`.trim()}>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-medium text-muted-foreground leading-tight">{label}</p>
-                <Icon className={`h-4 w-4 shrink-0 ${s.icon}`} />
+                <div className={`rounded-lg p-1.5 ${s.bg} flex items-center justify-center shrink-0`}>
+                    <Icon className={`h-3.5 w-3.5 ${s.icon}`} />
+                </div>
             </div>
             <div className="flex items-end gap-2">
                 <span className={`text-3xl font-bold tabular-nums leading-none ${s.value}`}>{value}</span>

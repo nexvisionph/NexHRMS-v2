@@ -74,6 +74,124 @@ describe("Disciplinary Store", () => {
             expect(nums[0].endsWith("0001")).toBe(true);
             expect(nums[1].endsWith("0002")).toBe(true);
         });
+
+        // Task 3.2 — verify severityLevel, witnesses, and result are persisted via spread
+        it("persists severityLevel when provided", () => {
+            const { result } = renderHook(() => useDisciplinaryStore());
+            let created: ReturnType<typeof result.current.createCase> | undefined;
+            act(() => {
+                created = result.current.createCase({
+                    employeeId: EMP,
+                    violationType: "Insubordination",
+                    incidentDate: "2025-03-01",
+                    description: "Refused direct instruction",
+                    evidenceUrls: [],
+                    createdBy: HR,
+                    severityLevel: "major",
+                });
+            });
+            expect(created?.severityLevel).toBe("major");
+            expect(result.current.cases[0].severityLevel).toBe("major");
+        });
+
+        it("persists witnesses when provided", () => {
+            const { result } = renderHook(() => useDisciplinaryStore());
+            let created: ReturnType<typeof result.current.createCase> | undefined;
+            act(() => {
+                created = result.current.createCase({
+                    employeeId: EMP,
+                    violationType: "Misconduct",
+                    incidentDate: "2025-03-02",
+                    description: "Verbal altercation",
+                    evidenceUrls: [],
+                    createdBy: HR,
+                    witnesses: "John Doe, Jane Smith",
+                });
+            });
+            expect(created?.witnesses).toBe("John Doe, Jane Smith");
+            expect(result.current.cases[0].witnesses).toBe("John Doe, Jane Smith");
+        });
+
+        it("persists result when provided", () => {
+            const { result } = renderHook(() => useDisciplinaryStore());
+            let created: ReturnType<typeof result.current.createCase> | undefined;
+            act(() => {
+                created = result.current.createCase({
+                    employeeId: EMP,
+                    violationType: "Policy Violation",
+                    incidentDate: "2025-03-03",
+                    description: "Breached data policy",
+                    evidenceUrls: [],
+                    createdBy: HR,
+                    result: "WRITTEN_WARNING",
+                });
+            });
+            expect(created?.result).toBe("WRITTEN_WARNING");
+            expect(result.current.cases[0].result).toBe("WRITTEN_WARNING");
+        });
+
+        it("defaults severityLevel and witnesses to undefined when not provided", () => {
+            const { result } = renderHook(() => useDisciplinaryStore());
+            let created: ReturnType<typeof result.current.createCase> | undefined;
+            act(() => {
+                created = result.current.createCase({
+                    employeeId: EMP,
+                    violationType: "Tardiness",
+                    incidentDate: "2025-03-04",
+                    description: "Late arrivals",
+                    evidenceUrls: [],
+                    createdBy: HR,
+                });
+            });
+            expect(created?.severityLevel).toBeUndefined();
+            expect(created?.witnesses).toBeUndefined();
+            expect(created?.result).toBeUndefined();
+        });
+
+        it("always defaults status to 'open' regardless of other fields", () => {
+            const { result } = renderHook(() => useDisciplinaryStore());
+            let created: ReturnType<typeof result.current.createCase> | undefined;
+            act(() => {
+                created = result.current.createCase({
+                    employeeId: EMP,
+                    violationType: "Tardiness",
+                    incidentDate: "2025-03-05",
+                    description: "Repeated lateness",
+                    evidenceUrls: [],
+                    createdBy: HR,
+                    severityLevel: "critical",
+                    witnesses: "Supervisor A",
+                });
+            });
+            expect(created?.status).toBe("open");
+        });
+
+        it("persists all three new fields together in one call", () => {
+            const { result } = renderHook(() => useDisciplinaryStore());
+            let created: ReturnType<typeof result.current.createCase> | undefined;
+            act(() => {
+                created = result.current.createCase({
+                    employeeId: EMP,
+                    violationType: "Gross Misconduct",
+                    incidentDate: "2025-03-06",
+                    description: "Serious policy breach",
+                    evidenceUrls: [],
+                    createdBy: HR,
+                    severityLevel: "critical",
+                    witnesses: "Alice, Bob",
+                    result: "TERMINATION",
+                });
+            });
+            expect(created?.severityLevel).toBe("critical");
+            expect(created?.witnesses).toBe("Alice, Bob");
+            expect(created?.result).toBe("TERMINATION");
+            expect(created?.status).toBe("open");
+            // Confirm stored in state too
+            const stored = result.current.cases[0];
+            expect(stored.severityLevel).toBe("critical");
+            expect(stored.witnesses).toBe("Alice, Bob");
+            expect(stored.result).toBe("TERMINATION");
+        });
     });
 
     describe("Happy path: NTE → ack → explanation → review → NOD → ack → close", () => {

@@ -17,5 +17,5 @@ export function canUseCamera(windowLike: Pick<Window, "isSecureContext" | "locat
 
 export function cameraHttpsHint(pagePath?: string): string {
     const pageSegment = pagePath ? ` and open ${pagePath}` : "";
-    return `Camera access requires a secure context. On Vercel (HTTPS) this works automatically. On localhost, navigate to http://localhost:3000${pageSegment} (not an IP address or 0.0.0.0).`;
+    return `Camera access requires a secure context. On Vercel (HTTPS) this works automatically. On localhost, navigate to http://localhost:3000${pageSegment} (not an IP address or 0.0.0.0) or run npm run dev:https.`;
 }

@@ -416,6 +416,7 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
       birComplianceDb.fetchPreviousEmployerRecords(),
       birComplianceDb.fetchForm2316Records(),
       birComplianceDb.fetchAlphalistExports(),
+      disciplinaryDb.fetchNotes(),
     ]);
 
     const settled = <T,>(r: PromiseSettledResult<T[]>): T[] =>
@@ -425,11 +426,13 @@ async function hydrateAllStoresInternal(opts?: { skipSessionCheck?: boolean }): 
     const discCases = settled(batch3[0]);
     const discNTEs = settled(batch3[1]);
     const discNODs = settled(batch3[2]);
-    if (discCases.length > 0 || discNTEs.length > 0 || discNODs.length > 0) {
+    const discNotes = settled(batch3[15]);
+    if (discCases.length > 0 || discNTEs.length > 0 || discNODs.length > 0 || discNotes.length > 0) {
       const st = useDisciplinaryStore.getState();
       st.setCases(discCases);
       st.setNTEs(discNTEs);
       st.setNODs(discNODs);
+      st.setNotes(discNotes);
     }
 
     // Hydrate documents
@@ -491,16 +494,21 @@ export function startWriteThrough(): void {
   stopWriteThrough();
 
   // Determine write scope — only admin/hr manage HR data (employees meta, leave balances, attendance logs)
-  const role = useAuthStore.getState().currentUser?.role ?? "";
-  const isAdminOrHr = ["admin", "hr"].includes(role);
-  const currentUser = useAuthStore.getState().currentUser;
-  const currentEmployee = useEmployeesStore.getState().employees.find(
-    (e) =>
-      e.profileId === currentUser?.id ||
-      e.email?.trim().toLowerCase() === currentUser?.email?.trim().toLowerCase() ||
-      e.name?.trim().toLowerCase() === currentUser?.name?.trim().toLowerCase()
-  );
-  const currentEmployeeId = currentEmployee?.id ?? null;
+  const getIsAdminOrHr = () => {
+    const role = useAuthStore.getState().currentUser?.role ?? "";
+    return ["admin", "hr"].includes(role);
+  };
+  const getCurrentEmployeeId = () => {
+    const currentUser = useAuthStore.getState().currentUser;
+    if (!currentUser) return null;
+    const currentEmployee = useEmployeesStore.getState().employees.find(
+      (e) =>
+        e.profileId === currentUser.id ||
+        e.email?.trim().toLowerCase() === currentUser.email?.trim().toLowerCase() ||
+        e.name?.trim().toLowerCase() === currentUser.name?.trim().toLowerCase()
+    );
+    return currentEmployee?.id ?? null;
+  };
   // Kiosk mode syncs all attendance data (used by all employees without individual login)
   const isKioskMode = typeof window !== "undefined" && window.location.pathname.startsWith("/kiosk");
 
@@ -510,7 +518,7 @@ export function startWriteThrough(): void {
       (state, prevState) => {
         if (_writePaused) return;
         // Detect changed employees — only admin/hr can write employee records
-        if (isAdminOrHr) {
+        if (getIsAdminOrHr()) {
           const deletedIds = new Set(state.deletedEmployeeIds ?? []);
           for (const emp of state.employees) {
             if (deletedIds.has(emp.id)) continue;
@@ -556,7 +564,7 @@ export function startWriteThrough(): void {
           }
         }
         // Leave balances and policies: admin/hr only
-        if (isAdminOrHr) {
+        if (getIsAdminOrHr()) {
           for (const bal of state.balances) {
             const prev = prevState.balances.find((b) => b.id === bal.id);
             if (!prev || JSON.stringify(prev) !== JSON.stringify(bal)) {
@@ -595,7 +603,7 @@ export function startWriteThrough(): void {
           const prev = prevState.logs.find((l) => l.id === log.id);
           if (!prev || JSON.stringify(prev) !== JSON.stringify(log)) {
             // Admin/HR/kiosk sync all; employees only sync their own
-            if (isAdminOrHr || isKioskMode || log.employeeId === myEmployeeId) {
+            if (getIsAdminOrHr() || isKioskMode || log.employeeId === myEmployeeId) {
               attendanceDb.upsertLog(log);
             }
           }
@@ -609,7 +617,7 @@ export function startWriteThrough(): void {
           }
         }
         // Holidays, shifts, exceptions, penalties, shifts: admin/hr only
-        if (isAdminOrHr) {
+        if (getIsAdminOrHr()) {
           for (const h of state.holidays) {
             const prev = prevState.holidays.find((ph) => ph.id === h.id);
             if (!prev || JSON.stringify(prev) !== JSON.stringify(h)) {
@@ -653,7 +661,7 @@ export function startWriteThrough(): void {
           });
         }
         // Exceptions and penalties: admin/hr only
-        if (isAdminOrHr) {
+        if (getIsAdminOrHr()) {
           for (const exc of state.exceptions) {
             const prev = prevState.exceptions.find((e) => e.id === exc.id);
             if (!prev || JSON.stringify(prev) !== JSON.stringify(exc)) {
@@ -668,7 +676,7 @@ export function startWriteThrough(): void {
           }
         }
         // Employee-shift assignments: admin/hr only
-        if (isAdminOrHr) {
+        if (getIsAdminOrHr()) {
           for (const [empId, shiftId] of Object.entries(state.employeeShifts)) {
             if (prevState.employeeShifts[empId] !== shiftId) {
               attendanceDb.upsertEmployeeShift(empId, shiftId);
@@ -1097,38 +1105,73 @@ export function startWriteThrough(): void {
     useDisciplinaryStore.subscribe(
       (state, prevState) => {
         if (_writePaused) return;
-        // Cases
+        const currentIsAdminOrHr = getIsAdminOrHr();
+        const employeeId = getCurrentEmployeeId();
+
+        // 1. Gather all case upsert promises
+        const casePromises: Promise<boolean>[] = [];
         for (const c of state.cases) {
           const prev = prevState.cases.find((p) => p.id === c.id);
-          if (isAdminOrHr && (!prev || prev.updatedAt !== c.updatedAt)) {
-            disciplinaryDb.upsertCase(c);
+          if (currentIsAdminOrHr && (!prev || prev.updatedAt !== c.updatedAt)) {
+            casePromises.push(disciplinaryDb.upsertCase(c));
           }
         }
-        // NTEs
-        for (const n of state.ntes) {
-          const prev = prevState.ntes.find((p) => p.id === n.id);
-          const canWriteNte = isAdminOrHr || (currentEmployeeId !== null && currentEmployeeId === n.employeeId);
-          if (canWriteNte && (!prev || prev.updatedAt !== n.updatedAt)) {
-            if (isAdminOrHr) {
-              disciplinaryDb.upsertNTE(n);
-            } else {
-              const { id: _id, ...patch } = n;
-              disciplinaryDb.updateNTE(n.id, patch);
+
+        // Detect deletions of cases
+        if (currentIsAdminOrHr) {
+          for (const prev of prevState.cases) {
+            if (!state.cases.some((c) => c.id === prev.id)) {
+              disciplinaryDb.removeCase(prev.id);
             }
           }
         }
-        // NODs
-        for (const n of state.nods) {
-          const prev = prevState.nods.find((p) => p.id === n.id);
-          const canWriteNod = isAdminOrHr || (currentEmployeeId !== null && currentEmployeeId === n.employeeId);
-          if (canWriteNod && (!prev || prev.updatedAt !== n.updatedAt)) {
-            if (isAdminOrHr) {
-              disciplinaryDb.upsertNOD(n);
-            } else {
-              const { id: _id, ...patch } = n;
-              disciplinaryDb.updateNOD(n.id, patch);
+
+        // 2. Synchronize dependent tables (NTEs, NODs, Notes)
+        const syncDependents = () => {
+          // NTEs
+          for (const n of state.ntes) {
+            const prev = prevState.ntes.find((p) => p.id === n.id);
+            const canWriteNte = currentIsAdminOrHr || (employeeId !== null && employeeId === n.employeeId);
+            if (canWriteNte && (!prev || prev.updatedAt !== n.updatedAt)) {
+              if (currentIsAdminOrHr) {
+                disciplinaryDb.upsertNTE(n);
+              } else {
+                const { id: _id, ...patch } = n;
+                disciplinaryDb.updateNTE(n.id, patch);
+              }
             }
           }
+
+          // NODs
+          for (const n of state.nods) {
+            const prev = prevState.nods.find((p) => p.id === n.id);
+            const canWriteNod = currentIsAdminOrHr || (employeeId !== null && employeeId === n.employeeId);
+            if (canWriteNod && (!prev || prev.updatedAt !== n.updatedAt)) {
+              if (currentIsAdminOrHr) {
+                disciplinaryDb.upsertNOD(n);
+              } else {
+                const { id: _id, ...patch } = n;
+                disciplinaryDb.updateNOD(n.id, patch);
+              }
+            }
+          }
+
+          // Notes (insert only)
+          for (const note of state.notes) {
+            const prev = prevState.notes.find((p) => p.id === note.id);
+            if (currentIsAdminOrHr && !prev) {
+              disciplinaryDb.upsertNote(note);
+            }
+          }
+        };
+
+        // If there are case upserts in flight, await them to prevent nte_records_case_id_fkey violations
+        if (casePromises.length > 0) {
+          Promise.all(casePromises).then(syncDependents).catch((err) => {
+            console.error("[sync] error in case upserts:", err);
+          });
+        } else {
+          syncDependents();
         }
       }
     )
@@ -1222,7 +1265,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useDepartmentsStore.subscribe(
       (state, prevState) => {
-        if (_writePaused || !isAdminOrHr) return;
+        if (_writePaused || !getIsAdminOrHr()) return;
         for (const dept of state.departments) {
           const prev = prevState.departments.find((d) => d.id === dept.id);
           if (!prev || JSON.stringify(prev) !== JSON.stringify(dept)) {
@@ -1242,7 +1285,7 @@ export function startWriteThrough(): void {
   _subscriptions.push(
     useJobTitlesStore.subscribe(
       (state, prevState) => {
-        if (_writePaused || !isAdminOrHr) return;
+        if (_writePaused || !getIsAdminOrHr()) return;
         for (const jt of state.jobTitles) {
           const prev = prevState.jobTitles.find((j) => j.id === jt.id);
           if (!prev || JSON.stringify(prev) !== JSON.stringify(jt)) {

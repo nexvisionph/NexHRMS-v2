@@ -658,7 +658,6 @@
                         fullPeriodGross = settledSalary;
                     }
                     // For all frequencies: use daily rate × weekdays in period for consistent, auditable computation
-                    let grossPay: number;
                     const empDailyRate = Math.round(settledSalary / (paySchedule.workDaysPerMonth || 22));
                     // Count weekdays in the period
                     let weekdaysInPeriod = 0;
@@ -666,7 +665,7 @@
                         const dow = d.getDay();
                         if (dow !== 0 && dow !== 6) weekdaysInPeriod++;
                     }
-                    grossPay = empDailyRate * weekdaysInPeriod;
+                    const grossPay = empDailyRate * weekdaysInPeriod;
 
                     // ─── Admin per-employee gross override ────────────────────────────
                     const overrideStr = grossOverrides[empId];
@@ -1375,7 +1374,7 @@
                                                                 </p>
                                                                 <p className="text-[11px] text-amber-700 dark:text-amber-300/90 mt-0.5 leading-relaxed">
                                                                     A loan deduction of <strong>{formatCurrency(totalProjectedLoanDeduction)}</strong> will be automatically applied to this cutoff.
-                                                                    Deduction follows each loan's schedule and will never exceed the remaining balance.
+                                                                    Deduction follows each loan&apos;s schedule and will never exceed the remaining balance.
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -1414,7 +1413,7 @@
                                                                         </p>
                                                                     </div>
                                                                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                                                        Net Pay = Gross − Government Deductions − Tax − Loan Deduction. The loan amount follows the schedule and is capped at the remaining balance. After issuance, each loan's balance is automatically updated.
+                                                                        Net Pay = Gross − Government Deductions − Tax − Loan Deduction. The loan amount follows the schedule and is capped at the remaining balance. After issuance, each loan&apos;s balance is automatically updated.
                                                                     </p>
                                                                     {(() => {
                                                                         // Group rows by employee

@@ -7,6 +7,7 @@
 import { renderHook } from "@testing-library/react";
 import { useRolesStore, ALL_PERMISSIONS } from "@/store/roles.store";
 import { checkPermission, checkPermissions, checkAnyPermission } from "@/lib/permissions";
+import { Permission } from "@/types";
 
 describe("Role-Based Access Control", () => {
 
@@ -168,7 +169,7 @@ describe("Role-Based Access Control", () => {
                 "audit:view",
             ];
             for (const perm of criticalPerms) {
-                expect(checkPermission("admin", perm as any)).toBe(true);
+                expect(checkPermission("admin", perm as Permission)).toBe(true);
             }
         });
     });

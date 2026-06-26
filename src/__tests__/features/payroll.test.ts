@@ -108,10 +108,10 @@ describe("computePagIBIG", () => {
     expect(computePagIBIG(1500)).toBe(15);
   });
 
-  it("should return capped ₱100 for salary > ₱1,500", () => {
-    expect(computePagIBIG(2000)).toBe(100);
-    expect(computePagIBIG(10000)).toBe(100);
-    expect(computePagIBIG(100000)).toBe(100);
+  it("should return capped ₱200 for salary >= ₱10,000", () => {
+    expect(computePagIBIG(2000)).toBe(40);
+    expect(computePagIBIG(10000)).toBe(200);
+    expect(computePagIBIG(100000)).toBe(200);
   });
 });
 
@@ -163,8 +163,8 @@ describe("computeAllPHDeductions", () => {
     // PhilHealth: ₱750 (2.5% of ₱30k)
     expect(result.philHealth).toBe(750);
 
-    // Pag-IBIG: ₱100 (capped)
-    expect(result.pagIBIG).toBe(100);
+    // Pag-IBIG: ₱200 (capped)
+    expect(result.pagIBIG).toBe(200);
 
     // Tax: taxable = 30000 - SSS - PhilHealth - PagIBIG ≈ 27,800
     // That's in the 15% bracket → ~1,000
@@ -196,8 +196,8 @@ describe("computeAllPHDeductions", () => {
     // PhilHealth capped at ₱2,500
     expect(result.philHealth).toBe(2500);
 
-    // Pag-IBIG capped at ₱100
-    expect(result.pagIBIG).toBe(100);
+    // Pag-IBIG capped at ₱200
+    expect(result.pagIBIG).toBe(200);
 
     // Tax in 25% bracket (taxable ~₱145,825 after deductions)
     // Tax = 8542 + (145825 - 66667) * 0.25 ≈ 28,332

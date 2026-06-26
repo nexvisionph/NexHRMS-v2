@@ -62,6 +62,17 @@ export default function AuditPage() {
     const [auditPage, setAuditPage] = useState(1);
     const [auditPageSize, setAuditPageSize] = useState(10);
 
+    const [prevFilters, setPrevFilters] = useState({ actionFilter, entityFilter, performerFilter, auditPageSize });
+    if (
+        prevFilters.actionFilter !== actionFilter ||
+        prevFilters.entityFilter !== entityFilter ||
+        prevFilters.performerFilter !== performerFilter ||
+        prevFilters.auditPageSize !== auditPageSize
+    ) {
+        setPrevFilters({ actionFilter, entityFilter, performerFilter, auditPageSize });
+        setAuditPage(1);
+    }
+
     const filtered = useMemo(() => {
         let result = logs;
         if (actionFilter !== "all") result = result.filter((l) => l.action === actionFilter);
@@ -73,9 +84,6 @@ export default function AuditPage() {
     const auditTotalPages = Math.max(1, Math.ceil(filtered.length / auditPageSize));
     const auditSafePage = Math.min(auditPage, auditTotalPages);
     const paginatedAudit = filtered.slice((auditSafePage - 1) * auditPageSize, auditSafePage * auditPageSize);
-
-    // Reset to page 1 when filters change
-    useEffect(() => { setAuditPage(1); }, [actionFilter, entityFilter, performerFilter, auditPageSize]);
 
     const uniqueActions = useMemo(() => {
         const set = new Set(logs.map((l) => l.action).filter(Boolean));

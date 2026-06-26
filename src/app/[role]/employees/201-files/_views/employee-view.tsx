@@ -663,9 +663,18 @@ function DocTile({
 }
 
 function ExpiryCell({ date }: { date: string }) {
+    const [now, setNow] = useState<number | null>(null);
+    useEffect(() => {
+        const t = setTimeout(() => setNow(Date.now()), 0);
+        return () => clearTimeout(t);
+    }, []);
+
     const ms = Date.parse(date);
     if (!Number.isFinite(ms)) return <span className="text-muted-foreground">—</span>;
-    const daysLeft = Math.ceil((ms - Date.now()) / 86_400_000);
+    if (now === null) {
+        return <span>{new Date(date).toLocaleDateString()}</span>;
+    }
+    const daysLeft = Math.ceil((ms - now) / 86_400_000);
     if (daysLeft < 0) return <span className="text-red-600 font-medium">Expired</span>;
     if (daysLeft <= 30) return <span className="text-orange-600 font-medium">{new Date(date).toLocaleDateString()} ({daysLeft}d)</span>;
     return <span>{new Date(date).toLocaleDateString()}</span>;
