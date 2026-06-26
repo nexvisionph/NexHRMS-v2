@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# test artifacts
+test_results*.json
+playwright-report/
+test-results/
+
+# zip artifacts
+*.zip
