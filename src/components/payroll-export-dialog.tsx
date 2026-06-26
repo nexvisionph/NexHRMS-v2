@@ -362,13 +362,18 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   const navyHdr = { font: { name: "Arial", sz: 10, bold: true, color: { rgb: WHITE } }, fill: { patternType: "solid", fgColor: { rgb: NAVY } }, alignment: { horizontal: "center", vertical: "center" }, border: thinBorder };
   const sigLabel = { font: { name: "Arial", sz: 8, bold: true, color: { rgb: TXT } }, alignment: { horizontal: "center", vertical: "center" } };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const styleRange = (r1: number, c1: number, r2: number, c2: number, s: any) => {
+  interface StyledCell {
+    s?: Record<string, unknown>;
+    v?: unknown;
+    z?: string;
+  }
+
+  const styleRange = (r1: number, c1: number, r2: number, c2: number, s: Record<string, unknown>) => {
     for (let r = r1; r <= r2; r++) {
       for (let c = c1; c <= c2; c++) {
         const addr = XLSX.utils.encode_cell({ r, c });
         if (!ws[addr]) ws[addr] = { t: "z", v: null };
-        (ws[addr] as any).s = { ...(ws[addr] as any).s, ...s };
+        (ws[addr] as StyledCell).s = { ...(ws[addr] as StyledCell).s, ...s };
       }
     }
   };
@@ -408,8 +413,8 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   // Right-align monetary values in col H
   for (let r = 7; r <= NET_PAY_ROW; r++) {
     const addr = XLSX.utils.encode_cell({ r, c: 7 });
-    if (ws[addr] && typeof (ws[addr] as any).v === "number") {
-      (ws[addr] as any).s = { ...(ws[addr] as any).s, alignment: { horizontal: "right", vertical: "center" } };
+    if (ws[addr] && typeof (ws[addr] as StyledCell).v === "number") {
+      (ws[addr] as StyledCell).s = { ...(ws[addr] as StyledCell).s, alignment: { horizontal: "right", vertical: "center" } };
     }
   }
 
@@ -429,8 +434,8 @@ function buildTemplateSheet(emp: EmployeePayrollData): XLSX.WorkSheet {
   // Currency format
   for (let r = 0; r < totalRows; r++) {
     const addr = XLSX.utils.encode_cell({ r, c: 7 });
-    if (ws[addr] && typeof (ws[addr] as any).v === "number") {
-      (ws[addr] as any).z = "₱#,##0.00";
+    if (ws[addr] && typeof (ws[addr] as StyledCell).v === "number") {
+      (ws[addr] as StyledCell).z = "₱#,##0.00";
     }
   }
 

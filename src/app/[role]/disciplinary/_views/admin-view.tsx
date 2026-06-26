@@ -249,30 +249,6 @@ export default function DisciplinaryAdminView() {
         setDeleteTarget(null);
     };
 
-    function SummaryTile({ label, value, icon: Icon, accent, isLast }: any) {
-        const colors: Record<string, { text: string; bg: string }> = {
-            amber: { text: "text-amber-600", bg: "bg-amber-500/10" },
-            orange: { text: "text-orange-600", bg: "bg-orange-500/10" },
-            blue: { text: "text-blue-600", bg: "bg-blue-500/10" },
-            red: { text: "text-red-600", bg: "bg-red-500/10" },
-            emerald: { text: "text-emerald-600", bg: "bg-emerald-500/10" },
-            muted: { text: "text-slate-500", bg: "bg-slate-500/10" }
-        };
-        const activeColor = colors[accent] || colors.muted;
-
-        return (
-            <div className={`p-4 ${!isLast ? "border-b sm:border-b-0 sm:border-r" : ""}`}>
-                <div className="flex items-center gap-2 mb-2">
-                    <div className={`p-1.5 rounded ${activeColor.bg}`}>
-                        <Icon className={`h-3.5 w-3.5 ${activeColor.text}`} />
-                    </div>
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</span>
-                </div>
-                <div className="text-2xl font-bold">{value}</div>
-            </div>
-        );
-    }
-
     return (
         <div className="space-y-6 p-4 md:p-6">
             {/* Header */}
@@ -639,7 +615,7 @@ const ACCENT_STYLES: Record<SummaryAccent, { value: string; icon: string; dot: s
 function SummaryTile({
     label, value, icon: Icon, accent, isLast = false,
 }: {
-    label: string; value: number; icon: typeof FileText;
+    label: string; value: number; icon: React.ComponentType<{ className?: string }>;
     accent: SummaryAccent; isLast?: boolean;
 }) {
     const s = ACCENT_STYLES[accent];

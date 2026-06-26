@@ -20,7 +20,7 @@ jest.mock("@/services/db.service", () => ({
 
 import * as fc from "fast-check";
 import React from "react";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, cleanup } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { disciplinaryDb } from "@/services/db.service";
 
@@ -37,7 +37,7 @@ jest.mock("@/lib/hooks/use-role-href", () => ({
 
 // Mock Recharts to avoid layout measuring crashes in JSDOM
 jest.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: any) => children,
+  ResponsiveContainer: ({ children }: { children: React.ReactNode }) => children as React.ReactElement,
   XAxis: () => null,
   YAxis: () => null,
   CartesianGrid: () => null,
@@ -55,8 +55,13 @@ jest.mock("react", () => {
   const originalReact = jest.requireActual("react");
   return {
     ...originalReact,
-    use: (promiseOrContext: any) => {
-      if (promiseOrContext && typeof promiseOrContext.then === "function") {
+    use: (promiseOrContext: unknown) => {
+      if (
+        promiseOrContext &&
+        typeof promiseOrContext === "object" &&
+        "then" in promiseOrContext &&
+        typeof (promiseOrContext as { then?: unknown }).then === "function"
+      ) {
         return mockParams;
       }
       return originalReact.use(promiseOrContext);
@@ -448,6 +453,7 @@ describe("Property 12: Employee needs-action count uses four-status set", () => 
           })
         ),
         (generatedCases) => {
+          cleanup();
           const needsActionCount = generatedCases.filter((c) =>
             ["nte_issued", "nte_acknowledged", "nod_issued", "nod_acknowledged"].includes(c.status)
           ).length;

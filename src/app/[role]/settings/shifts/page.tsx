@@ -197,14 +197,23 @@ export default function ShiftsPage() {
         });
     }, [employees, employeeShifts, assignSearch, assignDeptFilter, assignShiftFilter]);
 
+    const [prevAssignFilters, setPrevAssignFilters] = useState({ assignSearch, assignDeptFilter, assignShiftFilter, assignPageSize });
+    if (
+        prevAssignFilters.assignSearch !== assignSearch ||
+        prevAssignFilters.assignDeptFilter !== assignDeptFilter ||
+        prevAssignFilters.assignShiftFilter !== assignShiftFilter ||
+        prevAssignFilters.assignPageSize !== assignPageSize
+    ) {
+        setPrevAssignFilters({ assignSearch, assignDeptFilter, assignShiftFilter, assignPageSize });
+        setAssignPage(1);
+    }
+
     const assignTotalPages = Math.max(1, Math.ceil(filteredAssignments.length / assignPageSize));
     const assignSafePage = Math.min(assignPage, assignTotalPages);
     const paginatedAssignments = filteredAssignments.slice(
         (assignSafePage - 1) * assignPageSize,
         assignSafePage * assignPageSize,
     );
-
-    useEffect(() => { setAssignPage(1); }, [assignSearch, assignDeptFilter, assignShiftFilter, assignPageSize]);
 
     // Filtered employees inside the Assign Shift modal
     const filteredModalEmployees = useMemo(() => {

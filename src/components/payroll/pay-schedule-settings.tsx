@@ -19,10 +19,23 @@ export function PayScheduleSettings({ schedule, onUpdate }: PayScheduleSettingsP
     const [localPayDay1, setLocalPayDay1] = useState(String(schedule.semiMonthlyFirstPayDay));
     const [localPayDay2, setLocalPayDay2] = useState(String(schedule.semiMonthlySecondPayDay));
 
-    // Sync from store when schedule changes externally
-    useEffect(() => { setLocalCutoff(String(schedule.semiMonthlyFirstCutoff)); }, [schedule.semiMonthlyFirstCutoff]);
-    useEffect(() => { setLocalPayDay1(String(schedule.semiMonthlyFirstPayDay)); }, [schedule.semiMonthlyFirstPayDay]);
-    useEffect(() => { setLocalPayDay2(String(schedule.semiMonthlySecondPayDay)); }, [schedule.semiMonthlySecondPayDay]);
+    const [prevCutoff, setPrevCutoff] = useState(schedule.semiMonthlyFirstCutoff);
+    if (schedule.semiMonthlyFirstCutoff !== prevCutoff) {
+        setPrevCutoff(schedule.semiMonthlyFirstCutoff);
+        setLocalCutoff(String(schedule.semiMonthlyFirstCutoff));
+    }
+
+    const [prevPayDay1, setPrevPayDay1] = useState(schedule.semiMonthlyFirstPayDay);
+    if (schedule.semiMonthlyFirstPayDay !== prevPayDay1) {
+        setPrevPayDay1(schedule.semiMonthlyFirstPayDay);
+        setLocalPayDay1(String(schedule.semiMonthlyFirstPayDay));
+    }
+
+    const [prevPayDay2, setPrevPayDay2] = useState(schedule.semiMonthlySecondPayDay);
+    if (schedule.semiMonthlySecondPayDay !== prevPayDay2) {
+        setPrevPayDay2(schedule.semiMonthlySecondPayDay);
+        setLocalPayDay2(String(schedule.semiMonthlySecondPayDay));
+    }
 
     const commitCutoff = (val: string) => { const n = parseInt(val); if (!isNaN(n) && n >= 1 && n <= 28) onUpdate({ semiMonthlyFirstCutoff: n }); };
     const commitPayDay1 = (val: string) => { const n = parseInt(val); if (!isNaN(n) && n >= 1 && n <= 31) onUpdate({ semiMonthlyFirstPayDay: n }); };

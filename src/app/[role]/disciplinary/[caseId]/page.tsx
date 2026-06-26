@@ -619,7 +619,7 @@ export default function DisciplinaryCasePage({ params }: { params: Promise<{ rol
                                     return;
                                 }
                                 try {
-                                    await completeSanction(c.id, selectedResult as any, currentUser.id);
+                                    await completeSanction(c.id, selectedResult as CaseResult, currentUser.id);
                                     toast.success("Sanction marked completed and case closed");
                                     setSanctionCompleteOpen(false);
                                 } catch {

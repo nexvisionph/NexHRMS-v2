@@ -103,7 +103,7 @@ export default function DisciplinaryEmployeeView() {
     }, [cases, empRecord]);
 
     const openCases = myCases.filter((c) => c.status !== "closed").length;
-    const awaitingMe = myCases.filter((c) => ["nte_issued", "nte_acknowledged", "nod_issued"].includes(c.status)).length;
+    const awaitingMe = myCases.filter((c) => ["nte_issued", "nte_acknowledged", "nod_issued", "nod_acknowledged"].includes(c.status)).length;
     const closedCases = myCases.length - openCases;
 
     // Re-fetch disciplinary cases (and related NTE/NOD) on mount and on

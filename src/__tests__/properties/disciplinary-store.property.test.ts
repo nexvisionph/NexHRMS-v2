@@ -491,19 +491,19 @@ describe("Property 5: addNote preserves body, authorId, and caseId", () => {
           // Reset store on each run to prevent notes buildup
           act(() => hook.current.resetToSeed());
 
-          let created: any;
+          let created: ReturnType<typeof hook.current.addNote> | undefined;
           act(() => {
             created = hook.current.addNote(caseId, body, authorId);
           });
 
           expect(created).toBeDefined();
-          expect(created.body).toBe(body);
-          expect(created.caseId).toBe(caseId);
-          expect(created.authorId).toBe(authorId);
-          expect(Number.isNaN(Date.parse(created.createdAt))).toBe(false);
+          expect(created!.body).toBe(body);
+          expect(created!.caseId).toBe(caseId);
+          expect(created!.authorId).toBe(authorId);
+          expect(Number.isNaN(Date.parse(created!.createdAt))).toBe(false);
 
           // Verify it is also stored in local state
-          const stored = hook.current.notes.find((n) => n.id === created.id);
+          const stored = hook.current.notes.find((n) => n.id === created!.id);
           expect(stored).toBeDefined();
           expect(stored?.body).toBe(body);
           expect(stored?.caseId).toBe(caseId);

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 // Diagnostic script — connects to Supabase using service role key and inspects payroll data.
 // Run with: node diagnose-payroll.js
 const { createClient } = require("@supabase/supabase-js");
