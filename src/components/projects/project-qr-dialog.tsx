@@ -32,13 +32,20 @@ export function ProjectQrDialog({ open, onOpenChange, projectId, projectName }: 
   const logoUrl = useAppearanceStore((s) => s.logoUrl);
   const companyName = useAppearanceStore((s) => s.companyName);
 
+  const [prevKey, setPrevKey] = useState({ open, projectId });
+  if (open !== prevKey.open || projectId !== prevKey.projectId) {
+    setPrevKey({ open, projectId });
+    if (open) {
+      setLoading(true);
+      setError(null);
+      setPayload(null);
+      setCheckinUrl(null);
+    }
+  }
+
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setPayload(null);
-    setCheckinUrl(null);
     fetch(`/api/projects/${encodeURIComponent(projectId)}/qr`)
       .then(async (res) => {
         if (!res.ok) {

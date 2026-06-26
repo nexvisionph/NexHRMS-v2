@@ -58,7 +58,7 @@ export interface PayslipLineItem {
   templateId?: string;
   calculationDetail?: string;
 }
-export type LoanStatus = "active" | "settled" | "frozen" | "cancelled";
+export type LoanStatus = "pending" | "approved" | "rejected" | "active" | "settled" | "frozen" | "cancelled" | "separated" | "draft" | "pending_supervisor" | "pending_hr" | "pending_finance" | "inactive";
 export type OvertimeStatus = "pending" | "approved" | "rejected";
 
 // ─── OT Review Layer ─────────────────────────────────────────
@@ -223,7 +223,7 @@ export type AuditAction =
   | "overtime_approved" | "overtime_rejected"
   | "payroll_locked" | "payroll_published" | "payroll_paid" | "payroll_ended" | "payroll_completed"
   | "adjustment_created" | "adjustment_approved" | "adjustment_applied"
-  | "loan_created" | "loan_frozen" | "loan_unfrozen" | "loan_settled"
+  | "loan_created" | "loan_frozen" | "loan_unfrozen" | "loan_settled" | "loan_approved" | "loan_rejected" | "loan_endorsed"
   | "payment_recorded" | "employee_resigned" | "employee_deleted" | "final_pay_created"
   | "timesheet_approved" | "timesheet_rejected"
   | "kiosk_registered" | "attendance_correction" | "cheat_detected"
@@ -233,7 +233,7 @@ export type AuditAction =
   | "announcement_sent" | "channel_created"
   | "doc_uploaded" | "doc_approved" | "doc_rejected" | "doc_archived" | "doc_requested"
   | "case_created" | "nte_issued" | "nte_acknowledged" | "nte_explained"
-  | "nod_issued" | "nod_acknowledged" | "case_closed";
+  | "nod_issued" | "nod_acknowledged" | "case_closed" | "sanction_completed" | "case_moved_to_review" | "no_response_marked";
 
 // ─── Holiday Type ────────────────────────────────────────────
 
@@ -299,7 +299,20 @@ export interface Employee201Document {
 
 // ─── Disciplinary (NTE / NOD) ────────────────────────────────
 
+export type SeverityLevel = "minor" | "moderate" | "major" | "critical";
+
+export type CaseResult =
+  | "DISMISSED"
+  | "VERBAL_WARNING"
+  | "WRITTEN_WARNING"
+  | "FINAL_WARNING"
+  | "SUSPENSION"
+  | "TERMINATION"
+  | "WITHDRAWN"
+  | "SETTLED";
+
 export type DisciplinaryCaseStatus =
+  | "draft"
   | "open" | "nte_issued" | "nte_acknowledged" | "explanation_submitted"
   | "no_response" | "under_review" | "nod_issued" | "nod_acknowledged"
   | "sanction_active" | "closed";
@@ -319,6 +332,9 @@ export interface DisciplinaryCase {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  severityLevel?: SeverityLevel;
+  witnesses?: string;
+  result?: CaseResult;
 }
 
 export type NTEStatus =
@@ -365,6 +381,14 @@ export interface NODRecord {
   status: NODStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DisciplinaryNote {
+  id: string;
+  caseId: string;
+  authorId: string;
+  body: string;
+  createdAt: string; // ISO 8601
 }
 
 // ─── Job Title ───────────────────────────────────────────────
@@ -775,7 +799,7 @@ export interface LoanBalanceHistory {
 export interface Loan {
   id: string;
   employeeId: string;
-  type: string;          // "cash_advance" | "salary_loan" | "other"
+  type: string;          // "cash_advance" | "salary_loan" | "other" | "government_loan"
   amount: number;
   remainingBalance: number;
   monthlyDeduction: number;
@@ -788,6 +812,12 @@ export interface Loan {
   lastDeductedAt?: string;
   repaymentSchedule?: LoanRepaymentSchedule[];
   balanceHistory?: LoanBalanceHistory[];
+  agency?: string;
+  loanType?: string;
+  referenceNumber?: string;
+  deductionFrequency?: "every_payroll" | "first_payroll" | "last_payroll";
+  startDeductionDate?: string;
+  releaseDate?: string;
 }
 
 // ─── Payslip & Payroll (§4, §8) ─────────────────────────────

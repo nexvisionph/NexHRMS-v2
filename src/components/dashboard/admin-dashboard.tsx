@@ -172,7 +172,7 @@ function KpiStatsRow() {
 
     const pendingLeaves = leaveRequests.filter((r) => r.status === "pending").length;
     const openDisciplinaryCases = disciplinaryCases.filter((c) => c.status !== "closed").length;
-    const awaitingDisciplinaryResponse = disciplinaryCases.filter((c) => c.status === "nte_issued" || c.status === "nte_acknowledged").length;
+    const awaitingDisciplinaryResponse = disciplinaryCases.filter((c) => c.status === "nte_issued" || c.status === "nte_acknowledged" || c.status === "no_response").length;
 
     const newThisMonth = useMemo(() => {
         return employees.filter((e) => {
@@ -222,7 +222,7 @@ function KpiStatsRow() {
         {
             label: "Disciplinary Cases",
             value: openDisciplinaryCases,
-            change: `${awaitingDisciplinaryResponse} awaiting employee response`,
+            change: `${awaitingDisciplinaryResponse} awaiting explanation`,
             changeType: openDisciplinaryCases > 0 ? "warning" as const : "neutral" as const,
             icon: Gavel,
             iconBg: "bg-red-500/10 text-red-600 dark:text-red-400",

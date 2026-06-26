@@ -12,29 +12,28 @@ export function useSignedUrl(storagePath: string | undefined | null): {
     loading: boolean;
     error: boolean;
 } {
-    const [url, setUrl] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
+    const isFullUrl = storagePath && (storagePath.startsWith("http://") || storagePath.startsWith("https://"));
+    const initialUrl = isFullUrl ? storagePath : null;
+    const needsFetch = storagePath && !isFullUrl;
+
+    const [url, setUrl] = useState<string | null>(initialUrl);
+    const [loading, setLoading] = useState(!!needsFetch);
     const [error, setError] = useState(false);
 
-    useEffect(() => {
-        if (!storagePath) {
-            setUrl(null);
-            setLoading(false);
-            setError(false);
-            return;
-        }
+    const [prevPath, setPrevPath] = useState(storagePath);
+    if (storagePath !== prevPath) {
+        setPrevPath(storagePath);
+        setUrl(initialUrl);
+        setLoading(!!needsFetch);
+        setError(false);
+    }
 
-        // If it's already a full URL (http/https), use it directly
-        if (storagePath.startsWith("http://") || storagePath.startsWith("https://")) {
-            setUrl(storagePath);
-            setLoading(false);
-            setError(false);
+    useEffect(() => {
+        if (!storagePath || isFullUrl) {
             return;
         }
 
         let cancelled = false;
-        setLoading(true);
-        setError(false);
 
         // For comma-separated paths (multiple files), use the first one
         const firstPath = storagePath.split(",")[0].trim();
@@ -48,7 +47,7 @@ export function useSignedUrl(storagePath: string | undefined | null): {
         });
 
         return () => { cancelled = true; };
-    }, [storagePath]);
+    }, [storagePath, isFullUrl]);
 
     return { url, loading, error };
 }

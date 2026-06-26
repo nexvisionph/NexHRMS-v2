@@ -203,6 +203,14 @@ export const NAV_ITEMS: {
             group: "hr",
         },
         {
+            label: "Disciplinary",
+            href: "/disciplinary",
+            icon: "Gavel",
+            roles: ["employee"],
+            permission: "page:dashboard",
+            group: "hr",
+        },
+        {
             label: "Jobs",
             href: "/jobs",
             icon: "Briefcase",
@@ -470,7 +478,7 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
     ],
     hr: ["/dashboard", "/employees", "/projects", "/tasks", "/messages", "/attendance", "/leave", "/reports", "/notifications", "/timesheets", "/settings/shifts", "/kiosk", "/profile", "/my-payslips"],
     finance: ["/dashboard", "/payroll", "/payroll/settings", "/payroll/bir-compliance", "/my-payslips", "/loans", "/reports", "/reports/government", "/employees/directory", "/employees/manage", "/notifications", "/profile"],
-    employee: ["/dashboard", "/attendance", "/leave", "/my-payslips", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings", "/employees/201-files"],
+    employee: ["/dashboard", "/attendance", "/leave", "/my-payslips", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings", "/employees/201-files", "/disciplinary"],
     supervisor: ["/dashboard", "/attendance", "/leave", "/my-payslips", "/timesheets", "/employees", "/projects", "/tasks", "/messages", "/notifications", "/face-enrollment", "/profile", "/settings"],
     payroll_admin: ["/dashboard", "/payroll", "/payroll/settings", "/payroll/bir-compliance", "/my-payslips", "/loans", "/reports", "/reports/government", "/timesheets", "/notifications", "/profile"],
     auditor: ["/dashboard", "/audit", "/reports", "/employees", "/notifications", "/profile", "/settings", "/my-payslips"],
@@ -510,4 +518,5 @@ export const PATH_TO_PERMISSION: Record<string, Permission> = {
     "/kiosk": "page:kiosk",
     "/profile": "page:dashboard",
     "/employees/201-files": "page:dashboard",
+    "/disciplinary": "page:dashboard",
 };

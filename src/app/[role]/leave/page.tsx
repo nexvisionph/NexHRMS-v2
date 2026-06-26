@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy } from "react";
+import { Suspense, lazy } from "react";
 import { RoleViewDispatcher } from "@/components/ui/role-dispatcher";
 
 const AdminLeaveView = lazy(() => import("./_views/admin-view"));
@@ -14,13 +14,15 @@ const EmployeeLeave = () => <EmployeeLeaveView />;
 
 export default function LeavePage() {
     return (
-        <RoleViewDispatcher
-            views={{
-                admin: AdminLeave,
-                hr: HRLeave,
-                supervisor: SupervisorLeave,
-                employee: EmployeeLeave,
-            }}
-        />
+        <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">Loading...</div>}>
+            <RoleViewDispatcher
+                views={{
+                    admin: AdminLeave,
+                    hr: HRLeave,
+                    supervisor: SupervisorLeave,
+                    employee: EmployeeLeave,
+                }}
+            />
+        </Suspense>
     );
 }

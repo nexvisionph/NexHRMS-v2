@@ -14,6 +14,14 @@
 
 import "@testing-library/jest-dom";
 
+// Mock global fetch
+global.fetch = jest.fn().mockImplementation(() =>
+  Promise.resolve({
+    json: () => Promise.resolve({}),
+    ok: true,
+  } as Response)
+);
+
 // ═══════════════════════════════════════════════════════════════
 // Mock External Services
 // ═══════════════════════════════════════════════════════════════
@@ -82,6 +90,21 @@ jest.mock("nanoid", () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  if (global.fetch && jest.isMockFunction(global.fetch)) {
+    (global.fetch as jest.Mock).mockImplementation(() =>
+      Promise.resolve({
+        json: () => Promise.resolve({}),
+        ok: true,
+      } as Response)
+    );
+  } else {
+    global.fetch = jest.fn().mockImplementation(() =>
+      Promise.resolve({
+        json: () => Promise.resolve({}),
+        ok: true,
+      } as Response)
+    );
+  }
 });
 
 afterEach(() => {
