@@ -756,6 +756,49 @@ export const payrollDb = {
     const { error: e1 } = await supabase().from("loan_deductions").delete().neq("id", "");
     if (e1) console.error("[db] reset loan_deductions:", e1.message);
 
+    // 1b. loan_balance_history
+    const { error: eHist } = await supabase().from("loan_balance_history").delete().neq("id", "");
+    if (eHist) console.error("[db] reset loan_balance_history:", eHist.message);
+
+    // 1c. loan_repayment_schedule
+    const { error: eSched } = await supabase().from("loan_repayment_schedule").update({ paid: false, payslip_id: null, skipped_reason: null }).neq("id", "");
+    if (eSched) console.error("[db] reset loan_repayment_schedule:", eSched.message);
+
+    // 1d. Reset loans status and remaining balances back to original amount
+    const { data: dbLoans, error: eFetchLoans } = await supabase()
+      .from("loans")
+      .select("*");
+    if (eFetchLoans) {
+      console.error("[db] resetAllPayrollData: fetch loans failed:", eFetchLoans.message);
+    } else if (dbLoans && dbLoans.length > 0) {
+      const resetLoans = dbLoans.map((loan) => {
+        const currentStatus = loan.status;
+        let targetStatus = currentStatus;
+        if (
+          currentStatus === "active" ||
+          currentStatus === "settled" ||
+          currentStatus === "frozen" ||
+          currentStatus === "cancelled" ||
+          currentStatus === "inactive"
+        ) {
+          targetStatus = "active";
+        }
+        return {
+          ...loan,
+          remaining_balance: loan.amount,
+          status: targetStatus,
+          last_deducted_at: null,
+        };
+      });
+
+      const { error: eLoansUpsert } = await supabase()
+        .from("loans")
+        .upsert(resetLoans, { onConflict: "id" });
+      if (eLoansUpsert) {
+        console.error("[db] resetAllPayrollData: reset loans failed:", eLoansUpsert.message);
+      }
+    }
+
     // 2. payroll_run_payslips junction (FK → payslips + runs)
     const { error: e2 } = await supabase().from("payroll_run_payslips").delete().neq("payslip_id", "");
     if (e2) console.error("[db] reset payroll_run_payslips:", e2.message);

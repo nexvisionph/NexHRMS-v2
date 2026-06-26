@@ -8,12 +8,14 @@ const USE_DEMO_MODE = typeof process !== "undefined" && process.env?.NEXT_PUBLIC
 
 interface LoansState {
     loans: Loan[];
-    createLoan: (loan: Omit<Loan, "id" | "createdAt" | "remainingBalance" | "deductionCapPercent" | "approvedBy"> & { deductionCapPercent?: number; approvedBy?: string }) => void;
+    createLoan: (loan: Omit<Loan, "id" | "createdAt" | "remainingBalance" | "deductionCapPercent" | "approvedBy"> & { remainingBalance?: number; deductionCapPercent?: number; approvedBy?: string }) => void;
     deductFromLoan: (id: string, amount: number) => void;
     settleLoan: (id: string) => void;
     freezeLoan: (id: string) => void;
     unfreezeLoan: (id: string) => void;
-    updateLoan: (id: string, patch: Partial<Pick<Loan, "monthlyDeduction" | "deductionCapPercent" | "remarks">>) => void;
+    approveLoan: (id: string) => void;
+    rejectLoan: (id: string) => void;
+    updateLoan: (id: string, patch: Partial<Loan>) => void;
     cancelLoan: (id: string) => void;
     getByEmployee: (employeeId: string) => Loan[];
     getActiveByEmployee: (employeeId: string) => Loan[];
@@ -31,6 +33,7 @@ interface LoansState {
     computeCappedDeduction: (loanId: string, employeeNetPay: number) => number;
     recordCappedDeduction: (loanId: string, payslipId: string, employeeNetPay: number) => { deducted: number; skipped: boolean; reason?: string };
     resetToSeed: () => void;
+    resetLoansOutstanding: () => void;
 }
 
 export const useLoansStore = create<LoansState>()(
@@ -42,7 +45,7 @@ export const useLoansStore = create<LoansState>()(
                     const newLoan: Loan = {
                         ...data,
                         id: `LN-${nanoid(8)}`,
-                        remainingBalance: data.amount,
+                        remainingBalance: data.remainingBalance ?? data.amount,
                         deductionCapPercent: data.deductionCapPercent ?? 30,
                         approvedBy: data.approvedBy ?? "system",
                         createdAt: new Date().toISOString().split("T")[0],
@@ -81,6 +84,20 @@ export const useLoansStore = create<LoansState>()(
                 set((s) => ({
                     loans: s.loans.map((l) =>
                         l.id === id && l.status === "frozen" ? { ...l, status: "active" as const } : l
+                    ),
+                })),
+
+            approveLoan: (id: string) =>
+                set((s) => ({
+                    loans: s.loans.map((l) =>
+                        l.id === id ? { ...l, status: "active" as const } : l
+                    ),
+                })),
+
+            rejectLoan: (id: string) =>
+                set((s) => ({
+                    loans: s.loans.map((l) =>
+                        l.id === id ? { ...l, status: "rejected" as const } : l
                     ),
                 })),
 
@@ -224,5 +241,21 @@ export const useLoansStore = create<LoansState>()(
                 return { deducted: maxDeduction, skipped: false };
             },
             resetToSeed: () => set({ loans: SEED_LOANS }),
+            resetLoansOutstanding: () =>
+                set((s) => ({
+                    loans: s.loans.map((l) => ({
+                        ...l,
+                        remainingBalance: l.amount,
+                        status: (l.status === "settled" || l.status === "frozen" || l.status === "active" || l.status === "inactive" || l.status === "cancelled") ? "active" as const : l.status,
+                        deductions: [],
+                        balanceHistory: [],
+                        repaymentSchedule: (l.repaymentSchedule || []).map((item) => ({
+                            ...item,
+                            paid: false,
+                            payslipId: null,
+                            skippedReason: null,
+                        })),
+                    })),
+                })),
         })
 );
