@@ -10,8 +10,9 @@
 
 import type {
   Employee, AttendanceLog, Holiday,
-  ComputeDayType, ComputedPayroll, PayslipDtrDay,
+  ComputeDayType, ComputedPayroll, PayslipDtrDay, PayrollRules, OTRecord,
 } from "@/types";
+import { DOLE_PH_DEFAULTS } from "@/types";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -21,16 +22,36 @@ const LUNCH_BREAK_HOURS = 1;
 const SHIFT_START_HOUR = 8; // 8:00 AM — regular day cap
 const NIGHT_DIFF_START = 22; // 10:00 PM
 
-// ─── OT Multiplier Table (from client payslip) ──────────────────────────────
+// ─── OT Multiplier Table ─────────────────────────────────────────────────────
+// Built from PayrollRules (DB-configurable). Falls back to DOLE PH defaults.
+// Each value is the TOTAL multiplier applied to hourly rate per OT hour.
 
-const MULTIPLIERS = {
-  REG: { normal: 1.25, nightDiff: 1.375 },
-  SAT: { first8: 1.30, excess: 1.69, nightDiff: 1.859 },
-  SUN: { first8: 1.30, excess: 1.69, nightDiff: 1.859 },
-  SPEC_HOL: { first8: 1.50, excess: 1.95, nightDiff: 2.145 },
-  REG_HOL: { first8: 2.00, excess: 2.60, nightDiff: 2.86 },
-  REG_HOL_SAT: { first8: 2.60, excess: 3.38, nightDiff: 3.718 },
-} as const;
+interface EngineMultipliers {
+  REG: { normal: number; nightDiff: number };
+  SAT: { first8: number; excess: number; nightDiff: number };
+  SUN: { first8: number; excess: number; nightDiff: number };
+  SPEC_HOL: { first8: number; excess: number; nightDiff: number };
+  REG_HOL: { first8: number; excess: number; nightDiff: number };
+  REG_HOL_SAT: { first8: number; excess: number; nightDiff: number };
+}
+
+function buildMultipliers(rules: PayrollRules | null | undefined): EngineMultipliers {
+  const r = rules ?? DOLE_PH_DEFAULTS;
+  const nd = r.nightDiffMultiplier;   // e.g. 1.10
+  return {
+    // Regular weekday OT: base multiplier + night diff stacked
+    REG:         { normal: r.regularOtMultiplier,      nightDiff: r.regularOtMultiplier * nd },
+    // Rest day (Sat/Sun): rest-day rate stacked with excess and night diff
+    SAT:         { first8: r.restdayOtMultiplier,      excess: r.restdayOtMultiplier * 1.30, nightDiff: r.restdayOtMultiplier * nd },
+    SUN:         { first8: r.restdayOtMultiplier,      excess: r.restdayOtMultiplier * 1.30, nightDiff: r.restdayOtMultiplier * nd },
+    // Special holiday
+    SPEC_HOL:    { first8: r.specialHolidayMultiplier, excess: r.specialHolidayMultiplier * 1.30, nightDiff: r.specialHolidayMultiplier * nd },
+    // Regular holiday
+    REG_HOL:     { first8: r.regularHolidayMultiplier, excess: r.regularHolidayMultiplier * 1.30, nightDiff: r.regularHolidayMultiplier * nd },
+    // Regular holiday falling on a Saturday
+    REG_HOL_SAT: { first8: r.restdayHolidayMultiplier, excess: r.restdayHolidayMultiplier * 1.30, nightDiff: r.restdayHolidayMultiplier * nd },
+  };
+}
 
 // ─── Day of Week Helpers ─────────────────────────────────────────────────────
 
@@ -104,7 +125,8 @@ function computeDayHours(
   dayType: ComputeDayType,
   ratePerHour: number,
   isSaturday: boolean,
-  isHalfDay: boolean = false
+  isHalfDay: boolean = false,
+  multipliers?: EngineMultipliers
 ): DayComputation {
   // Cap rules (matching client payslip behavior):
   // - ALL days: cap check_in at 08:00 (no credit for early arrival)
@@ -157,8 +179,8 @@ function computeDayHours(
     ? Math.min(totalHoursForOT, checkOutDecimal - NIGHT_DIFF_START)
     : 0;
 
-  // Compute OT pay (using the complex multiplier table for future use)
-  const otPay = computeOTPayForDay(totalHoursForOT, otHours, dayType, ratePerHour, nightDiffHours, isSaturday);
+  // Compute OT pay (using the configurable multiplier table)
+  const otPay = computeOTPayForDay(totalHoursForOT, otHours, dayType, ratePerHour, nightDiffHours, isSaturday, multipliers);
 
   return { totalHours: totalHoursDisplay, effectiveIn, otHours, undertimeHours, otPay, nightDiffHours };
 }
@@ -171,19 +193,22 @@ function computeOTPayForDay(
   dayType: ComputeDayType,
   ratePerHour: number,
   nightDiffHours: number,
-  isSaturday: boolean
+  isSaturday: boolean,
+  multipliers?: EngineMultipliers
 ): number {
   if (otHours <= 0 && dayType === "REG") return 0;
   if (totalHours <= 0) return 0;
 
+  // Use provided multipliers or fall back to DOLE PH defaults
+  const M = multipliers ?? buildMultipliers(null);
+
   switch (dayType) {
     case "REG": {
-      // OT is only hours beyond 8
       const otPreNight = Math.max(0, otHours - nightDiffHours);
       const otNight = Math.min(otHours, nightDiffHours);
       return round2(
-        otPreNight * ratePerHour * MULTIPLIERS.REG.normal +
-        otNight * ratePerHour * MULTIPLIERS.REG.nightDiff
+        otPreNight * ratePerHour * M.REG.normal +
+        otNight * ratePerHour * M.REG.nightDiff
       );
     }
 
@@ -198,10 +223,10 @@ function computeOTPayForDay(
       const preNightExcess = excess - nightExcess;
 
       return round2(
-        preNightFirst8 * ratePerHour * MULTIPLIERS.SAT.first8 +
-        nightFirst8 * ratePerHour * MULTIPLIERS.SAT.nightDiff +
-        preNightExcess * ratePerHour * MULTIPLIERS.SAT.excess +
-        nightExcess * ratePerHour * MULTIPLIERS.SAT.nightDiff
+        preNightFirst8 * ratePerHour * M.SAT.first8 +
+        nightFirst8 * ratePerHour * M.SAT.nightDiff +
+        preNightExcess * ratePerHour * M.SAT.excess +
+        nightExcess * ratePerHour * M.SAT.nightDiff
       );
     }
 
@@ -212,9 +237,9 @@ function computeOTPayForDay(
       const preNightFirst8 = first8 - nightFirst8;
 
       return round2(
-        preNightFirst8 * ratePerHour * MULTIPLIERS.SPEC_HOL.first8 +
-        nightFirst8 * ratePerHour * MULTIPLIERS.SPEC_HOL.nightDiff +
-        excess * ratePerHour * MULTIPLIERS.SPEC_HOL.excess
+        preNightFirst8 * ratePerHour * M.SPEC_HOL.first8 +
+        nightFirst8 * ratePerHour * M.SPEC_HOL.nightDiff +
+        excess * ratePerHour * M.SPEC_HOL.excess
       );
     }
 
@@ -226,18 +251,18 @@ function computeOTPayForDay(
         const nightFirst8 = Math.min(first8, nightDiffHours);
         const preNightFirst8 = first8 - nightFirst8;
         return round2(
-          preNightFirst8 * ratePerHour * MULTIPLIERS.REG_HOL_SAT.first8 +
-          nightFirst8 * ratePerHour * MULTIPLIERS.REG_HOL_SAT.nightDiff +
-          excess * ratePerHour * MULTIPLIERS.REG_HOL_SAT.excess
+          preNightFirst8 * ratePerHour * M.REG_HOL_SAT.first8 +
+          nightFirst8 * ratePerHour * M.REG_HOL_SAT.nightDiff +
+          excess * ratePerHour * M.REG_HOL_SAT.excess
         );
       }
 
       const nightFirst8 = Math.min(first8, nightDiffHours);
       const preNightFirst8 = first8 - nightFirst8;
       return round2(
-        preNightFirst8 * ratePerHour * MULTIPLIERS.REG_HOL.first8 +
-        nightFirst8 * ratePerHour * MULTIPLIERS.REG_HOL.nightDiff +
-        excess * ratePerHour * MULTIPLIERS.REG_HOL.excess
+        preNightFirst8 * ratePerHour * M.REG_HOL.first8 +
+        nightFirst8 * ratePerHour * M.REG_HOL.nightDiff +
+        excess * ratePerHour * M.REG_HOL.excess
       );
     }
   }
@@ -350,6 +375,26 @@ export interface ComputePayrollParams {
     other: number;
   };
   computeWorkDays?: number;
+  /**
+   * Payroll rules loaded from the DB (payroll_rules table).
+   * When provided, all OT multipliers are read from here instead of
+   * DOLE PH hardcoded defaults. Set compliance_mode='custom' to use
+   * company-specific rates (e.g. regularOtMultiplier=1.00 for no premium).
+   * Falls back to DOLE_PH_DEFAULTS when null/undefined.
+   */
+  payrollRules?: PayrollRules | null;
+  /**
+   * Pre-approved OT records from the OT Review Layer (ot_records table).
+   * When provided, the engine uses approved_ot_hours / approved_amount
+   * from these records INSTEAD of computing OT from raw attendance.
+   *
+   * Only records with status 'approved' or 'partially_approved' are used.
+   * Pending and rejected records are automatically excluded.
+   *
+   * When NOT provided (undefined), the engine falls back to computing OT
+   * directly from attendance logs (legacy behaviour — avoid in production).
+   */
+  approvedOtRecords?: OTRecord[] | null;
 }
 
 export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
@@ -361,12 +406,19 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
     holidays,
     deductions,
     computeWorkDays = DEFAULT_COMPUTE_WORK_DAYS,
+    payrollRules,
+    approvedOtRecords,
   } = params;
+
+  // Build multiplier table from payroll rules (or DOLE PH defaults)
+  const multipliers = buildMultipliers(payrollRules ?? null);
+  // Work-days divisor from rules (or default)
+  const effectiveWorkDays = payrollRules?.workDaysDivisor ?? computeWorkDays;
 
   // Step 1: Derive rates (round salary first to avoid float precision issues like 28499.9)
   const monthlySalary = Math.round(employee.salary * 100) / 100;
-  const rawRatePerDay = monthlySalary / computeWorkDays;
-  const rawRatePerHour = rawRatePerDay / STANDARD_HOURS_PER_DAY;
+  const rawRatePerDay = monthlySalary / effectiveWorkDays;
+  const rawRatePerHour = rawRatePerDay / (payrollRules?.hoursPerDay ?? STANDARD_HOURS_PER_DAY);
 
   const ratePerDay = round2(rawRatePerDay);
   const ratePerHour = round2(rawRatePerHour);
@@ -486,7 +538,7 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
 
       if (checkInDecimal !== null && checkOutDecimal !== null) {
         const halfDay = isDeclaredHalfDay(dateStr, holidays);
-        const comp = computeDayHours(checkInDecimal, checkOutDecimal, dayType, rawRatePerHour, isSaturday, halfDay);
+        const comp = computeDayHours(checkInDecimal, checkOutDecimal, dayType, rawRatePerHour, isSaturday, halfDay, multipliers);
 
         dayRecord.totalHrs = round2(comp.totalHours);
         // Display OT uses with-lunch formula for readability (matching client DTR column)
@@ -557,34 +609,95 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
     dailyBreakdown.push(dayRecord);
   }
 
-  // ═══ CLIENT OT PAY FORMULA ═══
-  // The client payslip computes payable OT per day using:
-  //   1. OT hours calculated WITHOUT lunch deduction (OUT - 8:00 - 8)
-  //   2. Minutes < 30 are TRUNCATED to 0 (only minutes ≥ 30 are kept)
-  //   3. Two separate pools: Regular at 1.25x, Saturday/Holiday at 1.30x
-  //   4. Each day rounded to 2 decimals, then summed
+  // ═══ OT PAY FORMULA ═══
+  // When approvedOtRecords are provided (Phase 2B — OT review wired):
+  //   → Use approved_ot_hours & approved_amount directly from ot_records.
+  //   → Skip the inline per-day computation entirely.
+  // When approvedOtRecords is null/undefined (legacy fallback):
+  //   → Compute from attendance logs using the per-day breakdown built above.
+  //   → OT hours computed WITHOUT lunch deduction (OUT - 8:00 - 8)
+  //   → Minutes < 30 truncated to 0 for regular OT (client payslip rule)
+  //   → Two pools: Regular weekday OT, and Saturday/Holiday OT
+
   let sumRegOtPay = 0;
   let sumSatOtPay = 0;
 
-  // Assign per-day otPay and accumulate totals
-  for (const day of dailyBreakdown) {
-    // day.otPay temporarily holds the no-lunch OT hours (set during daily loop)
-    const payableOtRaw = day.otPay ?? 0;
-    day.otPay = 0; // Reset — will be set to actual pay amount below
-    if (payableOtRaw > 0) {
-      if (day.dayType === "SAT" || day.dayType === "SUN" || day.dayType === "SPEC_HOL" || day.dayType === "REG_HOL") {
-        // Saturday/Sunday/Holiday: separate pool at 1.30x (no truncation — always 8 flat)
-        day.otPay = round2(payableOtRaw * rawRatePerHour * 1.30);
-        sumSatOtPay += day.otPay;
+  const useApprovedOt =
+    Array.isArray(approvedOtRecords) &&
+    approvedOtRecords.some(
+      (r) =>
+        r.employeeId === employee.id &&
+        (r.status === "approved" || r.status === "partially_approved")
+    );
+
+  if (useApprovedOt) {
+    // ─── Phase 2B path: use reviewed & approved OT records ────────────────
+    const employeeOtRecords = approvedOtRecords!.filter(
+      (r) =>
+        r.employeeId === employee.id &&
+        (r.status === "approved" || r.status === "partially_approved") &&
+        r.otDate >= periodStart &&
+        r.otDate <= periodEnd
+    );
+
+    for (const otRecord of employeeOtRecords) {
+      const approvedHours = otRecord.approvedOtHours ?? 0;
+      if (approvedHours <= 0) continue;
+
+      const isRestOrHoliday =
+        otRecord.otType === "rest_day" ||
+        otRecord.otType === "regular_holiday" ||
+        otRecord.otType === "special_holiday" ||
+        otRecord.otType === "rest_day_holiday";
+
+      if (isRestOrHoliday) {
+        // Use approved_amount if set, otherwise recompute from approved hours
+        const pay = otRecord.approvedAmount != null
+          ? otRecord.approvedAmount
+          : round2(approvedHours * rawRatePerHour * multipliers.SAT.first8);
+        sumSatOtPay += pay;
       } else {
-        // Regular weekday OT: apply minute truncation rule
-        // Split OT into hours + minutes, truncate minutes < 30 to 0
-        const otFloorHrs = Math.floor(payableOtRaw);
-        const otMinutes = Math.round((payableOtRaw - otFloorHrs) * 60);
-        const payableMinutes = otMinutes >= 30 ? otMinutes : 0;
-        const payableOtHrs = otFloorHrs + payableMinutes / 60;
-        day.otPay = round2(payableOtHrs * rawRatePerHour * 1.25);
-        sumRegOtPay += day.otPay;
+        // Regular OT or night diff — use approved_amount or recompute
+        const pay = otRecord.approvedAmount != null
+          ? otRecord.approvedAmount
+          : round2(approvedHours * rawRatePerHour * multipliers.REG.normal);
+        sumRegOtPay += pay;
+      }
+    }
+
+    // Keep dailyBreakdown otPay at 0 (OT sourced from ot_records, not daily calc)
+    for (const day of dailyBreakdown) {
+      day.otPay = 0;
+    }
+
+    console.log(`[PAYROLL-ENGINE] OT SOURCE: approved ot_records (${employeeOtRecords.length} records)`);
+  } else {
+    // ─── Legacy path: compute OT from attendance log daily breakdown ──────
+    if (approvedOtRecords !== undefined) {
+      console.warn(`[PAYROLL-ENGINE] WARNING: approvedOtRecords provided but no approved records found for ${employee.id}. Falling back to attendance-log OT computation.`);
+    }
+
+    for (const day of dailyBreakdown) {
+      const payableOtRaw = day.otPay ?? 0;
+      day.otPay = 0;
+      if (payableOtRaw > 0) {
+        if (
+          day.dayType === "SAT" ||
+          day.dayType === "SUN" ||
+          day.dayType === "SPEC_HOL" ||
+          day.dayType === "REG_HOL"
+        ) {
+          day.otPay = round2(payableOtRaw * rawRatePerHour * multipliers.SAT.first8);
+          sumSatOtPay += day.otPay;
+        } else {
+          // Regular weekday OT: minute truncation rule
+          const otFloorHrs = Math.floor(payableOtRaw);
+          const otMinutes = Math.round((payableOtRaw - otFloorHrs) * 60);
+          const payableMinutes = otMinutes >= 30 ? otMinutes : 0;
+          const payableOtHrs = otFloorHrs + payableMinutes / 60;
+          day.otPay = round2(payableOtHrs * rawRatePerHour * multipliers.REG.normal);
+          sumRegOtPay += day.otPay;
+        }
       }
     }
   }

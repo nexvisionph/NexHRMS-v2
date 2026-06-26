@@ -7,9 +7,30 @@ on:
     branches: [ "main" ]
 
 jobs:
+  migrations:
+    name: Migration Sanity Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Check for duplicate migration numbers
+        run: |
+          DUPES=$(ls supabase/migrations/*.sql 2>/dev/null \
+            | xargs -I{} basename {} \
+            | grep -E '^[0-9]+' \
+            | sed 's/^\([0-9]*\).*/\1/' \
+            | sort | uniq -d)
+          if [ -n "$DUPES" ]; then
+            echo "ERROR: Duplicate migration numbers found: $DUPES"
+            echo "Check supabase/MIGRATION_ORDER.md for the next available number."
+            exit 1
+          fi
+          echo "OK: No duplicate migration numbers."
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    needs: migrations
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
