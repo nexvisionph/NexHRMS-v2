@@ -62,12 +62,12 @@ export function isWithinGeofence(
 ): { within: boolean; distanceMeters: number };
 
 export function isWithinGeofence(
-  arg1: any,
-  arg2: any,
-  arg3: any,
-  arg4?: any,
-  arg5?: any
-): any {
+  arg1: Coordinates | number,
+  arg2: Coordinates | number,
+  arg3: number,
+  arg4?: number,
+  arg5?: number
+): boolean | { within: boolean; distanceMeters: number } {
   if (typeof arg1 === "object" && typeof arg2 === "object" && typeof arg3 === "number") {
     const distance = calculateDistanceInMeters(arg1, arg2);
     return distance <= arg3;
