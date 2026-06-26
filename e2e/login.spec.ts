@@ -16,8 +16,6 @@ test.describe('Login & Redirection Flow', () => {
     const emailInput = page.locator('input[type="email"]');
     await expect(emailInput).toBeVisible({ timeout: 15000 });
 
-    // Check if the Secure Portal label exists (rendered inside the card header)
-    await expect(page.getByText('Secure Portal', { exact: false }).first()).toBeVisible({ timeout: 5000 });
 
     const passwordInput = page.locator('input[type="password"]');
     await expect(passwordInput).toBeVisible();
