@@ -162,6 +162,50 @@ export default function LocationSettingsPage() {
                         </SelectContent>
                     </Select>
                 </Row>
+                <div className="space-y-2 pt-2 border-t border-border/50">
+                    <p className="text-sm font-medium">Log Reconciliation Priority</p>
+                    <p className="text-xs text-muted-foreground">Reorder sources by priority (leftmost/first gets selected if multiple logs exist for a day)</p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                        {(config.reconciliationPriority || ["biometric", "mobile_gps", "web", "manual"]).map((source, index) => (
+                            <div key={source} className="flex items-center gap-1 bg-muted/60 border border-border px-2.5 py-1.5 rounded-md text-xs font-medium">
+                                <span className="text-muted-foreground mr-0.5">#{index + 1}</span>
+                                <span className="capitalize">{source.replace("_", " ")}</span>
+                                <div className="flex flex-col ml-2">
+                                    {index > 0 && (
+                                        <button
+                                            type="button"
+                                            className="hover:text-primary leading-none text-[8px]"
+                                            onClick={() => {
+                                                const list = [...(config.reconciliationPriority || ["biometric", "mobile_gps", "web", "manual"])];
+                                                const temp = list[index];
+                                                list[index] = list[index - 1];
+                                                list[index - 1] = temp;
+                                                updateConfig({ reconciliationPriority: list });
+                                            }}
+                                        >
+                                            ▲
+                                        </button>
+                                    )}
+                                    {index < 3 && (
+                                        <button
+                                            type="button"
+                                            className="hover:text-primary leading-none text-[8px]"
+                                            onClick={() => {
+                                                const list = [...(config.reconciliationPriority || ["biometric", "mobile_gps", "web", "manual"])];
+                                                const temp = list[index];
+                                                list[index] = list[index + 1];
+                                                list[index + 1] = temp;
+                                                updateConfig({ reconciliationPriority: list });
+                                            }}
+                                        >
+                                            ▼
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </Section>
 
             {/* Selfie / Photo */}

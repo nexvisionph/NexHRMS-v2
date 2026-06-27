@@ -115,6 +115,7 @@ no collisions. Current highest: `067`. Next new migration: `068`.
 068_attendance_summaries.sql
 069_attendance_location_columns.sql
 070_add_geofence_mode_to_location_config.sql
+071_add_reconciliation_priority_to_location_config.sql
 20260608_payroll_computation_engine.sql  ← non-standard name, applied last
 add_government_loans.sql                 ← non-standard name, applied after 20260608
 ```
@@ -125,8 +126,8 @@ add_government_loans.sql                 ← non-standard name, applied after 20
 
 | Purpose | Migration Number |
 |---|---|
-| Next new migration | `071` |
-| Any future migration | `071+` |
+| Next new migration | `072` |
+| Any future migration | `072+` |
 
 ---
 

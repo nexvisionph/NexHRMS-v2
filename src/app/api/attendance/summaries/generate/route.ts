@@ -3,13 +3,7 @@ import { createAdminSupabaseClient, createServerSupabaseClient } from "@/service
 
 const ALLOWED_ROLES = ["admin", "hr", "payroll_admin"];
 
-// Source priority: higher index = higher priority wins
-const SOURCE_PRIORITY: Record<string, number> = {
-  manual: 0,
-  web: 1,
-  mobile_gps: 2,
-  biometric: 3,
-};
+
 
 function timeToMinutes(t: string): number {
   const [h, m] = t.split(":").map(Number);
@@ -125,6 +119,20 @@ export async function POST(request: NextRequest) {
       shiftById[s.id] = s;
     }
 
+    // Fetch reconciliation priority settings
+    const { data: locConfig } = await supabase
+      .from("location_config")
+      .select("reconciliation_priority")
+      .eq("id", "default")
+      .single();
+
+    const priorityArray: string[] = locConfig?.reconciliation_priority ?? ["biometric", "mobile_gps", "web", "manual"];
+    // Map priority array to priority scores: elements earlier in the array have HIGHER priority
+    const dynamicPriorityMap: Record<string, number> = {};
+    priorityArray.forEach((source, index) => {
+      dynamicPriorityMap[source] = priorityArray.length - index;
+    });
+
     // Group logs by employee+date, pick best source
     type LogRow = Record<string, unknown>;
     const grouped: Record<string, LogRow[]> = {};
@@ -140,11 +148,11 @@ export async function POST(request: NextRequest) {
 
     const summaries: Record<string, unknown>[] = [];
 
-    for (const [key, dayLogs] of Object.entries(grouped)) {
+    for (const [, dayLogs] of Object.entries(grouped)) {
       // Pick highest-priority source log
       const primaryLog = dayLogs.reduce((best, cur) => {
-        const bestPriority = SOURCE_PRIORITY[best.source as string] ?? 0;
-        const curPriority = SOURCE_PRIORITY[cur.source as string] ?? 0;
+        const bestPriority = dynamicPriorityMap[best.source as string] ?? 0;
+        const curPriority = dynamicPriorityMap[cur.source as string] ?? 0;
         return curPriority > bestPriority ? cur : best;
       });
 
@@ -203,13 +211,17 @@ export async function POST(request: NextRequest) {
       }
 
       // Build source summary string
-      const sources = Array.from(
+      const uniqueSources = Array.from(
         new Set(
           dayLogs
             .map((l) => l.source as string || l.check_in_method as string || "web")
             .filter(Boolean)
         )
-      ).join(", ");
+      );
+
+      const sources = dayLogs.length > 1
+        ? `[${uniqueSources.join(", ")}] (Reconciled: ${primaryLog.source})`
+        : uniqueSources.join(", ");
 
       summaries.push({
         id: `AS-${employeeId}-${attendanceDate}`,

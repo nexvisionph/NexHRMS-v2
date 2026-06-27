@@ -33,6 +33,7 @@ const DEFAULT_CONFIG: LocationTrackingConfig = {
     allowedBreaksPerDay: 1,
     breakGracePeriod: 5,
     geofenceMode: "flexible",
+    reconciliationPriority: ["biometric", "mobile_gps", "web", "manual"],
 };
 
 const MAX_PHOTOS = 100;

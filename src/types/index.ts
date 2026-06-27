@@ -1360,6 +1360,7 @@ export interface LocationTrackingConfig {
   allowedBreaksPerDay: number;
   breakGracePeriod: number;
   geofenceMode: "strict" | "flexible";
+  reconciliationPriority: string[];
 }
 
 // ─── Task Management ─────────────────────────────────────────

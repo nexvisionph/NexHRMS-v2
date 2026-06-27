@@ -24,6 +24,7 @@ function toDbRow(config: Record<string, unknown>) {
     allowedBreaksPerDay: "allowed_breaks_per_day",
     breakGracePeriod: "break_grace_period",
     geofenceMode: "geofence_mode",
+    reconciliationPriority: "reconciliation_priority",
   };
   const row: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(config)) {
@@ -56,6 +57,7 @@ function fromDbRow(row: Record<string, unknown>) {
     allowedBreaksPerDay: row.allowed_breaks_per_day as number,
     breakGracePeriod: row.break_grace_period as number,
     geofenceMode: (row.geofence_mode as "strict" | "flexible") ?? "flexible",
+    reconciliationPriority: (row.reconciliation_priority as string[]) ?? ["biometric", "mobile_gps", "web", "manual"],
   };
 }
 
