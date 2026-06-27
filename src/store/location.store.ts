@@ -49,7 +49,7 @@ interface LocationState {
 
     // Config
     fetchConfig: () => Promise<void>;
-    updateConfig: (patch: Partial<LocationTrackingConfig>) => void;
+    updateConfig: (patch: Partial<LocationTrackingConfig>) => Promise<void>;
     resetConfig: () => void;
 
     // Photos (site survey selfies)
@@ -97,8 +97,17 @@ export const useLocationStore = create<LocationState>()(
                 }
             },
 
-            updateConfig: (patch) => {
+            updateConfig: async (patch) => {
                 set((s) => ({ config: { ...s.config, ...patch } }));
+                try {
+                    await fetch("/api/settings/location", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(patch),
+                    });
+                } catch {
+                    // Offline fallback
+                }
             },
 
             resetConfig: () => {
