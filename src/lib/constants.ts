@@ -314,6 +314,15 @@ export const NAV_ITEMS: {
             group: "payroll",
         },
         {
+            label: "Overtime Review",
+            href: "/payroll/overtime-review",
+            icon: "Clock",
+            roles: ["admin", "finance", "payroll_admin"],
+            permission: "page:payroll",
+            moduleFlag: "payroll",
+            group: "payroll",
+        },
+        {
             label: "My Payslips",
             href: "/my-payslips",
             icon: "FileText",
