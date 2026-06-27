@@ -1359,6 +1359,7 @@ export interface LocationTrackingConfig {
   alertAdminOnGeofenceViolation: boolean;
   allowedBreaksPerDay: number;
   breakGracePeriod: number;
+  geofenceMode: "strict" | "flexible";
 }
 
 // ─── Task Management ─────────────────────────────────────────

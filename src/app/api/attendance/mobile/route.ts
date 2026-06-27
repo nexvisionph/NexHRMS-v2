@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
-import { createServerSupabaseClient, createAdminSupabaseClient } from "@/services/supabase-server";
-import { isWithinGeofence, calculateDistanceInMeters } from "@/lib/geofence";
+import { createAdminSupabaseClient } from "@/services/supabase-server";
+import { calculateDistanceInMeters } from "@/lib/geofence";
 
 function getManilaParts(date: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -113,8 +113,22 @@ export async function POST(req: Request) {
       }
     }
 
-    // TODO: if strict mode is enabled and isGeofencePass is false, block it here.
-    // For now, flexible mode is assumed (allows clock-in but flags it).
+    // Fetch location config to verify geofence mode
+    const { data: locConfig } = await admin
+      .from("location_config")
+      .select("geofence_mode")
+      .eq("id", "default")
+      .single();
+
+    const isStrict = locConfig?.geofence_mode === "strict";
+
+    if (isStrict && isGeofencePass === false) {
+      return NextResponse.json({ 
+        ok: false, 
+        error: "Outside allowed work location", 
+        distanceMeters 
+      }, { status: 403 });
+    }
 
     const { data: existingLog } = await admin
       .from("attendance_logs")

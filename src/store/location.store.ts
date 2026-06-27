@@ -32,6 +32,7 @@ const DEFAULT_CONFIG: LocationTrackingConfig = {
     alertAdminOnGeofenceViolation: true,
     allowedBreaksPerDay: 1,
     breakGracePeriod: 5,
+    geofenceMode: "flexible",
 };
 
 const MAX_PHOTOS = 100;

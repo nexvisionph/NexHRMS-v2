@@ -112,6 +112,9 @@ no collisions. Current highest: `067`. Next new migration: `068`.
 066_disciplinary_case_status_sync_triggers.sql
 066_payroll_rules_engine.sql
 067_mobile_attendance.sql
+068_attendance_summaries.sql
+069_attendance_location_columns.sql
+070_add_geofence_mode_to_location_config.sql
 20260608_payroll_computation_engine.sql  ← non-standard name, applied last
 add_government_loans.sql                 ← non-standard name, applied after 20260608
 ```
@@ -122,10 +125,8 @@ add_government_loans.sql                 ← non-standard name, applied after 20
 
 | Purpose | Migration Number |
 |---|---|
-| Next new migration | `068` |
-| attendance_summaries table (ATT-001) | `068` |
-| attendance location columns (ATT-006) | `069` |
-| Any future migration | `070+` |
+| Next new migration | `071` |
+| Any future migration | `071+` |
 
 ---
 

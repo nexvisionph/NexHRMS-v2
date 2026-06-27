@@ -23,6 +23,7 @@ function toDbRow(config: Record<string, unknown>) {
     alertAdminOnGeofenceViolation: "alert_admin_on_geofence_violation",
     allowedBreaksPerDay: "allowed_breaks_per_day",
     breakGracePeriod: "break_grace_period",
+    geofenceMode: "geofence_mode",
   };
   const row: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(config)) {
@@ -54,6 +55,7 @@ function fromDbRow(row: Record<string, unknown>) {
     alertAdminOnGeofenceViolation: row.alert_admin_on_geofence_violation as boolean,
     allowedBreaksPerDay: row.allowed_breaks_per_day as number,
     breakGracePeriod: row.break_grace_period as number,
+    geofenceMode: (row.geofence_mode as "strict" | "flexible") ?? "flexible",
   };
 }
 

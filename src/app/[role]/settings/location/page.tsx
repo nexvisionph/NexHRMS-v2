@@ -13,8 +13,11 @@ import {
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-    MapPin, ArrowLeft, RotateCcw, Camera, Navigation,
-    Coffee,
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+    ArrowLeft, RotateCcw, Camera, Navigation,
+    Coffee, ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -145,6 +148,20 @@ export default function LocationSettingsPage() {
                     value={config.retainDays} min={7} max={90} step={1} unit=" days"
                     onChange={(v) => updateConfig({ retainDays: v })}
                 />
+                <Row label="Geofence Mode" hint="Choose strict blocking or flexible flagging for out-of-bounds clock-ins">
+                    <Select
+                        value={config.geofenceMode || "flexible"}
+                        onValueChange={(v) => updateConfig({ geofenceMode: v as "strict" | "flexible" })}
+                    >
+                        <SelectTrigger className="w-[140px] text-xs">
+                            <SelectValue placeholder="Geofence Mode" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="flexible" className="text-xs">Flexible (Flag only)</SelectItem>
+                            <SelectItem value="strict" className="text-xs">Strict (Block clock-in)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </Row>
             </Section>
 
             {/* Selfie / Photo */}
@@ -204,8 +221,8 @@ export default function LocationSettingsPage() {
                         <Badge variant="secondary" className="text-[10px]">
                             <Coffee className="h-3 w-3 mr-1" /> {config.lunchDuration}min lunch
                         </Badge>
-                        <Badge variant={config.lunchGeofenceRequired ? "default" : "secondary"} className="text-[10px]">
-                            <MapPin className="h-3 w-3 mr-1" /> Break geofence {config.lunchGeofenceRequired ? "ON" : "OFF"}
+                        <Badge variant={config.geofenceMode === "strict" ? "destructive" : "secondary"} className="text-[10px]">
+                            <ShieldAlert className="h-3 w-3 mr-1" /> Geofence: {config.geofenceMode === "strict" ? "STRICT" : "FLEXIBLE"}
                         </Badge>
                     </div>
                 </CardContent>

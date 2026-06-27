@@ -35,7 +35,7 @@ export function PayrollRulesTab() {
     }
   }, [rules]);
 
-  const handleFieldChange = (field: keyof PayrollRules, value: any) => {
+  const handleFieldChange = (field: keyof PayrollRules, value: unknown) => {
     if (!formData) return;
     
     setFormData(prev => prev ? { ...prev, [field]: value } : null);

@@ -141,7 +141,7 @@ describe("computePayroll — basic pay", () => {
   });
 
   it("uses custom workDaysDivisor from payrollRules", () => {
-    const rules: PayrollRules = { ...DOLE_PH_DEFAULTS, workDaysDivisor: 26 };
+    const rules: PayrollRules = { id: "rule-1", ...DOLE_PH_DEFAULTS, workDaysDivisor: 26 };
     const result = computePayroll({
       employee,
       ...period,
@@ -325,7 +325,7 @@ describe("computePayroll — custom payrollRules multipliers", () => {
 
   it("applies custom regularOtMultiplier from payrollRules", () => {
     const logs = [makeAttendanceLog("EMP-001", "2026-06-01", "08:00", "11:00")]; // 3h OT
-    const rules: PayrollRules = { ...DOLE_PH_DEFAULTS, regularOtMultiplier: 1.0 }; // no premium
+    const rules: PayrollRules = { id: "rule-2", ...DOLE_PH_DEFAULTS, regularOtMultiplier: 1.0 }; // no premium
     const defaultResult = computePayroll({
       employee,
       ...period,
