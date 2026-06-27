@@ -101,13 +101,13 @@ export async function POST(request: NextRequest) {
 
     const periodId = `${periodStart}/${periodEnd}`;
 
-    // Load attendance logs for period
+    // Load attendance logs for period (either present or computed)
     const { data: rawLogs } = await supabase
       .from("attendance_logs")
       .select("*")
       .gte("date", periodStart)
       .lte("date", periodEnd)
-      .eq("status", "present");
+      .in("status", ["present", "computed"]);
 
     // Load shifts + employee-shift mappings
     const { data: shiftTemplates } = await supabase.from("shift_templates").select("*");
