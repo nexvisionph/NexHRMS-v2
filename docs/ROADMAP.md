@@ -43,7 +43,7 @@ Raw Attendance Sources
 | **Phase 2B** | OT Review → Payroll Integration | 🟢 Done | Senior Dev | OT-001, 003, 004 |
 | **Phase 2C** | Payroll Pending OT Guard | 🟢 Done | Senior Dev + Intern 1 | OT-002 |
 | **Phase 3A** | Payslip OT Breakdown | 🟢 Done | Intern 2 | OT-005 |
-| **Phase 3B** | Strict Geofence Mode | 🔴 Not Started | Intern 3 | ATT-005 |
+| **Phase 3B** | Strict Geofence Mode | 🟢 Done | Intern 3 | ATT-005 |
 | **Phase 3C** | Multi-Source Attendance Reconciliation | 🔴 Not Started | Senior Dev | ATT-007 |
 | **Phase 4A** | Compliance Mode Warning + Audit Verification | 🔴 Not Started | Intern 1 | PAYRULE-005, 006 |
 | **Phase 4B** | QA Regression | 🔴 Not Started | QA Intern | QA-001 → 006 |

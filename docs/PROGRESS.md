@@ -89,7 +89,7 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 | Ticket | Task | Owner | Status | PR | Notes |
 |---|---|---|---|---|---|
 | OT-005 | Add OT type breakdown to payslip | Intern 2 | 🟢 | — | Completed 2026-06-26 |
-| ATT-005 | Implement strict geofence mode | Intern 3 | 🔴 | — | |
+| ATT-005 | Implement strict geofence mode | Intern 3 | 🟢 | — | Completed 2026-06-27 |
 | ATT-007 | Multi-source attendance reconciliation | Senior Dev | 🔴 | — | Depends on ATT-002 |
 
 ---

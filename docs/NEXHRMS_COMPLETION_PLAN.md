@@ -117,7 +117,7 @@ After today's E2E fix, push to main and confirm all 5 jobs pass green. Capture t
 | **Phase 2B** | OT Review → Payroll Integration | Senior Dev | OT-001, OT-003, OT-004 | ✅ Complete |
 | **Phase 2C** | Payroll Pending OT Guard | Senior Dev + Intern 1 | OT-002 | ✅ Complete |
 | **Phase 3A** | Payslip OT Breakdown | Intern 2 | OT-005 | ✅ Complete |
-| **Phase 3B** | Strict Geofence Mode | Intern 3 | ATT-005 | Settings configurable; strict mode returns 403 to mobile if outside geofence |
+| **Phase 3B** | Strict Geofence Mode | Intern 3 | ATT-005 | ✅ Complete |
 | **Phase 3C** | Multi-Source Reconciliation | Senior Dev | ATT-007 | Reconciliation rules create authoritative `attendance_summary` row |
 | **Phase 4A** | Compliance Mode Warning + Audit Verification | Intern 1 | PAYRULE-005, PAYRULE-006 | UI warning modal works; writes to `payroll_rules_audit_logs`; unit tests pass |
 | **Phase 4B** | QA Regression | QA Intern | QA-001 → QA-006 | All QA scenarios pass; no payroll regression; CI green |
