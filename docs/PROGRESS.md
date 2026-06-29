@@ -33,7 +33,7 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 
 | Ticket | Task | Owner | Status | PR | Notes |
 |---|---|---|---|---|---|
-| PAYRULE-001 | Add Payroll Rules tab to settings page | Intern 1 | 🟡 | — | Completed 2026-06-26 |
+| PAYRULE-001 | Add Payroll Rules tab to settings page | Intern 1 | 🟡 | — |  |
 | PAYRULE-002 | Wire `usePayrollRulesStore` to settings page | Intern 1 | 🔴 | — | Depends on PAYRULE-001 |
 
 ---
