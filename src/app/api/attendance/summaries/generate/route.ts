@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     // Resolve caller
     const { data: caller } = await supabase
       .from("employees")
-      .select("id, role, company_id")
+      .select("id, role")
       .or(`profile_id.eq.${user.id},email.eq.${user.email}`)
       .single();
 

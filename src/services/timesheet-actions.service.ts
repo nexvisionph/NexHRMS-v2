@@ -146,3 +146,94 @@ export async function deleteRuleSet(id: string): Promise<boolean> {
     }));
     return true;
 }
+
+/**
+ * Submit multiple timesheets for approval — DB-first.
+ */
+export async function submitTimesheets(ids: string[]): Promise<boolean> {
+    const store = useTimesheetStore.getState();
+    const targets = store.timesheets.filter(t => ids.includes(t.id) && t.status === "computed");
+    if (targets.length === 0) return false;
+
+    const updated = targets.map(t => ({ ...t, status: "submitted" as TimesheetStatus }));
+
+    const ok = await timesheetsDb.batchUpsertTimesheets(updated);
+    if (!ok) return false;
+
+    useTimesheetStore.setState((s) => ({
+        timesheets: s.timesheets.map(t => {
+            const up = updated.find(u => u.id === t.id);
+            return up ? up : t;
+        }),
+    }));
+    return true;
+}
+
+/**
+ * Approve multiple timesheets — DB-first.
+ */
+export async function approveTimesheets(ids: string[], approverId: string): Promise<boolean> {
+    const store = useTimesheetStore.getState();
+    const now = new Date().toISOString();
+    const targets = store.timesheets.filter(t => ids.includes(t.id) && t.status === "submitted");
+    if (targets.length === 0) return false;
+
+    const updated = targets.map(t => ({ 
+        ...t, 
+        status: "approved" as TimesheetStatus,
+        approvedBy: approverId,
+        approvedAt: now
+    }));
+
+    const ok = await timesheetsDb.batchUpsertTimesheets(updated);
+    if (!ok) return false;
+
+    useTimesheetStore.setState((s) => ({
+        timesheets: s.timesheets.map(t => {
+            const up = updated.find(u => u.id === t.id);
+            return up ? up : t;
+        }),
+    }));
+    return true;
+}
+
+/**
+ * Reject multiple timesheets — DB-first.
+ */
+export async function rejectTimesheets(ids: string[], approverId: string): Promise<boolean> {
+    const store = useTimesheetStore.getState();
+    const now = new Date().toISOString();
+    const targets = store.timesheets.filter(t => ids.includes(t.id) && t.status === "submitted");
+    if (targets.length === 0) return false;
+
+    const updated = targets.map(t => ({ 
+        ...t, 
+        status: "rejected" as TimesheetStatus,
+        approvedBy: approverId,
+        approvedAt: now
+    }));
+
+    const ok = await timesheetsDb.batchUpsertTimesheets(updated);
+    if (!ok) return false;
+
+    useTimesheetStore.setState((s) => ({
+        timesheets: s.timesheets.map(t => {
+            const up = updated.find(u => u.id === t.id);
+            return up ? up : t;
+        }),
+    }));
+    return true;
+}
+
+/**
+ * Clear a computed timesheet — DB-first.
+ */
+export async function clearTimesheet(id: string): Promise<boolean> {
+    const ok = await timesheetsDb.deleteTimesheet(id);
+    if (!ok) return false;
+
+    useTimesheetStore.setState((s) => ({
+        timesheets: s.timesheets.filter(t => t.id !== id),
+    }));
+    return true;
+}

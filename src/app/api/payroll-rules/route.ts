@@ -8,7 +8,7 @@ const READ_ROLES  = ["admin", "hr", "finance", "payroll_admin", "auditor", "supe
 async function resolveCallerEmployee(supabase: Awaited<ReturnType<typeof createAdminSupabaseClient>>, userId: string, userEmail: string) {
   const { data } = await supabase
     .from("employees")
-    .select("id, role, company_id")
+    .select("id, role")
     .or(`profile_id.eq.${userId},email.eq.${userEmail}`)
     .single();
   return data;

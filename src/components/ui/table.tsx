@@ -104,6 +104,27 @@ function TableCaption({
   )
 }
 
+function TableEmptyState({ icon: Icon, title, description, colSpan }: {
+    icon: React.ElementType;
+    title: string;
+    description?: string;
+    colSpan: number;
+}) {
+    return (
+        <TableRow>
+            <TableCell colSpan={colSpan} className="py-10 !whitespace-normal">
+                <div className="flex flex-col items-center gap-2 text-center">
+                    <div className="h-10 w-10 rounded-full bg-muted/50 flex items-center justify-center">
+                        <Icon className="h-5 w-5 text-muted-foreground/50" />
+                    </div>
+                    <p className="text-sm font-medium text-muted-foreground">{title}</p>
+                    {description && <p className="text-xs text-muted-foreground/70 max-w-[400px] mx-auto text-center">{description}</p>}
+                </div>
+            </TableCell>
+        </TableRow>
+    );
+}
+
 export {
   Table,
   TableHeader,
@@ -113,4 +134,5 @@ export {
   TableRow,
   TableCell,
   TableCaption,
+  TableEmptyState,
 }

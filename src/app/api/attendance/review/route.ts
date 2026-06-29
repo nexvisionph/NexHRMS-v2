@@ -7,7 +7,7 @@ const ALLOWED_ROLES = ["admin", "hr", "finance", "payroll_admin", "supervisor"];
 async function resolveCallerEmployee(supabase: Awaited<ReturnType<typeof createAdminSupabaseClient>>, userId: string, userEmail: string) {
   const { data } = await supabase
     .from("employees")
-    .select("id, role, department, company_id")
+    .select("id, role, department")
     .or(`profile_id.eq.${userId},email.eq.${userEmail}`)
     .single();
   return data;
@@ -236,11 +236,11 @@ export async function PATCH(request: NextRequest) {
 
     const { data: employee } = await supabase
       .from("employees")
-      .select("id, shift_id, company_id")
+      .select("id, shift_id")
       .eq("id", log.employee_id)
       .maybeSingle();
 
-    const companyId = employee?.company_id || log.company_id || "default";
+    const companyId = log.company_id || "default";
     const now = new Date().toISOString();
     const beforeSnapshot = { ...log };
 

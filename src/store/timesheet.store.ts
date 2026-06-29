@@ -41,10 +41,10 @@ interface TimesheetState {
 
 const DEFAULT_RULE_SET: AttendanceRuleSet = {
     id: "RS-DEFAULT",
-    name: "Standard PH Rule Set",
+    name: "Standard",
     standardHoursPerDay: 8,
     graceMinutes: 10,
-    roundingPolicy: "nearest_15",
+    roundingPolicy: "none",
     overtimeRequiresApproval: true,
     nightDiffStart: "22:00",
     nightDiffEnd: "06:00",
@@ -86,6 +86,93 @@ function calcNightDiffMinutes(
     return aOverlap + bOverlap;
 }
 
+/**
+ * Pure function to compute a timesheet object from raw attendance data.
+ * Used by both store and DB-first action services.
+ */
+export function computeTimesheetLocal(data: {
+    employeeId: string;
+    date: string;
+    ruleSetId: string;
+    shiftId?: string;
+    checkIn: string; // "HH:mm"
+    checkOut: string;
+    shiftStart: string;
+    shiftEnd: string;
+    breakDuration: number;
+    ruleSets: AttendanceRuleSet[];
+}): Timesheet {
+    const ruleSet = data.ruleSets.find((r) => r.id === data.ruleSetId) || DEFAULT_RULE_SET;
+    const inMin = parseTime(data.checkIn);
+    let outMin = parseTime(data.checkOut);
+    const shiftStartMin = parseTime(data.shiftStart);
+    let shiftEndMin = parseTime(data.shiftEnd);
+
+    if (shiftEndMin <= shiftStartMin) shiftEndMin += 1440;
+    if (outMin <= inMin) outMin += 1440;
+
+    const stdHoursMin = ruleSet.standardHoursPerDay * 60;
+    const rawWorkedMin = Math.max(0, outMin - inMin - data.breakDuration);
+    const workedMin = roundMinutes(rawWorkedMin, ruleSet.roundingPolicy);
+
+    const rawLate = inMin - shiftStartMin;
+    const lateMinutes = rawLate > ruleSet.graceMinutes ? Math.round(rawLate) : 0;
+    const undertimeMinutes = outMin < shiftEndMin ? Math.round(shiftEndMin - outMin) : 0;
+
+    const regularMin = Math.min(workedMin, stdHoursMin);
+    const overtimeMin = Math.max(0, workedMin - stdHoursMin);
+
+    let nightDiffMin = 0;
+    if (ruleSet.nightDiffStart && ruleSet.nightDiffEnd) {
+        nightDiffMin = calcNightDiffMinutes(
+            inMin, outMin,
+            parseTime(ruleSet.nightDiffStart),
+            parseTime(ruleSet.nightDiffEnd),
+        );
+    }
+
+    const segments: TimesheetSegment[] = [];
+    if (regularMin > 0) {
+        segments.push({
+            id: `SEG-${nanoid(6)}`, timesheetId: "", segmentType: "regular",
+            startTime: data.checkIn, endTime: data.shiftEnd,
+            hours: Math.round((regularMin / 60) * 100) / 100, multiplier: 1.0,
+        });
+    }
+    if (overtimeMin > 0) {
+        segments.push({
+            id: `SEG-${nanoid(6)}`, timesheetId: "", segmentType: "overtime",
+            startTime: data.shiftEnd, endTime: data.checkOut,
+            hours: Math.round((overtimeMin / 60) * 100) / 100, multiplier: 1.25,
+        });
+    }
+    if (nightDiffMin > 0) {
+        segments.push({
+            id: `SEG-${nanoid(6)}`, timesheetId: "", segmentType: "night_diff",
+            startTime: ruleSet.nightDiffStart!, endTime: ruleSet.nightDiffEnd!,
+            hours: Math.round((nightDiffMin / 60) * 100) / 100, multiplier: 1.1,
+        });
+    }
+
+    const tsId = `ATT-${data.date}-${data.employeeId}`; // Stable ID matching unified schema
+    return {
+        id: tsId,
+        employeeId: data.employeeId,
+        date: data.date,
+        ruleSetId: data.ruleSetId,
+        shiftId: data.shiftId,
+        regularHours: Math.round((regularMin / 60) * 100) / 100,
+        overtimeHours: Math.round((overtimeMin / 60) * 100) / 100,
+        nightDiffHours: Math.round((nightDiffMin / 60) * 100) / 100,
+        totalHours: Math.round((workedMin / 60) * 100) / 100,
+        lateMinutes,
+        undertimeMinutes,
+        segments: segments.map((seg) => ({ ...seg, timesheetId: tsId })),
+        status: "computed",
+        computedAt: new Date().toISOString(),
+    };
+}
+
 export const useTimesheetStore = create<TimesheetState>()(
     (set, get) => ({
             timesheets: [],
@@ -109,75 +196,7 @@ export const useTimesheetStore = create<TimesheetState>()(
             getRuleSet: (id) => get().ruleSets.find((r) => r.id === id),
 
             computeTimesheet: (data) => {
-                const ruleSet = get().ruleSets.find((r) => r.id === data.ruleSetId) || DEFAULT_RULE_SET;
-                const inMin = parseTime(data.checkIn);
-                let outMin = parseTime(data.checkOut);
-                const shiftStartMin = parseTime(data.shiftStart);
-                let shiftEndMin = parseTime(data.shiftEnd);
-
-                if (shiftEndMin <= shiftStartMin) shiftEndMin += 1440;
-                if (outMin <= inMin) outMin += 1440;
-
-                const stdHoursMin = ruleSet.standardHoursPerDay * 60;
-                const rawWorkedMin = Math.max(0, outMin - inMin - data.breakDuration);
-                const workedMin = roundMinutes(rawWorkedMin, ruleSet.roundingPolicy);
-
-                const rawLate = inMin - shiftStartMin;
-                const lateMinutes = rawLate > ruleSet.graceMinutes ? Math.round(rawLate) : 0;
-                const undertimeMinutes = outMin < shiftEndMin ? Math.round(shiftEndMin - outMin) : 0;
-
-                const regularMin = Math.min(workedMin, stdHoursMin);
-                const overtimeMin = Math.max(0, workedMin - stdHoursMin);
-
-                let nightDiffMin = 0;
-                if (ruleSet.nightDiffStart && ruleSet.nightDiffEnd) {
-                    nightDiffMin = calcNightDiffMinutes(
-                        inMin, outMin,
-                        parseTime(ruleSet.nightDiffStart),
-                        parseTime(ruleSet.nightDiffEnd),
-                    );
-                }
-
-                const segments: TimesheetSegment[] = [];
-                if (regularMin > 0) {
-                    segments.push({
-                        id: `SEG-${nanoid(6)}`, timesheetId: "", segmentType: "regular",
-                        startTime: data.checkIn, endTime: data.shiftEnd,
-                        hours: Math.round((regularMin / 60) * 100) / 100, multiplier: 1.0,
-                    });
-                }
-                if (overtimeMin > 0) {
-                    segments.push({
-                        id: `SEG-${nanoid(6)}`, timesheetId: "", segmentType: "overtime",
-                        startTime: data.shiftEnd, endTime: data.checkOut,
-                        hours: Math.round((overtimeMin / 60) * 100) / 100, multiplier: 1.25,
-                    });
-                }
-                if (nightDiffMin > 0) {
-                    segments.push({
-                        id: `SEG-${nanoid(6)}`, timesheetId: "", segmentType: "night_diff",
-                        startTime: ruleSet.nightDiffStart!, endTime: ruleSet.nightDiffEnd!,
-                        hours: Math.round((nightDiffMin / 60) * 100) / 100, multiplier: 1.1,
-                    });
-                }
-
-                const tsId = `TS-${nanoid(8)}`;
-                const ts: Timesheet = {
-                    id: tsId,
-                    employeeId: data.employeeId,
-                    date: data.date,
-                    ruleSetId: data.ruleSetId,
-                    shiftId: data.shiftId,
-                    regularHours: Math.round((regularMin / 60) * 100) / 100,
-                    overtimeHours: Math.round((overtimeMin / 60) * 100) / 100,
-                    nightDiffHours: Math.round((nightDiffMin / 60) * 100) / 100,
-                    totalHours: Math.round((workedMin / 60) * 100) / 100,
-                    lateMinutes,
-                    undertimeMinutes,
-                    segments: segments.map((seg) => ({ ...seg, timesheetId: tsId })),
-                    status: "computed",
-                    computedAt: new Date().toISOString(),
-                };
+                const ts = computeTimesheetLocal({ ...data, ruleSets: get().ruleSets });
 
                 set((s) => {
                     const existing = s.timesheets.find(

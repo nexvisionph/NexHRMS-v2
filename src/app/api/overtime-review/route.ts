@@ -3,13 +3,14 @@ import { createAdminSupabaseClient, createServerSupabaseClient } from "@/service
 import { computeOTRecords, recalcApprovedAmount } from "@/lib/ot-computation";
 import { nanoid } from "nanoid";
 import type { AttendanceLog, ShiftTemplate, Holiday } from "@/types";
+import { rowsToTs } from "@/lib/db-mappers";
 
 const ALLOWED_ROLES = ["admin", "hr", "finance", "payroll_admin", "supervisor"];
 
 async function resolveCallerEmployee(supabase: ReturnType<typeof createAdminSupabaseClient> extends Promise<infer T> ? T : never, userId: string, userEmail: string) {
   const { data } = await supabase
     .from("employees")
-    .select("id, role, department, company_id")
+    .select("id, role, department")
     .or(`profile_id.eq.${userId},email.eq.${userEmail}`)
     .single();
   return data;
@@ -158,12 +159,20 @@ export async function POST(request: NextRequest) {
       .eq("payroll_period_id", periodId);
     const existingAttendanceIds = new Set((existingRecords ?? []).map((r) => r.attendance_id).filter(Boolean));
 
+    // Map snake_case database logs to camelCase structures
+    const mappedLogs = (rowsToTs(rawLogs ?? []) as any[]).map(l => ({
+      ...l,
+      status: (l.status as string) === "computed" ? "present" : l.status
+    })) as AttendanceLog[];
+
+    const mappedShifts = rowsToTs(shiftTemplates ?? []) as any as ShiftTemplate[];
+
     // Filter logs that don't already have an OT record
-    const logsToProcess = (rawLogs ?? []).filter((l) => !existingAttendanceIds.has(l.id));
+    const logsToProcess = mappedLogs.filter((l) => !existingAttendanceIds.has(l.id));
 
     const computed = computeOTRecords({
-      logs: logsToProcess as AttendanceLog[],
-      shiftTemplates: (shiftTemplates ?? []) as ShiftTemplate[],
+      logs: logsToProcess,
+      shiftTemplates: mappedShifts,
       employeeShifts,
       holidays: (holidays ?? []) as Holiday[],
       settings,

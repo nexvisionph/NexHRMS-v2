@@ -1356,6 +1356,14 @@ export const timesheetsDb = {
     return upsertRow("timesheets", ts as unknown as Record<string, unknown>);
   },
 
+  async batchUpsertTimesheets(timesheets: Timesheet[]): Promise<boolean> {
+    return batchUpsertRows("timesheets", timesheets as unknown as Record<string, unknown>[]);
+  },
+
+  async deleteTimesheet(id: string): Promise<boolean> {
+    return deleteRow("timesheets", id);
+  },
+
   async upsertRuleSet(rs: AttendanceRuleSet): Promise<boolean> {
     return upsertRow("attendance_rule_sets", rs as unknown as Record<string, unknown>);
   },

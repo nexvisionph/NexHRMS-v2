@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
 
   const { data: employee } = await supabase
     .from("employees")
-    .select("id, shift_id, company_id")
+    .select("id, shift_id")
     .eq("id", employeeId)
     .single();
 
@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Employee not found" }, { status: 404 });
   }
 
-  const companyId = enrollmentCompanyId || employee.company_id || device.company_id;
+  const companyId = enrollmentCompanyId || device.company_id;
 
   const { start, end } = manilaDayRange(manilaDate);
   const { data: lastLog } = await supabase

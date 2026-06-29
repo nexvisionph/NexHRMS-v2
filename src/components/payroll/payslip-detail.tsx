@@ -51,8 +51,8 @@ export function PayslipDetail({ payslip, employeeName, department, jobTitle, onS
         setShowSignature(false);
     };
 
-    const canSign = (payslip.status === "published" || payslip.status === "payment_hold") && !payslip.signedAt;
-    const canAcknowledge = payslip.status === "signed" && !!payslip.signedAt && !payslip.acknowledgedAt;
+    const canSign = !!onSign && (payslip.status === "published" || payslip.status === "payment_hold") && !payslip.signedAt;
+    const canAcknowledge = !!onAcknowledge && payslip.status === "signed" && !!payslip.signedAt && !payslip.acknowledgedAt;
     const visibleNotes = payslip.notes
         ?.split("\n")
         .filter((line) => !line.startsWith("Payment hold:"))
