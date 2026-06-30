@@ -1,6 +1,6 @@
 # NexHRMS — Feature Completion Roadmap
 
-**Last updated:** 2026-06-26
+**Last updated:** 2026-06-30
 **Reference plan:** `NEXHRMS_COMPLETION_PLAN.md`
 
 ---
@@ -45,7 +45,8 @@ Raw Attendance Sources
 | **Phase 3A** | Payslip OT Breakdown | 🟢 Done | Intern 2 | OT-005 |
 | **Phase 3B** | Strict Geofence Mode | 🟢 Done | Intern 3 | ATT-005 |
 | **Phase 3C** | Multi-Source Attendance Reconciliation | 🟢 Done | Senior Dev | ATT-007 |
-| **Phase 4A** | Compliance Mode Warning + Audit Verification | 🔴 Not Started | Intern 1 | PAYRULE-005, 006 |
+| **Phase 3D** | Custom Philippine Payroll & Workflow Stabilization | 🟢 Done | Senior Dev | PAY-001, 002, 003 |
+| **Phase 4A** | Compliance Mode Warning + Audit Verification | 🟢 Done | Intern 1 / 3 | PAYRULE-005, 006 |
 | **Phase 4B** | QA Regression | 🔴 Not Started | QA Intern | QA-001 → 006 |
 | **Phase 5** | Production Readiness | 🔴 Not Started | Senior Dev | REL-001, 002 |
 
@@ -167,6 +168,9 @@ Raw Attendance Sources
 | OT-005 | Add OT type breakdown to payslip — Regular OT, Rest Day OT, Holiday OT sourced from `ot_records` | Intern 2 | Phase 2B |
 | ATT-005 | Implement strict geofence mode — `geofence_mode` setting; `/api/attendance/mobile` returns 403 when strict + outside | Intern 3 | ATT-003 |
 | ATT-007 | Multi-source attendance reconciliation — configurable priority rule; conflict flagging in `attendance_summaries` | Senior Dev | ATT-002 |
+| PAY-001 | Daily-rate-based prorated Gross Pay & "No Work, No Pay" | Senior Dev | Phase 2A |
+| PAY-002 | Enforce Approved-only Timesheets for payroll computation | Senior Dev | Phase 2B |
+| PAY-003 | Reset workflow selection on cycle completion | Senior Dev | Phase 2C |
 
 ---
 

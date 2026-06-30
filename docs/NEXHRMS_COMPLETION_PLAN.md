@@ -119,7 +119,8 @@ After today's E2E fix, push to main and confirm all 5 jobs pass green. Capture t
 | **Phase 3A** | Payslip OT Breakdown | Intern 2 | OT-005 | ✅ Complete |
 | **Phase 3B** | Strict Geofence Mode | Intern 3 | ATT-005 | ✅ Complete |
 | **Phase 3C** | Multi-Source Reconciliation | Senior Dev | ATT-007 | ✅ Complete |
-| **Phase 4A** | Compliance Mode Warning + Audit Verification | Intern 1 | PAYRULE-005, PAYRULE-006 | UI warning modal works; writes to `payroll_rules_audit_logs`; unit tests pass |
+| **Phase 3D** | Custom Philippine Payroll & Workflow Stabilization | Senior Dev | PAY-001, PAY-002, PAY-003 | ✅ Complete |
+| **Phase 4A** | Compliance Mode Warning + Audit Verification | Intern 1 / 3 | PAYRULE-005, PAYRULE-006 | ✅ Complete |
 | **Phase 4B** | QA Regression | QA Intern | QA-001 → QA-006 | All QA scenarios pass; no payroll regression; CI green |
 | **Phase 5** | Production Readiness | Senior Dev | REL-001, REL-002 | Branch protection; real deploy; env vars verified; rollback plan |
 
