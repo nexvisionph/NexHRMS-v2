@@ -258,8 +258,9 @@ export function GovernmentLoansTab() {
                 }
                 const uploadData = await res.json();
                 proofPath = uploadData.path;
-            } catch (err: any) {
-                toast.error(err.message || "Failed to upload proof document");
+            } catch (err) {
+                const errMsg = err instanceof Error ? err.message : "Failed to upload proof document";
+                toast.error(errMsg);
                 setUploading(false);
                 return;
             }
@@ -344,8 +345,9 @@ export function GovernmentLoansTab() {
                 }
                 const uploadData = await res.json();
                 proofPath = uploadData.path;
-            } catch (err: any) {
-                toast.error(err.message || "Failed to upload new proof document");
+            } catch (err) {
+                const errMsg = err instanceof Error ? err.message : "Failed to upload new proof document";
+                toast.error(errMsg);
                 setUploading(false);
                 return;
             }

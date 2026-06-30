@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Calendar, History, Percent, Plus, RefreshCw } from "lucide-react";
+import { Calendar, History, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,7 +22,7 @@ import { formatCompanyLoanType, generateCompanyLoanSchedule } from "@/app/[role]
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { loansStorage } from "@/services/db.service";
-import { FileText, Eye } from "lucide-react";
+import { FileText } from "lucide-react";
 import type { Loan } from "@/types";
 
 
@@ -39,7 +39,7 @@ function useMyEmployeeId() {
 
 // ─── 1. COMPANY LOANS SECTION ───
 function EmployeeCompanyLoansSection({ employeeId }: { employeeId: string }) {
-    const { loans, createLoan, getAllDeductions, getSchedule } = useLoansStore();
+    const { loans, createLoan, getAllDeductions } = useLoansStore();
     const currentUser = useAuthStore((s) => s.currentUser);
 
     const [statusFilter, setStatusFilter] = useState("all");
@@ -746,12 +746,13 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
             }
             const uploadData = await res.json();
             proofPath = uploadData.path;
-        } catch (err: any) {
+        } catch (err) {
+            const errMsg = err instanceof Error ? err.message : "Upload failed";
             if (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || (typeof window !== "undefined" && window.location.hostname === "localhost")) {
-                console.warn("Upload failed, using mock path for testing:", err.message);
+                console.warn("Upload failed, using mock path for testing:", errMsg);
                 proofPath = `${employeeId}/mock-proof-${Date.now()}-${selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
             } else {
-                toast.error(`File upload failed: ${err.message}`);
+                toast.error(`File upload failed: ${errMsg}`);
                 setUploading(false);
                 return;
             }
