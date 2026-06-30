@@ -13,8 +13,8 @@ interface LoansState {
     settleLoan: (id: string) => void;
     freezeLoan: (id: string) => void;
     unfreezeLoan: (id: string) => void;
-    approveLoan: (id: string) => void;
-    rejectLoan: (id: string) => void;
+    approveLoan: (id: string, reviewerId?: string) => void;
+    rejectLoan: (id: string, reason?: string, reviewerId?: string) => void;
     updateLoan: (id: string, patch: Partial<Loan>) => void;
     cancelLoan: (id: string) => void;
     getByEmployee: (employeeId: string) => Loan[];
@@ -87,17 +87,32 @@ export const useLoansStore = create<LoansState>()(
                     ),
                 })),
 
-            approveLoan: (id: string) =>
+            approveLoan: (id: string, reviewerId?: string) =>
                 set((s) => ({
                     loans: s.loans.map((l) =>
-                        l.id === id ? { ...l, status: "active" as const } : l
+                        l.id === id
+                            ? {
+                                  ...l,
+                                  status: "active" as const,
+                                  reviewedBy: reviewerId,
+                                  reviewedAt: new Date().toISOString(),
+                              }
+                            : l
                     ),
                 })),
 
-            rejectLoan: (id: string) =>
+            rejectLoan: (id: string, reason?: string, reviewerId?: string) =>
                 set((s) => ({
                     loans: s.loans.map((l) =>
-                        l.id === id ? { ...l, status: "rejected" as const } : l
+                        l.id === id
+                            ? {
+                                  ...l,
+                                  status: "rejected" as const,
+                                  rejectionReason: reason,
+                                  reviewedBy: reviewerId,
+                                  reviewedAt: new Date().toISOString(),
+                              }
+                            : l
                     ),
                 })),
 

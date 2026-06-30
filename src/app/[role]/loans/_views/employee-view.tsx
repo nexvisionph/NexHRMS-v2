@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Calendar, History, Percent, Plus } from "lucide-react";
+import { Calendar, History, Percent, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,6 +21,9 @@ import { LoanStatusBadge } from "@/app/[role]/loans/_components/loan-status-badg
 import { formatCompanyLoanType, generateCompanyLoanSchedule } from "@/app/[role]/loans/_lib/government-loans";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { loansStorage } from "@/services/db.service";
+import { FileText, Eye } from "lucide-react";
+
 
 function useMyEmployeeId() {
     const employees = useEmployeesStore((s) => s.employees);
@@ -599,7 +602,7 @@ function EmployeeCashAdvancesSection({ employeeId }: { employeeId: string }) {
 
 // ─── 3. GOVERNMENT LOANS SECTION ───
 function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) {
-    const { loans, createLoan, getAllDeductions } = useLoansStore();
+    const { loans, createLoan, updateLoan, getAllDeductions } = useLoansStore();
     const currentUser = useAuthStore((s) => s.currentUser);
 
     const [statusFilter, setStatusFilter] = useState("all");
@@ -619,6 +622,44 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
     const [formReference, setFormReference] = useState("");
     const [formRemarks, setFormRemarks] = useState("");
     const [authorized, setAuthorized] = useState(false);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [uploading, setUploading] = useState(false);
+
+    const handleViewProof = async (path: string) => {
+        if (!path) return;
+        if (path.includes("mock-proof")) {
+            toast.info(`Demo Mode: Mock document path: ${path}`);
+            return;
+        }
+        try {
+            const url = await loansStorage.getSignedUrl(path);
+            if (url) {
+                window.open(url, "_blank");
+            } else {
+                toast.error("Failed to generate signed URL");
+            }
+        } catch {
+            toast.error("Error retrieving proof document");
+        }
+    };
+
+    const [resubmitLoanId, setResubmitLoanId] = useState<string | null>(null);
+
+    const handleStartResubmit = (loan: Loan) => {
+        setResubmitLoanId(loan.id);
+        setFormAgency(loan.agency as "SSS" | "Pag-IBIG" ?? "SSS");
+        setFormLoanType(loan.loanType ?? "salary_loan");
+        setFormAmount(String(loan.amount));
+        setFormMonthly(String(loan.monthlyDeduction));
+        setFormBalance(String(loan.remainingBalance));
+        setFormReleaseDate(loan.releaseDate ? loan.releaseDate.split("T")[0] : "");
+        setFormStartDate(loan.startDeductionDate ? loan.startDeductionDate.split("T")[0] : "");
+        setFormReference(loan.referenceNumber ?? "");
+        setFormRemarks(loan.remarks ?? "");
+        setSelectedFile(null);
+        setAuthorized(false);
+        setOpen(true);
+    };
 
     const calculatedPerCutoff = useMemo(() => {
         const m = Number(formMonthly);
@@ -671,9 +712,13 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
         }
     };
 
-    const handleSubmitRecord = () => {
+    const handleSubmitRecord = async () => {
         if (!formAmount || !formMonthly || !formBalance || !formReleaseDate || !formStartDate) {
             toast.error("Please fill all required fields");
+            return;
+        }
+        if (!selectedFile) {
+            toast.error("Please attach a proof file");
             return;
         }
         if (!authorized) {
@@ -681,25 +726,76 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
             return;
         }
 
-        createLoan({
-            employeeId,
-            type: "government_loan",
-            amount: Number(formAmount),
-            remainingBalance: Number(formBalance),
-            monthlyDeduction: Number(formMonthly),
-            status: "pending", // government loans default to pending verification
-            approvedBy: "employee_submitted",
-            remarks: formRemarks || undefined,
-            agency: formAgency,
-            loanType: formLoanType,
-            referenceNumber: formReference || undefined,
-            releaseDate: formReleaseDate,
-            startDeductionDate: formStartDate,
-            deductionFrequency: "every_payroll",
-        });
+        setUploading(true);
+        let proofPath = "";
+        try {
+            const formData = new FormData();
+            formData.append("file", selectedFile);
+            formData.append("bucket", "loan-proofs");
+            formData.append("folder", employeeId);
 
-        useAuditStore.getState().log({ entityType: "loan", entityId: employeeId, action: "loan_created", performedBy: currentUser.id });
-        toast.success("Government Loan record submitted successfully. Status is Pending Verification.");
+            const res = await fetch("/api/upload", { method: "POST", body: formData });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ error: "Upload failed" }));
+                throw new Error(err.error || "Upload failed");
+            }
+            const uploadData = await res.json();
+            proofPath = uploadData.path;
+        } catch (err: any) {
+            if (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || (typeof window !== "undefined" && window.location.hostname === "localhost")) {
+                console.warn("Upload failed, using mock path for testing:", err.message);
+                proofPath = `${employeeId}/mock-proof-${Date.now()}-${selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+            } else {
+                toast.error(`File upload failed: ${err.message}`);
+                setUploading(false);
+                return;
+            }
+        }
+        setUploading(false);
+
+        if (resubmitLoanId) {
+            updateLoan(resubmitLoanId, {
+                agency: formAgency,
+                loanType: formLoanType,
+                amount: Number(formAmount),
+                remainingBalance: Number(formBalance),
+                monthlyDeduction: Number(formMonthly),
+                status: "pending",
+                proofFilePath: proofPath,
+                remarks: formRemarks || undefined,
+                referenceNumber: formReference || undefined,
+                releaseDate: formReleaseDate,
+                startDeductionDate: formStartDate,
+                reviewedBy: undefined,
+                reviewedAt: undefined,
+                rejectionReason: undefined,
+            });
+
+            useAuditStore.getState().log({ entityType: "loan", entityId: resubmitLoanId, action: "loan_updated", performedBy: currentUser.id });
+            toast.success("Government Loan request resubmitted successfully. Status is Pending Verification.");
+        } else {
+            createLoan({
+                employeeId,
+                type: "government_loan",
+                amount: Number(formAmount),
+                remainingBalance: Number(formBalance),
+                monthlyDeduction: Number(formMonthly),
+                status: "pending", // government loans default to pending verification
+                approvedBy: "employee_submitted",
+                remarks: formRemarks || undefined,
+                agency: formAgency,
+                loanType: formLoanType,
+                referenceNumber: formReference || undefined,
+                releaseDate: formReleaseDate,
+                startDeductionDate: formStartDate,
+                deductionFrequency: "every_payroll",
+                proofFilePath: proofPath,
+            });
+
+            useAuditStore.getState().log({ entityType: "loan", entityId: employeeId, action: "loan_created", performedBy: currentUser.id });
+            toast.success("Government Loan record submitted successfully. Status is Pending Verification.");
+        }
+
         setOpen(false);
         setFormAmount("");
         setFormMonthly("");
@@ -708,7 +804,9 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
         setFormStartDate("");
         setFormReference("");
         setFormRemarks("");
+        setSelectedFile(null);
         setAuthorized(false);
+        setResubmitLoanId(null);
     };
 
     const getLoanTypeLabel = (type?: string) => {
@@ -724,12 +822,12 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
                 <div className="flex-1">
                     <LoanKpiCards activeLabel="Active Gov Loans" activeCount={stats.totalActive} outstandingBalance={stats.totalOutstanding} settledCount={stats.totalSettled} />
                 </div>
-                <Dialog open={open} onOpenChange={(v) => { setOpen(v); if(!v) setAuthorized(false); }}>
+                <Dialog open={open} onOpenChange={(v) => { setOpen(v); if(!v) { setAuthorized(false); setResubmitLoanId(null); } }}>
                     <DialogTrigger asChild>
                         <Button className="gap-1.5 self-start"><Plus className="h-4 w-4" /> Submit Gov Loan Record</Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-md">
-                        <DialogHeader><DialogTitle>Submit Government Loan Record</DialogTitle></DialogHeader>
+                        <DialogHeader><DialogTitle>{resubmitLoanId ? "Appeal / Resubmit Government Loan" : "Submit Government Loan Record"}</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
@@ -812,6 +910,27 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
                                 </div>
                             )}
 
+                            {/* Proof File Upload */}
+                            <div className="space-y-1">
+                                <label className="text-xs font-medium text-foreground">Proof of Loan (JPG, PNG, PDF) *</label>
+                                <Input
+                                    type="file"
+                                    accept=".jpg,.jpeg,.png,.pdf"
+                                    className="cursor-pointer text-xs"
+                                    onChange={(e) => {
+                                        if (e.target.files && e.target.files[0]) {
+                                            const file = e.target.files[0];
+                                            if (file.size > 10 * 1024 * 1024) {
+                                                toast.error("File is too large. Maximum size is 10MB.");
+                                                e.target.value = "";
+                                                return;
+                                            }
+                                            setSelectedFile(file);
+                                        }
+                                    }}
+                                />
+                            </div>
+
                             {/* Authorization Checkbox */}
                             <div className="flex items-start gap-2 pt-1">
                                 <Checkbox id="auth-gov-loan" checked={authorized} onCheckedChange={(checked) => setAuthorized(!!checked)} />
@@ -820,7 +939,9 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
                                 </Label>
                             </div>
 
-                            <Button onClick={handleSubmitRecord} className="w-full">Submit Government Loan</Button>
+                            <Button onClick={handleSubmitRecord} className="w-full" disabled={uploading}>
+                                {uploading ? "Uploading Proof..." : resubmitLoanId ? "Resubmit Government Loan" : "Submit Government Loan"}
+                            </Button>
                         </div>
                     </DialogContent>
                 </Dialog>
@@ -851,11 +972,14 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
                                             <TableHead className="text-xs">Outstanding Balance</TableHead>
                                             <TableHead className="text-xs">Status</TableHead>
                                             <TableHead className="text-xs">Reference No.</TableHead>
+                                            <TableHead className="text-xs">Proof</TableHead>
+                                            <TableHead className="text-xs">Remarks/Rejection</TableHead>
+                                            <TableHead className="text-xs w-16">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {filtered.length === 0 ? (
-                                            <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">No government loans recorded</TableCell></TableRow>
+                                            <TableRow><TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-8">No government loans recorded</TableCell></TableRow>
                                         ) : paginatedAccounts.map((loan) => (
                                             <TableRow key={loan.id}>
                                                 <TableCell className="text-sm font-semibold text-blue-600 dark:text-blue-400">{loan.agency || "SSS"}</TableCell>
@@ -865,6 +989,43 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
                                                 <TableCell className="text-sm font-medium">₱{loan.remainingBalance.toLocaleString()}</TableCell>
                                                 <TableCell><LoanStatusBadge status={loan.status} /></TableCell>
                                                 <TableCell className="text-xs font-mono">{loan.referenceNumber || "-"}</TableCell>
+                                                <TableCell>
+                                                    {loan.proofFilePath ? (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                                                            onClick={() => handleViewProof(loan.proofFilePath!)}
+                                                            title="View Uploaded Proof"
+                                                        >
+                                                            <FileText className="h-4 w-4" />
+                                                        </Button>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">—</span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="text-xs max-w-[150px] truncate">
+                                                    {loan.status === "rejected" ? (
+                                                        <span className="text-red-500 font-medium" title={loan.rejectionReason || "No reason specified"}>
+                                                            {loan.rejectionReason || "Rejected"}
+                                                        </span>
+                                                     ) : (
+                                                         <span className="text-muted-foreground">{loan.remarks || "—"}</span>
+                                                     )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {loan.status === "rejected" && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-500/10"
+                                                            onClick={() => handleStartResubmit(loan)}
+                                                            title="Appeal / Resubmit with corrected details"
+                                                        >
+                                                            <RefreshCw className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
+                                                </TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>

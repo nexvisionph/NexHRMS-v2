@@ -818,6 +818,10 @@ export interface Loan {
   deductionFrequency?: "every_payroll" | "first_payroll" | "last_payroll";
   startDeductionDate?: string;
   releaseDate?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  proofFilePath?: string;
 }
 
 // ─── Payslip & Payroll (§4, §8) ─────────────────────────────

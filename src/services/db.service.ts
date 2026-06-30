@@ -1509,6 +1509,51 @@ export const documents201Storage = {
   },
 };
 
+export const loansStorage = {
+  async upload(
+    employeeId: string,
+    file: File
+  ): Promise<{ path: string; error?: string }> {
+    try {
+      const path = `${employeeId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+      const { error } = await supabase()
+        .storage.from("loan-proofs")
+        .upload(path, file);
+
+      if (error) {
+        console.error("[db] loansStorage.upload:", error.message);
+        return { path: "", error: error.message };
+      }
+
+      return { path };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Upload failed";
+      console.error("[db] loansStorage.upload:", message);
+      return { path: "", error: message };
+    }
+  },
+
+  async getSignedUrl(path: string, expiresIn = 3600): Promise<string | null> {
+    try {
+      if (!path) return null;
+      const { data, error } = await supabase()
+        .storage.from("loan-proofs")
+        .createSignedUrl(path, expiresIn);
+
+      if (error) {
+        if (!error.message?.includes("Object not found")) {
+          console.error("[db] loansStorage.getSignedUrl:", error.message);
+        }
+        return null;
+      }
+      return data?.signedUrl ?? null;
+    } catch (err: unknown) {
+      console.error("[db] loansStorage.getSignedUrl:", err instanceof Error ? err.message : "Failed to get signed URL");
+      return null;
+    }
+  },
+};
+
 // ─── Loan Deductions & Repayment ────────────────────────────────
 
 export const loanExtrasDb = {

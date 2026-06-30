@@ -155,25 +155,44 @@ export async function recordCappedDeduction(
 /**
  * Approve a loan — DB-first. Supports multi-stage states.
  */
-export async function approveLoan(id: string, targetStatus: Loan["status"] = "active"): Promise<boolean> {
-    const ok = await loansDb.update(id, { status: targetStatus });
-    if (!ok) return false;
-
-    useLoansStore.getState().updateLoan(id, { status: targetStatus });
-    return true;
-}
-
-/**
- * Reject a loan — DB-first. Supports rejection reason.
- */
-export async function rejectLoan(id: string, reason?: string): Promise<boolean> {
-    const patch: Partial<Loan> = { status: "rejected" };
-    if (reason) {
-        patch.remarks = reason;
-    }
+export async function approveLoan(
+    id: string,
+    targetStatus: Loan["status"] = "active",
+    reviewerId?: string
+): Promise<boolean> {
+    const now = new Date().toISOString();
+    const patch: Partial<Loan> = {
+        status: targetStatus,
+        reviewedBy: reviewerId,
+        reviewedAt: now,
+    };
     const ok = await loansDb.update(id, patch);
     if (!ok) return false;
 
     useLoansStore.getState().updateLoan(id, patch);
     return true;
 }
+
+/**
+ * Reject a loan — DB-first. Supports rejection reason.
+ */
+export async function rejectLoan(
+    id: string,
+    reason?: string,
+    reviewerId?: string
+): Promise<boolean> {
+    const now = new Date().toISOString();
+    const patch: Partial<Loan> = {
+        status: "rejected",
+        rejectionReason: reason,
+        reviewedBy: reviewerId,
+        reviewedAt: now,
+    };
+    const ok = await loansDb.update(id, patch);
+    if (!ok) return false;
+
+    useLoansStore.getState().updateLoan(id, patch);
+    return true;
+}
+
+

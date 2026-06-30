@@ -29,6 +29,13 @@ const ALLOWED_BUCKETS = {
     allowedTypes: ALLOWED_DOCUMENT_TYPES as readonly string[],
     typeError: "Invalid file type. Please upload a JPG, PNG, or PDF file.",
   },
+  "loan-proofs": {
+    public: false,
+    roles: null,
+    maxSize: MAX_DOCUMENT_SIZE,
+    allowedTypes: ALLOWED_DOCUMENT_TYPES as readonly string[],
+    typeError: "Invalid file type. Please upload a JPG, PNG, or PDF file.",
+  },
 } as const;
 
 type AllowedBucket = keyof typeof ALLOWED_BUCKETS;
