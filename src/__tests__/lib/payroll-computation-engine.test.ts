@@ -378,7 +378,7 @@ describe("computePayroll — all absent period (No Work, No Pay)", () => {
       periodStart: "2026-06-02",
       periodEnd: "2026-06-06",
       attendanceLogs: [
-        { employeeId: employee.id, date: "2026-06-02", status: "on_leave", checkIn: null, checkOut: null }
+        { employeeId: employee.id, date: "2026-06-02", status: "on_leave", checkIn: undefined, checkOut: undefined }
       ],
       holidays: [],
       deductions,

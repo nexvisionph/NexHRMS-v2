@@ -722,7 +722,7 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
   // then Gross Pay (totalBasic) must be 0.00, Net Pay: 0.00, and deductions: 0.00.
   const hasLeaves = attendanceLogs.some(
     (l) => l.employeeId === employee.id &&
-           (l.status === "on_leave" || l.status === "leave") &&
+           l.status === "on_leave" &&
            l.date >= periodStart &&
            l.date <= periodEnd
   );
