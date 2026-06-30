@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, CheckCircle, XCircle, History, Pencil, Trash2, FileText, Eye } from "lucide-react";
+import { Plus, Download, CheckCircle, XCircle, History, Pencil, Trash2, FileText, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 import { dispatchNotification } from "@/lib/notifications";
@@ -324,7 +324,7 @@ export function GovernmentLoansTab() {
 
     const handleSaveLoan = async () => {
         if (!editLoanId || !editMonthly || !editBalance) { toast.error("Monthly amortization and outstanding balance are required"); return; }
-        
+
         let proofPath = "";
         if (editFile) {
             setUploading(true);
@@ -378,113 +378,113 @@ export function GovernmentLoansTab() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <p className="text-sm text-muted-foreground">{governmentLoans.length} government loans</p>
                 <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" className="gap-1 bg-background text-xs font-semibold" onClick={handleExportSSSLCL}>Export SSS LCL</Button>
-                    <Button variant="outline" size="sm" className="gap-1 bg-background text-xs font-semibold" onClick={handleExportPagIBIGSTL}>Export Pag-IBIG STL</Button>
+                    <Button variant="outline" className="gap-1 bg-background text-xs font-semibold" onClick={handleExportSSSLCL}><Download className="h-4 w-4" />Export SSS LCL</Button>
+                    <Button variant="outline" className="gap-1 bg-background text-xs font-semibold" onClick={handleExportPagIBIGSTL}><Download className="h-4 w-4" />Export Pag-IBIG STL</Button>
                     <Dialog open={open} onOpenChange={setOpen}>
                         <DialogTrigger asChild>
-                            <Button size="sm" className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"><Plus className="h-4 w-4" /> Create Gov Loan</Button>
+                            <Button className="gap-1.5"><Plus className="h-4 w-4" /> Create Government Loan</Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-md">
                             <DialogHeader><DialogTitle>Create Government Loan</DialogTitle></DialogHeader>
-                        <div className="space-y-4 pt-2">
-                            <div>
-                                <label className="text-sm font-medium">Employee *</label>
-                                <div className="mt-1">
-                                    <EmployeeCombobox value={formEmpId} onValueChange={setFormEmpId} required placeholder="Select employee" className="w-full" />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-4 pt-2">
                                 <div>
-                                    <label className="text-sm font-medium">Agency *</label>
-                                    <Select value={formAgency} onValueChange={(v) => handleAgencyChange(v as "SSS" | "Pag-IBIG")}>
-                                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="SSS">SSS</SelectItem>
-                                            <SelectItem value="Pag-IBIG">Pag-IBIG</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                    <label className="text-sm font-medium">Employee <span className="text-destructive">*</span></label>
+                                    <div className="mt-1">
+                                        <EmployeeCombobox value={formEmpId} onValueChange={setFormEmpId} required placeholder="Select employee" className="w-full" />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-sm font-medium">Agency <span className="text-destructive">*</span></label>
+                                        <Select value={formAgency} onValueChange={(v) => handleAgencyChange(v as "SSS" | "Pag-IBIG")}>
+                                            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="SSS">SSS</SelectItem>
+                                                <SelectItem value="Pag-IBIG">Pag-IBIG</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Loan Type <span className="text-destructive">*</span></label>
+                                        <Select value={formLoanType} onValueChange={setFormLoanType}>
+                                            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                {formAgency === "SSS" ? (
+                                                    <>
+                                                        <SelectItem value="salary_loan">SSS Salary Loan</SelectItem>
+                                                        <SelectItem value="calamity_loan">SSS Calamity Loan</SelectItem>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <SelectItem value="mpl">Pag-IBIG Multi-Purpose Loan</SelectItem>
+                                                        <SelectItem value="calamity">Pag-IBIG Calamity Loan</SelectItem>
+                                                    </>
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div>
+                                        <label className="text-sm font-medium">Loan Amount <span className="text-destructive">*</span></label>
+                                        <Input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} className="mt-1" />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Monthly Amort.<span className="text-destructive">*</span></label>
+                                        <Input type="number" value={formMonthly} onChange={(e) => setFormMonthly(e.target.value)} className="mt-1" />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Outstanding Bal. <span className="text-destructive">*</span></label>
+                                        <Input type="number" value={formBalance} onChange={(e) => setFormBalance(e.target.value)} className="mt-1" />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-sm font-medium">Release Date <span className="text-destructive">*</span></label>
+                                        <Input type="date" value={formReleaseDate} onChange={(e) => setFormReleaseDate(e.target.value)} className="mt-1" />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">First Deduction Date <span className="text-destructive">*</span></label>
+                                        <Input type="date" value={formStartDate} onChange={(e) => setFormStartDate(e.target.value)} className="mt-1" />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-sm font-medium">Reference Number</label>
+                                        <Input value={formReference} onChange={(e) => setFormReference(e.target.value)} className="mt-1" placeholder="e.g. SSS-2026-041" />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Remarks</label>
+                                        <Input value={formRemarks} onChange={(e) => setFormRemarks(e.target.value)} className="mt-1" placeholder="e.g. calamity emergency" />
+                                    </div>
                                 </div>
                                 <div>
-                                    <label className="text-sm font-medium">Loan Type *</label>
-                                    <Select value={formLoanType} onValueChange={setFormLoanType}>
-                                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            {formAgency === "SSS" ? (
-                                                <>
-                                                    <SelectItem value="salary_loan">SSS Salary Loan</SelectItem>
-                                                    <SelectItem value="calamity_loan">SSS Calamity Loan</SelectItem>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <SelectItem value="mpl">Pag-IBIG Multi-Purpose Loan</SelectItem>
-                                                    <SelectItem value="calamity">Pag-IBIG Calamity Loan</SelectItem>
-                                                </>
-                                            )}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                                <div>
-                                    <label className="text-sm font-medium">Loan Amount *</label>
-                                    <Input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} className="mt-1" />
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium">Monthly Amort. *</label>
-                                    <Input type="number" value={formMonthly} onChange={(e) => setFormMonthly(e.target.value)} className="mt-1" />
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium">Outstanding Bal. *</label>
-                                    <Input type="number" value={formBalance} onChange={(e) => setFormBalance(e.target.value)} className="mt-1" />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-sm font-medium">Release Date *</label>
-                                    <Input type="date" value={formReleaseDate} onChange={(e) => setFormReleaseDate(e.target.value)} className="mt-1" />
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium">First Deduction Date *</label>
-                                    <Input type="date" value={formStartDate} onChange={(e) => setFormStartDate(e.target.value)} className="mt-1" />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-sm font-medium">Reference Number</label>
-                                    <Input value={formReference} onChange={(e) => setFormReference(e.target.value)} className="mt-1" placeholder="e.g. SSS-2026-041" />
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium">Remarks</label>
-                                    <Input value={formRemarks} onChange={(e) => setFormRemarks(e.target.value)} className="mt-1" placeholder="e.g. calamity emergency" />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium">Proof of Loan (JPG, PNG, PDF)</label>
-                                <Input
-                                    type="file"
-                                    accept=".jpg,.jpeg,.png,.pdf"
-                                    className="cursor-pointer text-xs mt-1"
-                                    onChange={(e) => {
-                                        if (e.target.files && e.target.files[0]) {
-                                            const file = e.target.files[0];
-                                            if (file.size > 10 * 1024 * 1024) {
-                                                toast.error("File is too large. Maximum size is 10MB.");
-                                                e.target.value = "";
-                                                return;
+                                    <label className="text-sm font-medium">Proof of Loan (JPG, PNG, PDF)</label>
+                                    <Input
+                                        type="file"
+                                        accept=".jpg,.jpeg,.png,.pdf"
+                                        className="cursor-pointer text-xs mt-1"
+                                        onChange={(e) => {
+                                            if (e.target.files && e.target.files[0]) {
+                                                const file = e.target.files[0];
+                                                if (file.size > 10 * 1024 * 1024) {
+                                                    toast.error("File is too large. Maximum size is 10MB.");
+                                                    e.target.value = "";
+                                                    return;
+                                                }
+                                                setSelectedFile(file);
                                             }
-                                            setSelectedFile(file);
-                                        }
-                                    }}
-                                />
+                                        }}
+                                    />
+                                </div>
+                                <Button onClick={handleCreate} className="w-full" disabled={uploading}>
+                                    {uploading ? "Uploading Proof..." : "Create Gov Loan Record"}
+                                </Button>
                             </div>
-                            <Button onClick={handleCreate} className="w-full" disabled={uploading}>
-                                {uploading ? "Uploading Proof..." : "Create Gov Loan Record"}
-                            </Button>
-                        </div>
-                    </DialogContent>
-                </Dialog>
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </div>
-        </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <Card className="border border-blue-500/20 bg-blue-500/5 dark:bg-blue-500/10">
@@ -652,7 +652,7 @@ export function GovernmentLoansTab() {
                 </TabsContent>
             </Tabs>
 
-            <Dialog open={editOpen} onOpenChange={(v) => { setEditOpen(v); if(!v) setEditFile(null); }}>
+            <Dialog open={editOpen} onOpenChange={(v) => { setEditOpen(v); if (!v) setEditFile(null); }}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader><DialogTitle>Edit Government Loan</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">

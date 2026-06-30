@@ -223,7 +223,7 @@ export type AuditAction =
   | "overtime_approved" | "overtime_rejected"
   | "payroll_locked" | "payroll_published" | "payroll_paid" | "payroll_ended" | "payroll_completed"
   | "adjustment_created" | "adjustment_approved" | "adjustment_applied"
-  | "loan_created" | "loan_frozen" | "loan_unfrozen" | "loan_settled" | "loan_approved" | "loan_rejected" | "loan_endorsed"
+  | "loan_created" | "loan_updated" | "loan_frozen" | "loan_unfrozen" | "loan_settled" | "loan_approved" | "loan_rejected" | "loan_endorsed"
   | "payment_recorded" | "employee_resigned" | "employee_deleted" | "final_pay_created"
   | "timesheet_approved" | "timesheet_rejected"
   | "kiosk_registered" | "attendance_correction" | "cheat_detected"

@@ -23,6 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { loansStorage } from "@/services/db.service";
 import { FileText, Eye } from "lucide-react";
+import type { Loan } from "@/types";
 
 
 function useMyEmployeeId() {
@@ -137,13 +138,12 @@ function EmployeeCompanyLoansSection({ employeeId }: { employeeId: string }) {
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex-1">
-                    <LoanKpiCards activeLabel="Active Loans" activeCount={stats.totalActive} outstandingBalance={stats.totalOutstanding} settledCount={stats.totalSettled} />
-                </div>
-                <Dialog open={open} onOpenChange={(v) => { setOpen(v); if(!v) setAuthorized(false); }}>
-                    <DialogTrigger asChild>
-                        <Button className="gap-1.5 self-start"><Plus className="h-4 w-4" /> Request Loan</Button>
-                    </DialogTrigger>
+                <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setAuthorized(false); }}>
+                    <div className="flex justify-end w-full">
+                        <DialogTrigger asChild>
+                            <Button className="gap-1.5"><Plus className="h-4 w-4" />Submit Request</Button>
+                        </DialogTrigger>
+                    </div>
                     <DialogContent className="max-w-md">
                         <DialogHeader><DialogTitle>Request Company Loan</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
@@ -217,6 +217,9 @@ function EmployeeCompanyLoansSection({ employeeId }: { employeeId: string }) {
                     </DialogContent>
                 </Dialog>
             </div>
+            <div className="flex-1">
+                <LoanKpiCards activeLabel="Active Loans" activeCount={stats.totalActive} outstandingBalance={stats.totalOutstanding} settledCount={stats.totalSettled} />
+            </div>
 
             <LoansFilterBar showSearch={false} statusFilter={statusFilter} onStatusChange={(v) => { setStatusFilter(v); setAccountsPage(1); }} />
 
@@ -280,32 +283,32 @@ function EmployeeCompanyLoansSection({ employeeId }: { employeeId: string }) {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                         {activeLoans.length === 0 ? (
-                                             <TableRow><TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-8">No active schedules</TableCell></TableRow>
-                                         ) : paginatedActiveLoans.flatMap((loan) => {
-                                             const interestPct = Number(loan.remarks?.match(/Interest:\s*(\d+)%/)?.[1] || 0);
-                                             const totalRepayable = loan.amount + (loan.amount * (interestPct / 100));
-                                             const totalDeducted = totalRepayable - loan.remainingBalance;
-                                             const schedule = generateCompanyLoanSchedule(
-                                                 totalRepayable,
-                                                 loan.monthlyDeduction,
-                                                 loan.startDeductionDate || loan.createdAt,
-                                                 loan.deductionFrequency || "every_payroll",
-                                                 totalDeducted
-                                             );
-                                             return schedule.map((inst, i) => (
-                                                 <TableRow key={`${loan.id}-${i}`}>
-                                                     <TableCell className="text-xs capitalize">{formatCompanyLoanType(loan.type)}</TableCell>
-                                                     <TableCell className="text-xs">{inst.payrollPeriod}</TableCell>
-                                                     <TableCell className="text-sm font-medium">₱{inst.amount.toLocaleString()}</TableCell>
-                                                     <TableCell>
-                                                         <Badge variant={inst.status === "paid" ? "default" : "secondary"} className={`text-[10px] ${inst.status === "paid" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : ""}`}>
-                                                             {inst.status}
-                                                         </Badge>
-                                                     </TableCell>
-                                                 </TableRow>
-                                             ));
-                                         })}
+                                        {activeLoans.length === 0 ? (
+                                            <TableRow><TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-8">No active schedules</TableCell></TableRow>
+                                        ) : paginatedActiveLoans.flatMap((loan) => {
+                                            const interestPct = Number(loan.remarks?.match(/Interest:\s*(\d+)%/)?.[1] || 0);
+                                            const totalRepayable = loan.amount + (loan.amount * (interestPct / 100));
+                                            const totalDeducted = totalRepayable - loan.remainingBalance;
+                                            const schedule = generateCompanyLoanSchedule(
+                                                totalRepayable,
+                                                loan.monthlyDeduction,
+                                                loan.startDeductionDate || loan.createdAt,
+                                                loan.deductionFrequency || "every_payroll",
+                                                totalDeducted
+                                            );
+                                            return schedule.map((inst, i) => (
+                                                <TableRow key={`${loan.id}-${i}`}>
+                                                    <TableCell className="text-xs capitalize">{formatCompanyLoanType(loan.type)}</TableCell>
+                                                    <TableCell className="text-xs">{inst.payrollPeriod}</TableCell>
+                                                    <TableCell className="text-sm font-medium">₱{inst.amount.toLocaleString()}</TableCell>
+                                                    <TableCell>
+                                                        <Badge variant={inst.status === "paid" ? "default" : "secondary"} className={`text-[10px] ${inst.status === "paid" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : ""}`}>
+                                                            {inst.status}
+                                                        </Badge>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ));
+                                        })}
                                     </TableBody>
                                 </Table>
                             </div>
@@ -447,13 +450,12 @@ function EmployeeCashAdvancesSection({ employeeId }: { employeeId: string }) {
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex-1">
-                    <LoanKpiCards activeLabel="Active Cash Advances" activeCount={stats.totalActive} outstandingBalance={stats.totalOutstanding} settledCount={stats.totalSettled} />
-                </div>
-                <Dialog open={open} onOpenChange={(v) => { setOpen(v); if(!v) setAuthorized(false); }}>
-                    <DialogTrigger asChild>
-                        <Button className="gap-1.5 self-start"><Plus className="h-4 w-4" /> Request Cash Advance</Button>
-                    </DialogTrigger>
+                <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setAuthorized(false); }}>
+                    <div className="flex justify-end w-full">
+                        <DialogTrigger asChild>
+                            <Button className="gap-1.5 self-start"><Plus className="h-4 w-4" />Submit Request</Button>
+                        </DialogTrigger>
+                    </div>
                     <DialogContent className="max-w-md">
                         <DialogHeader><DialogTitle>Request Cash Advance</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
@@ -519,6 +521,9 @@ function EmployeeCashAdvancesSection({ employeeId }: { employeeId: string }) {
                         </div>
                     </DialogContent>
                 </Dialog>
+            </div>
+            <div className="flex-1">
+                <LoanKpiCards activeLabel="Active Cash Advances" activeCount={stats.totalActive} outstandingBalance={stats.totalOutstanding} settledCount={stats.totalSettled} />
             </div>
 
             <LoansFilterBar showSearch={false} statusFilter={statusFilter} onStatusChange={(v) => { setStatusFilter(v); setAccountsPage(1); }} />
@@ -819,13 +824,12 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex-1">
-                    <LoanKpiCards activeLabel="Active Gov Loans" activeCount={stats.totalActive} outstandingBalance={stats.totalOutstanding} settledCount={stats.totalSettled} />
-                </div>
-                <Dialog open={open} onOpenChange={(v) => { setOpen(v); if(!v) { setAuthorized(false); setResubmitLoanId(null); } }}>
-                    <DialogTrigger asChild>
-                        <Button className="gap-1.5 self-start"><Plus className="h-4 w-4" /> Submit Gov Loan Record</Button>
-                    </DialogTrigger>
+                <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setAuthorized(false); setResubmitLoanId(null); } }}>
+                    <div className="flex justify-end w-full">
+                        <DialogTrigger asChild>
+                            <Button className="gap-1.5 self-start"><Plus className="h-4 w-4" /> Submit Request</Button>
+                        </DialogTrigger>
+                    </div>
                     <DialogContent className="max-w-md">
                         <DialogHeader><DialogTitle>{resubmitLoanId ? "Appeal / Resubmit Government Loan" : "Submit Government Loan Record"}</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
@@ -946,6 +950,9 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
                     </DialogContent>
                 </Dialog>
             </div>
+            <div className="flex-1">
+                <LoanKpiCards activeLabel="Active Gov Loans" activeCount={stats.totalActive} outstandingBalance={stats.totalOutstanding} settledCount={stats.totalSettled} />
+            </div>
 
             <LoansFilterBar showSearch={false} statusFilter={statusFilter} onStatusChange={(v) => { setStatusFilter(v); setAccountsPage(1); }} />
 
@@ -1009,9 +1016,9 @@ function EmployeeGovernmentLoansSection({ employeeId }: { employeeId: string }) 
                                                         <span className="text-red-500 font-medium" title={loan.rejectionReason || "No reason specified"}>
                                                             {loan.rejectionReason || "Rejected"}
                                                         </span>
-                                                     ) : (
-                                                         <span className="text-muted-foreground">{loan.remarks || "—"}</span>
-                                                     )}
+                                                    ) : (
+                                                        <span className="text-muted-foreground">{loan.remarks || "—"}</span>
+                                                    )}
                                                 </TableCell>
                                                 <TableCell>
                                                     {loan.status === "rejected" && (
