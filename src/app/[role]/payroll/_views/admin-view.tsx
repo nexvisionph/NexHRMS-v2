@@ -3026,6 +3026,7 @@
                                                                                                     const ok = await markRunPaidDbFirst(run.date);
                                                                                                     if (ok) {
                                                                                                         useAuditStore.getState().log({ entityType: "payroll_run", entityId: run.date, action: "payroll_completed", performedBy: currentUser.id });
+                                                                                                        setSelectedRunId(null);
                                                                                                         toast.success("Payroll run completed — Run Payroll unlocked");
                                                                                                     } else { toast.error("Failed to complete run"); }
                                                                                                 }}>Complete Run</AlertDialogAction>
