@@ -350,22 +350,40 @@ describe("computePayroll — custom payrollRules multipliers", () => {
 
 // ─── 8. computePayroll — zero attendance (all absent) ────────────────────────
 
-describe("computePayroll — all absent period", () => {
+describe("computePayroll — all absent period (No Work, No Pay)", () => {
   const employee = makeEmployee({ salary: 30000 });
 
-  it("net pay is negative or zero when fully absent + deductions", () => {
+  it("sets gross pay, deductions, and net pay to 0 when fully absent with no leave/OT", () => {
     const deductions = { tax: 500, sss: 600, philhealth: 450, pagibig: 100, loans: 0, other: 0 };
     const result = computePayroll({
       employee,
       periodStart: "2026-06-02",
       periodEnd: "2026-06-06", // 5 working days
-      attendanceLogs: [], // all absent
+      attendanceLogs: [], // all absent, no leave logs
       holidays: [],
       deductions,
     });
-    expect(result.absentDays).toBeGreaterThan(0);
-    // netPay may go negative when absent + deductions
-    expect(typeof result.netPay).toBe("number");
-    expect(result.totalOtPay).toBe(0);
+    expect(result.totalBasic).toBe(0);
+    expect(result.netPay).toBe(0);
+    expect(result.sss).toBe(0);
+    expect(result.philhealth).toBe(0);
+    expect(result.pagibig).toBe(0);
+    expect(result.withholdingTax).toBe(0);
+  });
+
+  it("does NOT set gross pay to 0 if there is paid leave", () => {
+    const deductions = { tax: 500, sss: 600, philhealth: 450, pagibig: 100, loans: 0, other: 0 };
+    const result = computePayroll({
+      employee,
+      periodStart: "2026-06-02",
+      periodEnd: "2026-06-06",
+      attendanceLogs: [
+        { employeeId: employee.id, date: "2026-06-02", status: "on_leave", checkIn: null, checkOut: null }
+      ],
+      holidays: [],
+      deductions,
+    });
+    expect(result.totalBasic).toBeGreaterThan(0);
+    expect(result.totalBasic).toBeCloseTo(15000 - result.absentDeduction, 1);
   });
 });

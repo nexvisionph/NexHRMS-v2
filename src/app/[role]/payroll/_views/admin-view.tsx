@@ -86,9 +86,10 @@
         const holidays = useAttendanceStore((s) => s.holidays);
         const attendanceLogs = useAttendanceStore((s) => s.logs);
         const overtimeRequests = useAttendanceStore((s) => s.overtimeRequests);
-        const ruleSets = useTimesheetStore((s) => s.ruleSets);
+        const { ruleSets, timesheets } = useTimesheetStore();
         const { hasPermission } = useRolesStore();
         const { templates: deductionTemplates, computeDeductionsForEmployee, fetchTemplates, fetchAssignments } = useDeductionsStore();
+        const { fetchRecords: fetchOtRecords, records: otRecords } = useOTReviewStore();
 
         const canIssue = hasPermission(currentUser.role, "payroll:generate");
         const canLock = hasPermission(currentUser.role, "payroll:lock");
@@ -118,8 +119,19 @@
             }
             if (workdays === 0) return { eligible: true as const };
 
+            const approvedDates = new Set(
+                timesheets
+                    .filter(
+                        (t) =>
+                            t.employeeId === ps.employeeId &&
+                            t.status === "approved" &&
+                            t.date >= ps.periodStart &&
+                            t.date <= ps.periodEnd
+                    )
+                    .map((t) => t.date)
+            );
             const periodLogs = attendanceLogs.filter(
-                (l) => l.employeeId === ps.employeeId && l.date >= ps.periodStart && l.date <= ps.periodEnd
+                (l) => l.employeeId === ps.employeeId && l.date >= ps.periodStart && l.date <= ps.periodEnd && approvedDates.has(l.date)
             );
             const presentDays = periodLogs.filter(
                 (l) => l.status === "present" || (l.hours ?? 0) > 0 || !!l.checkIn
@@ -128,11 +140,11 @@
             if (presentDays === 0) {
                 return {
                     eligible: false as const,
-                    reason: "Employee has no present attendance in this period",
+                    reason: "Employee has no approved timesheets in this period",
                 };
             }
             return { eligible: true as const };
-        }, [attendanceLogs]);
+        }, [attendanceLogs, timesheets]);
 
         const handleReset = async () => {
             // Nuclear reset: wipe ALL payroll data from Supabase (not filtered by IDs).
@@ -334,6 +346,13 @@
             const label = `${format(startDate, "MMM d")} – ${format(endDate, "MMM d, yyyy")}`;
             return { start, end, label };
         }, [naturalBounds.start, formPeriodEnd]);
+
+        // Load OT records for the current cutoff period
+        useEffect(() => {
+            if (cutoffDates.start && cutoffDates.end) {
+                fetchOtRecords({ periodStart: cutoffDates.start, periodEnd: cutoffDates.end });
+            }
+        }, [cutoffDates.start, cutoffDates.end, fetchOtRecords]);
 
         // Proration metrics (calendar-day basis, per PH DOLE common practice)
         const prorationInfo = useMemo(() => {
@@ -561,7 +580,7 @@
             const grossPay = empDailyRate * weekdaysInPeriod;
 
             const overrideStr = grossOverrides[empId];
-            const effectiveGrossPay = (overrideStr && Number(overrideStr) > 0)
+            const effectiveGrossPayRaw = (overrideStr && Number(overrideStr) > 0)
                 ? Math.round(Number(overrideStr))
                 : grossPay;
 
@@ -571,7 +590,7 @@
             const empLoans = getActiveByEmployee(empId);
 
             const allowances = Number(formAllowances) || 0;
-            const otherDed = Number(formOtherDeductions) || 0;
+            const otherDedRaw = Number(formOtherDeductions) || 0;
             const otHours = Number(formOTHours) || 0;
             const nightDiffHours = Number(formNightDiffHours) || 0;
 
@@ -585,6 +604,142 @@
                 )
                 .reduce((sum, r) => sum + (r.hoursRequested || 0), 0);
             const effectiveOtHours = otHours + approvedOtHours;
+
+            const activeRuleSet = ruleSets[0]; // RS-DEFAULT
+            const stdHours = activeRuleSet?.standardHoursPerDay ?? 8;
+            const libDailyRate = computeDailyRate(settledSalary, paySchedule.workDaysPerMonth);
+            const libHourlyRate = computeHourlyRate(libDailyRate, stdHours);
+            const fullPrecisionHourlyRate = settledSalary / (paySchedule.workDaysPerMonth || 22) / stdHours;
+            const nightDiffPayRaw = Math.round(nightDiffHours * fullPrecisionHourlyRate * 0.10);
+
+            const approvedDates = new Set(
+                timesheets
+                    .filter(
+                        (t) =>
+                            t.employeeId === empId &&
+                            t.status === "approved" &&
+                            t.date >= cutoffDates.start &&
+                            t.date <= cutoffDates.end
+                    )
+                    .map((t) => t.date)
+            );
+
+            const periodHolidays = holidays.filter((h) => h.date >= cutoffDates.start && h.date <= cutoffDates.end);
+            let holidayPaySuppRaw = 0;
+            periodHolidays.forEach((hol) => {
+                const log = attendanceLogs.find((l) => l.employeeId === empId && l.date === hol.date);
+                const worked = log?.status === "present" && approvedDates.has(hol.date);
+                if (hol.type === "regular") { if (worked) holidayPaySuppRaw += empDailyRate; }
+                else { if (worked) holidayPaySuppRaw += Math.round(empDailyRate * (PH_HOLIDAY_MULTIPLIERS.special_holiday.worked - 1)); else holidayPaySuppRaw -= empDailyRate; }
+            });
+
+            const periodLogs = attendanceLogs.filter(
+                (l) =>
+                    l.employeeId === empId &&
+                    l.date >= cutoffDates.start &&
+                    l.date <= cutoffDates.end &&
+                    approvedDates.has(l.date)
+            );
+            const presentLogs = periodLogs.filter((l) => l.status === "present");
+
+            const expectedHoursTotal = presentLogs.length * stdHours;
+            const actualHoursTotal = presentLogs.reduce((sum, l) => sum + (l.hours || 0), 0);
+
+            const lateMinutesAgg = periodLogs.reduce((sum, l) => sum + (l.lateMinutes || 0), 0);
+            let absentDaysAgg = 0;
+            if (cutoffDates.start && cutoffDates.end) {
+                for (let d = new Date(parseISO(cutoffDates.start)); d <= parseISO(cutoffDates.end); d.setDate(d.getDate() + 1)) {
+                    const dayOfWeek = d.getDay();
+                    if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+                    const dateStr = format(d, "yyyy-MM-dd");
+                    const log = periodLogs.find((l) => l.date === dateStr);
+                    if (!log || log.status === "absent") absentDaysAgg++;
+                }
+            }
+
+            const autoBreakdown = buildPayslipDeductions({
+                autoDeductLate: paySchedule.autoDeductLate,
+                autoDeductAbsent: paySchedule.autoDeductAbsent,
+                autoDeductUndertime: paySchedule.autoDeductUndertime,
+                autoAddOvertime: paySchedule.autoAddOvertime,
+                dailyRate: libDailyRate,
+                hourlyRate: libHourlyRate,
+                lateMinutes: lateMinutesAgg,
+                absentDays: absentDaysAgg,
+                shiftHours: expectedHoursTotal,
+                actualHours: actualHoursTotal,
+                overtimeEntries: [],
+                multipliers: {
+                    otMultiplierRegular: activeRuleSet?.otMultiplierRegular ?? 1.25,
+                    otMultiplierRestDay: activeRuleSet?.otMultiplierRestDay ?? 1.30,
+                    otMultiplierSpecialHoliday: activeRuleSet?.otMultiplierSpecialHoliday ?? 1.30,
+                    otMultiplierRegularHoliday: activeRuleSet?.otMultiplierRegularHoliday ?? 2.00,
+                    otMultiplierNightDiff: activeRuleSet?.otMultiplierNightDiff ?? 1.10,
+                },
+            });
+            const autoDedTotal = autoBreakdown.totalDeductions - (paySchedule.autoDeductAbsent ? autoBreakdown.absentDeduction : 0);
+
+            const holDates = new Set(holidays.map(h => h.date));
+            const mergedHolidays = [...holidays, ...DEFAULT_HOLIDAYS.filter(h => !holDates.has(h.date)).map((h, i) => ({ ...h, id: `CONST-${i}` }))] as typeof holidays;
+            const engineResult = computePayrollEngine({
+                employee: emp,
+                periodStart: cutoffDates.start,
+                periodEnd: cutoffDates.end,
+                attendanceLogs: periodLogs,
+                holidays: mergedHolidays,
+                deductions: { tax: 0, sss: 0, philhealth: 0, pagibig: 0, loans: 0, other: 0 },
+                computeWorkDays: paySchedule.workDaysPerMonth || 22,
+                approvedOtRecords: otRecords,
+            });
+            const dtrOtHours = engineResult.regOtHours + engineResult.satOtHours + (engineResult.regOtMinutes + engineResult.satOtMinutes) / 60;
+            const finalOtHours = dtrOtHours > 0 ? dtrOtHours : effectiveOtHours;
+            const otPayRaw = engineResult.totalOtPay > 0 ? engineResult.totalOtPay : Math.round(finalOtHours * fullPrecisionHourlyRate * 1.25);
+
+            const workDaysPerPeriod = emp.workDays?.length
+                ? Math.round(emp.workDays.length * (22 / 5))
+                : 22;
+            const customItems = emp.deductionExempt
+                ? []
+                : computeDeductionsForEmployee(empId, settledSalary, workDaysPerPeriod);
+            const customDedTotalRaw = customItems
+                .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "deduction")
+                .reduce((sum, item) => sum + item.amount, 0);
+            const customAllowanceTotalRaw = customItems
+                .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "allowance")
+                .reduce((sum, item) => sum + item.amount, 0);
+
+            const hasApprovedLeave = useLeaveStore.getState().requests.some(
+                (r) =>
+                    r.employeeId === empId &&
+                    r.status === "approved" &&
+                    r.startDate <= cutoffDates.end &&
+                    r.endDate >= cutoffDates.start
+            );
+
+            const hasPresentLogs = periodLogs.some((l) => l.status === "present");
+            const hasPaidHoliday = holidayPaySuppRaw > 0;
+            const hasOt = otPayRaw > 0;
+            const hasOtherCompensable = allowances > 0 || customAllowanceTotalRaw > 0 || nightDiffPayRaw > 0;
+            const hasOverride = (overrideStr && Number(overrideStr) > 0);
+
+            const noWorkNoPayApplied =
+                !hasPresentLogs &&
+                !hasApprovedLeave &&
+                !hasPaidHoliday &&
+                !hasOt &&
+                !hasOtherCompensable &&
+                !hasOverride;
+
+            const proratedGrossPayRaw = (paySchedule.autoDeductAbsent && !noWorkNoPayApplied)
+                ? Math.max(0, effectiveGrossPayRaw - autoBreakdown.absentDeduction)
+                : effectiveGrossPayRaw;
+            const effectiveGrossPay = noWorkNoPayApplied ? 0 : proratedGrossPayRaw;
+            const holidayPaySupp = noWorkNoPayApplied ? 0 : holidayPaySuppRaw;
+            const otPay = noWorkNoPayApplied ? 0 : otPayRaw;
+            const nightDiffPay = noWorkNoPayApplied ? 0 : nightDiffPayRaw;
+            const customAllowanceTotal = noWorkNoPayApplied ? 0 : customAllowanceTotalRaw;
+            const customDedTotal = noWorkNoPayApplied ? 0 : customDedTotalRaw;
+            const otherDed = noWorkNoPayApplied ? 0 : otherDedRaw;
 
             const computeDeduction = (type: DeductionType, autoValue: number, basis: number = grossPay): number => {
                 const override = getDeductionOverride(empId, type);
@@ -609,17 +764,15 @@
                 return Math.round(autoValue * govMultiplier);
             };
 
-            const sss = emp.deductionExempt ? 0 : computeDeduction("sss", phDeductions.sss);
-            const ph = emp.deductionExempt ? 0 : computeDeduction("philhealth", phDeductions.philHealth);
-            const pi = emp.deductionExempt ? 0 : computeDeduction("pagibig", phDeductions.pagIBIG);
+            const sss = (emp.deductionExempt || noWorkNoPayApplied) ? 0 : computeDeduction("sss", phDeductions.sss, effectiveGrossPay);
+            const ph = (emp.deductionExempt || noWorkNoPayApplied) ? 0 : computeDeduction("philhealth", phDeductions.philHealth, effectiveGrossPay);
+            const pi = (emp.deductionExempt || noWorkNoPayApplied) ? 0 : computeDeduction("pagibig", phDeductions.pagIBIG, effectiveGrossPay);
 
             const taxableIncome = Math.max(0, effectiveGrossPay - sss - ph - pi);
             const birOverride = getDeductionOverride(empId, "bir");
             const birGlobal = getGlobalDefault("bir");
-            let tax: number;
-            if (emp.deductionExempt || (birGlobal && !birGlobal.enabled)) {
-                tax = 0;
-            } else {
+            let tax = 0;
+            if (!emp.deductionExempt && !noWorkNoPayApplied && (!birGlobal || birGlobal.enabled)) {
                 const birEffective = birOverride ?? (birGlobal && birGlobal.mode !== "auto" ? { mode: birGlobal.mode, percentage: birGlobal.percentage, fixedAmount: birGlobal.fixedAmount } : null);
                 if (!birEffective || birEffective.mode === "auto") {
                     tax = Math.round(phDeductions.withholdingTax * govMultiplier);
@@ -635,91 +788,6 @@
             }
 
             const totalGovDed = sss + ph + pi + tax;
-
-            const libDailyRate = computeDailyRate(settledSalary, paySchedule.workDaysPerMonth);
-            const activeRuleSet = ruleSets[0]; // RS-DEFAULT
-            const stdHours = activeRuleSet?.standardHoursPerDay ?? 8;
-            const libHourlyRate = computeHourlyRate(libDailyRate, stdHours);
-            const fullPrecisionHourlyRate = settledSalary / (paySchedule.workDaysPerMonth || 22) / stdHours;
-            const nightDiffPay = Math.round(nightDiffHours * fullPrecisionHourlyRate * 0.10);
-
-            const periodHolidays = holidays.filter((h) => h.date >= cutoffDates.start && h.date <= cutoffDates.end);
-            let holidayPaySupp = 0;
-            periodHolidays.forEach((hol) => {
-                const log = attendanceLogs.find((l) => l.employeeId === empId && l.date === hol.date);
-                const worked = log?.status === "present";
-                if (hol.type === "regular") { if (worked) holidayPaySupp += empDailyRate; }
-                else { if (worked) holidayPaySupp += Math.round(empDailyRate * (PH_HOLIDAY_MULTIPLIERS.special_holiday.worked - 1)); else holidayPaySupp -= empDailyRate; }
-            });
-
-            const periodLogs = attendanceLogs.filter(
-                (l) => l.employeeId === empId && l.date >= cutoffDates.start && l.date <= cutoffDates.end
-            );
-            const presentLogs = periodLogs.filter((l) => l.status === "present");
-            const expectedHoursTotal = presentLogs.length * stdHours;
-            const actualHoursTotal = presentLogs.reduce((sum, l) => sum + (l.hours || 0), 0);
-
-            const lateMinutesAgg = periodLogs.reduce((sum, l) => sum + (l.lateMinutes || 0), 0);
-            let absentDaysAgg = 0;
-            if (cutoffDates.start && cutoffDates.end) {
-                for (let d = new Date(parseISO(cutoffDates.start)); d <= parseISO(cutoffDates.end); d.setDate(d.getDate() + 1)) {
-                    const dayOfWeek = d.getDay();
-                    if (dayOfWeek === 0 || dayOfWeek === 6) continue;
-                    const dateStr = format(d, "yyyy-MM-dd");
-                    const log = periodLogs.find((l) => l.date === dateStr);
-                    if (!log || log.status === "absent") absentDaysAgg++;
-                }
-            }
-
-            const autoBreakdown = buildPayslipDeductions({
-                autoDeductLate: false,
-                autoDeductAbsent: false,
-                autoDeductUndertime: false,
-                autoAddOvertime: false,
-                dailyRate: libDailyRate,
-                hourlyRate: libHourlyRate,
-                lateMinutes: lateMinutesAgg,
-                absentDays: absentDaysAgg,
-                shiftHours: expectedHoursTotal,
-                actualHours: actualHoursTotal,
-                overtimeEntries: [],
-                multipliers: {
-                    otMultiplierRegular: activeRuleSet?.otMultiplierRegular ?? 1.25,
-                    otMultiplierRestDay: activeRuleSet?.otMultiplierRestDay ?? 1.30,
-                    otMultiplierSpecialHoliday: activeRuleSet?.otMultiplierSpecialHoliday ?? 1.30,
-                    otMultiplierRegularHoliday: activeRuleSet?.otMultiplierRegularHoliday ?? 2.00,
-                    otMultiplierNightDiff: activeRuleSet?.otMultiplierNightDiff ?? 1.10,
-                },
-            });
-            const autoDedTotal = autoBreakdown.totalDeductions;
-
-            const holDates = new Set(holidays.map(h => h.date));
-            const mergedHolidays = [...holidays, ...DEFAULT_HOLIDAYS.filter(h => !holDates.has(h.date)).map((h, i) => ({ ...h, id: `CONST-${i}` }))] as typeof holidays;
-            const engineResult = computePayrollEngine({
-                employee: emp,
-                periodStart: cutoffDates.start,
-                periodEnd: cutoffDates.end,
-                attendanceLogs: periodLogs,
-                holidays: mergedHolidays,
-                deductions: { tax: 0, sss: 0, philhealth: 0, pagibig: 0, loans: 0, other: 0 },
-                computeWorkDays: 21.5,
-            });
-            const dtrOtHours = engineResult.regOtHours + engineResult.satOtHours + (engineResult.regOtMinutes + engineResult.satOtMinutes) / 60;
-            const finalOtHours = dtrOtHours > 0 ? dtrOtHours : effectiveOtHours;
-            const otPay = engineResult.totalOtPay > 0 ? engineResult.totalOtPay : Math.round(finalOtHours * fullPrecisionHourlyRate * 1.25);
-
-            const workDaysPerPeriod = emp.workDays?.length
-                ? Math.round(emp.workDays.length * (22 / 5))
-                : 22;
-            const customItems = emp.deductionExempt
-                ? []
-                : computeDeductionsForEmployee(empId, settledSalary, workDaysPerPeriod);
-            const customDedTotal = customItems
-                .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "deduction")
-                .reduce((sum, item) => sum + item.amount, 0);
-            const customAllowanceTotal = customItems
-                .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "allowance")
-                .reduce((sum, item) => sum + item.amount, 0);
 
             const netPayBeforeLoans = Math.max(
                 0,
@@ -939,28 +1007,20 @@
 
                     // ─── Admin per-employee gross override ────────────────────────────
                     const overrideStr = grossOverrides[empId];
-                    const effectiveGrossPay = (overrideStr && Number(overrideStr) > 0)
+                    const effectiveGrossPayRaw = (overrideStr && Number(overrideStr) > 0)
                         ? Math.round(Number(overrideStr))
                         : grossPay;
 
                     const phDeductions = computeAllPHDeductions(settledSalary);
-                    // Gov deductions are always applied in full.
-                    // The deductGovFrom setting only splits the amount (50%) when set to "both",
-                    // otherwise full deductions apply on every cutoff.
                     const govMultiplier = 1;
 
                     const empLoans = getActiveByEmployee(empId);
 
                     const allowances = allowancesVal;
-                    const otherDed = otherDedVal;
+                    const otherDedRaw = otherDedVal;
                     const otHours = otHoursVal;
                     const nightDiffHours = nightDiffVal;
 
-                    // ─── Auto-include approved OT requests ───────────────────────
-                    // Always sum approved OT for this employee in the cutoff range
-                    // and ADD it to the manual field. Previously this was gated by
-                    // if (otHours === 0), which silently ignored approved OT whenever
-                    // the admin typed any nonzero value.
                     const approvedOtHours = overtimeRequests
                         .filter(
                             (r) =>
@@ -971,16 +1031,164 @@
                         )
                         .reduce((sum, r) => sum + (r.hoursRequested || 0), 0);
                     const effectiveOtHours = otHours + approvedOtHours;
-                    // Priority: per-employee override > global default > auto (standard PH calc)
+
+                    const activeRuleSet = ruleSets[0]; // RS-DEFAULT
+                    const stdHours = activeRuleSet?.standardHoursPerDay ?? 8;
+                    const libDailyRate = computeDailyRate(settledSalary, paySchedule.workDaysPerMonth);
+                    const libHourlyRate = computeHourlyRate(libDailyRate, stdHours);
+                    const fullPrecisionHourlyRate = settledSalary / (paySchedule.workDaysPerMonth || 22) / stdHours;
+                    const nightDiffPayRaw = Math.round(nightDiffHours * fullPrecisionHourlyRate * 0.10);
+
+                    const approvedDates = new Set(
+                        timesheets
+                            .filter(
+                                (t) =>
+                                    t.employeeId === empId &&
+                                    t.status === "approved" &&
+                                    t.date >= cutoffDates.start &&
+                                    t.date <= cutoffDates.end
+                            )
+                            .map((t) => t.date)
+                    );
+
+                    const periodHolidays = holidays.filter((h) => h.date >= cutoffDates.start && h.date <= cutoffDates.end);
+                    let holidayPaySuppRaw = 0;
+                    periodHolidays.forEach((hol) => {
+                        const log = attendanceLogs.find((l) => l.employeeId === empId && l.date === hol.date);
+                        const worked = log?.status === "present" && approvedDates.has(hol.date);
+                        const dailyRate = Math.round(settledSalary / (paySchedule.workDaysPerMonth || 22));
+                        if (hol.type === "regular") { if (worked) holidayPaySuppRaw += dailyRate; }
+                        else { if (worked) holidayPaySuppRaw += Math.round(dailyRate * (PH_HOLIDAY_MULTIPLIERS.special_holiday.worked - 1)); else holidayPaySuppRaw -= dailyRate; }
+                    });
+
+                    const periodLogs = attendanceLogs.filter(
+                        (l) =>
+                            l.employeeId === empId &&
+                            l.date >= cutoffDates.start &&
+                            l.date <= cutoffDates.end &&
+                            approvedDates.has(l.date)
+                    );
+                    const presentLogs = periodLogs.filter((l) => l.status === "present");
+
+                    const expectedHoursTotal = presentLogs.length * stdHours;
+                    const actualHoursTotal = presentLogs.reduce((sum, l) => sum + (l.hours || 0), 0);
+
+                    const lateMinutesAgg = periodLogs.reduce((sum, l) => sum + (l.lateMinutes || 0), 0);
+                    let absentDaysAgg = 0;
+                    if (cutoffDates.start && cutoffDates.end) {
+                        for (let d = new Date(parseISO(cutoffDates.start)); d <= parseISO(cutoffDates.end); d.setDate(d.getDate() + 1)) {
+                            const dayOfWeek = d.getDay();
+                            if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+                            const dateStr = format(d, "yyyy-MM-dd");
+                            const log = periodLogs.find((l) => l.date === dateStr);
+                            if (!log || log.status === "absent") absentDaysAgg++;
+                        }
+                    }
+
+                    const autoBreakdown = buildPayslipDeductions({
+                        autoDeductLate: paySchedule.autoDeductLate,
+                        autoDeductAbsent: paySchedule.autoDeductAbsent,
+                        autoDeductUndertime: paySchedule.autoDeductUndertime,
+                        autoAddOvertime: paySchedule.autoAddOvertime,
+                        dailyRate: libDailyRate,
+                        hourlyRate: libHourlyRate,
+                        lateMinutes: lateMinutesAgg,
+                        absentDays: absentDaysAgg,
+                        shiftHours: expectedHoursTotal,
+                        actualHours: actualHoursTotal,
+                        overtimeEntries: [],
+                        multipliers: {
+                            otMultiplierRegular: activeRuleSet?.otMultiplierRegular ?? 1.25,
+                            otMultiplierRestDay: activeRuleSet?.otMultiplierRestDay ?? 1.30,
+                            otMultiplierSpecialHoliday: activeRuleSet?.otMultiplierSpecialHoliday ?? 1.30,
+                            otMultiplierRegularHoliday: activeRuleSet?.otMultiplierRegularHoliday ?? 2.00,
+                            otMultiplierNightDiff: activeRuleSet?.otMultiplierNightDiff ?? 1.10,
+                        },
+                    });
+                    const autoDedTotal = autoBreakdown.totalDeductions - (paySchedule.autoDeductAbsent ? autoBreakdown.absentDeduction : 0);
+
+                    const holDates = new Set(holidays.map(h => h.date));
+                    const mergedHolidays = [...holidays, ...DEFAULT_HOLIDAYS.filter(h => !holDates.has(h.date)).map((h, i) => ({ ...h, id: `CONST-${i}` }))] as typeof holidays;
+                    const engineResult = computePayrollEngine({
+                        employee: emp,
+                        periodStart: cutoffDates.start,
+                        periodEnd: cutoffDates.end,
+                        attendanceLogs: periodLogs,
+                        holidays: mergedHolidays,
+                        deductions: { tax: 0, sss: 0, philhealth: 0, pagibig: 0, loans: 0, other: 0 },
+                        computeWorkDays: paySchedule.workDaysPerMonth || 22,
+                        approvedOtRecords: otRecords,
+                    });
+                    const dtrOtHours = engineResult.regOtHours + engineResult.satOtHours + (engineResult.regOtMinutes + engineResult.satOtMinutes) / 60;
+                    const finalOtHours = dtrOtHours > 0 ? dtrOtHours : effectiveOtHours;
+                    const otPayRaw = engineResult.totalOtPay > 0 ? engineResult.totalOtPay : Math.round(finalOtHours * fullPrecisionHourlyRate * 1.25);
+
+                    const workDaysPerPeriod = emp.workDays?.length
+                        ? Math.round(emp.workDays.length * (22 / 5))
+                        : 22;
+                    const customItems = emp.deductionExempt
+                        ? []
+                        : computeDeductionsForEmployee(empId, settledSalary, workDaysPerPeriod);
+                    const customDedTotalRaw = customItems
+                        .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "deduction")
+                        .reduce((sum, item) => sum + item.amount, 0);
+                    const customAllowanceTotalRaw = customItems
+                        .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "allowance")
+                        .reduce((sum, item) => sum + item.amount, 0);
+
+                    // Build line items for payslip storage — these are what the export reads
+                    const lineItemsJson = customItems.map((item) => {
+                        const template = deductionTemplates.find((t) => t.id === item.templateId);
+                        return {
+                            id: `LI-${item.templateId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                            payslipId: "",
+                            label: item.label,
+                            type: (template?.type === "allowance" ? "earning" : "deduction") as "earning" | "deduction" | "government" | "loan",
+                            amount: item.amount,
+                            templateId: item.templateId,
+                            calculationDetail: template ? `${template.calculationMode}: ${template.value}` : undefined,
+                        };
+                    });
+
+                    const hasApprovedLeave = useLeaveStore.getState().requests.some(
+                        (r) =>
+                            r.employeeId === empId &&
+                            r.status === "approved" &&
+                            r.startDate <= cutoffDates.end &&
+                            r.endDate >= cutoffDates.start
+                    );
+
+                    const hasPresentLogs = periodLogs.some((l) => l.status === "present");
+                    const hasPaidHoliday = holidayPaySuppRaw > 0;
+                    const hasOt = otPayRaw > 0;
+                    const hasOtherCompensable = allowances > 0 || customAllowanceTotalRaw > 0 || nightDiffPayRaw > 0;
+                    const hasOverride = (overrideStr && Number(overrideStr) > 0);
+
+                    const noWorkNoPayApplied =
+                        !hasPresentLogs &&
+                        !hasApprovedLeave &&
+                        !hasPaidHoliday &&
+                        !hasOt &&
+                        !hasOtherCompensable &&
+                        !hasOverride;
+
+                    const proratedGrossPayRaw = (paySchedule.autoDeductAbsent && !noWorkNoPayApplied)
+                        ? Math.max(0, effectiveGrossPayRaw - autoBreakdown.absentDeduction)
+                        : effectiveGrossPayRaw;
+                    const effectiveGrossPay = noWorkNoPayApplied ? 0 : proratedGrossPayRaw;
+                    const holidayPaySupp = noWorkNoPayApplied ? 0 : holidayPaySuppRaw;
+                    const otPay = noWorkNoPayApplied ? 0 : otPayRaw;
+                    const nightDiffPay = noWorkNoPayApplied ? 0 : nightDiffPayRaw;
+                    const customAllowanceTotal = noWorkNoPayApplied ? 0 : customAllowanceTotalRaw;
+                    const customDedTotal = noWorkNoPayApplied ? 0 : customDedTotalRaw;
+                    const otherDed = noWorkNoPayApplied ? 0 : otherDedRaw;
+
                     const computeDeduction = (type: DeductionType, autoValue: number, basis: number = grossPay): number => {
                         const override = getDeductionOverride(empId, type);
-                        // Read latest toggle state directly from store (not from closure)
                         const globalDef = usePayrollStore.getState().globalDefaults.find((g) => g.deductionType === type);
 
-                        // If the global default has this type disabled, return 0 (admin toggled it off)
                         if (globalDef && !globalDef.enabled) return 0;
 
-                        // Use per-employee override if set, otherwise fall back to global default
                         const effective = override ?? (globalDef && globalDef.mode !== "auto" ? { mode: globalDef.mode, percentage: globalDef.percentage, fixedAmount: globalDef.fixedAmount } : null);
 
                         if (!effective || effective.mode === "auto") {
@@ -998,18 +1206,15 @@
                         return Math.round(autoValue * govMultiplier);
                     };
 
-                    const sss = emp.deductionExempt ? 0 : computeDeduction("sss", phDeductions.sss);
-                    const ph = emp.deductionExempt ? 0 : computeDeduction("philhealth", phDeductions.philHealth);
-                    const pi = emp.deductionExempt ? 0 : computeDeduction("pagibig", phDeductions.pagIBIG);
+                    const sss = (emp.deductionExempt || noWorkNoPayApplied) ? 0 : computeDeduction("sss", phDeductions.sss, effectiveGrossPay);
+                    const ph = (emp.deductionExempt || noWorkNoPayApplied) ? 0 : computeDeduction("philhealth", phDeductions.philHealth, effectiveGrossPay);
+                    const pi = (emp.deductionExempt || noWorkNoPayApplied) ? 0 : computeDeduction("pagibig", phDeductions.pagIBIG, effectiveGrossPay);
 
-                    // BIR tax is calculated on taxable income (gross minus gov contributions)
                     const taxableIncome = Math.max(0, effectiveGrossPay - sss - ph - pi);
                     const birOverride = getDeductionOverride(empId, "bir");
                     const birGlobal = getGlobalDefault("bir");
-                    let tax: number;
-                    if (emp.deductionExempt || (birGlobal && !birGlobal.enabled)) {
-                        tax = 0;
-                    } else {
+                    let tax = 0;
+                    if (!emp.deductionExempt && !noWorkNoPayApplied && (!birGlobal || birGlobal.enabled)) {
                         const birEffective = birOverride ?? (birGlobal && birGlobal.mode !== "auto" ? { mode: birGlobal.mode, percentage: birGlobal.percentage, fixedAmount: birGlobal.fixedAmount } : null);
                         if (!birEffective || birEffective.mode === "auto") {
                             tax = Math.round(phDeductions.withholdingTax * govMultiplier);
@@ -1026,132 +1231,11 @@
 
                     const totalGovDed = sss + ph + pi + tax;
 
-                    const dailyRate = Math.round(settledSalary / 22);
-
-                    // ─── Custom deduction templates ───────────────────────────────────
-                    // Skipped entirely if employee is deduction-exempt (contract-based, etc.)
-                    const workDaysPerPeriod = emp.workDays?.length
-                        ? Math.round(emp.workDays.length * (22 / 5))
-                        : 22;
-                    const customItems = emp.deductionExempt
-                        ? []
-                        : computeDeductionsForEmployee(empId, settledSalary, workDaysPerPeriod);
-                    const customDedTotal = customItems
-                        .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "deduction")
-                        .reduce((sum, item) => sum + item.amount, 0);
-                    const customAllowanceTotal = customItems
-                        .filter((item) => deductionTemplates.find((t) => t.id === item.templateId)?.type === "allowance")
-                        .reduce((sum, item) => sum + item.amount, 0);
-
-                    // Build line items for payslip storage — these are what the export reads
-                    const lineItemsJson = customItems.map((item) => {
-                        const template = deductionTemplates.find((t) => t.id === item.templateId);
-                        return {
-                            id: `LI-${item.templateId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                            payslipId: "", // filled after creation
-                            label: item.label,
-                            type: (template?.type === "allowance" ? "earning" : "deduction") as "earning" | "deduction" | "government" | "loan",
-                            amount: item.amount,
-                            templateId: item.templateId,
-                            calculationDetail: template ? `${template.calculationMode}: ${template.value}` : undefined,
-                        };
-                    });
-
-                    const hourlyRate = Math.round(dailyRate / 8);
-                    // Full-precision hourly rate for OT/night diff — no intermediate rounding.
-                    // Only the final OT pay amount is rounded (at the last step).
-                    const libDailyRate = computeDailyRate(settledSalary, paySchedule.workDaysPerMonth);
-                    const activeRuleSet = ruleSets[0]; // RS-DEFAULT
-                    const stdHours = activeRuleSet?.standardHoursPerDay ?? 8;
-                    const libHourlyRate = computeHourlyRate(libDailyRate, stdHours);
-                    // Full precision: salary / workDays / stdHours (no rounding until final amount)
-                    const fullPrecisionHourlyRate = settledSalary / (paySchedule.workDaysPerMonth || 22) / stdHours;
-                    const nightDiffPay = Math.round(nightDiffHours * fullPrecisionHourlyRate * 0.10); // PH: +10% for 10PM-6AM
-                    const periodHolidays = holidays.filter((h) => h.date >= cutoffDates.start && h.date <= cutoffDates.end);
-                    let holidayPaySupp = 0;
-                    periodHolidays.forEach((hol) => {
-                        const log = attendanceLogs.find((l) => l.employeeId === empId && l.date === hol.date);
-                        const worked = log?.status === "present";
-                        if (hol.type === "regular") { if (worked) holidayPaySupp += dailyRate; }
-                        else { if (worked) holidayPaySupp += Math.round(dailyRate * (PH_HOLIDAY_MULTIPLIERS.special_holiday.worked - 1)); else holidayPaySupp -= dailyRate; }
-                    });
-
-                    // ─── Auto-deductions from attendance (migration 055) ──────────
-                    // Aggregates attendance logs in the cutoff period and applies the
-                    // late/absent/undertime deductions gated by paySchedule toggles.
-                    // OT pay continues to come from the form input (manual override),
-                    // but its itemized snapshot is stored on the payslip below.
-                    const periodLogs = attendanceLogs.filter(
-                        (l) => l.employeeId === empId && l.date >= cutoffDates.start && l.date <= cutoffDates.end
-                    );
-                    const lateMinutesAgg = periodLogs.reduce((sum, l) => sum + (l.lateMinutes || 0), 0);
-
-
-
-                   let absentDaysAgg = 0;
-                    for (let d = new Date(parseISO(cutoffDates.start)); d <= parseISO(cutoffDates.end); d.setDate(d.getDate() + 1)) {
-                        const dayOfWeek = d.getDay();
-                        if (dayOfWeek === 0 || dayOfWeek === 6) continue;
-                        const dateStr = format(d, "yyyy-MM-dd");
-                        const log = periodLogs.find((l) => l.date === dateStr);
-                        if (!log || log.status === "absent") absentDaysAgg++;
-                    }
-
-
-
-
-
-                    const presentLogs = periodLogs.filter((l) => l.status === "present");
-                    const expectedHoursTotal = presentLogs.length * stdHours;
-                    const actualHoursTotal = presentLogs.reduce((sum, l) => sum + (l.hours || 0), 0);
-                    const autoBreakdown = buildPayslipDeductions({
-                        autoDeductLate: false, // Client formula: late NOT deducted
-                        autoDeductAbsent: false, // Client formula: basic is always salary/2, no absent deduction
-                        autoDeductUndertime: false, // Client formula: undertime NOT deducted
-                        autoAddOvertime: false, // OT comes from engine, not auto
-                        dailyRate: libDailyRate,
-                        hourlyRate: libHourlyRate,
-                        lateMinutes: lateMinutesAgg,
-                        absentDays: absentDaysAgg,
-                        shiftHours: expectedHoursTotal,
-                        actualHours: actualHoursTotal,
-                        overtimeEntries: [],
-                        multipliers: {
-                            otMultiplierRegular: activeRuleSet?.otMultiplierRegular ?? 1.25,
-                            otMultiplierRestDay: activeRuleSet?.otMultiplierRestDay ?? 1.30,
-                            otMultiplierSpecialHoliday: activeRuleSet?.otMultiplierSpecialHoliday ?? 1.30,
-                            otMultiplierRegularHoliday: activeRuleSet?.otMultiplierRegularHoliday ?? 2.00,
-                            otMultiplierNightDiff: activeRuleSet?.otMultiplierNightDiff ?? 1.10,
-                        },
-                    });
-                    const autoDedTotal = autoBreakdown.totalDeductions;
-
-                    // OT hours: Use the computation engine for accurate OT matching client formula.
-                    // The engine handles: no-lunch deduction for OT, minute truncation (<30→0),
-                    // Saturday cap at 8hrs, declared half-day threshold, and per-day rounding.
-                    // Merge DEFAULT_HOLIDAYS with store holidays to ensure all declared half-days are recognized
-                    const holDates = new Set(holidays.map(h => h.date));
-                    const mergedHolidays = [...holidays, ...DEFAULT_HOLIDAYS.filter(h => !holDates.has(h.date)).map((h, i) => ({ ...h, id: `CONST-${i}` }))] as typeof holidays;
-                    const engineResult = computePayrollEngine({
-                        employee: emp,
-                        periodStart: cutoffDates.start,
-                        periodEnd: cutoffDates.end,
-                        attendanceLogs: periodLogs,
-                        holidays: mergedHolidays,
-                        deductions: { tax: 0, sss: 0, philhealth: 0, pagibig: 0, loans: 0, other: 0 },
-                        computeWorkDays: 21.5,
-                    });
-                    const dtrOtHours = engineResult.regOtHours + engineResult.satOtHours + (engineResult.regOtMinutes + engineResult.satOtMinutes) / 60;
-                    // Use DTR-based OT if available, otherwise fall back to approved/manual
-                    const finalOtHours = dtrOtHours > 0 ? dtrOtHours : effectiveOtHours;
-                    // OT pay from engine (matches client payslip formula exactly)
-                    const otPay = engineResult.totalOtPay > 0 ? engineResult.totalOtPay : Math.round(finalOtHours * fullPrecisionHourlyRate * 1.25);
-
-                    // Compute dynamic capped loan deductions against Net Pay Before Loans
                     const netPayBeforeLoans = Math.max(
                         0,
                         effectiveGrossPay + allowances + holidayPaySupp + otPay + nightDiffPay + customAllowanceTotal - totalGovDed - otherDed - customDedTotal - autoDedTotal
                     );
+
                     const baseLoanDeduction = (loan: typeof empLoans[0]) => {
                         const freq = loan.deductionFrequency || "every_payroll";
                         let baseAmt = loan.monthlyDeduction;
@@ -1167,7 +1251,7 @@
                     const rawLoanDeduction = empLoans.reduce((sum, l) => sum + baseLoanDeduction(l), 0);
 
                     let empLoanDeduction = 0;
-                    if (empLoans.length > 0) {
+                    if (empLoans.length > 0 && !noWorkNoPayApplied) {
                         const firstLoan = empLoans[0];
                         const capPercent = firstLoan.deductionCapPercent ?? 30;
                         const targetCapAmount = (capPercent / 100) * netPayBeforeLoans;
@@ -1200,14 +1284,14 @@
                     issuePayslip({
                         employeeId: empId, periodStart: cutoffDates.start, periodEnd: cutoffDates.end, payFrequency: freq,
                         grossPay: effectiveGrossPay,
-                        allowances: allowances + otPay + nightDiffPay,
+                        allowances: allowances + nightDiffPay,
                         sssDeduction: sss, philhealthDeduction: ph, pagibigDeduction: pi, taxDeduction: tax,
                         otherDeductions: otherDed, loanDeduction: empLoanDeduction,
                         customDeductions: customDedTotal,
                         holidayPay: holidayPaySupp !== 0 ? holidayPaySupp : undefined, netPay,
                         // Itemized auto-deduction snapshots (migration 055)
                         lateDeduction: autoBreakdown.lateDeduction,
-                        absentDeduction: autoBreakdown.absentDeduction,
+                        absentDeduction: paySchedule.autoDeductAbsent ? 0 : autoBreakdown.absentDeduction,
                         undertimeDeduction: autoBreakdown.undertimeDeduction,
                         overtimePay: otPay,
                         dailyRate: libDailyRate,
