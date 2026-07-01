@@ -922,8 +922,20 @@ export default function FaceEnrollmentPage() {
             </div>
 
             {/* Delete Face Enrollment Confirmation */}
-            <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-                <AlertDialogContent>
+            <AlertDialog
+                open={isDeleteConfirmOpen}
+                onOpenChange={(open) => {
+                    if (!open && isDeleting) return;
+                    setIsDeleteConfirmOpen(open);
+                }}
+            >
+                <AlertDialogContent
+                    {...({
+                        onEscapeKeyDown: (e: any) => { if (isDeleting) e.preventDefault(); },
+                        onPointerDownOutside: (e: any) => { if (isDeleting) e.preventDefault(); },
+                        onInteractOutside: (e: any) => { if (isDeleting) e.preventDefault(); }
+                    } as any)}
+                >
                     <AlertDialogHeader>
                         <AlertDialogTitle>Delete Face Enrollment?</AlertDialogTitle>
                         <AlertDialogDescription>
