@@ -159,13 +159,12 @@ export async function POST(request: NextRequest) {
       .eq("payroll_period_id", periodId);
     const existingAttendanceIds = new Set((existingRecords ?? []).map((r) => r.attendance_id).filter(Boolean));
 
-    // Map snake_case database logs to camelCase structures
-    const mappedLogs = (rowsToTs(rawLogs ?? []) as Record<string, unknown>[]).map(l => ({
+    const mappedLogs = (rowsToTs<Record<string, unknown>>(rawLogs ?? [])).map(l => ({
       ...l,
-      status: (l.status as string) === "computed" ? "present" : (l.status as string)
+      status: (l.status as string) === "computed" ? "present" : l.status
     })) as unknown as AttendanceLog[];
 
-    const mappedShifts = rowsToTs(shiftTemplates ?? []) as unknown as ShiftTemplate[];
+    const mappedShifts = rowsToTs<Record<string, unknown>>(shiftTemplates ?? []) as unknown as ShiftTemplate[];
 
     // Filter logs that don't already have an OT record
     const logsToProcess = mappedLogs.filter((l) => !existingAttendanceIds.has(l.id));

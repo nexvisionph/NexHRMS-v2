@@ -1,6 +1,6 @@
 # NexHRMS — Progress Tracker
 
-**Last updated:** 2026-06-26
+**Last updated:** 2026-06-30
 **Maintained by:** Senior Developer / Project Lead
 
 > Update this file when a ticket moves to In Progress or Done.
@@ -91,6 +91,9 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 | OT-005 | Add OT type breakdown to payslip | Intern 2 | 🟢 | — | Completed 2026-06-26 |
 | ATT-005 | Implement strict geofence mode | Intern 3 | 🟢 | — | Completed 2026-06-27 |
 | ATT-007 | Multi-source attendance reconciliation | Senior Dev | 🟢 | — | Completed 2026-06-27 |
+| PAY-001 | Daily-rate-based prorated Gross Pay & "No Work, No Pay" | Senior Dev | 🟢 | — | Completed 2026-06-30 |
+| PAY-002 | Enforce Approved-only Timesheets for payroll | Senior Dev | 🟢 | — | Completed 2026-06-30 |
+| PAY-003 | Reset workflow selection on cycle completion | Senior Dev | 🟢 | — | Completed 2026-06-30 |
 
 ---
 
@@ -98,8 +101,8 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 
 | Ticket | Task | Owner | Status | PR | Notes |
 |---|---|---|---|---|---|
-| PAYRULE-005 | Compliance mode warning audit verification | Intern 1 | 🔴 | — | |
-| PAYRULE-006 | Unit tests — DOLE vs Custom mode | Intern 3 | 🔴 | — | |
+| PAYRULE-005 | Compliance mode warning audit verification | Intern 1 | 🟢 | — | Completed 2026-06-30 |
+| PAYRULE-006 | Unit tests — DOLE vs Custom mode | Intern 3 | 🟢 | — | Completed 2026-06-30 |
 | QA-001 | Create QA test matrix | QA Intern | 🔴 | — | |
 | QA-002 | Test OT approval → payroll inclusion | QA Intern | 🔴 | — | |
 | QA-003 | Test payroll rules mode switching | QA Intern | 🔴 | — | |
@@ -122,11 +125,11 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 
 | Job | Status | Last Confirmed |
 |---|---|---|
-| Lint | ✅ Passing | 2026-06-26 |
-| Typecheck | ✅ Passing | 2026-06-26 |
-| Tests (Jest) | ✅ 640/640 (100% pass) | 2026-06-26 |
-| Build | ✅ Passing | 2026-06-26 |
-| E2E (Playwright) | ✅ 2/2 | 2026-06-26 (after hydration fix) |
+| Lint | ✅ Passing | 2026-06-30 |
+| Typecheck | ✅ Passing | 2026-06-30 |
+| Tests (Jest) | ✅ 642/642 (100% pass) | 2026-06-30 |
+| Build | ✅ Passing | 2026-06-30 |
+| E2E (Playwright) | ✅ 2/2 | 2026-06-30 |
 
 ---
 
@@ -134,14 +137,7 @@ Phase 1A/1B/1C — Parallel foundations (can start immediately after Phase 0)
 
 | Issue | Severity | Affects | Resolution |
 |---|---|---|---|
-| 13 duplicate migration file numbers (001,002,003,009,010,012,013,014,015,016,017,065,066) | High | Schema consistency in fresh environments | STAB-004 |
-| `payroll-computation-engine.ts` ignores `ot_records` and `payroll_rules` | Critical | OT review layer has zero effect on payroll | PAYRULE-003 + OT-001 |
-| `usePayrollRulesStore` not used in any `.tsx` file | High | Payroll Rules cannot be configured in UI | PAYRULE-001/002 |
-| Attendance Review page is a stub (no data fetching) | High | HR cannot approve attendance → blocks pipeline | ATT-003/004 |
-| `attendance_summaries` table does not exist | High | Payroll reads raw logs instead of clean summaries | ATT-001 |
-| `location_lat`/`location_lng` written at runtime but not in any migration | Medium | Schema drift — may break on DB reset | ATT-006 |
-| Strict geofence mode is TODO comment only | Medium | Mobile clock-in cannot be blocked for out-of-area | ATT-005 |
-| ESLint v9 `.eslintignore` deprecation warning | Low | Non-blocking | Future cleanup |
+| None | — | — | All baseline stabilization, core integrations, and custom features are complete. |
 
 ---
 

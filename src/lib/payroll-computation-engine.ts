@@ -139,8 +139,8 @@ function computeDayHours(
   let totalHoursDisplay = checkOutDecimal - effectiveIn - LUNCH_BREAK_HOURS;
   totalHoursDisplay = Math.max(totalHoursDisplay, 0);
 
-  // Total hours for OT computation (NO lunch deduction — matches client formula)
-  let totalHoursForOT = checkOutDecimal - effectiveIn;
+  // Total hours for OT computation (with lunch deduction)
+  let totalHoursForOT = checkOutDecimal - effectiveIn - LUNCH_BREAK_HOURS;
   totalHoursForOT = Math.max(totalHoursForOT, 0);
 
   // For Saturday/Sunday: cap at 8.0 hours (client payslip uses flat 8hrs max for rest days)
@@ -622,13 +622,7 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
   let sumRegOtPay = 0;
   let sumSatOtPay = 0;
 
-  const useApprovedOt =
-    Array.isArray(approvedOtRecords) &&
-    approvedOtRecords.some(
-      (r) =>
-        r.employeeId === employee.id &&
-        (r.status === "approved" || r.status === "partially_approved")
-    );
+  const useApprovedOt = Array.isArray(approvedOtRecords);
 
   if (useApprovedOt) {
     // ─── Phase 2B path: use reviewed & approved OT records ────────────────
@@ -721,21 +715,34 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
   // Undertime: tracked for display but NOT deducted (client does not deduct undertime).
   const absentDeduction = round2(absentDays * rawRatePerDay);
   const undertimeDeduction = 0; // Client formula: no undertime deduction
-  const totalBasic = semiMonthlyBasic; // FIXED — never prorated
+  const totalBasic = Math.max(0, semiMonthlyBasic - absentDeduction); // Prorated gross basic pay
+
+  // Apply "No Work, No Pay" business rule:
+  // If the employee has no attendance within the payroll cutoff and has no paid earnings (OT, leaves, holiday pay),
+  // then Gross Pay (totalBasic) must be 0.00, Net Pay: 0.00, and deductions: 0.00.
+  const hasLeaves = attendanceLogs.some(
+    (l) => l.employeeId === employee.id &&
+           l.status === "on_leave" &&
+           l.date >= periodStart &&
+           l.date <= periodEnd
+  );
+  const noWorkNoPayApplied = daysPresent === 0 && totalOtPay === 0 && !hasLeaves;
+
+  const finalTotalBasic = noWorkNoPayApplied ? 0 : totalBasic;
 
   // Step 8: Apply deductions (gov + loans + other)
-  const totalDeductions = round2(
+  const totalDeductions = noWorkNoPayApplied ? 0 : round2(
     deductions.tax + deductions.sss + deductions.philhealth +
     deductions.pagibig + deductions.loans + deductions.other
   );
 
-  // Step 9: Net pay = basic + OT - absent deduction - undertime deduction - gov deductions
-  const netPay = round2(totalBasic + totalOtPay - absentDeduction - undertimeDeduction - totalDeductions);
+  // Step 9: Net pay (absentDeduction is already deducted from finalTotalBasic)
+  const netPay = noWorkNoPayApplied ? 0 : round2(finalTotalBasic + totalOtPay - undertimeDeduction - totalDeductions);
 
   // Debug summary
   console.log(`[PAYROLL-ENGINE] ═══ SUMMARY for ${employee.name} (${periodStart} → ${periodEnd}) ═══`);
   console.log(`[PAYROLL-ENGINE]   Rate/day=₱${ratePerDay} Rate/hr=₱${ratePerHour}`);
-  console.log(`[PAYROLL-ENGINE]   Basic=₱${totalBasic} | RegOT=${round2(totalRegOtHours)}hrs | SatOT=${round2(totalSatOtHours)}hrs`);
+  console.log(`[PAYROLL-ENGINE]   Basic=₱${finalTotalBasic} | RegOT=${round2(totalRegOtHours)}hrs | SatOT=${round2(totalSatOtHours)}hrs`);
   console.log(`[PAYROLL-ENGINE]   TotalOTpay=₱${round2(totalOtPay)} | AbsentDed=₱${absentDeduction} | UndertimeDed=₱${undertimeDeduction}`);
   console.log(`[PAYROLL-ENGINE]   Deductions=₱${totalDeductions} | NetPay=₱${netPay}`);
   console.log(`[PAYROLL-ENGINE]   Days in period: ${allDates.length} | Present: ${daysPresent} | Absent: ${absentDays}`);
@@ -759,17 +766,17 @@ export function computePayroll(params: ComputePayrollParams): ComputedPayroll {
     absentDeduction,
     undertimeHours: round2(totalUndertimeHours),
     undertimeDeduction,
-    totalBasic,
+    totalBasic: finalTotalBasic,
     regOtHours: regOT.hours,
     regOtMinutes: regOT.minutes,
     satOtHours: satOT.hours,
     satOtMinutes: satOT.minutes,
     totalOtPay: round2(totalOtPay),
-    withholdingTax: deductions.tax,
-    sss: deductions.sss,
-    philhealth: deductions.philhealth,
-    pagibig: deductions.pagibig,
-    otherDeductions: deductions.other + deductions.loans,
+    withholdingTax: noWorkNoPayApplied ? 0 : deductions.tax,
+    sss: noWorkNoPayApplied ? 0 : deductions.sss,
+    philhealth: noWorkNoPayApplied ? 0 : deductions.philhealth,
+    pagibig: noWorkNoPayApplied ? 0 : deductions.pagibig,
+    otherDeductions: noWorkNoPayApplied ? 0 : (deductions.other + deductions.loans),
     totalDeductions,
     netPay,
     dailyBreakdown,

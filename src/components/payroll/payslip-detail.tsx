@@ -109,7 +109,7 @@ export function PayslipDetail({ payslip, employeeName, department, jobTitle, onS
                         ))}
                         {/* Fallback: show lump sum if no line items */}
                         {(!(payslip.lineItemsJson || []).some(li => li.type === "earning") && (payslip.allowances || 0) > 0) && (
-                            <Row label="Allowances / OT / Benefits" value={`+${formatCurrency(payslip.allowances)}`} />
+                            <Row label="Allowances / Benefits" value={`+${formatCurrency(payslip.allowances)}`} />
                         )}
                         {payslip.overtimePay ? <Row label="Overtime Pay" value={`+${formatCurrency(payslip.overtimePay)}`} /> : null}
                         {payslip.holidayPay ? <Row label="Holiday Pay" value={formatCurrency(payslip.holidayPay)} /> : null}
