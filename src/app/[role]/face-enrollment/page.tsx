@@ -931,10 +931,10 @@ export default function FaceEnrollmentPage() {
             >
                 <AlertDialogContent
                     {...({
-                        onEscapeKeyDown: (e: any) => { if (isDeleting) e.preventDefault(); },
-                        onPointerDownOutside: (e: any) => { if (isDeleting) e.preventDefault(); },
-                        onInteractOutside: (e: any) => { if (isDeleting) e.preventDefault(); }
-                    } as any)}
+                        onEscapeKeyDown: (e: { preventDefault: () => void }) => { if (isDeleting) e.preventDefault(); },
+                        onPointerDownOutside: (e: { preventDefault: () => void }) => { if (isDeleting) e.preventDefault(); },
+                        onInteractOutside: (e: { preventDefault: () => void }) => { if (isDeleting) e.preventDefault(); }
+                    } as unknown as Record<string, unknown>)}
                 >
                     <AlertDialogHeader>
                         <AlertDialogTitle>Delete Face Enrollment?</AlertDialogTitle>
