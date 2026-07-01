@@ -99,6 +99,7 @@ export default function AdminSettingsView() {
 
     // ─── Global Reset ──────────────────────────────────────────────
     const [resetAllOpen, setResetAllOpen] = useState(false);
+    const [deleteRuleSetId, setDeleteRuleSetId] = useState<string | null>(null);
     const handleResetAll = async () => {
         // Pause write-through BEFORE resetting stores so seed data is never
         // pushed to Supabase. Stores are reset to seed state locally, then
@@ -438,7 +439,7 @@ export default function AdminSettingsView() {
                                     <div className="flex items-center gap-1">
                                         <Button variant="ghost" size="sm" className="h-7 gap-1.5" onClick={() => handleOpenEdit(rs)}><Pencil className="h-3.5 w-3.5" />Edit</Button>
                                         {ruleSets.length > 1 && (
-                                            <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => { deleteRuleSet(rs.id); toast.success(`Rule set "${rs.name}" deleted`); }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                            <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => setDeleteRuleSetId(rs.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                                         )}
                                     </div>
                                 </div>
@@ -892,6 +893,34 @@ export default function AdminSettingsView() {
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleResetAll}><RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Yes, Reset Everything</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Rule Set Delete Confirmation */}
+        <AlertDialog open={!!deleteRuleSetId} onOpenChange={(open) => !open && setDeleteRuleSetId(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Timesheet Rule Set?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Are you sure you want to delete the rule set &quot;{ruleSets.find((rs) => rs.id === deleteRuleSetId)?.name}&quot;? This action cannot be undone. Shifts assigned to this rule set will need to be reassigned.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                        onClick={() => {
+                            if (deleteRuleSetId) {
+                                const rs = ruleSets.find((x) => x.id === deleteRuleSetId);
+                                deleteRuleSet(deleteRuleSetId);
+                                toast.success(`Rule set "${rs?.name || ""}" deleted`);
+                                setDeleteRuleSetId(null);
+                            }
+                        }}
+                    >
+                        Delete
+                    </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>

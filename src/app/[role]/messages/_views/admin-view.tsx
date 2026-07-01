@@ -27,6 +27,10 @@ import {
     Globe, Trash2, Archive, ArchiveRestore, ChevronDown, ChevronRight,
     Settings, UserPlus, Users, Check, X,
 } from "lucide-react";
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { MessageChannel, AnnouncementScope } from "@/types";
 
 const CHANNEL_ICONS: Record<MessageChannel, typeof Mail> = {
@@ -108,6 +112,8 @@ export default function AdminMessagesView() {
     const [chMembers, setChMembers] = useState<string[]>([]);
     const [chDept, setChDept] = useState<string>("all");
     const [chScope, setChScope] = useState<"all_employees" | "department" | "selected_employees">("all_employees");
+    const [deleteChannelId, setDeleteChannelId] = useState<string | null>(null);
+    const [deleteAnnouncementId, setDeleteAnnouncementId] = useState<string | null>(null);
 
     const handleCreateChannel = () => {
         if (!chName) { toast.error("Channel name is required"); return; }
@@ -487,7 +493,7 @@ export default function AdminMessagesView() {
                                                         </button>
                                                         <button
                                                             title="Delete"
-                                                            onClick={(e) => { e.stopPropagation(); deleteChannel(ch.id); if (selectedChannelId === ch.id) setSelectedChannelId(null); toast.success("Channel deleted"); }}
+                                                            onClick={(e) => { e.stopPropagation(); setDeleteChannelId(ch.id); }}
                                                             className="p-1 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-600 transition-colors"
                                                         >
                                                             <Trash2 className="h-3.5 w-3.5" />
@@ -524,7 +530,7 @@ export default function AdminMessagesView() {
                                                         </button>
                                                         <button
                                                             title="Delete"
-                                                            onClick={() => { deleteChannel(ch.id); toast.success("Channel deleted"); }}
+                                                            onClick={() => setDeleteChannelId(ch.id)}
                                                             className="p-1 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-600 transition-colors opacity-100"
                                                         >
                                                             <Trash2 className="h-3.5 w-3.5" />
@@ -651,7 +657,7 @@ export default function AdminMessagesView() {
                                                         <span>{ann.readBy.length} read</span>
                                                     </div>
                                                 </div>
-                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-500/10 shrink-0" onClick={() => { deleteAnnouncement(ann.id); toast.success("Announcement deleted"); }}>
+                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-500/10 shrink-0" onClick={() => setDeleteAnnouncementId(ann.id)}>
                                                     <Trash2 className="h-3.5 w-3.5" />
                                                 </Button>
                                             </div>
@@ -834,6 +840,61 @@ export default function AdminMessagesView() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Channel Delete Confirmation */}
+            <AlertDialog open={!!deleteChannelId} onOpenChange={(open) => !open && setDeleteChannelId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Message Channel?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete the channel &quot;{channels.find((c) => c.id === deleteChannelId)?.name}&quot;? All messages and attachments in this channel will be permanently removed for all employees. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setDeleteChannelId(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={() => {
+                                if (deleteChannelId) {
+                                    deleteChannel(deleteChannelId);
+                                    if (selectedChannelId === deleteChannelId) setSelectedChannelId(null);
+                                    toast.success("Channel deleted");
+                                    setDeleteChannelId(null);
+                                }
+                            }}
+                        >
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Announcement Delete Confirmation */}
+            <AlertDialog open={!!deleteAnnouncementId} onOpenChange={(open) => !open && setDeleteAnnouncementId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Announcement?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete the announcement &quot;{announcements.find((a) => a.id === deleteAnnouncementId)?.subject}&quot;? This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setDeleteAnnouncementId(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={() => {
+                                if (deleteAnnouncementId) {
+                                    deleteAnnouncement(deleteAnnouncementId);
+                                    toast.success("Announcement deleted");
+                                    setDeleteAnnouncementId(null);
+                                }
+                            }}
+                        >
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

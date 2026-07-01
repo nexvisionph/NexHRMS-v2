@@ -10,6 +10,10 @@ import { Button } from "@/components/ui/button";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Bell, Trash2, Mail, MessageSquare, Settings, Check, CheckCheck, Clock } from "lucide-react";
 import { format, parseISO, formatDistanceToNow } from "date-fns";
 import Link from "next/link";
@@ -35,6 +39,7 @@ export default function NotificationsPage() {
     const rh = useRoleHref();
     const isAdmin = hasPermission(currentUser.role, "notifications:manage");
     const [adminTab, setAdminTab] = useState<"my" | "log">("my");
+    const [isClearLogsConfirmOpen, setIsClearLogsConfirmOpen] = useState(false);
 
     // Handle notification click - mark as read and navigate
     const handleNotificationClick = (notificationId: string, link?: string, isRead?: boolean) => {
@@ -206,7 +211,7 @@ export default function NotificationsPage() {
                             variant="outline"
                             size="sm"
                             className="gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-500/10"
-                            onClick={clearLogs}
+                            onClick={() => setIsClearLogsConfirmOpen(true)}
                         >
                             <Trash2 className="h-4 w-4" /> Clear All
                         </Button>
@@ -387,6 +392,30 @@ export default function NotificationsPage() {
                     </Card>
                 </>
             )}
+
+            {/* Clear Logs Delete Confirmation */}
+            <AlertDialog open={isClearLogsConfirmOpen} onOpenChange={setIsClearLogsConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Clear All Notification Logs?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to clear all notification logs? This action will permanently delete all records in the system log. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setIsClearLogsConfirmOpen(false)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={() => {
+                                clearLogs();
+                                setIsClearLogsConfirmOpen(false);
+                            }}
+                        >
+                            Clear All
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
