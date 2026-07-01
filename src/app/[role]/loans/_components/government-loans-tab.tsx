@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, CheckCircle, XCircle, History, Pencil, Trash2 } from "lucide-react";
+import { Plus, Download, CheckCircle, XCircle, History, Pencil, Trash2, FileText, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 import { dispatchNotification } from "@/lib/notifications";
@@ -21,6 +21,9 @@ import { LoansFilterBar } from "@/app/[role]/loans/_components/loans-filter-bar"
 import { LoansTablePagination, paginate } from "@/app/[role]/loans/_components/loans-table-pagination";
 import { LoanStatusBadge } from "@/app/[role]/loans/_components/loan-status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { approveLoan, rejectLoan } from "@/services/loans-actions.service";
+import { loansStorage } from "@/services/db.service";
+import { Label } from "@/components/ui/label";
 
 export function GovernmentLoansTab() {
     const { loans, createLoan, settleLoan, getAllDeductions, updateLoan, cancelLoan } = useLoansStore();
@@ -54,6 +57,76 @@ export function GovernmentLoansTab() {
     const [editRemarks, setEditRemarks] = useState("");
     const [editStatus, setEditStatus] = useState<LoanStatus>("active");
     const [cancelId, setCancelId] = useState<string | null>(null);
+
+    const [rejectOpen, setRejectOpen] = useState(false);
+    const [rejectLoanId, setRejectLoanId] = useState<string | null>(null);
+    const [rejectionReason, setRejectionReason] = useState("");
+    const [viewDetailsLoan, setViewDetailsLoan] = useState<typeof loans[0] | null>(null);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [editFile, setEditFile] = useState<File | null>(null);
+    const [uploading, setUploading] = useState(false);
+
+    const handleViewProof = async (path: string) => {
+        if (!path) return;
+        if (path.includes("mock-proof")) {
+            toast.info(`Demo Mode: Mock document path: ${path}`);
+            return;
+        }
+        try {
+            const url = await loansStorage.getSignedUrl(path);
+            if (url) {
+                window.open(url, "_blank");
+            } else {
+                toast.error("Failed to generate signed URL");
+            }
+        } catch {
+            toast.error("Error retrieving proof document");
+        }
+    };
+
+    const handleApprove = async (loan: typeof loans[0]) => {
+        const ok = await approveLoan(loan.id, "active", currentUser.id);
+        if (ok) {
+            toast.success("Government loan request verified and activated");
+            useAuditStore.getState().log({
+                entityType: "loan",
+                entityId: loan.id,
+                action: "loan_approved",
+                performedBy: currentUser.id,
+            });
+            try {
+                const emp = employees.find(e => e.id === loan.employeeId);
+                if (emp) {
+                    dispatchNotification("loan_unfrozen", { name: emp.name, type: `${loan.agency} Loan` }, emp.id, emp.email ?? undefined, emp.phone, undefined, { suppressToast: true });
+                }
+            } catch { /* best effort */ }
+        } else {
+            toast.error("Failed to approve loan");
+        }
+    };
+
+    const submitRejection = async () => {
+        if (!rejectLoanId || !rejectionReason.trim()) {
+            toast.error("Please enter a rejection reason");
+            return;
+        }
+        const ok = await rejectLoan(rejectLoanId, rejectionReason, currentUser.id);
+        if (ok) {
+            toast.success("Government loan request rejected");
+            useAuditStore.getState().log({
+                entityType: "loan",
+                entityId: rejectLoanId,
+                action: "loan_rejected",
+                performedBy: currentUser.id,
+                reason: `Reason: ${rejectionReason}`
+            });
+            setRejectOpen(false);
+            setRejectLoanId(null);
+            setRejectionReason("");
+        } else {
+            toast.error("Failed to reject loan");
+        }
+    };
 
     const handleExportSSSLCL = () => {
         const sssLoans = governmentLoans.filter((l) => l.agency === "SSS" && (l.status === "active" || l.status === "settled"));
@@ -163,11 +236,36 @@ export function GovernmentLoansTab() {
         }
     };
 
-    const handleCreate = () => {
+    const handleCreate = async () => {
         if (!formEmpId || !formAmount || !formMonthly || !formBalance || !formReleaseDate || !formStartDate) {
             toast.error("Please fill all required fields");
             return;
         }
+
+        let proofPath = "";
+        if (selectedFile) {
+            setUploading(true);
+            try {
+                const formData = new FormData();
+                formData.append("file", selectedFile);
+                formData.append("bucket", "loan-proofs");
+                formData.append("folder", formEmpId);
+
+                const res = await fetch("/api/upload", { method: "POST", body: formData });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({ error: "Upload failed" }));
+                    throw new Error(err.error || "Upload failed");
+                }
+                const uploadData = await res.json();
+                proofPath = uploadData.path;
+            } catch (err) {
+                const errMsg = err instanceof Error ? err.message : "Failed to upload proof document";
+                toast.error(errMsg);
+                setUploading(false);
+                return;
+            }
+        }
+        setUploading(false);
 
         createLoan({
             employeeId: formEmpId,
@@ -184,6 +282,7 @@ export function GovernmentLoansTab() {
             releaseDate: formReleaseDate,
             startDeductionDate: formStartDate,
             deductionFrequency: "every_payroll", // default for government loans
+            proofFilePath: proofPath || undefined,
         });
 
         useAuditStore.getState().log({ entityType: "loan", entityId: formEmpId, action: "loan_created", performedBy: currentUser.id });
@@ -210,6 +309,7 @@ export function GovernmentLoansTab() {
         setFormStartDate("");
         setFormReference("");
         setFormRemarks("");
+        setSelectedFile(null);
     };
 
     const openEditLoan = (loan: typeof loans[0]) => {
@@ -219,21 +319,53 @@ export function GovernmentLoansTab() {
         setEditReference(loan.referenceNumber || "");
         setEditRemarks(loan.remarks || "");
         setEditStatus(loan.status);
+        setEditFile(null);
         setEditOpen(true);
     };
 
-    const handleSaveLoan = () => {
+    const handleSaveLoan = async () => {
         if (!editLoanId || !editMonthly || !editBalance) { toast.error("Monthly amortization and outstanding balance are required"); return; }
+
+        let proofPath = "";
+        if (editFile) {
+            setUploading(true);
+            try {
+                const loan = loans.find(l => l.id === editLoanId);
+                const empId = loan?.employeeId || "unknown";
+
+                const formData = new FormData();
+                formData.append("file", editFile);
+                formData.append("bucket", "loan-proofs");
+                formData.append("folder", empId);
+
+                const res = await fetch("/api/upload", { method: "POST", body: formData });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({ error: "Upload failed" }));
+                    throw new Error(err.error || "Upload failed");
+                }
+                const uploadData = await res.json();
+                proofPath = uploadData.path;
+            } catch (err) {
+                const errMsg = err instanceof Error ? err.message : "Failed to upload new proof document";
+                toast.error(errMsg);
+                setUploading(false);
+                return;
+            }
+        }
+        setUploading(false);
+
         updateLoan(editLoanId, {
             monthlyDeduction: Number(editMonthly),
             remainingBalance: Number(editBalance),
             referenceNumber: editReference || undefined,
             remarks: editRemarks || undefined,
             status: editStatus,
+            proofFilePath: proofPath || undefined,
         });
         toast.success("Government loan updated");
         setEditOpen(false);
         setEditLoanId(null);
+        setEditFile(null);
     };
 
     const getLoanTypeLabel = (type?: string) => {
@@ -248,92 +380,113 @@ export function GovernmentLoansTab() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <p className="text-sm text-muted-foreground">{governmentLoans.length} government loans</p>
                 <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" className="gap-1 bg-background text-xs font-semibold" onClick={handleExportSSSLCL}>Export SSS LCL</Button>
-                    <Button variant="outline" size="sm" className="gap-1 bg-background text-xs font-semibold" onClick={handleExportPagIBIGSTL}>Export Pag-IBIG STL</Button>
+                    <Button variant="outline" className="gap-1 bg-background text-xs font-semibold" onClick={handleExportSSSLCL}><Download className="h-4 w-4" />Export SSS LCL</Button>
+                    <Button variant="outline" className="gap-1 bg-background text-xs font-semibold" onClick={handleExportPagIBIGSTL}><Download className="h-4 w-4" />Export Pag-IBIG STL</Button>
                     <Dialog open={open} onOpenChange={setOpen}>
                         <DialogTrigger asChild>
-                            <Button size="sm" className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"><Plus className="h-4 w-4" /> Create Gov Loan</Button>
+                            <Button className="gap-1.5"><Plus className="h-4 w-4" /> Create Government Loan</Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-md">
                             <DialogHeader><DialogTitle>Create Government Loan</DialogTitle></DialogHeader>
-                        <div className="space-y-4 pt-2">
-                            <div>
-                                <label className="text-sm font-medium">Employee *</label>
-                                <div className="mt-1">
-                                    <EmployeeCombobox value={formEmpId} onValueChange={setFormEmpId} required placeholder="Select employee" className="w-full" />
+                            <div className="space-y-4 pt-2">
+                                <div>
+                                    <label className="text-sm font-medium">Employee <span className="text-destructive">*</span></label>
+                                    <div className="mt-1">
+                                        <EmployeeCombobox value={formEmpId} onValueChange={setFormEmpId} required placeholder="Select employee" className="w-full" />
+                                    </div>
                                 </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-sm font-medium">Agency <span className="text-destructive">*</span></label>
+                                        <Select value={formAgency} onValueChange={(v) => handleAgencyChange(v as "SSS" | "Pag-IBIG")}>
+                                            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="SSS">SSS</SelectItem>
+                                                <SelectItem value="Pag-IBIG">Pag-IBIG</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Loan Type <span className="text-destructive">*</span></label>
+                                        <Select value={formLoanType} onValueChange={setFormLoanType}>
+                                            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                {formAgency === "SSS" ? (
+                                                    <>
+                                                        <SelectItem value="salary_loan">SSS Salary Loan</SelectItem>
+                                                        <SelectItem value="calamity_loan">SSS Calamity Loan</SelectItem>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <SelectItem value="mpl">Pag-IBIG Multi-Purpose Loan</SelectItem>
+                                                        <SelectItem value="calamity">Pag-IBIG Calamity Loan</SelectItem>
+                                                    </>
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div>
+                                        <label className="text-sm font-medium">Loan Amount <span className="text-destructive">*</span></label>
+                                        <Input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} className="mt-1" />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Monthly Amort.<span className="text-destructive">*</span></label>
+                                        <Input type="number" value={formMonthly} onChange={(e) => setFormMonthly(e.target.value)} className="mt-1" />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Outstanding Bal. <span className="text-destructive">*</span></label>
+                                        <Input type="number" value={formBalance} onChange={(e) => setFormBalance(e.target.value)} className="mt-1" />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-sm font-medium">Release Date <span className="text-destructive">*</span></label>
+                                        <Input type="date" value={formReleaseDate} onChange={(e) => setFormReleaseDate(e.target.value)} className="mt-1" />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">First Deduction Date <span className="text-destructive">*</span></label>
+                                        <Input type="date" value={formStartDate} onChange={(e) => setFormStartDate(e.target.value)} className="mt-1" />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-sm font-medium">Reference Number</label>
+                                        <Input value={formReference} onChange={(e) => setFormReference(e.target.value)} className="mt-1" placeholder="e.g. SSS-2026-041" />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Remarks</label>
+                                        <Input value={formRemarks} onChange={(e) => setFormRemarks(e.target.value)} className="mt-1" placeholder="e.g. calamity emergency" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium">Proof of Loan (JPG, PNG, PDF)</label>
+                                    <Input
+                                        type="file"
+                                        accept=".jpg,.jpeg,.png,.pdf"
+                                        className="cursor-pointer text-xs mt-1"
+                                        onChange={(e) => {
+                                            if (e.target.files && e.target.files[0]) {
+                                                const file = e.target.files[0];
+                                                if (file.size > 10 * 1024 * 1024) {
+                                                    toast.error("File is too large. Maximum size is 10MB.");
+                                                    e.target.value = "";
+                                                    return;
+                                                }
+                                                setSelectedFile(file);
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                <Button onClick={handleCreate} className="w-full" disabled={uploading}>
+                                    {uploading ? "Uploading Proof..." : "Create Gov Loan Record"}
+                                </Button>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-sm font-medium">Agency *</label>
-                                    <Select value={formAgency} onValueChange={(v) => handleAgencyChange(v as "SSS" | "Pag-IBIG")}>
-                                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="SSS">SSS</SelectItem>
-                                            <SelectItem value="Pag-IBIG">Pag-IBIG</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium">Loan Type *</label>
-                                    <Select value={formLoanType} onValueChange={setFormLoanType}>
-                                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            {formAgency === "SSS" ? (
-                                                <>
-                                                    <SelectItem value="salary_loan">SSS Salary Loan</SelectItem>
-                                                    <SelectItem value="calamity_loan">SSS Calamity Loan</SelectItem>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <SelectItem value="mpl">Pag-IBIG Multi-Purpose Loan</SelectItem>
-                                                    <SelectItem value="calamity">Pag-IBIG Calamity Loan</SelectItem>
-                                                </>
-                                            )}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                                <div>
-                                    <label className="text-sm font-medium">Loan Amount *</label>
-                                    <Input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} className="mt-1" />
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium">Monthly Amort. *</label>
-                                    <Input type="number" value={formMonthly} onChange={(e) => setFormMonthly(e.target.value)} className="mt-1" />
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium">Outstanding Bal. *</label>
-                                    <Input type="number" value={formBalance} onChange={(e) => setFormBalance(e.target.value)} className="mt-1" />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-sm font-medium">Release Date *</label>
-                                    <Input type="date" value={formReleaseDate} onChange={(e) => setFormReleaseDate(e.target.value)} className="mt-1" />
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium">First Deduction Date *</label>
-                                    <Input type="date" value={formStartDate} onChange={(e) => setFormStartDate(e.target.value)} className="mt-1" />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-sm font-medium">Reference Number</label>
-                                    <Input value={formReference} onChange={(e) => setFormReference(e.target.value)} className="mt-1" placeholder="e.g. SSS-2026-041" />
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium">Remarks</label>
-                                    <Input value={formRemarks} onChange={(e) => setFormRemarks(e.target.value)} className="mt-1" placeholder="e.g. calamity emergency" />
-                                </div>
-                            </div>
-                            <Button onClick={handleCreate} className="w-full">Create Gov Loan Record</Button>
-                        </div>
-                    </DialogContent>
-                </Dialog>
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </div>
-        </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <Card className="border border-blue-500/20 bg-blue-500/5 dark:bg-blue-500/10">
@@ -392,12 +545,13 @@ export function GovernmentLoansTab() {
                                             <TableHead className="text-xs">Monthly Amortization</TableHead>
                                             <TableHead className="text-xs">Outstanding Balance</TableHead>
                                             <TableHead className="text-xs">Status</TableHead>
+                                            <TableHead className="text-xs">Proof</TableHead>
                                             <TableHead className="text-xs w-20">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {filtered.length === 0 ? (
-                                            <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">No government loans found</TableCell></TableRow>
+                                            <TableRow><TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-8">No government loans found</TableCell></TableRow>
                                         ) : paginatedAccounts.map((loan) => (
                                             <TableRow key={loan.id}>
                                                 <TableCell className="text-sm font-medium">{getEmpName(loan.employeeId)}</TableCell>
@@ -408,20 +562,27 @@ export function GovernmentLoansTab() {
                                                 <TableCell className="text-sm font-medium">₱{loan.remainingBalance.toLocaleString()}</TableCell>
                                                 <TableCell><LoanStatusBadge status={loan.status} /></TableCell>
                                                 <TableCell>
+                                                    {loan.proofFilePath ? (
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10" onClick={() => handleViewProof(loan.proofFilePath!)} title="View Proof">
+                                                            <FileText className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">—</span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
                                                     <div className="flex items-center gap-1">
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10" onClick={() => setViewDetailsLoan(loan)} title="View Full Details">
+                                                            <Eye className="h-3.5 w-3.5" />
+                                                        </Button>
                                                         {loan.status === "pending" && (
                                                             <>
-                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10" onClick={() => {
-                                                                    updateLoan(loan.id, { status: "active" });
-                                                                    useAuditStore.getState().log({ entityType: "loan", entityId: loan.id, action: "loan_approved", performedBy: currentUser.id });
-                                                                    toast.success("Government loan verified and activated");
-                                                                }} title="Verify & Activate">
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10" onClick={() => handleApprove(loan)} title="Verify & Activate">
                                                                     <CheckCircle className="h-3.5 w-3.5" />
                                                                 </Button>
                                                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => {
-                                                                    updateLoan(loan.id, { status: "rejected" });
-                                                                    useAuditStore.getState().log({ entityType: "loan", entityId: loan.id, action: "loan_rejected", performedBy: currentUser.id });
-                                                                    toast.success("Government loan record rejected");
+                                                                    setRejectLoanId(loan.id);
+                                                                    setRejectOpen(true);
                                                                 }} title="Reject Submission">
                                                                     <XCircle className="h-3.5 w-3.5" />
                                                                 </Button>
@@ -493,7 +654,7 @@ export function GovernmentLoansTab() {
                 </TabsContent>
             </Tabs>
 
-            <Dialog open={editOpen} onOpenChange={setEditOpen}>
+            <Dialog open={editOpen} onOpenChange={(v) => { setEditOpen(v); if (!v) setEditFile(null); }}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader><DialogTitle>Edit Government Loan</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
@@ -526,9 +687,30 @@ export function GovernmentLoansTab() {
                             <label className="text-sm font-medium">Remarks</label>
                             <Input value={editRemarks} onChange={(e) => setEditRemarks(e.target.value)} className="mt-1" placeholder="Optional notes" />
                         </div>
+                        <div>
+                            <label className="text-sm font-medium">Change Proof Document (Optional)</label>
+                            <Input
+                                type="file"
+                                accept=".jpg,.jpeg,.png,.pdf"
+                                className="cursor-pointer text-xs mt-1"
+                                onChange={(e) => {
+                                    if (e.target.files && e.target.files[0]) {
+                                        const file = e.target.files[0];
+                                        if (file.size > 10 * 1024 * 1024) {
+                                            toast.error("File is too large. Maximum size is 10MB.");
+                                            e.target.value = "";
+                                            return;
+                                        }
+                                        setEditFile(file);
+                                    }
+                                }}
+                            />
+                        </div>
                         <div className="flex gap-2">
                             <Button variant="outline" className="flex-1" onClick={() => setEditOpen(false)}>Cancel</Button>
-                            <Button className="flex-1" onClick={handleSaveLoan}>Save Changes</Button>
+                            <Button className="flex-1" onClick={handleSaveLoan} disabled={uploading}>
+                                {uploading ? "Uploading..." : "Save Changes"}
+                            </Button>
                         </div>
                     </div>
                 </DialogContent>
@@ -546,6 +728,94 @@ export function GovernmentLoansTab() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Reject Government Loan Record</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-2">
+                        <div>
+                            <Label className="text-sm font-medium">Rejection Reason *</Label>
+                            <Input
+                                value={rejectionReason}
+                                onChange={(e) => setRejectionReason(e.target.value)}
+                                className="mt-1"
+                                placeholder="Explain why the record is being rejected..."
+                                required
+                            />
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" className="flex-1" onClick={() => { setRejectOpen(false); setRejectLoanId(null); setRejectionReason(""); }}>Cancel</Button>
+                            <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white" onClick={submitRejection}>Reject Request</Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+            <Dialog open={!!viewDetailsLoan} onOpenChange={(o) => !o && setViewDetailsLoan(null)}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Government Loan Details</DialogTitle>
+                    </DialogHeader>
+                    {viewDetailsLoan && (
+                        <div className="space-y-4 pt-2 text-sm">
+                            <div className="grid grid-cols-2 gap-y-2 border-b border-border/50 pb-3">
+                                <div className="text-muted-foreground">Employee:</div>
+                                <div className="font-semibold text-right">{getEmpName(viewDetailsLoan.employeeId)}</div>
+                                <div className="text-muted-foreground">Agency:</div>
+                                <div className="font-semibold text-right text-blue-600 dark:text-blue-400">{viewDetailsLoan.agency || "SSS"}</div>
+                                <div className="text-muted-foreground">Loan Type:</div>
+                                <div className="font-semibold text-right">{getLoanTypeLabel(viewDetailsLoan.loanType)}</div>
+                                <div className="text-muted-foreground">Status:</div>
+                                <div className="text-right flex justify-end"><LoanStatusBadge status={viewDetailsLoan.status} /></div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-y-2 border-b border-border/50 pb-3">
+                                <div className="text-muted-foreground">Loan Amount:</div>
+                                <div className="font-semibold text-right">₱{viewDetailsLoan.amount.toLocaleString()}</div>
+                                <div className="text-muted-foreground">Monthly Amortization:</div>
+                                <div className="font-semibold text-right">₱{viewDetailsLoan.monthlyDeduction.toLocaleString()}</div>
+                                <div className="text-muted-foreground">Outstanding Balance:</div>
+                                <div className="font-semibold text-right">₱{viewDetailsLoan.remainingBalance.toLocaleString()}</div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-y-2 border-b border-border/50 pb-3">
+                                <div className="text-muted-foreground">Release Date:</div>
+                                <div className="font-semibold text-right">{viewDetailsLoan.releaseDate ? new Date(viewDetailsLoan.releaseDate).toLocaleDateString() : "—"}</div>
+                                <div className="text-muted-foreground">First Deduction Date:</div>
+                                <div className="font-semibold text-right">{viewDetailsLoan.startDeductionDate ? new Date(viewDetailsLoan.startDeductionDate).toLocaleDateString() : "—"}</div>
+                                <div className="text-muted-foreground">Reference Number:</div>
+                                <div className="font-semibold text-right font-mono">{viewDetailsLoan.referenceNumber || "—"}</div>
+                            </div>
+                            {viewDetailsLoan.proofFilePath && (
+                                <div className="flex items-center justify-between border-b border-border/50 pb-3">
+                                    <span className="text-muted-foreground">Uploaded Proof:</span>
+                                    <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => handleViewProof(viewDetailsLoan.proofFilePath!)}>
+                                        <FileText className="h-3.5 w-3.5" /> View Document
+                                    </Button>
+                                </div>
+                            )}
+                            {viewDetailsLoan.remarks && (
+                                <div className="space-y-1">
+                                    <div className="text-muted-foreground">Remarks:</div>
+                                    <div className="p-2 rounded bg-muted/50 border border-border/30 text-xs italic">{viewDetailsLoan.remarks}</div>
+                                </div>
+                            )}
+                            {viewDetailsLoan.status === "rejected" && viewDetailsLoan.rejectionReason && (
+                                <div className="space-y-1 p-3 rounded-lg border border-red-500/20 bg-red-500/5 dark:bg-red-500/10">
+                                    <div className="text-red-500 font-semibold text-xs">Rejection Details:</div>
+                                    <div className="text-xs text-red-600 dark:text-red-400 mt-1">{viewDetailsLoan.rejectionReason}</div>
+                                    {viewDetailsLoan.reviewedBy && (
+                                        <div className="text-[10px] text-muted-foreground mt-2">
+                                            Reviewed by {getEmpName(viewDetailsLoan.reviewedBy)}
+                                            {viewDetailsLoan.reviewedAt && ` on ${new Date(viewDetailsLoan.reviewedAt).toLocaleDateString()}`}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            <Button className="w-full mt-2" onClick={() => setViewDetailsLoan(null)}>Close</Button>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

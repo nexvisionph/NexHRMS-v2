@@ -159,7 +159,6 @@ export async function POST(request: NextRequest) {
       .eq("payroll_period_id", periodId);
     const existingAttendanceIds = new Set((existingRecords ?? []).map((r) => r.attendance_id).filter(Boolean));
 
-    // Map snake_case database logs to camelCase structures
     const mappedLogs = (rowsToTs<Record<string, unknown>>(rawLogs ?? [])).map(l => ({
       ...l,
       status: (l.status as string) === "computed" ? "present" : l.status

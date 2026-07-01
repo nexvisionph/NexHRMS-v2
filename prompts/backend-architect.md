@@ -194,7 +194,7 @@ erDiagram
 | `payroll_runs` | `id` | period_label, status (draft→validated→locked→published→paid), payslip_ids (JSONB), policy_snapshot | Yes | Batch lifecycle |
 | `payroll_adjustments` | `id` | payroll_run_id, employee_id, adjustment_type, amount, status | Yes | Corrections |
 | `final_pay_computations` | `id` | employee_id, resigned_at, pro_rated_salary, unpaid_ot, leave_payout, loan_balance, net_final_pay | Yes | Resignation settlement |
-| `loans` | `id` | employee_id, type, amount, remaining_balance, monthly_deduction, status, approved_by | Yes | Loan records |
+| `loans` | `id` | employee_id, type, amount, remaining_balance, monthly_deduction, status, approved_by, reviewed_by, reviewed_at, rejection_reason, proof_file_path | Yes | Loan records with approval layer and proof file |
 | `loan_deductions` | `id` | loan_id, payslip_id, amount, deducted_at | Yes | Deduction history |
 | `projects` | `id` | name, location_lat/lng/radius, assigned_employee_ids[], verification_method, require_geofence | Yes | Project config with geofencing |
 | `project_verification_methods` | `id` | project_id (UK), verification_method, require_geofence, geofence_radius_meters, allow_manual_override | Yes | Per-project verification |

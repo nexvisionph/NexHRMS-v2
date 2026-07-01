@@ -552,6 +552,85 @@ describe("Loans Store", () => {
     });
 
     // ══════════════════════════════════════════════════════════
+    // Loan Approval Layer
+    // ══════════════════════════════════════════════════════════
+
+    describe("Loan Approval Layer", () => {
+        it("should create a government loan request with a proof file path in pending status", () => {
+            const { result } = renderHook(() => useLoansStore());
+
+            act(() => {
+                result.current.createLoan({
+                    employeeId: "EMP-GOV",
+                    type: "government_loan",
+                    amount: 30000,
+                    monthlyDeduction: 3000,
+                    status: "pending",
+                    proofFilePath: "EMP-GOV/proof.pdf",
+                });
+            });
+
+            const loan = result.current.getByEmployee("EMP-GOV")[0];
+            expect(loan).toBeDefined();
+            expect(loan.status).toBe("pending");
+            expect(loan.proofFilePath).toBe("EMP-GOV/proof.pdf");
+        });
+
+        it("should approve a pending loan, setting active status, reviewer ID, and timestamp", () => {
+            const { result } = renderHook(() => useLoansStore());
+
+            act(() => {
+                result.current.createLoan({
+                    employeeId: "EMP-GOV-2",
+                    type: "government_loan",
+                    amount: 30000,
+                    monthlyDeduction: 3000,
+                    status: "pending",
+                    proofFilePath: "EMP-GOV-2/proof.pdf",
+                });
+            });
+
+            const loan = result.current.getByEmployee("EMP-GOV-2")[0];
+
+            act(() => {
+                result.current.approveLoan(loan.id, "EMP-REVIEWER");
+            });
+
+            const approvedLoan = result.current.getByEmployee("EMP-GOV-2")[0];
+            expect(approvedLoan.status).toBe("active");
+            expect(approvedLoan.reviewedBy).toBe("EMP-REVIEWER");
+            expect(approvedLoan.reviewedAt).toBeDefined();
+        });
+
+        it("should reject a pending loan, setting rejected status, reason, reviewer ID, and timestamp", () => {
+            const { result } = renderHook(() => useLoansStore());
+
+            act(() => {
+                result.current.createLoan({
+                    employeeId: "EMP-GOV-3",
+                    type: "government_loan",
+                    amount: 30000,
+                    monthlyDeduction: 3000,
+                    status: "pending",
+                    proofFilePath: "EMP-GOV-3/proof.pdf",
+                });
+            });
+
+            const loan = result.current.getByEmployee("EMP-GOV-3")[0];
+
+            act(() => {
+                result.current.rejectLoan(loan.id, "Incorrect document formatting", "EMP-REVIEWER");
+            });
+
+            const rejectedLoan = result.current.getByEmployee("EMP-GOV-3")[0];
+            expect(rejectedLoan.status).toBe("rejected");
+            expect(rejectedLoan.rejectionReason).toBe("Incorrect document formatting");
+            expect(rejectedLoan.reviewedBy).toBe("EMP-REVIEWER");
+            expect(rejectedLoan.reviewedAt).toBeDefined();
+        });
+    });
+
+    // ══════════════════════════════════════════════════════════
     // Reset
     // ══════════════════════════════════════════════════════════
 

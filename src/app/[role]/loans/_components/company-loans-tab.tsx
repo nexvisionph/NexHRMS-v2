@@ -117,7 +117,7 @@ export function CompanyLoansTab() {
 
     const handleSaveLoan = () => {
         if (!editLoanId || !editMonthly || !editBalance) { toast.error("Monthly amortization and outstanding balance are required"); return; }
-        
+
         const loan = loans.find((l) => l.id === editLoanId);
         let finalReleaseDate = editReleaseDate;
         if (loan && !loan.releaseDate && !editReleaseDate) {
@@ -141,7 +141,7 @@ export function CompanyLoansTab() {
 
     const handleCreate = () => {
         if (!formEmpId || !formAmount || !formMonthly || !formStartDate) { toast.error("Please fill all required fields"); return; }
-        
+
         const principal = Number(formAmount);
         const interestRatePct = Number(formInterestRate) || 0;
         const totalRepayable = principal + (principal * (interestRatePct / 100));
@@ -256,20 +256,20 @@ export function CompanyLoansTab() {
                 <p className="text-sm text-muted-foreground">{companyLoans.length} total company loans</p>
                 <Dialog open={open} onOpenChange={setOpen}>
                     <DialogTrigger asChild>
-                        <Button className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"><Plus className="h-4 w-4" /> Create Company Loan</Button>
+                        <Button className="gap-1.5"><Plus className="h-4 w-4" /> Create Company Loan</Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-md">
                         <DialogHeader><DialogTitle>Create Company Loan</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
                             <div>
-                                <label className="text-sm font-medium">Employee *</label>
+                                <label className="text-sm font-medium">Employee <span className="text-destructive">*</span></label>
                                 <div className="mt-1">
                                     <EmployeeCombobox value={formEmpId} onValueChange={setFormEmpId} required placeholder="Select employee" className="w-full" />
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-sm font-medium">Loan Amount (Principal) *</label>
+                                    <label className="text-sm font-medium">Loan Amount (Principal) <span className="text-destructive">*</span></label>
                                     <Input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} className="mt-1" placeholder="e.g. 50000" />
                                 </div>
                                 <div>
@@ -279,16 +279,16 @@ export function CompanyLoansTab() {
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-sm font-medium">Monthly Amortization *</label>
+                                    <label className="text-sm font-medium">Monthly Amortization <span className="text-destructive">*</span></label>
                                     <Input type="number" value={formMonthly} onChange={(e) => setFormMonthly(e.target.value)} className="mt-1" placeholder="e.g. 5000" />
                                 </div>
                                 <div>
-                                    <label className="text-sm font-medium">Start Deduction Date *</label>
+                                    <label className="text-sm font-medium">Start Deduction Date <span className="text-destructive">*</span></label>
                                     <Input type="date" value={formStartDate} onChange={(e) => setFormStartDate(e.target.value)} className="mt-1" />
                                 </div>
                             </div>
                             <div>
-                                <label className="text-sm font-medium">Deduction Frequency *</label>
+                                <label className="text-sm font-medium">Deduction Frequency <span className="text-destructive">*</span></label>
                                 <Select value={formFrequency} onValueChange={(v) => setFormFrequency(v as "every_payroll" | "first_payroll" | "last_payroll")}>
                                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                     <SelectContent>
@@ -393,11 +393,11 @@ export function CompanyLoansTab() {
                                                             <>
                                                                 {/* Enforce role permissions based on workflow stage */}
                                                                 {((loan.status === "pending" || loan.status === "pending_supervisor") && (role === "admin" || role === "supervisor" || role === "hr")) ||
-                                                                 (loan.status === "pending_hr" && (role === "admin" || role === "hr")) ||
-                                                                 (loan.status === "pending_finance" && (role === "admin" || role === "finance")) ? (
+                                                                    (loan.status === "pending_hr" && (role === "admin" || role === "hr")) ||
+                                                                    (loan.status === "pending_finance" && (role === "admin" || role === "finance")) ? (
                                                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => handleApprove(loan)} title={
                                                                         loan.status === "pending" || loan.status === "pending_supervisor" ? "Endorse to HR" :
-                                                                        loan.status === "pending_hr" ? "Endorse to Finance" : "Fully Approve & Activate"
+                                                                            loan.status === "pending_hr" ? "Endorse to Finance" : "Fully Approve & Activate"
                                                                     }>
                                                                         <CheckCircle className="h-3.5 w-3.5" />
                                                                     </Button>
@@ -405,8 +405,8 @@ export function CompanyLoansTab() {
                                                                     <span className="text-[9px] text-muted-foreground italic px-1">Awaiting role approval</span>
                                                                 )}
                                                                 {((loan.status === "pending" || loan.status === "pending_supervisor") && (role === "admin" || role === "supervisor" || role === "hr")) ||
-                                                                 (loan.status === "pending_hr" && (role === "admin" || role === "hr")) ||
-                                                                 (loan.status === "pending_finance" && (role === "admin" || role === "finance")) ? (
+                                                                    (loan.status === "pending_hr" && (role === "admin" || role === "hr")) ||
+                                                                    (loan.status === "pending_finance" && (role === "admin" || role === "finance")) ? (
                                                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600" onClick={() => { setRejectLoanId(loan.id); setRejectOpen(true); }} title="Reject Request">
                                                                         <XCircle className="h-3.5 w-3.5" />
                                                                     </Button>

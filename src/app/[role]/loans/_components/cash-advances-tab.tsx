@@ -106,7 +106,7 @@ export function CashAdvancesTab() {
 
     const handleSaveLoan = () => {
         if (!editLoanId || !editMonthly || !editBalance) { toast.error("Monthly deduction and outstanding balance are required"); return; }
-        
+
         const loan = loans.find((l) => l.id === editLoanId);
         let finalReleaseDate = editReleaseDate;
         if (loan && !loan.releaseDate && !editReleaseDate) {
@@ -130,7 +130,7 @@ export function CashAdvancesTab() {
 
     const handleCreate = () => {
         if (!formEmpId || !formAmount || !formMonthly || !formStartDate) { toast.error("Please fill all required fields"); return; }
-        
+
         createLoan({
             employeeId: formEmpId,
             type: "cash_advance",
@@ -206,34 +206,34 @@ export function CashAdvancesTab() {
                 <p className="text-sm text-muted-foreground">{cashAdvances.length} total cash advances</p>
                 <Dialog open={open} onOpenChange={setOpen}>
                     <DialogTrigger asChild>
-                        <Button className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"><Plus className="h-4 w-4" /> Create Cash Advance</Button>
+                        <Button className="gap-1.5"><Plus className="h-4 w-4" /> Create Cash Advance</Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-md">
                         <DialogHeader><DialogTitle>Create Cash Advance</DialogTitle></DialogHeader>
                         <div className="space-y-4 pt-2">
                             <div>
-                                <label className="text-sm font-medium">Employee *</label>
+                                <label className="text-sm font-medium">Employee <span className="text-destructive">*</span></label>
                                 <div className="mt-1">
                                     <EmployeeCombobox value={formEmpId} onValueChange={setFormEmpId} required placeholder="Select employee" className="w-full" />
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-sm font-medium">Cash Advance Amount *</label>
+                                    <label className="text-sm font-medium">Cash Advance Amount <span className="text-destructive">*</span></label>
                                     <Input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} className="mt-1" placeholder="e.g. 10000" />
                                 </div>
                                 <div>
-                                    <label className="text-sm font-medium">Monthly Deduction *</label>
+                                    <label className="text-sm font-medium">Monthly Deduction <span className="text-destructive">*</span></label>
                                     <Input type="number" value={formMonthly} onChange={(e) => setFormMonthly(e.target.value)} className="mt-1" placeholder="e.g. 2000" />
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-sm font-medium">Start Deduction Date *</label>
+                                    <label className="text-sm font-medium">Start Deduction Date <span className="text-destructive">*</span></label>
                                     <Input type="date" value={formStartDate} onChange={(e) => setFormStartDate(e.target.value)} className="mt-1" />
                                 </div>
                                 <div>
-                                    <label className="text-sm font-medium">Deduction Frequency *</label>
+                                    <label className="text-sm font-medium">Deduction Frequency <span className="text-destructive">*</span></label>
                                     <Select value={formFrequency} onValueChange={(v) => setFormFrequency(v as "every_payroll" | "first_payroll" | "last_payroll")}>
                                         <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                         <SelectContent>
