@@ -2839,9 +2839,6 @@
                                                                     {canIssue && (
                                                                         <TableCell>
                                                                             <div className="flex items-center gap-1">
-                                                                                {runObj && (
-                                                                                    <Button variant="ghost" size="icon" className={`h-7 w-7 ${activeRun?.id === runObj.id ? "text-emerald-500 font-bold" : "text-muted-foreground"}`} title="View/Select this cycle" onClick={() => setSelectedRunId(runObj.id)}><Eye className="h-3.5 w-3.5" /></Button>
-                                                                                )}
                                                                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="Export bank file" onClick={() => exportBankFile(run.date, employees.map((e) => ({ id: e.id, name: e.name, salary: e.salary })))}><Download className="h-3.5 w-3.5" /></Button>
                                                                                 {runObj && !locked && (
                                                                                     <AlertDialog>
