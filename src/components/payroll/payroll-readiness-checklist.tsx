@@ -17,6 +17,16 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
     CheckCircle2,
     XCircle,
     AlertTriangle,
@@ -79,6 +89,7 @@ function ZeroNetPayFixModal({
     role,
 }: FixModalProps) {
     const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
     const allSelected = badPayslips.length > 0 && selected.size === badPayslips.length;
     const someSelected = selected.size > 0 && !allSelected;
@@ -160,7 +171,7 @@ function ZeroNetPayFixModal({
                         variant="destructive"
                         className="h-7 px-3 text-[11px] gap-1.5"
                         disabled={selected.size === 0}
-                        onClick={handleRemoveSelected}
+                        onClick={() => setConfirmDeleteOpen(true)}
                     >
                         <Trash2 className="h-3 w-3" />
                         Remove selected ({selected.size})
@@ -243,6 +254,29 @@ function ZeroNetPayFixModal({
                     </Button>
                 </div>
             </DialogContent>
+
+            <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Remove {selected.size} Selected Payslip{selected.size > 1 ? "s" : ""}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to remove the {selected.size} selected draft payslip{selected.size > 1 ? "s" : ""} from this payroll run? This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setConfirmDeleteOpen(false)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={() => {
+                                handleRemoveSelected();
+                                setConfirmDeleteOpen(false);
+                            }}
+                        >
+                            Remove
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </Dialog>
     );
 }
