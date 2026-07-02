@@ -10,6 +10,8 @@ files_modified:
   - src/app/[role]/jobs/_views/admin-view.tsx
   - src/app/[role]/messages/_views/admin-view.tsx
   - src/app/[role]/notifications/page.tsx
+  - src/app/[role]/projects/_views/admin-view.tsx
+  - src/components/payroll/payroll-readiness-checklist.tsx
 requirements_addressed:
   - UX-DELETE-001
 autonomous: true

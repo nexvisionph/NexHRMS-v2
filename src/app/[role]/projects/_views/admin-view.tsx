@@ -68,6 +68,7 @@ export default function AdminProjectsView() {
     const [qrProject, setQrProject] = useState<{ id: string; name: string } | null>(null);
     const [assignSearch, setAssignSearch] = useState("");
     const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     // ── Edit project state ──────────────────────────────────────
     const [editOpen, setEditOpen] = useState(false);
@@ -514,7 +515,7 @@ export default function AdminProjectsView() {
                 />
             )}
 
-            <AlertDialog open={!!deleteProjectId} onOpenChange={(open) => !open && setDeleteProjectId(null)}>
+            <AlertDialog open={!!deleteProjectId} onOpenChange={(open) => !open && !deleting && setDeleteProjectId(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Delete Project &ldquo;{projects.find((p) => p.id === deleteProjectId)?.name}&rdquo;?</AlertDialogTitle>
@@ -523,20 +524,27 @@ export default function AdminProjectsView() {
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setDeleteProjectId(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel onClick={() => setDeleteProjectId(null)} disabled={deleting}>Cancel</AlertDialogCancel>
                         <AlertDialogAction
                             className="bg-red-600 hover:bg-red-700 text-white"
-                            onClick={() => {
+                            disabled={deleting}
+                            onClick={(e) => {
+                                e.preventDefault();
                                 if (deleteProjectId) {
+                                    setDeleting(true);
                                     void deleteProjectAction(deleteProjectId).then((ok) => {
-                                        if (ok) toast.success("Project deleted");
-                                        else toast.error("Failed to delete project");
+                                        if (ok) {
+                                            toast.success("Project deleted");
+                                            setDeleteProjectId(null);
+                                        } else {
+                                            toast.error("Failed to delete project");
+                                        }
                                     }).catch(() => toast.error("Failed to delete project"))
-                                    .finally(() => setDeleteProjectId(null));
+                                    .finally(() => setDeleting(false));
                                 }
                             }}
                         >
-                            Delete
+                            {deleting ? "Deleting..." : "Delete"}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

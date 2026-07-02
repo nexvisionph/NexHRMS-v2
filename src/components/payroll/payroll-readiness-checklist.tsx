@@ -94,6 +94,11 @@ function ZeroNetPayFixModal({
     const allSelected = badPayslips.length > 0 && selected.size === badPayslips.length;
     const someSelected = selected.size > 0 && !allSelected;
 
+    const selectedDraftsCount = badPayslips.filter(
+        (p) => selected.has(p.id) && p.status === "draft"
+    ).length;
+    const selectedNonDraftsCount = selected.size - selectedDraftsCount;
+
     const toggleAll = () => {
         if (allSelected) {
             setSelected(new Set());
@@ -258,9 +263,9 @@ function ZeroNetPayFixModal({
             <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Remove {selected.size} Selected Payslip{selected.size > 1 ? "s" : ""}?</AlertDialogTitle>
+                        <AlertDialogTitle>Remove Selected Payslips?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to remove the {selected.size} selected draft payslip{selected.size > 1 ? "s" : ""} from this payroll run? This action cannot be undone.
+                            Are you sure you want to remove the {selectedDraftsCount} selected draft payslip{selectedDraftsCount !== 1 ? "s" : ""} from this payroll run? This action cannot be undone.{selectedNonDraftsCount > 0 && ` Note: ${selectedNonDraftsCount} selected non-draft payslip${selectedNonDraftsCount !== 1 ? "s" : ""} will be skipped because only draft payslips can be removed.`}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

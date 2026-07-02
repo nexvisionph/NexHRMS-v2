@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useAttendanceStore } from "@/store/attendance.store";
@@ -34,7 +34,35 @@ import { toast } from "sonner";
 import { useAuditStore } from "@/store/audit.store";
 import type { WorkType, PayFrequency } from "@/types";
 
+const sanitizeSalary = (value: string, prevValue: string): string => {
+    let sanitized = value.replace(/[^\d.]/g, "");
 
+    // collapse multiple dots into one
+    const parts = sanitized.split(".");
+    if (parts.length > 2) {
+        sanitized = parts[0] + "." + parts.slice(1).join("");
+    }
+
+    // cap to 2 decimal places
+    const [whole, decimal] = sanitized.split(".");
+    if (decimal?.length > 2) {
+        sanitized = whole + "." + decimal.slice(0, 2);
+    }
+
+    // strip leading zeros (but keep a single "0" if that's all there is)
+    sanitized = sanitized.replace(/^0+(?=\d)/, "");
+
+    // cap total length to prevent absurd values
+    if (sanitized.replace(".", "").length > 10) return prevValue;
+
+    return sanitized;
+};
+
+const handleSalaryKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.ctrlKey || e.metaKey) return;
+    const allowed = ["Backspace", "Delete", "Tab", "Enter", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+    if (!/[\d.]/.test(e.key) && !allowed.includes(e.key)) e.preventDefault();
+};
 
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
     return (
@@ -144,13 +172,18 @@ export default function AdminProfileView() {
             }
             formattedPhone = phoneResult.formatted;
         }
+        const salaryVal = Number(editSalary);
+        if (!editSalary || isNaN(salaryVal) || salaryVal <= 0) {
+            toast.error("Monthly salary is required and must be greater than 0");
+            return;
+        }
         
         updateEmployee(employee.id, {
             name: editName, email: editEmail, phone: formattedPhone,
             role: editRole,
             jobTitle: editJobTitle === "__none__" ? undefined : editJobTitle,
             department: editDept, workType: editWorkType,
-            salary: Number(editSalary) || employee.salary,
+            salary: salaryVal,
             location: editLocation === "__none__" ? "" : editLocation,
             payFrequency: editPayFreq !== "company" ? editPayFreq as PayFrequency : undefined,
         });
@@ -666,7 +699,7 @@ export default function AdminProfileView() {
                             <div><label className="text-sm font-medium">Work Type</label>
                                 <Select value={editWorkType} onValueChange={(v) => setEditWorkType(v as WorkType)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">WFO</SelectItem><SelectItem value="WFH">WFH</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Onsite</SelectItem></SelectContent></Select>
                             </div>
-                            <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="number" value={editSalary} onChange={(e) => setEditSalary(e.target.value)} className="mt-1" /></div>
+                             <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="text" inputMode="decimal" value={editSalary} onChange={(e) => setEditSalary(sanitizeSalary(e.target.value, editSalary))} onKeyDown={handleSalaryKeyDown} onBlur={(e) => { let val = e.target.value; if (val.endsWith(".")) { val = val.slice(0, -1); } setEditSalary(val); }} maxLength={13} placeholder="e.g. 25000" className="mt-1" /></div>
                             <div><label className="text-sm font-medium">Location</label>
                                 <Select value={editLocation || "__none__"} onValueChange={setEditLocation}><SelectTrigger className="mt-1"><SelectValue placeholder="Select location" /></SelectTrigger><SelectContent><SelectItem value="__none__">— Not Specified —</SelectItem>{LOCATIONS.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select>
                             </div>

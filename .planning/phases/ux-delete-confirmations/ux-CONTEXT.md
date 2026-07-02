@@ -43,6 +43,8 @@ Standardizing delete confirmation modals across all unconfirmed routes in NexHRM
 - [messages/_views/admin-view.tsx](../../../src/app/[role]/messages/_views/admin-view.tsx) — Channel/announcement settings
 - [settings/_views/admin-view.tsx](../../../src/app/[role]/settings/_views/admin-view.tsx) — General rules settings
 - [notifications/page.tsx](../../../src/app/[role]/notifications/page.tsx) — System notifications and log list
+- [projects/_views/admin-view.tsx](../../../src/app/[role]/projects/_views/admin-view.tsx) — Project administration panel delete confirmation
+- [payroll/payroll-readiness-checklist.tsx](../../../src/components/payroll/payroll-readiness-checklist.tsx) — Payroll readiness draft payslip removal confirmation
 
 ### Guidelines
 - [PR_GUIDELINES.md](../../../docs/PR_GUIDELINES.md) — PR, Branch, and Commit naming conventions

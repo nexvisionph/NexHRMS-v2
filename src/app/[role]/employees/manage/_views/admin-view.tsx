@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useEmployeesStore } from "@/store/employees.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useRolesStore } from "@/store/roles.store";
@@ -66,6 +66,36 @@ const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 type SortKey = keyof Employee;
 type SortDir = "asc" | "desc";
 const PAGE_SIZES = [10, 20, 50];
+
+const sanitizeSalary = (value: string, prevValue: string): string => {
+    let sanitized = value.replace(/[^\d.]/g, "");
+
+    // collapse multiple dots into one
+    const parts = sanitized.split(".");
+    if (parts.length > 2) {
+        sanitized = parts[0] + "." + parts.slice(1).join("");
+    }
+
+    // cap to 2 decimal places
+    const [whole, decimal] = sanitized.split(".");
+    if (decimal?.length > 2) {
+        sanitized = whole + "." + decimal.slice(0, 2);
+    }
+
+    // strip leading zeros (but keep a single "0" if that's all there is)
+    sanitized = sanitized.replace(/^0+(?=\d)/, "");
+
+    // cap total length to prevent absurd values
+    if (sanitized.replace(".", "").length > 10) return prevValue;
+
+    return sanitized;
+};
+
+const handleSalaryKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.ctrlKey || e.metaKey) return;
+    const allowed = ["Backspace", "Delete", "Tab", "Enter", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+    if (!/[\d.]/.test(e.key) && !allowed.includes(e.key)) e.preventDefault();
+};
 
 function SortIndicator({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
     if (sortKey !== col) return null;
@@ -998,7 +1028,7 @@ const filteredAccounts = useMemo(() => {
                                                 <div><label className="text-xs font-medium text-muted-foreground">Work Arrangement</label>
                                                     <Select value={newWorkType} onValueChange={(v) => setNewWorkType(v as WorkType)}><SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">Work From Office</SelectItem><SelectItem value="WFH">Work From Home</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Full Onsite</SelectItem></SelectContent></Select>
                                                 </div>
-                                                <div><label className="text-xs font-medium text-muted-foreground">Monthly Salary (₱) <span className="text-destructive">*</span></label><Input type="number" min={0} value={newSalary} onChange={(e) => { const sanitized = e.target.value.replace(/[^\d]/g, ""); setNewSalary(sanitized); }} onKeyDown={(e) => { if (e.ctrlKey || e.metaKey) return; if (!/\d/.test(e.key) && !["Backspace","Delete","Tab","Enter","ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End"].includes(e.key)) e.preventDefault(); }} placeholder="e.g. 25000" className="mt-1 h-8 text-sm" /></div>
+                                                <div><label className="text-xs font-medium text-muted-foreground">Monthly Salary (₱) <span className="text-destructive">*</span></label><Input type="text" inputMode="decimal" value={newSalary} onChange={(e) => setNewSalary(sanitizeSalary(e.target.value, newSalary))} onKeyDown={handleSalaryKeyDown} onBlur={(e) => { let val = e.target.value; if (val.endsWith(".")) { val = val.slice(0, -1); } setNewSalary(val); }} maxLength={13} placeholder="e.g. 25000" className="mt-1 h-8 text-sm" /></div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div><label className="text-xs font-medium text-muted-foreground">Pay Frequency</label>
@@ -1276,7 +1306,7 @@ const filteredAccounts = useMemo(() => {
                                     <div><label className="text-sm font-medium">Work Type</label>
                                         <Select value={editWorkType} onValueChange={(v) => setEditWorkType(v as WorkType)}><SelectTrigger className="mt-1 overflow-hidden"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WFO">Work From Office</SelectItem><SelectItem value="WFH">Work From Home</SelectItem><SelectItem value="HYBRID">Hybrid</SelectItem><SelectItem value="ONSITE">Full Onsite</SelectItem></SelectContent></Select>
                                     </div>
-                                    <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="number" value={editSalary} onChange={(e) => setEditSalary(e.target.value)} className="mt-1" /></div>
+                                    <div><label className="text-sm font-medium">Monthly Salary (₱)</label><Input type="text" inputMode="decimal" value={editSalary} onChange={(e) => setEditSalary(sanitizeSalary(e.target.value, editSalary))} onKeyDown={handleSalaryKeyDown} onBlur={(e) => { let val = e.target.value; if (val.endsWith(".")) { val = val.slice(0, -1); } setEditSalary(val); }} maxLength={13} placeholder="e.g. 25000" className="mt-1" /></div>
                                 </div>
                                    <div className="grid grid-cols-1 gap-3"> 
                                     <div><label className="text-sm font-medium">Pay Frequency</label>
@@ -2588,7 +2618,7 @@ const filteredAccounts = useMemo(() => {
                         <p className="text-sm text-muted-foreground">Employee: <span className="font-medium text-foreground">{salaryDialogEmp?.name}</span></p>
                         <div>
                             <label className="text-sm font-medium">{isHR ? "Proposed" : ""} Monthly Salary (₱)</label>
-                            <Input type="number" min={1} value={salaryInput} onChange={(e) => setSalaryInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSalarySave()} placeholder="e.g. 85000" className="mt-1" autoFocus />
+                            <Input type="text" inputMode="decimal" value={salaryInput} onChange={(e) => setSalaryInput(sanitizeSalary(e.target.value, salaryInput))} onKeyDown={(e) => { handleSalaryKeyDown(e); if (e.key === "Enter") handleSalarySave(); }} onBlur={(e) => { let val = e.target.value; if (val.endsWith(".")) { val = val.slice(0, -1); } setSalaryInput(val); }} maxLength={13} placeholder="e.g. 85000" className="mt-1" autoFocus />
                             {Number(salaryInput) > 0 && (
                                 <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
                                     <p>Annual: <span className="font-mono font-medium">{formatCurrency(Number(salaryInput) * 12)}</span></p>
