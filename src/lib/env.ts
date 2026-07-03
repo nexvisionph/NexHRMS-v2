@@ -41,6 +41,16 @@ export function getServiceRoleKey(): string {
   return requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 }
 
+/** Cloudflare Turnstile site key. Public and safe for browser rendering. */
+export function getTurnstileSiteKey(): string {
+  return process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+}
+
+/** Cloudflare Turnstile secret key. Server-side verification only. */
+export function getTurnstileSecretKey(): string {
+  return requireEnv("TURNSTILE_SECRET_KEY");
+}
+
 // ─── Qwen AI (DashScope) ─────────────────────────────────────────────────────
 
 /** DashScope API base URL for Qwen vision models. */

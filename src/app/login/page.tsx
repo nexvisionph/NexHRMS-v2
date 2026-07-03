@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useAppearanceStore } from "@/store/appearance.store";
@@ -11,6 +11,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { TurnstileWidget, resetTurnstileWidget } from "@/components/turnstile-widget";
 import { toast } from "sonner";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -21,6 +22,7 @@ import { ThemeToggleButton, useResolvedAppTheme } from "@/components/shell/theme
 
 // Set to true to use local demo login (no Supabase required)
 const USE_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 const LOGIN_COMPANY_NAME = "NexVision Innovations Inc.";
 
 const DEMO_ACCOUNTS = [
@@ -56,10 +58,12 @@ export default function LoginPage() {
     const [confirmPassword, setConfirmPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [showPayrollAccounts, setShowPayrollAccounts] = useState(false);
+    const [turnstileToken, setTurnstileToken] = useState("");
     const [mode, setMode] = useState<"signIn" | "recovery">("recovery" === searchParams.get("type") ? "recovery" : "signIn");
     const isLightMode = useResolvedAppTheme() === "light";
     const employees = useEmployeesStore((s) => s.employees);
     const supabase = useMemo(() => createClient(), []);
+    const clearTurnstileToken = useCallback(() => setTurnstileToken(""), []);
 
     // Consolidated branding from appearance store
     const {
@@ -85,10 +89,15 @@ export default function LoginPage() {
     };
 
     const handleSupabaseLogin = async (loginEmail: string, loginPassword: string) => {
+        if (TURNSTILE_SITE_KEY && !turnstileToken) {
+            toast.error("Please complete the security check.");
+            return;
+        }
+
         setLoading(true);
         try {
             // Sign-in flow
-            const res = await signIn(loginEmail, loginPassword);
+            const res = await signIn(loginEmail, loginPassword, turnstileToken);
             if (res.ok) {
                 // Hydrate Zustand store with Supabase user data
                 setUser({
@@ -112,20 +121,27 @@ export default function LoginPage() {
                 });
                 toast.success("Welcome back!");
                 redirectAfterAuth(res.user.role);
-            } else if (res.error === "deactivated") {
-                toast.error("Your account has been deactivated. Please contact your HR administrator.");
-                setLoading(false);
-                router.push("/deactivated");
-            } else if (res.error === "pending_approval") {
-                toast.info("Your account is pending admin approval. Please wait for confirmation.");
-                setLoading(false);
             } else {
-                toast.error(res.error || "Invalid email or password");
-                setLoading(false);
+                setTurnstileToken("");
+                resetTurnstileWidget();
+
+                if (res.error === "deactivated") {
+                    toast.error("Your account has been deactivated. Please contact your HR administrator.");
+                    setLoading(false);
+                    router.push("/deactivated");
+                } else if (res.error === "pending_approval") {
+                    toast.info("Your account is pending admin approval. Please wait for confirmation.");
+                    setLoading(false);
+                } else {
+                    toast.error(res.error || "Invalid email or password");
+                    setLoading(false);
+                }
             }
         } catch (err) {
             console.error(err);
             toast.error("Connection error. Please try again.");
+            setTurnstileToken("");
+            resetTurnstileWidget();
             setLoading(false);
         }
     };
@@ -392,6 +408,16 @@ const panelCardClass = cn(
                                         <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputClassName} required />
                                     </div>
                                 </>
+                            )}
+                            {mode !== "recovery" && TURNSTILE_SITE_KEY && !USE_DEMO_MODE && (
+                                <TurnstileWidget
+                                    siteKey={TURNSTILE_SITE_KEY}
+                                    theme={isLightMode ? "light" : "dark"}
+                                    onVerify={setTurnstileToken}
+                                    onExpire={clearTurnstileToken}
+                                    onError={clearTurnstileToken}
+                                    className="pt-1"
+                                />
                             )}
                             <Button type="submit" size="lg" className="w-full bg-teal-500 text-white hover:bg-teal-400 focus-visible:ring-teal-300 text-sm font-semibold tracking-wide transition-all active:scale-[0.99] shadow-lg shadow-teal-500/20 rounded-xl" disabled={loading}>
                                 {loading ? "Authenticating..." : mode === "recovery" ? "Update Password" : "Secure Sign In"}

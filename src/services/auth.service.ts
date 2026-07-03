@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminSupabaseClient, createServerSupabaseClient } from "./supabase-server";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import type { Role } from "@/types";
 
 const PASSWORD_WHITESPACE_RE = /\s/;
@@ -9,7 +10,10 @@ const PASSWORD_WHITESPACE_RE = /\s/;
  * Sign in with email/password via Supabase Auth.
  * Called from client via server action.
  */
-export async function signIn(email: string, password: string) {
+export async function signIn(email: string, password: string, turnstileToken?: string) {
+  const turnstile = await verifyTurnstileToken(turnstileToken);
+  if (!turnstile.ok) return { ok: false as const, error: turnstile.error };
+
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { ok: false as const, error: error.message };
