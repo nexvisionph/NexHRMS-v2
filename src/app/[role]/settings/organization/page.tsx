@@ -58,6 +58,10 @@ export default function OrganizationPage() {
     // Reset confirmation
     const [resetOpen, setResetOpen] = useState(false);
 
+    // Delete confirmations
+    const [deleteDeptId, setDeleteDeptId] = useState<string | null>(null);
+    const [deletePosId, setDeletePosId] = useState<string | null>(null);
+
     if (!canManage) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
@@ -202,13 +206,13 @@ export default function OrganizationPage() {
                                             <TableCell className="text-sm text-muted-foreground">{jobTitles.filter((jt) => jt.department === dept.name).length}</TableCell>
                                             <TableCell className="text-sm text-muted-foreground">{getEmpCountForDept(dept.name)}</TableCell>
                                             <TableCell>
-                                                <div className="flex items-center gap-1">
+                                                <div className="flex items-center justify-center gap-1">
                                                     <Button variant="ghost" size="icon" className="h-7 w-7"
                                                         onClick={() => { setEditDept(dept); setDeptName(dept.name); setDeptDesc(dept.description || ""); setDeptColor(dept.color || "#6366f1"); setDeptOpen(true); }}>
                                                         <Pencil className="h-3.5 w-3.5" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500"
-                                                        onClick={() => handleDeleteDept(dept.id)}>
+                                                        onClick={() => setDeleteDeptId(dept.id)}>
                                                         <Trash2 className="h-3.5 w-3.5" />
                                                     </Button>
                                                 </div>
@@ -257,13 +261,13 @@ export default function OrganizationPage() {
                                                 </Badge>
                                             </TableCell>
                                             <TableCell>
-                                                <div className="flex items-center gap-1">
+                                                <div className="flex items-center justify-center gap-1">
                                                     <Button variant="ghost" size="icon" className="h-7 w-7"
                                                         onClick={() => { setEditPos(jt); setPosTitle(jt.name); setPosDept(jt.department || ""); setPosIsLead(jt.isLead); setPosColor(jt.color || "#6366f1"); setPosOpen(true); }}>
                                                         <Pencil className="h-3.5 w-3.5" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500"
-                                                        onClick={() => handleDeletePos(jt.id)}>
+                                                        onClick={() => setDeletePosId(jt.id)}>
                                                         <Trash2 className="h-3.5 w-3.5" />
                                                     </Button>
                                                 </div>
@@ -360,6 +364,58 @@ export default function OrganizationPage() {
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction onClick={handleReset} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                             Reset to Defaults
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Department Delete Confirmation */}
+            <AlertDialog open={!!deleteDeptId} onOpenChange={(open) => !open && setDeleteDeptId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Department?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete the department &quot;{departments.find((d) => d.id === deleteDeptId)?.name}&quot;? This action cannot be undone. Positions and employees associated with this department will need to be reassigned.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deleteDeptId) {
+                                    handleDeleteDept(deleteDeptId);
+                                    setDeleteDeptId(null);
+                                }
+                            }}
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Position Delete Confirmation */}
+            <AlertDialog open={!!deletePosId} onOpenChange={(open) => !open && setDeletePosId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Position?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete the position &quot;{jobTitles.find((jt) => jt.id === deletePosId)?.name}&quot;? This action cannot be undone. Employees holding this position will not be affected.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deletePosId) {
+                                    handleDeletePos(deletePosId);
+                                    setDeletePosId(null);
+                                }
+                            }}
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                            Delete
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

@@ -213,6 +213,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
     const [selfieDataUrl, setSelfieDataUrl] = useState<string | null>(null);
     const [notifyingId, setNotifyingId] = useState<string | null>(null);
     const [resetingId, setResetingId] = useState<string | null>(null);
+    const [deleteExceptionId, setDeleteExceptionId] = useState<string | null>(null);
 
     // OT state
     const [otOpen, setOtOpen] = useState(false);
@@ -1274,9 +1275,7 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                                                                     )}
                                                                     <DropdownMenuSeparator />
                                                                     <DropdownMenuItem className="text-red-600" onClick={() => {
-                                                                        deleteException(exc.id);
-                                                                        appendEvent({ employeeId: exc.employeeId, eventType: "EXCEPTION_DELETED", timestampUTC: new Date().toISOString(), performedBy: currentUser.id, description: `Deleted "${exc.flag.replace(/_/g, " ")}" exception for ${getEmpName(exc.employeeId)} on ${exc.date}`, metadata: { exceptionId: exc.id, flag: exc.flag, date: exc.date } });
-                                                                        toast.success("Exception deleted");
+                                                                        setDeleteExceptionId(exc.id);
                                                                     }}>
                                                                         <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
                                                                     </DropdownMenuItem>
@@ -1710,6 +1709,47 @@ export default function AdminView({ mode = "admin" }: AdminViewProps) {
                 employees={employees}
                 existingLogs={logs}
             />
+
+            {/* Exception Delete Confirmation */}
+            <AlertDialog open={!!deleteExceptionId} onOpenChange={(open) => !open && setDeleteExceptionId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Exception?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {deleteExceptionId && (() => {
+                                const exc = exceptions.find((x) => x.id === deleteExceptionId);
+                                return exc ? `Are you sure you want to delete the "${exc.flag.replace(/_/g, " ")}" exception for ${getEmpName(exc.employeeId)} on ${exc.date}? This action cannot be undone.` : "";
+                            })()}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setDeleteExceptionId(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={() => {
+                                if (deleteExceptionId) {
+                                    const exc = exceptions.find((x) => x.id === deleteExceptionId);
+                                    if (exc) {
+                                        deleteException(deleteExceptionId);
+                                        appendEvent({
+                                            employeeId: exc.employeeId,
+                                            eventType: "EXCEPTION_DELETED",
+                                            timestampUTC: new Date().toISOString(),
+                                            performedBy: currentUser.id,
+                                            description: `Deleted "${exc.flag.replace(/_/g, " ")}" exception for ${getEmpName(exc.employeeId)} on ${exc.date}`,
+                                            metadata: { exceptionId: deleteExceptionId, flag: exc.flag, date: exc.date }
+                                        });
+                                        toast.success("Exception deleted");
+                                    }
+                                    setDeleteExceptionId(null);
+                                }
+                            }}
+                        >
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

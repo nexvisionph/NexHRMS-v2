@@ -33,6 +33,10 @@ import {
     FileText, Phone, Mail, Link as LinkIcon, ChevronDown, Inbox,
     Upload, Trash2, Download, Loader2,
 } from "lucide-react";
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { DEPARTMENTS } from "@/lib/constants";
 import type { JobPosting, JobApplication, JobStatus, JobType, JobPriority, ApplicationStatus } from "@/types";
@@ -159,6 +163,8 @@ export default function JobsAdminView() {
     const [appOpen, setAppOpen] = useState(false);
     const [viewingAppId, setViewingAppId] = useState<string | null>(null);
     const [isUploadingResume, setIsUploadingResume] = useState(false);
+    const [deleteJobId, setDeleteJobId] = useState<string | null>(null);
+    const [deleteAppId, setDeleteAppId] = useState<string | null>(null);
 
     // ── fetch from DB on mount ────────────────────────────────────────────────
     useEffect(() => {
@@ -479,7 +485,7 @@ export default function JobsAdminView() {
                                                                 <DropdownMenuSeparator />
                                                                 <DropdownMenuItem
                                                                     className="text-red-600"
-                                                                    onClick={() => { deleteJob(job.id); toast.success("Posting deleted"); }}
+                                                                    onClick={() => setDeleteJobId(job.id)}
                                                                 >
                                                                     Delete
                                                                 </DropdownMenuItem>
@@ -617,8 +623,7 @@ export default function JobsAdminView() {
                                                         toast.success(`Status updated to "${APP_STATUS_LABELS[status]}"`);
                                                     }}
                                                     onDelete={() => {
-                                                        deleteApplication(app.id);
-                                                        toast.success("Application removed");
+                                                        setDeleteAppId(app.id);
                                                     }}
                                                 />
                                             ))}
@@ -1072,6 +1077,59 @@ export default function JobsAdminView() {
                 </DialogContent>
             </Dialog>
 
+            {/* Job Delete Confirmation */}
+            <AlertDialog open={!!deleteJobId} onOpenChange={(open) => !open && setDeleteJobId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Job Posting?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete the job posting &quot;{jobs.find((j) => j.id === deleteJobId)?.title}&quot;? This action cannot be undone. All applicant history associated with this posting will also be removed.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setDeleteJobId(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={() => {
+                                if (deleteJobId) {
+                                    deleteJob(deleteJobId);
+                                    toast.success("Posting deleted");
+                                    setDeleteJobId(null);
+                                }
+                            }}
+                        >
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Application Delete Confirmation */}
+            <AlertDialog open={!!deleteAppId} onOpenChange={(open) => !open && setDeleteAppId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Application?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete the application for &quot;{applications.find((a) => a.id === deleteAppId)?.applicantName}&quot;? This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setDeleteAppId(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={() => {
+                                if (deleteAppId) {
+                                    deleteApplication(deleteAppId);
+                                    toast.success("Application removed");
+                                    setDeleteAppId(null);
+                                }
+                            }}
+                        >
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

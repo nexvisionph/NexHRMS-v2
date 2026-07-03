@@ -16,6 +16,10 @@ import {
     ChevronRight, ShieldCheck, Trash2, Sun, AlertTriangle,
     ArrowLeft, ArrowRight, Eye,
 } from "lucide-react";
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 /**
  * Employee Face Enrollment Page — Mobile-first
@@ -98,6 +102,8 @@ export default function FaceEnrollmentPage() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // ── Live face tracking state ──
     const [tracking, setTracking] = useState<FaceTrackingResult | null>(null);
@@ -560,6 +566,8 @@ export default function FaceEnrollmentPage() {
     }, [step, handleEnroll]);
 
     const handleDelete = useCallback(async () => {
+        if (isDeleting) return;
+        setIsDeleting(true);
         try {
             const res = await fetch("/api/face-recognition/enroll?action=delete", {
                 method: "POST",
@@ -569,14 +577,17 @@ export default function FaceEnrollmentPage() {
             if (res.ok) {
                 setEnrolled(false);
                 setEnrolledAt(null);
+                setIsDeleteConfirmOpen(false);
                 toast.success("Face enrollment deleted. You can re-enroll anytime.");
             } else {
                 toast.error("Failed to delete enrollment.");
             }
         } catch {
             toast.error("Network error.");
+        } finally {
+            setIsDeleting(false);
         }
-    }, [employeeId, currentUser.id]);
+    }, [isDeleting, employeeId, currentUser.id]);
 
     const resetAll = useCallback(() => {
         setDescriptors([]);
@@ -630,7 +641,7 @@ export default function FaceEnrollmentPage() {
                                 </p>
                             </div>
                         </div>
-                        <Button variant="outline" size="sm" className="gap-1 shrink-0 text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950 min-h-[40px] w-full sm:w-auto" onClick={handleDelete}>
+                        <Button variant="outline" size="sm" className="gap-1 shrink-0 text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950 min-h-[40px] w-full sm:w-auto" onClick={() => setIsDeleteConfirmOpen(true)}>
                             <Trash2 className="h-3.5 w-3.5" /> Remove
                         </Button>
                     </CardContent>
@@ -909,6 +920,48 @@ export default function FaceEnrollmentPage() {
                     Privacy-first biometrics: only a 128-dimensional vector is saved, which cannot be reversed into an image.
                 </p>
             </div>
+
+            {/* Delete Face Enrollment Confirmation */}
+            <AlertDialog
+                open={isDeleteConfirmOpen}
+                onOpenChange={(open) => {
+                    if (!open && isDeleting) return;
+                    setIsDeleteConfirmOpen(open);
+                }}
+            >
+                <AlertDialogContent
+                    {...({
+                        onEscapeKeyDown: (e: { preventDefault: () => void }) => { if (isDeleting) e.preventDefault(); },
+                        onPointerDownOutside: (e: { preventDefault: () => void }) => { if (isDeleting) e.preventDefault(); },
+                        onInteractOutside: (e: { preventDefault: () => void }) => { if (isDeleting) e.preventDefault(); }
+                    } as unknown as Record<string, unknown>)}
+                >
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Face Enrollment?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete this face enrollment? The employee will no longer be able to clock in using facial recognition. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel
+                            disabled={isDeleting}
+                            onClick={() => setIsDeleteConfirmOpen(false)}
+                        >
+                            Cancel
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            disabled={isDeleting}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                void handleDelete();
+                            }}
+                        >
+                            {isDeleting ? "Deleting..." : "Delete"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
