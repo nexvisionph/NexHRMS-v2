@@ -409,7 +409,7 @@ const panelCardClass = cn(
                                     </div>
                                 </>
                             )}
-                            {mode !== "recovery" && TURNSTILE_SITE_KEY && !USE_DEMO_MODE && (
+                            {mode !== "recovery" && TURNSTILE_SITE_KEY && (
                                 <TurnstileWidget
                                     siteKey={TURNSTILE_SITE_KEY}
                                     theme={isLightMode ? "light" : "dark"}
