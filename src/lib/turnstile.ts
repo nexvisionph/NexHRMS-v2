@@ -14,10 +14,6 @@ type TurnstileSiteVerifyResponse = {
 };
 
 export async function verifyTurnstileToken(token?: string | null) {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || process.env.NODE_ENV === "test") {
-    return { ok: true as const };
-  }
-
   if (!token) {
     return { ok: false as const, error: "Please complete the security check." };
   }
